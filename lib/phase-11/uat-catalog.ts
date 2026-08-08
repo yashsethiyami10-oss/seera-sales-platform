@@ -1,0 +1,4 @@
+export const PORTAL_UAT={
+ "founder-admin":["visibility","master-controls","analytics","audit","lifecycle","automation-settings"],accounts:["proof-verification","payment","ledger","allocation","ageing","reconciliation","billing","ta"],"sales-manager":["start-end-day","retailing","joint-work","team","distributor-development","analytics"],"sales-executive":["mobile-field-day","retailer","order","offline-sync","collection","prospect","end-day"],distributor:["order","fulfilment","stock","reconciliation","credit-payment","documents","analytics"],"super-stockist":["company-replenishment","advance-payment","distributor-orders","credit","stock","documents","analytics"],"delivery-user":["delivery-only"]
+} as const;
+export const OFFLINE_UAT=["restart-preserves-queue","price-change-conflict","deactivated-retailer-rejected","replay-no-duplicate"] as const;

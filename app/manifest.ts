@@ -1,0 +1,2 @@
+import type {MetadataRoute} from "next";
+export default function manifest():MetadataRoute.Manifest{return{name:"Seera Sales & Distribution OS",short_name:"Seera OS",description:"Secure field sales and distribution operations",start_url:"/portal/sales-executive",display:"standalone",background_color:"#f8fafc",theme_color:"#b91c1c",lang:"en-IN",icons:[{src:"/icons/seera.svg",sizes:"any",type:"image/svg+xml",purpose:"maskable"}]};}

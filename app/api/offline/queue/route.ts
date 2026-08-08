@@ -1,0 +1,2 @@
+import {NextResponse} from "next/server";import {prisma} from "@/lib/database/client";import {resolveRequestIdentity} from "@/lib/foundation/request-auth";import {apiFailure} from "@/lib/foundation/api-response";import {listOfflineQueue} from "@/lib/phase-11/offline-sync-service";
+export async function GET(request:Request){try{const{user}=await resolveRequestIdentity();return NextResponse.json({operations:await listOfflineQueue(prisma,user.id)},{headers:{"Cache-Control":"private, no-store"}});}catch(error){return apiFailure(error,request);}}

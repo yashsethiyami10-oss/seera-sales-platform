@@ -138,6 +138,21 @@ enum SeeraReportFormat {
   PDF
 }
 
+enum SeeraOfflineSyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  FAILED
+  CONFLICT
+  CANCELLED
+}
+
+enum SeeraOfflineConflictClass {
+  AUTO_RESOLVABLE
+  USER_REVIEW_REQUIRED
+  SERVER_REJECTED
+}
+
 enum MasterStatus {
   DRAFT
   ACTIVE
@@ -412,6 +427,7 @@ model User {
   automationExecutions   SeeraAutomationExecution[] @relation("AutomationRecipient")
   insights               SeeraInsight[]             @relation("InsightRecipient")
   reportExports          SeeraReportExport[]        @relation("ReportExportActor")
+  offlineOperations      SeeraOfflineOperation[]    @relation("OfflineOperationUser")
 
   @@index([status])
   @@map("users")
@@ -791,6 +807,34 @@ model SeeraReportExport {
 
   @@index([actorId, reportCode, createdAt])
   @@map("seera_report_exports")
+}
+
+model SeeraOfflineOperation {
+  id                   String                     @id @default(cuid())
+  clientOperationId    String
+  userId               String
+  deviceId             String
+  sessionContext       Json
+  entityType           String
+  actionType           String
+  localCreatedAt       DateTime
+  payloadVersion       Int
+  originalPayload      Json
+  status               SeeraOfflineSyncStatus     @default(PENDING)
+  retryCount           Int                        @default(0)
+  lastErrorCode        String?
+  serverAcknowledgment Json?
+  conflictClass        SeeraOfflineConflictClass?
+  conflictDetails      Json?
+  syncedAt             DateTime?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  user                 User                       @relation("OfflineOperationUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, clientOperationId])
+  @@index([userId, status, localCreatedAt])
+  @@index([status, updatedAt])
+  @@map("seera_offline_operations")
 }
 
 model SeeraSku {

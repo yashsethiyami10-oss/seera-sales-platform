@@ -1,0 +1,27 @@
+import {describe,it,expect,vi} from "vitest";import {offlineOperationSchema,backoffMs} from "@/lib/phase-11/offline-contract";import {classifyOfflineConflict} from "@/lib/phase-11/conflict-engine";import {boundedDateRange,boundedPage,rejectUnexpectedKeys,safeIdentifier} from "@/lib/phase-11/input-guards";import {runLoadScenario,summarizeLoad,LAUNCH_THRESHOLDS} from "@/lib/phase-11/performance";import {validateRateLimitTopology} from "@/lib/foundation/rate-limit";import {incrementMetric,metricsSnapshot,resetMetricsForTests,safeLog} from "@/lib/phase-11/observability";import {OFFLINE_UAT,PORTAL_UAT} from "@/lib/phase-11/uat-catalog";
+const operation=()=>({clientOperationId:"123e4567-e89b-12d3-a456-426614174000",deviceId:"device-123",sessionContext:{sessionId:"session",appVersion:"1.0.0",platform:"android"},entityType:"SeeraSalesOrder",actionType:"ORDER_DRAFT",localCreatedAt:new Date(),payloadVersion:1,payload:{retailerId:"r"}});
+describe("Phase 11 offline and production hardening",()=>{
+ it("accepts a versioned offline operation",()=>expect(offlineOperationSchema.parse(operation()).payloadVersion).toBe(1));
+ it("rejects unexpected fields",()=>expect(()=>offlineOperationSchema.parse({...operation(),admin:true})).toThrow());
+ it("rejects oversized payloads",()=>expect(()=>offlineOperationSchema.parse({...operation(),payload:{x:"x".repeat(100_001)}})).toThrow(/100 KB/));
+ it("rejects unversioned payload",()=>expect(()=>offlineOperationSchema.parse({...operation(),payloadVersion:2})).toThrow());
+ it("bounds exponential backoff",()=>expect(backoffMs(99)).toBe(3_600_000));
+ it("adds bounded jitter",()=>expect(backoffMs(0,500)).toBe(1500));
+ it.each([[{userActive:false,sessionActive:true},"SERVER_REJECTED","IDENTITY_OR_SESSION_REVOKED"],[{userActive:true,sessionActive:false},"SERVER_REJECTED","IDENTITY_OR_SESSION_REVOKED"],[{userActive:true,sessionActive:true,retailerActive:false},"SERVER_REJECTED","RETAILER_DEACTIVATED"],[{userActive:true,sessionActive:true,skuActive:false},"SERVER_REJECTED","SKU_DISABLED"],[{userActive:true,sessionActive:true,creditBlocked:true},"SERVER_REJECTED","CREDIT_BLOCKED"],[{userActive:true,sessionActive:true,duplicateSubmitted:true},"AUTO_RESOLVABLE","DUPLICATE_ALREADY_ACKNOWLEDGED"],[{userActive:true,sessionActive:true,visitDuplicate:true},"AUTO_RESOLVABLE","DUPLICATE_ALREADY_ACKNOWLEDGED"],[{userActive:true,sessionActive:true,priceChanged:true},"USER_REVIEW_REQUIRED","PRICE_CHANGED"],[{userActive:true,sessionActive:true,schemeExpired:true},"USER_REVIEW_REQUIRED","SCHEME_EXPIRED"],[{userActive:true,sessionActive:true,assignmentChanged:true},"USER_REVIEW_REQUIRED","ASSIGNMENT_CHANGED"],[{userActive:true,sessionActive:true,stockStale:true},"USER_REVIEW_REQUIRED","STOCK_STATE_STALE"]] as const)("classifies conflict %#",(input,classification,code)=>expect(classifyOfflineConflict(input)).toEqual({classification,code}));
+ it("returns no conflict for current truth",()=>expect(classifyOfflineConflict({userActive:true,sessionActive:true})).toBeNull());
+ it("bounds pagination",()=>{expect(boundedPage("50")).toBe(50);expect(()=>boundedPage(101)).toThrow()});
+ it("bounds exports to one year",()=>expect(()=>boundedDateRange(new Date("2024-01-01"),new Date("2026-01-01"))).toThrow());
+ it("accepts safe identifiers",()=>expect(safeIdentifier("abc_123-X")).toBe("abc_123-X"));
+ it("rejects path guessing",()=>expect(()=>safeIdentifier("../../etc/passwd")).toThrow());
+ it("rejects unknown API keys",()=>expect(()=>rejectUnexpectedKeys({id:"x",admin:true},["id"])).toThrow());
+ it("requires distributed limiting for replicas",()=>expect(()=>validateRateLimitTopology({replicaCount:2,backend:"memory"})).toThrow(/distributed/));
+ it("allows documented single instance",()=>expect(validateRateLimitTopology({replicaCount:1,backend:"memory"}).ready).toBe(true));
+ it("fails closed when the distributed adapter is only declared",()=>expect(()=>validateRateLimitTopology({replicaCount:3,backend:"distributed"})).toThrow(/not configured/));
+ it("summarizes accepted load",()=>expect(summarizeLoad([{latencyMs:10,ok:true},{latencyMs:20,ok:true}],LAUNCH_THRESHOLDS.read).accepted).toBe(true));
+ it("rejects excessive load errors",()=>expect(summarizeLoad([{latencyMs:10,ok:false}],LAUNCH_THRESHOLDS.read).accepted).toBe(false));
+ it("runs bounded concurrent load",async()=>{const fn=vi.fn(async()=>{});expect((await runLoadScenario({concurrency:3,iterations:10,operation:fn}))).toHaveLength(10)});
+ it("tracks safe metrics",()=>{resetMetricsForTests();incrementMetric("offline_conflicts");expect(metricsSnapshot()).toMatchObject({offline_conflicts:1})});
+ it("redacts log user identity",()=>{vi.spyOn(console,"info").mockImplementation(()=>{});expect(safeLog({level:"info",event:"test",correlationId:"12345678",userId:"sensitive-user-id"}).userId).not.toBe("sensitive-user-id")});
+ it("covers seven separate portal UAT scripts",()=>expect(Object.keys(PORTAL_UAT)).toHaveLength(7));
+ it("covers four offline UAT sequences",()=>expect(OFFLINE_UAT).toHaveLength(4));
+});

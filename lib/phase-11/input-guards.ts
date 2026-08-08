@@ -1,0 +1,5 @@
+import {FoundationError} from "@/lib/foundation/errors";
+export function boundedPage(value:unknown,maximum=100){const parsed=Number(value??25);if(!Number.isInteger(parsed)||parsed<1||parsed>maximum)throw new FoundationError("INVALID_PAGE_SIZE",`Page size must be between 1 and ${maximum}`,400);return parsed;}
+export function boundedDateRange(from:Date,to:Date,maximumDays=366){if(Number.isNaN(from.getTime())||Number.isNaN(to.getTime())||from>to)throw new FoundationError("INVALID_DATE_RANGE","Invalid date range",400);const days=(to.getTime()-from.getTime())/86400000;if(days>maximumDays)throw new FoundationError("DATE_RANGE_TOO_LARGE",`Date range exceeds ${maximumDays} days`,400);return{from,to,days};}
+export function safeIdentifier(value:unknown){if(typeof value!=="string"||!/^[A-Za-z0-9_-]{1,160}$/.test(value))throw new FoundationError("MALFORMED_IDENTIFIER","Malformed identifier",400);return value;}
+export function rejectUnexpectedKeys(input:Record<string,unknown>,allowed:string[]){const unexpected=Object.keys(input).filter(k=>!allowed.includes(k));if(unexpected.length)throw new FoundationError("UNEXPECTED_FIELDS","Unexpected input fields",400);return input;}
