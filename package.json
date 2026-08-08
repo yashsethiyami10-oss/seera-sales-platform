@@ -32,6 +32,7 @@
     "test:seera:phase10:integration": "tsx scripts/seera/guarded-phase10-vitest.ts",
     "test:seera:phase11": "vitest run --config vitest.phase11.config.ts",
     "test:seera:phase11:integration": "tsx scripts/seera/guarded-phase11-vitest.ts",
+    "test:seera:phase11:offline-flow": "tsx scripts/seera/guarded-phase11-offline-flow.ts",
     "verify:seera:test-db-identity": "tsx scripts/seera/verify-test-db-identity.ts",
     "verify:seera:test-db-connectivity": "tsx scripts/seera/check-test-connectivity.ts",
     "verify:seera:phase10-test-schema": "tsx scripts/seera/inspect-phase10-test-schema.ts",

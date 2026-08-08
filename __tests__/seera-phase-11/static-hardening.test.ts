@@ -7,6 +7,9 @@ describe("Phase 11 static production gates",()=>{
  it("enforces server idempotency persistence",()=>expect(read("prisma/schema.prisma")).toContain("@@unique([userId, clientOperationId])"));
  it("does not cache API or financial truth",()=>expect(read("public/sw.js")).not.toMatch(/cache\.put\([^)]*\/api/));
  it("sets hardened cookie attributes",()=>{const route=read("app/api/auth/login/route.ts");expect(route).toContain('sameSite: "strict"');expect(route).toContain("httpOnly: true")});
+ it("keeps pre-hydration credentials out of the URL",()=>expect(read("app/login/login-form.tsx")).toContain('<form method="post"'));
+ it("labels guarded TEST runtime identity accurately",()=>expect(read("instrumentation.ts")).toContain('SEERA_DATABASE_ROLE === "test"'));
+ it("keeps dashboard DB reads sequential on the pooled path",()=>expect(read("lib/phase-10/dashboard-service.ts")).not.toContain("Promise.all"));
  it("sets correlation and security headers",()=>{const mw=read("middleware.ts");expect(mw).toContain("X-Request-Id");expect(mw).toContain("Content-Security-Policy");expect(mw).toContain("CROSS_ORIGIN_REQUEST_DENIED")});
  it("validates upload magic bytes and filenames",()=>{const service=read("lib/sales-distribution/document-service.ts");expect(service).toContain("DOCUMENT_SIGNATURE_MISMATCH");expect(service).toContain("MALICIOUS_DOCUMENT_EXTENSION")});
  it("has liveness and DB readiness",()=>{expect(read("app/api/health/live/route.ts")).toContain('status:"alive"');expect(read("app/api/health/ready/route.ts")).toContain("SELECT 1")});

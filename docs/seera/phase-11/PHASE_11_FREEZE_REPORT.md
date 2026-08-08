@@ -2,8 +2,8 @@
 
 Verdict: **NOT FROZEN**.
 
-Resolved in this closure: TEST identity revalidation, required offline-flow mapping, fail-closed revoked-operation persistence, exact local development startup defect, responsive public-shell evidence, TypeScript and production build.
+Resolved in this recovery: TEST identity revalidation, offline UAT 6/6, fail-closed deactivated-retailer persistence, duplicate-safe replay, resilient isolated flow harness, secure pre-hydration login fallback, role-aware landing, accurate TEST runtime labeling, bounded dashboard query concurrency, TypeScript and production build.
 
-Remaining: offline UAT 0/6 due P2024/hung retry; authenticated browser/mobile journeys; query-plan/load verification; connection-pool stability; isolated backup/restore drill.
+Remaining: complete authenticated browser/mobile/Hindi acceptance; representative query-plan/load verification; pooled-path stability; isolated backup/restore drill. Continuation requires a separately configured direct Seera TEST endpoint that can pass the existing identity guard; automatic endpoint inference is prohibited.
 
 Seera V1 is not production-ready. Production launch remains prohibited without all gates and explicit Founder authorization.

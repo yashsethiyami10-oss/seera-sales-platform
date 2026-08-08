@@ -9,4 +9,6 @@ Public local TEST-bound browser evidence:
 - Hindi Devanagari heading and paragraph rendered in the DOM.
 - Next.js development startup defect fixed by unifying the document-share dynamic segment; production build confirms both share and revoke routes.
 
-Authenticated Sales Executive, Distributor, Sales Manager and Super Stockist journeys are NOT VERIFIED because no authorized TEST credential was available. No business user was created after the single guarded checkpoint. Edge-specific browser behavior, camera/file controls, keyboard behavior and authenticated offline indicators remain open.
+Guarded offline UAT is **6/6 PASS**. Isolated Flow 4 proved deactivated-retailer fail-closed behavior, payload/conflict retention and zero unauthorized orders. Isolated Flow 6 proved three deliveries resolve to one order, one queue record and one sync audit.
+
+Production-mode sign-in and role-aware Founder landing were verified with temporary canonical-role TEST identities, which were removed afterward. Authenticated dashboard/device journeys remain incomplete because the configured pooled TEST endpoint did not complete the multi-query dashboard response within the bounded window. A separately configured, identity-guarded direct TEST endpoint is required for safe continuation. No QA server or temporary identity remains.
