@@ -38,7 +38,9 @@ export async function startFieldDay(prisma: PrismaClient, actorId: string, input
 }
 
 export async function endFieldDay(prisma: PrismaClient, actorId: string, sessionId: string, input: { latitude?: number; longitude?: number; remarks?: string; outcome: string }) {
-  await authorize(prisma, { actorId, permission: "field_day:manage_self" });
+  const owned = await prisma.seeraWorkSession.findFirst({ where: { id: sessionId, employeeId: actorId, status: "ACTIVE" }, select: { employeeRole: true } });
+  if (!owned) throw new FoundationError("WORKDAY_NOT_ACTIVE", "Active workday not found", 409);
+  await authorize(prisma, { actorId, permission: owned.employeeRole === "SALES_MANAGER" ? "manager_field:operate" : "field_day:manage_self" });
   const result = await prisma.seeraWorkSession.updateMany({ where: { id: sessionId, employeeId: actorId, status: "ACTIVE" }, data: { status: "ENDED", endedAt: new Date(), endLatitude: input.latitude, endLongitude: input.longitude, remarks: input.remarks, outcome: input.outcome } });
   if (result.count !== 1) throw new FoundationError("WORKDAY_NOT_ACTIVE", "Active workday not found", 409);
 }

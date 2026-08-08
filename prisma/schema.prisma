@@ -617,6 +617,7 @@ model StoredFile {
   uploadedById    String?
   retentionUntil  DateTime?
   revokedAt       DateTime?
+  contentBytes    Bytes?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   uploadedBy      User?               @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)

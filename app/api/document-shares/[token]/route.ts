@@ -1,0 +1,7 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/database/client";
+import { apiFailure } from "@/lib/foundation/api-response";
+import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
+import { downloadValidatedShare, useDocumentShare } from "@/lib/sales-distribution/document-service";
+import { FoundationError } from "@/lib/foundation/errors";
+export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) { try { const { user } = await resolveRequestIdentity(); const token = (await params).token; const memberships = await prisma.seeraPartyUser.findMany({ where: { userId: user.id, active: true }, select: { partnerId: true } }); let access: Awaited<ReturnType<typeof useDocumentShare>> | undefined; for (const recipient of [{ type: "USER", id: user.id }, ...memberships.map((m) => ({ type: "PARTNER", id: m.partnerId }))]) { try { access = await useDocumentShare(prisma, token, recipient); break; } catch {} } if (!access) throw new FoundationError("SHARE_ACCESS_DENIED", "Secure share unavailable", 403); const result = await downloadValidatedShare(prisma, access.grant.id); return new NextResponse(Buffer.from(result.bytes), { headers: { "Content-Type": result.mimeType, "Content-Disposition": `attachment; filename="${result.filename.replace(/["\r\n]/g, "_")}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } }); } catch (error) { return apiFailure(error, request); } }

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/database/client";
 import { unstable_noStore as noStore } from "next/cache";
 import { LanguageSelector } from "@/components/seera/LanguageSelector";
 import { localizedPortal, normalizeLanguage, translate, type BilingualPortal, type UiLanguage } from "@/lib/sales-distribution/localization";
+import { PhaseCompletionPanel } from "@/components/seera/PhaseCompletionPanel";
 
 const messages: Record<string, string> = {
   "founder-admin": "Seera Admin Foundation", "company-admin": "Seera Admin Foundation",
@@ -30,7 +31,7 @@ export default async function PortalShell({ params }: { params: Promise<{ portal
     return <main lang={language === "HI" ? "hi" : "en"} style={{ maxWidth: 900, margin: "0 auto", padding: "48px 24px", fontFamily: 'system-ui, "Noto Sans Devanagari", "Mangal", sans-serif' }} data-portal={portal} data-language={language}>
       <LanguageSelector initialLanguage={language} labels={{ language: translate(language, "language"), english: translate(language, "english"), hindi: translate(language, "hindi") }} />
       <p>{translate(language, "protectedPortal")}</p><h1>{experience?.title ?? messages[portal]}</h1><p>{translate(language, "authenticatedAs")}: {user.name ?? user.email}.</p>
-      {experience ? <><p>{experience.dashboard}</p><nav aria-label={`${experience.title} navigation`}><ul>{experience.navigation.map((item) => <li key={item}>{item}</li>)}</ul></nav><small>{experience.terminology}</small></> : <p>{translate(language, "reserved")}</p>}
+      {experience ? <><p>{experience.dashboard}</p><nav aria-label={`${experience.title} navigation`}><ul>{experience.navigation.map((item) => <li key={item}>{item}</li>)}</ul></nav><small>{experience.terminology}</small>{["accounts","sales-manager","founder-admin","distributor","super-stockist"].includes(portal)&&<PhaseCompletionPanel portal={portal} language={language}/>}</> : <p>{translate(language, "reserved")}</p>}
     </main>;
   } catch (error) {
     if (error instanceof FoundationError && error.status === 401) redirect(`/login?next=/portal/${portal}`);
