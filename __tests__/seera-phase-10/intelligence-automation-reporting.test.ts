@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {nextRetailer,dormantRetailer,reorderSignal,stockRisk,targetGap,collectionPriority} from "@/lib/phase-10/intelligence-engine";
+import {nextRetailer,dormantRetailer,reorderSignal,stockRisk,targetGap,collectionPriority,slowMovingSku,distributorDevelopment,fulfilmentRisk} from "@/lib/phase-10/intelligence-engine";
 import {renderTemplate} from "@/lib/phase-10/notification-templates";
 import {cooldownSatisfied,deduplicationKey} from "@/lib/phase-10/automation-engine";
 import {retryDelayMs,TestWhatsAppProvider} from "@/lib/phase-10/delivery-adapters";
@@ -12,6 +12,12 @@ describe("Phase 10 deterministic intelligence and governance",()=>{
  it("flags stock shortage",()=>expect(stockRisk(5,7,4)?.severity).toBe("CRITICAL"));
  it("explains target gap",()=>expect(targetGap(100,50,5,6)?.sourceMetrics.requiredDailyRunRate).toBe(10));
  it("prioritizes missed promise",()=>expect(collectionPriority(1000,4,true,.9).severity).toBe("CRITICAL"));
+ it("flags a configurable slow-moving SKU",()=>expect(slowMovingSku({skuCode:"SKU-7",movementQuantity:3,windowDays:30,maximumMovement:5})?.sourceMetrics).toMatchObject({windowDays:30,maximumMovement:5}));
+ it("does not flag a moving SKU",()=>expect(slowMovingSku({skuCode:"SKU-7",movementQuantity:8,windowDays:30,maximumMovement:5})).toBeNull());
+ it("recommends stale distributor prospect follow-up without activation",()=>expect(distributorDevelopment({prospectName:"A Traders",daysSinceActivity:12,staleDays:7,followUpDue:true,status:"PROSPECT"})?.sourceMetrics).toMatchObject({automaticActivation:false}));
+ it("does not act on an approved distributor",()=>expect(distributorDevelopment({prospectName:"A",daysSinceActivity:20,staleDays:7,followUpDue:true,status:"APPROVED"})).toBeNull());
+ it("explains compound fulfilment risk",()=>expect(fulfilmentRisk({orderNumber:"SO-9",pendingHours:72,maximumPendingHours:48,partialPending:true,stockInsufficient:true,creditHold:false,operationalException:"route exception"})?.explanation).toContain("insufficient stock"));
+ it("does not flag healthy fulfilment",()=>expect(fulfilmentRisk({orderNumber:"SO-9",pendingHours:2,maximumPendingHours:48,partialPending:false,stockInsufficient:false,creditHold:false})).toBeNull());
  it("carries governance metadata",()=>expect(dormantRetailer("A",31,30)).toMatchObject({confidence:1,generatedAt:expect.any(String),expiresAt:expect.any(String)}));
  it("renders English",()=>expect(renderTemplate("PAYMENT_DUE","EN",{orderNumber:"SO-1",dueDate:"8 Aug"}).body).toContain("SO-1"));
  it("renders Hindi Devanagari and preserves code",()=>expect(renderTemplate("LOW_STOCK","HI",{skuCode:"SKU-1"}).body).toMatch(/SKU-1.*[\u0900-\u097F]/));

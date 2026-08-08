@@ -5,6 +5,12 @@ import { hashPassword } from "@/lib/foundation/auth-service";
 import { bootstrapFounder } from "@/lib/foundation/bootstrap-service";
 import { PHASE_1_ROLES } from "@/lib/foundation/rbac-catalog";
 import { seedFoundation } from "@/lib/foundation/seed-service";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { authorizeTestRuntime } from "@/lib/database/test-runtime-guard";
+function envFile(file:string){const values:Record<string,string>={};for(const line of readFileSync(file,"utf8").split(/\r?\n/)){const match=/^\s*([^#][^=]*?)\s*=\s*(.*?)\s*$/.exec(line);if(match)values[match[1]]=match[2].replace(/^['"]|['"]$/g,"");}return values;}
+const root=path.resolve(__dirname,"..","..");const configuredProduction=envFile(path.join(root,".env")).DATABASE_URL;const configuredTest=envFile(path.join(root,".env.test")).TEST_DATABASE_URL;
+authorizeTestRuntime({runtimeRole:process.env.SEERA_DATABASE_ROLE,runtimeDatabaseUrl:process.env.DATABASE_URL,configuredProductionUrl:configuredProduction,configuredTestUrl:configuredTest});
 export const prisma = new PrismaClient();
 export const password = () => `Aa1!${randomBytes(18).toString("base64url")}`;
 export const founderPassword=password(); export const founderEmail=`founder-${randomBytes(5).toString("hex")}@example.test`;

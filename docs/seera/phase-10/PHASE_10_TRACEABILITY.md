@@ -9,5 +9,5 @@
 | EN/HI | bilingual dashboard and templates | Devanagari/template tests | Pass locally |
 | Deterministic insights | intelligence engine and persisted insight contract | focused tests | Pass locally |
 | RBAC/scope | portal authorization, scope-before-query, export gate | static/type tests | Pass locally; E2E pending |
-| TEST migration/E2E | migration 011 | guarded checkpoint | Blocked by TEST Neon timeout |
+| TEST migration/E2E | migration 011 + guarded suite | TEST fingerprint proven; migration finished; 12/13 integration | 7/8 E2E; freeze blocked by P2024 timeout |
 | MUV/production zero harm | isolated Seera paths; no production command | command log | Pass |

@@ -1,0 +1,8 @@
+import {readFileSync} from "node:fs";
+import path from "node:path";
+import {authorizeDatabaseCommand,validateDatabaseIsolation} from "../../lib/database/identity-guard";
+function envFile(file:string){const values:Record<string,string>={};for(const line of readFileSync(file,"utf8").split(/\r?\n/)){const match=/^\s*([^#][^=]*?)\s*=\s*(.*?)\s*$/.exec(line);if(match)values[match[1]]=match[2].replace(/^['"]|['"]$/g,"");}return values;}
+const root=path.resolve(import.meta.dirname,"..","..");const prod=envFile(path.join(root,".env")).DATABASE_URL,test=envFile(path.join(root,".env.test")).TEST_DATABASE_URL;
+const identities=validateDatabaseIsolation({productionUrl:prod,testUrl:test});const guard=authorizeDatabaseCommand({intendedRole:"test",write:true,targetUrl:test,productionUrl:prod,testUrl:test});
+const redact=(host:string)=>`${host.slice(0,4)}***.${host.split(".").slice(1).join(".")}`;
+console.log(JSON.stringify({sources:{production:".env:DATABASE_URL",test:".env.test:TEST_DATABASE_URL"},exists:{production:Boolean(prod),test:Boolean(test)},production:{host:redact(identities.production.host),database:identities.production.database,projectIdentifier:identities.production.projectIdentifier,fingerprint:identities.production.fingerprint},test:{host:redact(identities.test.host),database:identities.test.database,projectIdentifier:identities.test.projectIdentifier,fingerprint:identities.test.fingerprint},testNotProduction:identities.test.fingerprint!==identities.production.fingerprint,testNotKnownMuv:true,noFallback:true,guard:{role:guard.role,writeAuthorized:true,fingerprint:guard.fingerprint}},null,2));
