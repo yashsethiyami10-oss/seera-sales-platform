@@ -1,0 +1,28 @@
+import {describe,it,expect} from "vitest";
+import {nextRetailer,dormantRetailer,reorderSignal,stockRisk,targetGap,collectionPriority} from "@/lib/phase-10/intelligence-engine";
+import {renderTemplate} from "@/lib/phase-10/notification-templates";
+import {cooldownSatisfied,deduplicationKey} from "@/lib/phase-10/automation-engine";
+import {retryDelayMs,TestWhatsAppProvider} from "@/lib/phase-10/delivery-adapters";
+import {toCsv,assertReportScope,printableReport,REPORT_CATALOG} from "@/lib/phase-10/reporting-engine";
+describe("Phase 10 deterministic intelligence and governance",()=>{
+ it("explains next retailer",()=>expect(nextRetailer({name:"Gupta Stores",lastOrderDays:23,typicalCycleDays:18,followUpDue:false,outstanding:0})?.explanation).toContain("23 days"));
+ it("does not recommend too early",()=>expect(nextRetailer({name:"A",lastOrderDays:2,typicalCycleDays:18,followUpDue:false,outstanding:0})).toBeNull());
+ it("flags dormant retailer",()=>expect(dormantRetailer("A",45,30)?.code).toBe("DORMANT_RETAILER"));
+ it("flags reorder without creating order",()=>expect(reorderSignal(5,2,4)?.explanation).toContain("no order was created"));
+ it("flags stock shortage",()=>expect(stockRisk(5,7,4)?.severity).toBe("CRITICAL"));
+ it("explains target gap",()=>expect(targetGap(100,50,5,6)?.sourceMetrics.requiredDailyRunRate).toBe(10));
+ it("prioritizes missed promise",()=>expect(collectionPriority(1000,4,true,.9).severity).toBe("CRITICAL"));
+ it("carries governance metadata",()=>expect(dormantRetailer("A",31,30)).toMatchObject({confidence:1,generatedAt:expect.any(String),expiresAt:expect.any(String)}));
+ it("renders English",()=>expect(renderTemplate("PAYMENT_DUE","EN",{orderNumber:"SO-1",dueDate:"8 Aug"}).body).toContain("SO-1"));
+ it("renders Hindi Devanagari and preserves code",()=>expect(renderTemplate("LOW_STOCK","HI",{skuCode:"SKU-1"}).body).toMatch(/SKU-1.*[\u0900-\u097F]/));
+ it("creates stable dedupe key",()=>expect(deduplicationKey("R","E","U")).toBe("R:E:U"));
+ it("enforces cooldown",()=>expect(cooldownSatisfied(new Date(0),60,new Date(3_599_999))).toBe(false));
+ it("allows after cooldown",()=>expect(cooldownSatisfied(new Date(0),60,new Date(3_600_000))).toBe(true));
+ it("uses bounded exponential retry",()=>expect(retryDelayMs(30)).toBe(86400000));
+ it("requires approved WhatsApp template",async()=>await expect(new TestWhatsAppProvider().send({recipient:"1",language:"EN",title:"t",body:"b",reference:"r"})).rejects.toMatchObject({code:"WHATSAPP_TEMPLATE_REQUIRED"}));
+ it("neutralizes CSV formula injection",()=>expect(toCsv([{name:"=cmd"}],['name'])).toContain("'=cmd"));
+ it("blocks cross-party export",()=>expect(()=>assertReportScope("other",['mine'])).toThrow(/scope denied/));
+ it("allows authorized party export",()=>expect(()=>assertReportScope("mine",['mine'])).not.toThrow());
+ it("escapes printable output",()=>expect(printableReport("<x>",["a"],[{a:"<script>"}])).not.toContain("<script>"));
+ it("contains all governed report families",()=>expect(new Set(Object.values(REPORT_CATALOG))).toEqual(new Set(["SALES","FIELD","FINANCE","INVENTORY","PARTNER","DOCUMENTS"])));
+});

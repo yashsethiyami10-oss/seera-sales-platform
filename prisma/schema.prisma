@@ -110,6 +110,34 @@ enum NotificationDeliveryStatus {
   CANCELLED
 }
 
+enum SeeraInsightSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  HIGH
+  CRITICAL
+}
+
+enum SeeraInsightStatus {
+  ACTIVE
+  DISMISSED
+  RESOLVED
+  EXPIRED
+}
+
+enum SeeraAutomationExecutionStatus {
+  PENDING
+  SENT
+  SKIPPED
+  FAILED
+}
+
+enum SeeraReportFormat {
+  CSV
+  PRINT
+  PDF
+}
+
 enum MasterStatus {
   DRAFT
   ACTIVE
@@ -356,30 +384,34 @@ enum PartnerLifecycleAction {
 }
 
 model User {
-  id                     String               @id @default(cuid())
-  email                  String               @unique
-  normalizedEmail        String               @unique
-  phone                  String?              @unique
+  id                     String                     @id @default(cuid())
+  email                  String                     @unique
+  normalizedEmail        String                     @unique
+  phone                  String?                    @unique
   name                   String?
   passwordHash           String?
-  status                 UserStatus           @default(ACTIVE)
-  preferredLanguage      UiLanguage           @default(EN)
-  authorizationVersion   Int                  @default(1)
+  status                 UserStatus                 @default(ACTIVE)
+  preferredLanguage      UiLanguage                 @default(EN)
+  authorizationVersion   Int                        @default(1)
   emailVerified          DateTime?
   phoneVerified          DateTime?
   lastLoginAt            DateTime?
   suspendedAt            DateTime?
   suspensionReason       String?
-  createdAt              DateTime             @default(now())
-  updatedAt              DateTime             @updatedAt
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
   accounts               Account[]
   sessions               Session[]
-  roleAssignments        UserRoleAssignment[] @relation("RoleAssignmentSubject")
-  roleAssignmentsMade    UserRoleAssignment[] @relation("RoleAssignmentGrantor")
-  roleAssignmentsRevoked UserRoleAssignment[] @relation("RoleAssignmentRevoker")
-  auditEvents            AuditLog[]           @relation("AuditActor")
-  uploadedFiles          StoredFile[]         @relation("FileUploader")
-  notifications          Notification[]       @relation("NotificationRecipient")
+  roleAssignments        UserRoleAssignment[]       @relation("RoleAssignmentSubject")
+  roleAssignmentsMade    UserRoleAssignment[]       @relation("RoleAssignmentGrantor")
+  roleAssignmentsRevoked UserRoleAssignment[]       @relation("RoleAssignmentRevoker")
+  auditEvents            AuditLog[]                 @relation("AuditActor")
+  uploadedFiles          StoredFile[]               @relation("FileUploader")
+  notifications          Notification[]             @relation("NotificationRecipient")
+  automationRulesCreated SeeraAutomationRule[]      @relation("AutomationRuleCreator")
+  automationExecutions   SeeraAutomationExecution[] @relation("AutomationRecipient")
+  insights               SeeraInsight[]             @relation("InsightRecipient")
+  reportExports          SeeraReportExport[]        @relation("ReportExportActor")
 
   @@index([status])
   @@map("users")
@@ -670,6 +702,95 @@ model NotificationDelivery {
   @@unique([notificationId, channel, attempt])
   @@index([status, createdAt])
   @@map("notification_deliveries")
+}
+
+model SeeraAutomationRule {
+  id                  String                     @id @default(cuid())
+  code                String                     @unique
+  category            String
+  eventCode           String
+  condition           Json
+  recipientScope      Json
+  channels            NotificationChannel[]
+  templateKey         String
+  defaultLanguage     UiLanguage                 @default(EN)
+  enabled             Boolean                    @default(true)
+  timingOffsetMinutes Int                        @default(0)
+  priority            NotificationPriority       @default(NORMAL)
+  severity            SeeraInsightSeverity       @default(INFO)
+  cooldownMinutes     Int                        @default(1440)
+  configuration       Json?
+  createdById         String
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  createdBy           User                       @relation("AutomationRuleCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  executions          SeeraAutomationExecution[]
+
+  @@index([category, eventCode, enabled])
+  @@map("seera_automation_rules")
+}
+
+model SeeraAutomationExecution {
+  id                 String                         @id @default(cuid())
+  ruleId             String
+  eventKey           String
+  recipientId        String
+  language           UiLanguage
+  status             SeeraAutomationExecutionStatus @default(PENDING)
+  deduplicationKey   String                         @unique
+  attemptCount       Int                            @default(0)
+  nextAttemptAt      DateTime?
+  sourceMetrics      Json
+  providerReferences Json?
+  lastErrorCode      String?
+  createdAt          DateTime                       @default(now())
+  processedAt        DateTime?
+  rule               SeeraAutomationRule            @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  recipient          User                           @relation("AutomationRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+
+  @@index([status, nextAttemptAt])
+  @@index([recipientId, createdAt])
+  @@map("seera_automation_executions")
+}
+
+model SeeraInsight {
+  id               String               @id @default(cuid())
+  ruleCode         String
+  subjectType      String
+  subjectId        String
+  recipientId      String
+  severity         SeeraInsightSeverity
+  explanationKey   String
+  explanationArgs  Json
+  sourceMetrics    Json
+  confidence       Decimal?             @db.Decimal(5, 4)
+  actionPath       String?
+  status           SeeraInsightStatus   @default(ACTIVE)
+  deduplicationKey String               @unique
+  generatedAt      DateTime             @default(now())
+  expiresAt        DateTime?
+  resolvedAt       DateTime?
+  recipient        User                 @relation("InsightRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+
+  @@index([recipientId, status, severity, generatedAt])
+  @@index([subjectType, subjectId])
+  @@map("seera_insights")
+}
+
+model SeeraReportExport {
+  id            String            @id @default(cuid())
+  actorId       String
+  reportCode    String
+  format        SeeraReportFormat
+  filters       Json
+  scopeSnapshot Json
+  rowCount      Int
+  sensitive     Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  actor         User              @relation("ReportExportActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId, reportCode, createdAt])
+  @@map("seera_report_exports")
 }
 
 model SeeraSku {

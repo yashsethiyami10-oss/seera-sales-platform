@@ -1,0 +1,23 @@
+import {describe,it,expect} from "vitest";
+import {salesMetrics,salesMonthSeries,targetMetrics,inventoryMetrics,fieldMetrics} from "@/lib/phase-10/analytics-engine";
+import {resolveRange,monthSeries,comparison,previousComparable} from "@/lib/phase-10/time-intelligence";
+const fact=(x:Partial<Parameters<typeof salesMetrics>[0][number]>={})=>({id:"o1",occurredAt:new Date(2026,0,10),status:"DELIVERED",orderedQty:10,deliveredQty:10,cancelledQty:0,refusedQty:0,returnedQty:0,unitPrice:100,...x});
+describe("Phase 10 canonical analytics",()=>{
+ it("separates booked and delivered",()=>{const x=salesMetrics([fact({deliveredQty:6})]);expect(x.bookedValue).toBe(1000);expect(x.deliveredValue).toBe(600)});
+ it("credits only a partial delivery",()=>expect(salesMetrics([fact({deliveredQty:4})]).netEligibleDeliveredValue).toBe(400));
+ it("excludes cancelled orders from booked",()=>expect(salesMetrics([fact({status:"CANCELLED"})]).bookedValue).toBe(0));
+ it("subtracts approved return quantity",()=>expect(salesMetrics([fact({returnedQty:3})]).netEligibleDeliveredValue).toBe(700));
+ it("subtracts refusal from delivery",()=>expect(salesMetrics([fact({refusedQty:2})]).deliveredValue).toBe(800));
+ it("fills a zero month",()=>{const s=salesMonthSeries({from:new Date(2025,11,1),to:new Date(2026,1,28)},[fact()]);expect(s.map(x=>x.month)).toEqual(["2025-12","2026-01","2026-02"]);expect(s[0].values.booked).toBe(0)});
+ it("crosses Jan/Dec",()=>expect(monthSeries({from:new Date(2025,11,1),to:new Date(2026,0,31)},[],["v"] as const).length).toBe(2));
+ it("crosses financial-year boundary",()=>expect(monthSeries({from:new Date(2026,2,1),to:new Date(2026,3,30)},[],["v"] as const).map(x=>x.month)).toEqual(["2026-03","2026-04"]));
+ it("keeps partial current month end",()=>expect(resolveRange("THIS_MONTH",new Date(2026,7,8,12)).to.getDate()).toBe(8));
+ it("computes MoM",()=>expect(comparison(120,100)).toEqual({current:120,previous:100,absolute:20,percentage:20}));
+ it("handles zero comparison denominator",()=>expect(comparison(5,0).percentage).toBeNull());
+ it("computes previous comparable period",()=>{const p=previousComparable({from:new Date(1000),to:new Date(1999)});expect(p.to.getTime()).toBe(999)});
+ it("computes target gap and run rate",()=>expect(targetMetrics(1000,600,new Date(2026,0,5),new Date(2026,0,1)).requiredDailyRunRate).toBe(100));
+ it("derives closing inventory from movements",()=>expect(inventoryMetrics([{quantity:10,direction:"IN",type:"RECEIPT",occurredAt:new Date()},{quantity:3,direction:"OUT",type:"DISPATCH",occurredAt:new Date()}]).closing).toBe(7));
+ it("calculates reconciliation variance",()=>expect(inventoryMetrics([],4).reconciliationVariance).toBe(4));
+ it("counts productive calls",()=>expect(fieldMetrics([{id:"1",outcome:"PRODUCTIVE",retailerId:"r"},{id:"2",outcome:"NON_PRODUCTIVE",retailerId:"r"}]).productiveCallPercent).toBe(50));
+ it("deduplicates joint-work order credit",()=>expect(fieldMetrics([],['o1','o1','o2']).jointWorkingCreditedOrders).toBe(2));
+});
