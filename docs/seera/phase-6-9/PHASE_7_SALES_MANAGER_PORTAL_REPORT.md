@@ -4,4 +4,4 @@ The Sales Manager remains a distinct portal and role, not an Admin alias. Its bi
 
 Verification: role separation and English/Hindi portal coverage are included in the Phase 6–9 and localization suites.
 
-Status: FROZEN.
+Status: FOUNDATION COMPLETE; FREEZE BLOCKED. The portal shell and inherited manager workflow services are verified locally, but the full Phase 7 end-to-end acceptance matrix has not yet been executed.
