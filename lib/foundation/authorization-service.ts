@@ -10,11 +10,11 @@ export async function effectivePermissions(prisma: PrismaClient, userId: string)
 
 export async function authorize(prisma: PrismaClient, input: { actorId: string; permission: Phase1Permission; featureFlag?: string }) {
   const permissions = await effectivePermissions(prisma, input.actorId);
-  if (!permissions.has(input.permission) && !permissions.has("system:super_admin")) throw new FoundationError("ACCESS_DENIED", "Required permission denied", 403);
+  if (!permissions.has(input.permission) && !permissions.has("system:super_admin")) { await prisma.auditLog.create({data:{actorId:input.actorId,action:"authorization.denied",entityType:"Permission",entityId:input.permission,outcome:"DENIED",reason:"MISSING_PERMISSION"}}); throw new FoundationError("ACCESS_DENIED", "Required permission denied", 403); }
   if (input.featureFlag) {
     const flag = await prisma.featureFlag.findUnique({ where: { key: input.featureFlag } });
     const now = new Date();
-    if (!flag?.enabled || (flag.effectiveFrom && flag.effectiveFrom > now) || (flag.effectiveTo && flag.effectiveTo <= now)) throw new FoundationError("PORTAL_DISABLED", "Portal is unavailable", 403);
+    if (!flag?.enabled || (flag.effectiveFrom && flag.effectiveFrom > now) || (flag.effectiveTo && flag.effectiveTo <= now)) { await prisma.auditLog.create({data:{actorId:input.actorId,action:"authorization.denied",entityType:"FeatureFlag",entityId:input.featureFlag,outcome:"DENIED",reason:"PORTAL_DISABLED"}}); throw new FoundationError("PORTAL_DISABLED", "Portal is unavailable", 403); }
   }
   return { actorId: input.actorId, permissions };
 }

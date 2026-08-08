@@ -26,6 +26,8 @@ Last reviewed: 2026-08-08
 | ADR-020 | Database-changing tooling runs only through exact-target fail-closed guards; Phase 1 migrations target the isolated test identity first. | Implemented in Block 2 | Production, unknown, fallback, equal and MUV targets cannot receive guarded test writes. |
 | ADR-021 | Seera uses independent hash-stored opaque sessions, authorization-version invalidation and database-derived multi-role permissions. | Implemented in Block 3 | Browser claims and middleware cannot grant authority. |
 | ADR-022 | Portal feature flags are availability controls only and cannot override RBAC. | Implemented in Block 3 | Both permission and enabled flag are required server-side. |
+| ADR-023 | Phase 1 operational diagnostics and API failures expose stable status/correlation only; structured operational logs redact secret-shaped context and remain separate from immutable audit. | Implemented in Block 4 | Useful diagnosis without credential/infrastructure disclosure. |
+| ADR-024 | Phase 1 abuse protection is process-local and adapter-ready, not represented as distributed production-grade limiting. | Implemented in Block 4 | Honest single-instance protection; distributed store required before horizontal scaling. |
 | ADR-020 | Copied MUV routes and Prisma-writing scripts are preserved outside active runtime paths until selectively adapted. | Implemented in Block 1 | Clean schema transition does not require mass deletion or continued MUV model compilation. |
 | ADR-021 | Phase 1 portal shells fail closed until independent authentication and permission enforcement exist. | Implemented in Block 1 | Route ownership is prepared without granting premature access. |
 

@@ -310,4 +310,6 @@ Phase 1 Block 2 adds a guarded Seera-only migration path. The first foundation m
 
 Phase 1 Block 3 establishes independent Seera authentication and access control. HttpOnly opaque sessions are hash-stored and revalidated against user status and authorization version. One server authorization service derives permissions from active multi-role assignments and optional portal flags. Admin, configuration, notification and private-file services audit sensitive mutations; portal/API boundaries repeat server enforcement beyond middleware.
 
+Phase 1 Block 4 freezes the operational baseline: stable correlation-aware errors, redacted structured logs, safe liveness/readiness, CSP/security/no-store headers, process-local adapter-ready abuse limits, approved configuration allowlists, read-only audit access, XSS-safe notifications and system-generated private file keys. The 16-model schema and two-migration history required no further change.
+
 Block 1A reconciled the route divergence under the Founder-approved read-only isolation model. No Seera write path to MUV was found; the differences are external/unattributed, and baseline `MUV-RO-20260808T061738Z-FA7A044CB89D` now anchors future comparisons without freezing unrelated MUV development.

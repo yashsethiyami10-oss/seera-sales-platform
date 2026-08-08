@@ -1,0 +1,3 @@
+const secretKey = /password|secret|token|authorization|cookie|database_url/i;
+function redact(value: unknown): unknown { if (Array.isArray(value)) return value.map(redact); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,secretKey.test(key)?"[REDACTED]":redact(item)])); return value; }
+export function operationalLog(level:"info"|"warn"|"error",event:string,context:Record<string,unknown>={}) { const entry={timestamp:new Date().toISOString(),level,event,app:"seera-sales-distribution-os",environment:process.env.NODE_ENV??"unknown",context:redact(context)}; console[level](JSON.stringify(entry)); }

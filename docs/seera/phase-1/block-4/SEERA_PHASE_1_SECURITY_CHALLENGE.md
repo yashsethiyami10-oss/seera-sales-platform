@@ -1,0 +1,3 @@
+# Phase 1 Security Challenge
+
+All 25 attempts failed closed: anonymous Admin; Sales→Admin; Distributor→Admin API; SS→Admin mutation; Auditor mutation; forged role; forged permission; substituted user ID; stale session after suspend; stale session after disable; stale authority after role removal; flag bypass; direct API bypass; cross-user notification; cross-user file; unknown setting; super-admin escalation; last-Founder lockout; revoked-session bypass; error/log secret leakage; health disclosure; production fallback; MUV target; path traversal/file-key injection; notification XSS. No critical bypass remains.

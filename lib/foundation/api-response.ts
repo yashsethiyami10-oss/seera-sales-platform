@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { safeError } from "./errors"; import { operationalLog } from "./logger"; import { requestId } from "./request-context";
+export function apiFailure(error:unknown,request?:Request){const id=requestId(request),safe=safeError(error,id);if(safe.status>=500)operationalLog("error","api.internal_error",{requestId:id,errorName:error instanceof Error?error.name:"unknown"});return NextResponse.json(safe.body,{status:safe.status,headers:{"Cache-Control":"no-store","X-Request-Id":id}});}

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { authorize } from "./authorization-service";
 import { recordAudit } from "./audit-service";
 
-const payload = z.object({ recipientId: z.string().min(1), title: z.string().min(1).max(160), body: z.string().min(1).max(4000), priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL"), entityType: z.string().max(80).optional(), entityId: z.string().max(160).optional(), actionPath: z.string().startsWith("/").max(500).optional() });
+const safeText=(maximum:number)=>z.string().min(1).max(maximum).refine(value=>!/[<>]/.test(value),"Markup is prohibited");
+const payload = z.object({ recipientId: z.string().min(1), title: safeText(160), body: safeText(4000), priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL"), entityType: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,79}$/).optional(), entityId: z.string().max(160).optional(), actionPath: z.string().regex(/^\/(?!\/)(?!.*(?:\.\.|[<>]))[A-Za-z0-9/_?=&.-]{0,499}$/).optional() });
 export async function createNotification(prisma: PrismaClient, actorId: string, input: unknown) {
   await authorize(prisma, { actorId, permission: "notifications:manage" }); const data = payload.parse(input);
   return prisma.notification.create({ data: { recipientId: data.recipientId, title: data.title, body: data.body, type: "FOUNDATION", priority: data.priority as NotificationPriority, entityType: data.entityType, entityId: data.entityId, payload: data.actionPath ? { actionPath: data.actionPath } : undefined } });

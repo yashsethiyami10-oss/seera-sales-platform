@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { inspectDatabaseUrl } from "@/lib/database/identity-guard";
+export async function GET(){try{inspectDatabaseUrl(process.env.DATABASE_URL,"production");return NextResponse.json({status:"ready",checks:{configuration:"ok",databaseIdentity:"accepted"}},{headers:{"Cache-Control":"no-store"}});}catch{return NextResponse.json({status:"not_ready",checks:{configuration:"failed"}},{status:503,headers:{"Cache-Control":"no-store"}});}}

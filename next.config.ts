@@ -11,6 +11,7 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
   // Force HTTPS for a year, including subdomains, once this is actually served over HTTPS.
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://res.cloudinary.com; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" },
 ];
 
 const nextConfig: NextConfig = {
@@ -31,6 +32,9 @@ const nextConfig: NextConfig = {
 
   async headers() {
     return [
+      { source: "/portal/:path*", headers: [...securityHeaders, { key: "Cache-Control", value: "private, no-store, max-age=0" }] },
+      { source: "/api/auth/:path*", headers: [...securityHeaders, { key: "Cache-Control", value: "no-store, max-age=0" }] },
+      { source: "/api/foundation/:path*", headers: [...securityHeaders, { key: "Cache-Control", value: "private, no-store, max-age=0" }] },
       {
         source: "/(.*)",
         headers: securityHeaders,

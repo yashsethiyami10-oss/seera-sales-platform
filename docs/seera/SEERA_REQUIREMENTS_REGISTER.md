@@ -107,3 +107,5 @@ Counts must be recalculated mechanically when statuses change.
 # Phase 1 Block 3
 
 Block 3 requirements B3-01 through B3-40 are implemented and traced in `phase-1/block-3/SEERA_PHASE_1_BLOCK_3_ACCEPTANCE_CHECKLIST.md`. All are PASS; no critical identity/access requirement is deferred.
+
+Phase 1 Block 4 requirements B4-01 through B4-37 and all prior Block 1–3 guarantees are traced in `phase-1/block-4/SEERA_PHASE_1_REQUIREMENTS_TRACEABILITY.md`. Final Phase 1 acceptance is PASS with no unresolved critical gap.
