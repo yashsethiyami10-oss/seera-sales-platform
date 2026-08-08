@@ -105,6 +105,156 @@ enum NotificationDeliveryStatus {
   CANCELLED
 }
 
+enum MasterStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum PartnerType {
+  DISTRIBUTOR
+  SUPER_STOCKIST
+}
+
+enum PartnerLifecycle {
+  PROSPECT
+  UNDER_REVIEW
+  APPROVED
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+  REJECTED
+}
+
+enum PriceTier {
+  COMPANY_TO_SS
+  SS_TO_DISTRIBUTOR
+  DISTRIBUTOR_TO_RETAILER
+}
+
+enum MarginType {
+  FIXED
+  PERCENTAGE
+}
+
+enum WorkSessionStatus {
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum VisitOutcome {
+  PENDING
+  PRODUCTIVE
+  NO_ORDER
+  SKIPPED
+  CLOSED
+  FOLLOW_UP
+}
+
+enum SalesOrderType {
+  RETAILER_ORDER
+  DISTRIBUTOR_REPLENISHMENT
+  COMPANY_REPLENISHMENT
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  PAYMENT_UNDER_REVIEW
+  CONFIRMED
+  SUBMITTED
+  ACKNOWLEDGED
+  PARTIAL_ACCEPTED
+  ACCEPTED
+  HELD
+  REJECTED
+  ALLOCATED
+  DISPATCH_READY
+  DISPATCHED
+  PARTIAL_DELIVERED
+  DELIVERED
+  CLOSED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  PARTIAL_DELIVERED
+  REFUSED
+  SHOP_CLOSED
+  PAYMENT_ISSUE
+  STOCK_UNAVAILABLE
+  WRONG_ORDER
+  RESCHEDULED
+  DAMAGED
+  OTHER
+}
+
+enum InventoryPartyType {
+  DISTRIBUTOR
+  SUPER_STOCKIST
+}
+
+enum InventoryMovementType {
+  OPENING
+  RECEIPT
+  ALLOCATION
+  RELEASE
+  DISPATCH
+  DELIVERY
+  RETURN
+  DAMAGE
+  SHORTAGE
+  ADJUSTMENT
+  RECONCILIATION
+  OFF_SYSTEM_ISSUE
+  CORRECTION
+}
+
+enum MovementDirection {
+  IN
+  OUT
+  RESERVE
+  RELEASE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ClaimStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  RESOLVED
+  CANCELLED
+}
+
+enum PaymentProofStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  MATCHED
+  PARTIALLY_MATCHED
+  REJECTED
+  ADVANCE_HELD
+  VERIFIED
+}
+
+enum CreditDecision {
+  ALLOW
+  WARNING
+  HOLD
+  BLOCK
+  OVERRIDE_REQUIRED
+}
+
 model User {
   id                     String               @id @default(cuid())
   email                  String               @unique
@@ -418,4 +568,641 @@ model NotificationDelivery {
   @@unique([notificationId, channel, attempt])
   @@index([status, createdAt])
   @@map("notification_deliveries")
+}
+
+model SeeraSku {
+  id                   String                         @id @default(cuid())
+  code                 String                         @unique
+  productName          String
+  brand                String                         @default("Seera")
+  category             String
+  subcategory          String?
+  packSize             Decimal                        @db.Decimal(14, 3)
+  unitType             String
+  unitsPerCase         Int
+  mrp                  Decimal                        @db.Decimal(14, 2)
+  hsn                  String?
+  taxRate              Decimal?                       @db.Decimal(7, 4)
+  minimumOrderMultiple Int                            @default(1)
+  imageReference       String?
+  status               MasterStatus                   @default(DRAFT)
+  launchedAt           DateTime?
+  discontinuedAt       DateTime?
+  createdById          String
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  prices               SeeraPriceVersion[]
+  schemes              SeeraScheme[]
+  orderLines           SeeraOrderLine[]
+  movements            SeeraInventoryMovement[]
+  reconciliationLines  SeeraStockReconciliationLine[]
+
+  @@index([status, category])
+  @@map("seera_skus")
+}
+
+model SeeraPriceVersion {
+  id            String       @id @default(cuid())
+  skuId         String
+  tier          PriceTier
+  amount        Decimal      @db.Decimal(14, 2)
+  mrpSnapshot   Decimal      @db.Decimal(14, 2)
+  marginType    MarginType?
+  marginValue   Decimal?     @db.Decimal(14, 4)
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  status        MasterStatus @default(DRAFT)
+  createdById   String
+  createdAt     DateTime     @default(now())
+  sku           SeeraSku     @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([skuId, tier, effectiveFrom])
+  @@index([skuId, tier, status, effectiveFrom, effectiveTo])
+  @@map("seera_price_versions")
+}
+
+model SeeraScheme {
+  id              String       @id @default(cuid())
+  name            String
+  skuId           String?
+  eligibilityType String
+  minimumValue    Decimal?     @db.Decimal(14, 2)
+  minimumQuantity Decimal?     @db.Decimal(14, 3)
+  freeQuantity    Decimal?     @db.Decimal(14, 3)
+  discountPercent Decimal?     @db.Decimal(7, 4)
+  flatDiscount    Decimal?     @db.Decimal(14, 2)
+  applicability   Json
+  maximumBenefit  Decimal?     @db.Decimal(14, 2)
+  effectiveFrom   DateTime
+  effectiveTo     DateTime
+  status          MasterStatus @default(DRAFT)
+  createdById     String
+  createdAt       DateTime     @default(now())
+  sku             SeeraSku?    @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@index([skuId, status, effectiveFrom, effectiveTo])
+  @@map("seera_schemes")
+}
+
+model SeeraGeographyNode {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  name      String
+  level     String
+  parentId  String?
+  status    MasterStatus @default(ACTIVE)
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([parentId, level, status])
+  @@map("seera_geography_nodes")
+}
+
+model SeeraPartner {
+  id                      String            @id @default(cuid())
+  type                    PartnerType
+  code                    String            @unique
+  legalName               String
+  tradeName               String?
+  lifecycle               PartnerLifecycle  @default(PROSPECT)
+  gstin                   String?
+  pan                     String?
+  primaryContact          Json
+  addresses               Json
+  warehouseProfile        Json?
+  capacityProfile         Json?
+  territoryIds            String[]
+  assignedSuperStockistId String?
+  appointmentDate         DateTime?
+  documents               Json?
+  remarks                 String?
+  createdById             String
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  creditTerms             SeeraCreditTerm[]
+  ordersAsBuyer           SeeraSalesOrder[] @relation("OrderBuyerPartner")
+  ordersAsSeller          SeeraSalesOrder[] @relation("OrderSellerPartner")
+  users                   SeeraPartyUser[]
+
+  @@index([type, lifecycle])
+  @@index([assignedSuperStockistId])
+  @@map("seera_partners")
+}
+
+model SeeraPartyUser {
+  id            String       @id @default(cuid())
+  partnerId     String
+  userId        String
+  accessRole    String
+  active        Boolean      @default(true)
+  effectiveFrom DateTime     @default(now())
+  effectiveTo   DateTime?
+  createdById   String
+  createdAt     DateTime     @default(now())
+  partner       SeeraPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+
+  @@unique([partnerId, userId, effectiveFrom])
+  @@index([userId, active, effectiveFrom, effectiveTo])
+  @@map("seera_party_users")
+}
+
+model SeeraRetailer {
+  id                 String            @id @default(cuid())
+  code               String            @unique
+  businessName       String
+  ownerName          String
+  mobile             String
+  normalizedMobile   String
+  whatsapp           String?
+  email              String?
+  address            Json
+  latitude           Decimal?          @db.Decimal(10, 7)
+  longitude          Decimal?          @db.Decimal(10, 7)
+  gstin              String?
+  shopType           String
+  classification     String?
+  territoryId        String?
+  marketId           String?
+  beatId             String?
+  distributorId      String?
+  salespersonId      String?
+  estimatedPotential Decimal?          @db.Decimal(14, 2)
+  lifecycle          PartnerLifecycle  @default(PROSPECT)
+  notes              String?
+  photoMetadata      Json?
+  createdById        String
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  orders             SeeraSalesOrder[]
+  visits             SeeraVisit[]
+
+  @@unique([normalizedMobile, businessName])
+  @@index([beatId, distributorId, salespersonId, lifecycle])
+  @@map("seera_retailers")
+}
+
+model SeeraCreditTerm {
+  id               String       @id @default(cuid())
+  distributorId    String
+  creditEnabled    Boolean      @default(false)
+  creditLimit      Decimal      @db.Decimal(14, 2)
+  creditDays       Int
+  warningThreshold Decimal?     @db.Decimal(14, 2)
+  blockThreshold   Decimal?     @db.Decimal(14, 2)
+  graceEnabled     Boolean      @default(false)
+  graceDays        Int          @default(0)
+  exceptionPolicy  Json?
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  approvalId       String?
+  changeReason     String
+  createdById      String
+  createdAt        DateTime     @default(now())
+  distributor      SeeraPartner @relation(fields: [distributorId], references: [id], onDelete: Restrict)
+
+  @@unique([distributorId, effectiveFrom])
+  @@index([distributorId, effectiveFrom, effectiveTo])
+  @@map("seera_credit_terms")
+}
+
+model SeeraAssignment {
+  id             String    @id @default(cuid())
+  assignmentType String
+  subjectType    String
+  subjectId      String
+  targetType     String
+  targetId       String
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  reason         String
+  createdById    String
+  createdAt      DateTime  @default(now())
+
+  @@unique([assignmentType, subjectId, targetId, effectiveFrom])
+  @@index([subjectType, subjectId, effectiveFrom, effectiveTo])
+  @@index([targetType, targetId, effectiveFrom, effectiveTo])
+  @@map("seera_assignments")
+}
+
+model SeeraProspect {
+  id                String           @id @default(cuid())
+  prospectType      String
+  businessName      String
+  normalizedMobile  String
+  areaId            String?
+  profile           Json
+  status            PartnerLifecycle @default(PROSPECT)
+  followUpAt        DateTime?
+  ownerEmployeeId   String
+  approvedPartnerId String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([prospectType, normalizedMobile, businessName])
+  @@index([ownerEmployeeId, status, followUpAt])
+  @@map("seera_prospects")
+}
+
+model SeeraWorkSession {
+  id                 String            @id @default(cuid())
+  employeeId         String
+  employeeRole       String
+  workingType        String
+  plannedGeographyId String?
+  status             WorkSessionStatus @default(ACTIVE)
+  startedAt          DateTime
+  startLatitude      Decimal?          @db.Decimal(10, 7)
+  startLongitude     Decimal?          @db.Decimal(10, 7)
+  endedAt            DateTime?
+  endLatitude        Decimal?          @db.Decimal(10, 7)
+  endLongitude       Decimal?          @db.Decimal(10, 7)
+  remarks            String?
+  outcome            String?
+  createdAt          DateTime          @default(now())
+  visits             SeeraVisit[]
+
+  @@index([employeeId, status, startedAt])
+  @@map("seera_work_sessions")
+}
+
+model SeeraVisit {
+  id                 String           @id @default(cuid())
+  workSessionId      String
+  retailerId         String?
+  prospectId         String?
+  sequence           Int?
+  checkedInAt        DateTime
+  checkInLatitude    Decimal?         @db.Decimal(10, 7)
+  checkInLongitude   Decimal?         @db.Decimal(10, 7)
+  gpsExceptionReason String?
+  checkedOutAt       DateTime?
+  outcome            VisitOutcome     @default(PENDING)
+  noOrderReason      String?
+  followUpAt         DateTime?
+  notes              String?
+  idempotencyKey     String           @unique
+  workSession        SeeraWorkSession @relation(fields: [workSessionId], references: [id], onDelete: Restrict)
+  retailer           SeeraRetailer?   @relation(fields: [retailerId], references: [id], onDelete: Restrict)
+
+  @@index([workSessionId, outcome])
+  @@map("seera_visits")
+}
+
+model SeeraJointWork {
+  id               String    @id @default(cuid())
+  managerId        String
+  salesExecutiveId String
+  territoryId      String?
+  beatId           String?
+  startedAt        DateTime
+  endedAt          DateTime?
+  leadActorId      String
+  observations     String?
+  coaching         String?
+  outcome          String?
+
+  @@index([managerId, salesExecutiveId, startedAt])
+  @@map("seera_joint_work")
+}
+
+model SeeraSalesOrder {
+  id                    String                @id @default(cuid())
+  orderNumber           String                @unique
+  type                  SalesOrderType
+  status                SalesOrderStatus      @default(DRAFT)
+  retailerId            String?
+  buyerPartnerId        String?
+  sellerPartnerId       String?
+  salespersonId         String?
+  actorId               String
+  commercialPartyType   String
+  commercialPartyId     String
+  sourcePortal          String
+  onBehalfOfPartyId     String?
+  financialAcceptance   Boolean               @default(false)
+  currency              String                @default("INR")
+  subtotal              Decimal               @db.Decimal(14, 2)
+  discountTotal         Decimal               @db.Decimal(14, 2)
+  taxTotal              Decimal               @db.Decimal(14, 2)
+  total                 Decimal               @db.Decimal(14, 2)
+  requestedDeliveryAt   DateTime?
+  contractualCreditDays Int?
+  originalDueDate       DateTime?
+  graceDays             Int?
+  graceUntil            DateTime?
+  notes                 String?
+  idempotencyKey        String                @unique
+  submittedAt           DateTime?
+  acknowledgedAt        DateTime?
+  allocatedAt           DateTime?
+  dispatchedAt          DateTime?
+  deliveredAt           DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  retailer              SeeraRetailer?        @relation(fields: [retailerId], references: [id], onDelete: Restrict)
+  buyerPartner          SeeraPartner?         @relation("OrderBuyerPartner", fields: [buyerPartnerId], references: [id], onDelete: Restrict)
+  sellerPartner         SeeraPartner?         @relation("OrderSellerPartner", fields: [sellerPartnerId], references: [id], onDelete: Restrict)
+  lines                 SeeraOrderLine[]
+  deliveries            SeeraDelivery[]
+  promises              SeeraPaymentPromise[]
+  paymentProofs         SeeraPaymentProof[]
+
+  @@index([type, status, createdAt])
+  @@index([retailerId, createdAt])
+  @@index([buyerPartnerId, sellerPartnerId, status])
+  @@map("seera_sales_orders")
+}
+
+model SeeraOrderLine {
+  id                  String          @id @default(cuid())
+  orderId             String
+  skuId               String
+  skuCodeSnapshot     String
+  productNameSnapshot String
+  packSnapshot        String
+  priceSnapshot       Decimal         @db.Decimal(14, 2)
+  mrpSnapshot         Decimal         @db.Decimal(14, 2)
+  schemeSnapshot      Json?
+  taxSnapshot         Json?
+  orderedQuantity     Decimal         @db.Decimal(14, 3)
+  acceptedQuantity    Decimal         @default(0) @db.Decimal(14, 3)
+  allocatedQuantity   Decimal         @default(0) @db.Decimal(14, 3)
+  dispatchedQuantity  Decimal         @default(0) @db.Decimal(14, 3)
+  deliveredQuantity   Decimal         @default(0) @db.Decimal(14, 3)
+  cancelledQuantity   Decimal         @default(0) @db.Decimal(14, 3)
+  refusedQuantity     Decimal         @default(0) @db.Decimal(14, 3)
+  returnedQuantity    Decimal         @default(0) @db.Decimal(14, 3)
+  lineTotal           Decimal         @db.Decimal(14, 2)
+  order               SeeraSalesOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sku                 SeeraSku        @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, skuId])
+  @@map("seera_order_lines")
+}
+
+model SeeraDelivery {
+  id             String          @id @default(cuid())
+  orderId        String
+  deliveryUserId String?
+  status         DeliveryStatus  @default(PENDING)
+  quantities     Json
+  proof          Json?
+  receiverName   String?
+  reason         String?
+  latitude       Decimal?        @db.Decimal(10, 7)
+  longitude      Decimal?        @db.Decimal(10, 7)
+  occurredAt     DateTime?
+  actorId        String
+  idempotencyKey String          @unique
+  createdAt      DateTime        @default(now())
+  order          SeeraSalesOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status])
+  @@map("seera_deliveries")
+}
+
+model SeeraInventoryMovement {
+  id                String                @id @default(cuid())
+  partyType         InventoryPartyType
+  partyId           String
+  skuId             String
+  locationId        String?
+  type              InventoryMovementType
+  direction         MovementDirection
+  quantity          Decimal               @db.Decimal(14, 3)
+  sourceType        String
+  sourceId          String
+  actorId           String
+  sourcePortal      String
+  onBehalfOfPartyId String?
+  reference         String?
+  reason            String
+  approvalId        String?
+  idempotencyKey    String                @unique
+  occurredAt        DateTime              @default(now())
+  createdAt         DateTime              @default(now())
+  sku               SeeraSku              @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@index([partyType, partyId, skuId, occurredAt])
+  @@index([sourceType, sourceId])
+  @@map("seera_inventory_movements")
+}
+
+model SeeraStockReconciliation {
+  id             String                         @id @default(cuid())
+  partyType      InventoryPartyType
+  partyId        String
+  periodEnd      DateTime
+  status         ApprovalStatus                 @default(PENDING)
+  actorId        String
+  sourcePortal   String
+  reason         String
+  approvalId     String?
+  idempotencyKey String                         @unique
+  createdAt      DateTime                       @default(now())
+  approvedAt     DateTime?
+  lines          SeeraStockReconciliationLine[]
+
+  @@index([partyType, partyId, periodEnd])
+  @@map("seera_stock_reconciliations")
+}
+
+model SeeraStockReconciliationLine {
+  id                   String                   @id @default(cuid())
+  reconciliationId     String
+  skuId                String
+  openingQuantity      Decimal                  @db.Decimal(14, 3)
+  receiptQuantity      Decimal                  @db.Decimal(14, 3)
+  issueQuantity        Decimal                  @db.Decimal(14, 3)
+  systemClosing        Decimal                  @db.Decimal(14, 3)
+  physicalClosing      Decimal                  @db.Decimal(14, 3)
+  variance             Decimal                  @db.Decimal(14, 3)
+  reason               String
+  adjustmentMovementId String?
+  reconciliation       SeeraStockReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Restrict)
+  sku                  SeeraSku                 @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([reconciliationId, skuId])
+  @@map("seera_stock_reconciliation_lines")
+}
+
+model SeeraPaymentPromise {
+  id                      String          @id @default(cuid())
+  orderId                 String
+  originalDueDate         DateTime
+  promisedPaymentDate     DateTime
+  reason                  String
+  verbalCommitmentContext String?
+  actorId                 String
+  sourcePortal            String
+  approvalId              String?
+  createdAt               DateTime        @default(now())
+  order                   SeeraSalesOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@map("seera_payment_promises")
+}
+
+model SeeraPaymentProof {
+  id             String             @id @default(cuid())
+  orderId        String
+  amount         Decimal            @db.Decimal(14, 2)
+  reference      String
+  fileId         String?
+  status         PaymentProofStatus @default(SUBMITTED)
+  submittedById  String
+  reviewedById   String?
+  reviewReason   String?
+  idempotencyKey String             @unique
+  submittedAt    DateTime           @default(now())
+  reviewedAt     DateTime?
+  order          SeeraSalesOrder    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status])
+  @@map("seera_payment_proofs")
+}
+
+model SeeraApprovalItem {
+  id               String         @id @default(cuid())
+  type             String
+  entityType       String
+  entityId         String
+  requestedById    String
+  assignedRoleCode String
+  status           ApprovalStatus @default(PENDING)
+  request          Json
+  decision         Json?
+  decidedById      String?
+  reason           String?
+  createdAt        DateTime       @default(now())
+  decidedAt        DateTime?
+
+  @@index([assignedRoleCode, status, createdAt])
+  @@index([entityType, entityId])
+  @@map("seera_approval_items")
+}
+
+model SeeraStatusHistory {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  fromStatus String?
+  toStatus   String
+  actorId    String
+  reason     String
+  occurredAt DateTime @default(now())
+
+  @@index([entityType, entityId, occurredAt])
+  @@map("seera_status_history")
+}
+
+model SeeraCreditReminderRule {
+  id               String   @id @default(cuid())
+  name             String
+  offsetDays       Int
+  severity         String
+  enabled          Boolean  @default(true)
+  creditDaysFilter Int?
+  createdById      String
+  createdAt        DateTime @default(now())
+
+  @@index([enabled, creditDaysFilter, offsetDays])
+  @@map("seera_credit_reminder_rules")
+}
+
+model SeeraClaim {
+  id               String      @id @default(cuid())
+  claimNumber      String      @unique
+  claimantType     String
+  claimantId       String
+  againstPartyType String
+  againstPartyId   String
+  type             String
+  status           ClaimStatus @default(SUBMITTED)
+  sourceType       String?
+  sourceId         String?
+  details          Json
+  actorId          String
+  idempotencyKey   String      @unique
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([claimantType, claimantId, status])
+  @@map("seera_claims")
+}
+
+model SeeraJourneyPlan {
+  id              String    @id @default(cuid())
+  employeeId      String
+  dayOfWeek       Int
+  geographyType   String
+  geographyId     String
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  ownerId         String
+  deviationReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([employeeId, dayOfWeek, geographyId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@map("seera_journey_plans")
+}
+
+model SeeraTarget {
+  id               String   @id @default(cuid())
+  employeeId       String
+  periodType       String
+  periodStart      DateTime
+  periodEnd        DateTime
+  metricType       String
+  skuId            String?
+  targetValue      Decimal  @db.Decimal(16, 3)
+  achievementBasis String   @default("DELIVERED")
+  assignedById     String
+  createdAt        DateTime @default(now())
+
+  @@unique([employeeId, periodType, periodStart, metricType, skuId])
+  @@index([employeeId, periodStart, periodEnd])
+  @@map("seera_targets")
+}
+
+model SeeraCollectionEntry {
+  id             String   @id @default(cuid())
+  retailerId     String
+  amount         Decimal  @db.Decimal(14, 2)
+  paymentMode    String
+  reference      String?
+  proofFileId    String?
+  invoiceRef     String?
+  remarks        String?
+  actorId        String
+  sourcePortal   String
+  idempotencyKey String   @unique
+  collectedAt    DateTime @default(now())
+
+  @@index([retailerId, collectedAt])
+  @@map("seera_collection_entries")
+}
+
+model SeeraMarketIntelligence {
+  id               String   @id @default(cuid())
+  retailerId       String?
+  geographyId      String?
+  competitor       String
+  product          String?
+  price            Decimal? @db.Decimal(14, 2)
+  scheme           String?
+  retailerFeedback String?
+  newLaunch        String?
+  shelfDisplay     String?
+  marketIssue      String?
+  actorId          String
+  workSessionId    String?
+  capturedAt       DateTime @default(now())
+
+  @@index([actorId, capturedAt])
+  @@index([competitor, geographyId])
+  @@map("seera_market_intelligence")
 }

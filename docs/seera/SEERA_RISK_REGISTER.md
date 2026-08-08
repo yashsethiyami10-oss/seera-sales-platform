@@ -30,3 +30,12 @@ Last reviewed: 2026-08-08
 | R-019 | Large field/network datasets cause unusable UX. | High | Pagination, caching, indexes, mobile budgets. | Realistic-volume and 30–40-call-day performance tests. | Planned |
 | R-020 | Copied historical Seera docs direct work back into MUV. | High | New constitution and decision register supersede them. | Mark historical docs superseded during Phase 1 documentation cleanup without deleting evidence. | Open |
 | R-021 | MUV changes concurrently during Seera zero-harm verification. | High | No Seera write path found; external divergence record and current hash baseline captured. | Re-baseline and re-check Seera write paths when future differences appear; never revert unrelated MUV work. | Mitigated |
+
+## Phase 2-5 review
+
+- R-005 is mitigated by centralized authorization, partner membership scope, seller/buyer filters, and denial tests.
+- R-006 is mitigated by line-level delivered-eligible calculations and booked/delivered separation tests.
+- R-007 is mitigated by non-verifying proof states and verified-advance enforcement; Phase 8 maker-checker reconciliation remains deferred.
+- R-012 is mitigated for Phase 2-5 online commands by unique idempotency keys; offline sync remains its frozen later phase.
+- R-014 is mitigated operationally by the Phase 1 notification/outbox foundation; external automation remains Phase 10.
+- R-018 is mitigated for migrations 003-005 by TEST-only guarded forward application and destructive-SQL review.

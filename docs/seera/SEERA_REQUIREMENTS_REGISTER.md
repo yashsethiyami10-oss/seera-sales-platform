@@ -104,6 +104,10 @@ Architecture locations refer to `SEERA_MASTER_ARCHITECTURE.md` unless otherwise 
 - Rejected/deferred: **0**
 
 Counts must be recalculated mechanically when statuses change.
+# Phase 2-5 traceability
+
+The combined implementation constitution is traced without merging phase identity in the individual acceptance reports under `phase-2/`, `phase-3/`, `phase-4/`, and `phase-5/`. Cross-cutting commercial, inventory, portal, security, gap, regression, and freeze evidence is under `phase-2-5-audit/`. The frozen 11-phase roadmap is unchanged; Phase 6 has not begun.
+
 # Phase 1 Block 3
 
 Block 3 requirements B3-01 through B3-40 are implemented and traced in `phase-1/block-3/SEERA_PHASE_1_BLOCK_3_ACCEPTANCE_CHECKLIST.md`. All are PASS; no critical identity/access requirement is deferred.

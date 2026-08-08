@@ -23,6 +23,7 @@
     "app/**/*.tsx",
     "lib/database/**/*.ts",
     "lib/foundation/**/*.ts",
+    "lib/sales-distribution/**/*.ts",
     "middleware.ts",
     "instrumentation.ts",
     "vitest.static.config.ts",

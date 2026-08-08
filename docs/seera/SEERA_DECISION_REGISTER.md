@@ -31,6 +31,16 @@ Last reviewed: 2026-08-08
 | ADR-020 | Copied MUV routes and Prisma-writing scripts are preserved outside active runtime paths until selectively adapted. | Implemented in Block 1 | Clean schema transition does not require mass deletion or continued MUV model compilation. |
 | ADR-021 | Phase 1 portal shells fail closed until independent authentication and permission enforcement exist. | Implemented in Block 1 | Route ownership is prepared without granting premature access. |
 
+## Phase 2-5 decisions
+
+| ID | Decision | Status | Consequence |
+|---|---|---|---|
+| ADR-025 | Distributor and S.S. inventory is derived from append-only party/SKU movements; reconciliation emits explicit variance and adjustment events. | Implemented in Phases 2-5 | No direct mutable stock balance can hide physical/off-system movement. |
+| ADR-026 | Partner portal scope requires effective-dated `SeeraPartyUser` membership in addition to RBAC. | Implemented in Phases 2-5 | A portal permission alone cannot expose another distributor or S.S. |
+| ADR-027 | Contractual due, grace-until, promised date, formal term version, and payment date remain separate commercial facts. | Implemented in Phases 2-5 | Verbal promises and grace cannot falsify original exposure. |
+| ADR-028 | Company-to-S.S. orders are advance-only and require verified proof before confirmation. | Implemented in Phase 5 | No company credit line to S.S. exists in the Phase 5 model. |
+| ADR-029 | Portal experiences have distinct registries while business truth is shared. | Implemented in Phases 2-5 | Navigation, terminology, permissions, and scope stay role-specific without duplicate orders or stock. |
+
 ## Superseded decisions
 
 All Phase 0/0.1/0.2 documents that recommend organisation-scoped Seera tables, shared identity, MUV backfill, or shared finance inside the MUV application are retained as historical records but are superseded by ADR-001 and ADR-002.
