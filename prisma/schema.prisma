@@ -105,29 +105,29 @@ enum NotificationDeliveryStatus {
 }
 
 model User {
-  id                    String               @id @default(cuid())
-  email                 String               @unique
-  normalizedEmail       String               @unique
-  phone                 String?              @unique
-  name                  String?
-  passwordHash          String?
-  status                UserStatus           @default(ACTIVE)
-  authorizationVersion  Int                  @default(1)
-  emailVerified         DateTime?
-  phoneVerified         DateTime?
-  lastLoginAt           DateTime?
-  suspendedAt           DateTime?
-  suspensionReason      String?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  accounts              Account[]
-  sessions              Session[]
-  roleAssignments       UserRoleAssignment[] @relation("RoleAssignmentSubject")
-  roleAssignmentsMade   UserRoleAssignment[] @relation("RoleAssignmentGrantor")
+  id                     String               @id @default(cuid())
+  email                  String               @unique
+  normalizedEmail        String               @unique
+  phone                  String?              @unique
+  name                   String?
+  passwordHash           String?
+  status                 UserStatus           @default(ACTIVE)
+  authorizationVersion   Int                  @default(1)
+  emailVerified          DateTime?
+  phoneVerified          DateTime?
+  lastLoginAt            DateTime?
+  suspendedAt            DateTime?
+  suspensionReason       String?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  accounts               Account[]
+  sessions               Session[]
+  roleAssignments        UserRoleAssignment[] @relation("RoleAssignmentSubject")
+  roleAssignmentsMade    UserRoleAssignment[] @relation("RoleAssignmentGrantor")
   roleAssignmentsRevoked UserRoleAssignment[] @relation("RoleAssignmentRevoker")
-  auditEvents           AuditLog[]           @relation("AuditActor")
-  uploadedFiles         StoredFile[]         @relation("FileUploader")
-  notifications         Notification[]       @relation("NotificationRecipient")
+  auditEvents            AuditLog[]           @relation("AuditActor")
+  uploadedFiles          StoredFile[]         @relation("FileUploader")
+  notifications          Notification[]       @relation("NotificationRecipient")
 
   @@index([status])
   @@map("users")
@@ -154,16 +154,16 @@ model Account {
 }
 
 model Session {
-  id                   String   @id @default(cuid())
-  sessionToken         String   @unique
+  id                   String    @id @default(cuid())
+  sessionToken         String    @unique
   userId               String
   expires              DateTime
   revokedAt            DateTime?
   revocationReason     String?
   authorizationVersion Int
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt])
   @@index([expires])
@@ -225,22 +225,22 @@ model RolePermission {
 }
 
 model UserRoleAssignment {
-  id            String               @id @default(cuid())
-  userId        String
-  roleId        String
-  status        RoleAssignmentStatus @default(ACTIVE)
-  effectiveFrom DateTime             @default(now())
-  effectiveTo   DateTime?
-  assignedById  String?
-  assignedAt    DateTime             @default(now())
+  id               String               @id @default(cuid())
+  userId           String
+  roleId           String
+  status           RoleAssignmentStatus @default(ACTIVE)
+  effectiveFrom    DateTime             @default(now())
+  effectiveTo      DateTime?
+  assignedById     String?
+  assignedAt       DateTime             @default(now())
   assignmentReason String?
-  revokedById   String?
-  revokedAt     DateTime?
+  revokedById      String?
+  revokedAt        DateTime?
   revocationReason String?
-  user          User                 @relation("RoleAssignmentSubject", fields: [userId], references: [id], onDelete: Restrict)
-  role          Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  assignedBy    User?                @relation("RoleAssignmentGrantor", fields: [assignedById], references: [id], onDelete: SetNull)
-  revokedBy     User?                @relation("RoleAssignmentRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+  user             User                 @relation("RoleAssignmentSubject", fields: [userId], references: [id], onDelete: Restrict)
+  role             Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  assignedBy       User?                @relation("RoleAssignmentGrantor", fields: [assignedById], references: [id], onDelete: SetNull)
+  revokedBy        User?                @relation("RoleAssignmentRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
 
   @@index([userId, status, effectiveFrom, effectiveTo])
   @@index([roleId, status])
@@ -248,22 +248,22 @@ model UserRoleAssignment {
 }
 
 model AuditLog {
-  id              String       @id @default(cuid())
-  actorId         String?
-  action          String
-  entityType      String
-  entityId        String?
-  outcome         AuditOutcome @default(SUCCESS)
-  reason          String?
-  beforeState     Json?
-  afterState      Json?
-  details         Json?
-  requestId       String?
-  sessionId       String?
-  ipHash          String?
-  userAgent       String?
-  occurredAt      DateTime     @default(now())
-  actor           User?        @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  id          String       @id @default(cuid())
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String?
+  outcome     AuditOutcome @default(SUCCESS)
+  reason      String?
+  beforeState Json?
+  afterState  Json?
+  details     Json?
+  requestId   String?
+  sessionId   String?
+  ipHash      String?
+  userAgent   String?
+  occurredAt  DateTime     @default(now())
+  actor       User?        @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([actorId, occurredAt])
   @@index([entityType, entityId, occurredAt])
@@ -292,35 +292,35 @@ model AppSetting {
 }
 
 model FeatureFlag {
-  id            String   @id @default(cuid())
-  key           String   @unique
+  id            String    @id @default(cuid())
+  key           String    @unique
   description   String?
-  enabled       Boolean  @default(false)
+  enabled       Boolean   @default(false)
   rules         Json?
   effectiveFrom DateTime?
   effectiveTo   DateTime?
   updatedById   String?
   changeReason  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([enabled, effectiveFrom, effectiveTo])
   @@map("feature_flags")
 }
 
 model IdempotencyKey {
-  id              String            @id @default(cuid())
-  scope           String
-  key             String
-  requestHash     String
-  status          IdempotencyStatus @default(PROCESSING)
-  responseStatus  Int?
-  responseBody    Json?
-  lockedUntil     DateTime?
-  completedAt     DateTime?
-  expiresAt       DateTime
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id             String            @id @default(cuid())
+  scope          String
+  key            String
+  requestHash    String
+  status         IdempotencyStatus @default(PROCESSING)
+  responseStatus Int?
+  responseBody   Json?
+  lockedUntil    DateTime?
+  completedAt    DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@unique([scope, key])
   @@index([status, lockedUntil])
@@ -349,25 +349,25 @@ model OutboxEvent {
 }
 
 model StoredFile {
-  id               String              @id @default(cuid())
-  provider         String
-  storageKey       String              @unique
-  originalName     String
-  mimeType         String
-  extension        String?
-  sizeBytes        BigInt
-  sha256           String
-  classification   FileClassification  @default(GENERAL)
-  scanStatus       FileScanStatus       @default(PENDING)
-  lifecycleStatus  FileLifecycleStatus @default(ACTIVE)
-  entityType       String?
-  entityId         String?
-  uploadedById     String?
-  retentionUntil   DateTime?
-  revokedAt        DateTime?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  uploadedBy       User?               @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  id              String              @id @default(cuid())
+  provider        String
+  storageKey      String              @unique
+  originalName    String
+  mimeType        String
+  extension       String?
+  sizeBytes       BigInt
+  sha256          String
+  classification  FileClassification  @default(GENERAL)
+  scanStatus      FileScanStatus      @default(PENDING)
+  lifecycleStatus FileLifecycleStatus @default(ACTIVE)
+  entityType      String?
+  entityId        String?
+  uploadedById    String?
+  retentionUntil  DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  uploadedBy      User?               @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([entityType, entityId])
   @@index([uploadedById, createdAt])
@@ -376,21 +376,21 @@ model StoredFile {
 }
 
 model Notification {
-  id          String               @id @default(cuid())
+  id          String                 @id @default(cuid())
   recipientId String
   type        String
   title       String
   body        String
-  priority    NotificationPriority @default(NORMAL)
-  status      NotificationStatus   @default(UNREAD)
+  priority    NotificationPriority   @default(NORMAL)
+  status      NotificationStatus     @default(UNREAD)
   entityType  String?
   entityId    String?
   payload     Json?
   readAt      DateTime?
   archivedAt  DateTime?
-  createdAt   DateTime             @default(now())
+  createdAt   DateTime               @default(now())
   expiresAt   DateTime?
-  recipient   User                 @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+  recipient   User                   @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
   deliveries  NotificationDelivery[]
 
   @@index([recipientId, status, createdAt])
@@ -399,10 +399,10 @@ model Notification {
 }
 
 model NotificationDelivery {
-  id                String                     @id @default(cuid())
-  notificationId    String
-  channel           NotificationChannel
-  status            NotificationDeliveryStatus @default(PENDING)
+  id                 String                     @id @default(cuid())
+  notificationId     String
+  channel            NotificationChannel
+  status             NotificationDeliveryStatus @default(PENDING)
   attempt            Int                        @default(1)
   provider           String?
   providerMessageId  String?
@@ -412,7 +412,7 @@ model NotificationDelivery {
   lastErrorCode      String?
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
-  notification      Notification               @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  notification       Notification               @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
   @@unique([notificationId, channel, attempt])
   @@index([status, createdAt])

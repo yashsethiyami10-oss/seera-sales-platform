@@ -306,4 +306,6 @@ The copied schema remains preserved as a hashed reference snapshot. Its 60 migra
 
 The 225-file MUV route tree and 24 Prisma-writing scripts are preserved in non-runtime reference archives. Active portals fail closed pending independent authentication and permission enforcement. Block 1 evidence is maintained in `docs/seera/phase-1/block-1/`. No database access, migration, generation, seed or build occurred.
 
+Phase 1 Block 2 adds a guarded Seera-only migration path. The first foundation migration is applied only to the isolated test database; production remains untouched. Database commands classify an exact configured target and fail closed for unknown, MUV, equal, fallback, role-mismatched, or production-write targets.
+
 Block 1A reconciled the route divergence under the Founder-approved read-only isolation model. No Seera write path to MUV was found; the differences are external/unattributed, and baseline `MUV-RO-20260808T061738Z-FA7A044CB89D` now anchors future comparisons without freezing unrelated MUV development.

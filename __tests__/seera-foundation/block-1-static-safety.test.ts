@@ -50,9 +50,12 @@ describe("Phase 1 Block 1 static safety", () => {
     expect(result.production.fingerprint).not.toBe(result.test.fingerprint);
   });
 
-  it("has no copied migration in Prisma's active migration path", () => {
+  it("has only the approved Seera migration in Prisma's active migration path", () => {
     const active = walk(path.join(root, "prisma", "migrations")).filter((file) => path.basename(file) !== ".gitkeep");
-    expect(active).toEqual([]);
+    const migrationSql = active.filter((file) => path.basename(file) === "migration.sql");
+    expect(migrationSql).toHaveLength(1);
+    expect(migrationSql[0]).toContain("001_seera_foundation");
+    expect(active.every((file) => file.includes("001_seera_foundation") || path.basename(file) === "migration_lock.toml")).toBe(true);
   });
 
   it("verifies every archived migration against the SHA-256 manifest", () => {

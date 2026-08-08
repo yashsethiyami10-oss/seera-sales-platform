@@ -8,6 +8,7 @@ Last reviewed: 2026-08-08
 | R-002 | Production and test DB are the same. | Critical | Separate identities verified; normalized equality rejected. | Add database-resident marker before DB-backed tests. | Mitigated |
 | R-003 | No independent Seera Git history. | High | Independent root baseline commit `0192067`. | Maintain reviewed commits/rollback evidence. | Closed |
 | R-004 | Copied MUV application is mistaken for Seera-ready code. | High | Routes/scripts/schema/migrations archived; active surface Seera-only. | Selective adaptation with dependency proof. | Mitigated |
+| R-022 | A migration command accidentally targets production or MUV. | Critical | Atomic target guard, explicit test URL injection, known-MUV rejection, production-write denial, and destructive reset confirmation. | Keep all schema writes behind the guarded wrapper. | Mitigated |
 | R-005 | Cross-party/territory authorization leakage. | Critical | Deny-by-default policy architecture. | Authorization matrix and adversarial integration tests every phase. | Planned |
 | R-006 | Booked orders counted as actual sales. | Critical | Item fulfilment events and constitutional formula. | Partial/refused/return/reversal reconciliation tests. | Planned |
 | R-007 | Payment proof treated as verified funds. | Critical | Separate proof/review/allocation states. | Duplicate UTR and maker-checker workflow tests. | Planned |

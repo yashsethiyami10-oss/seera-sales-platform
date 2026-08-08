@@ -16,7 +16,10 @@ export type DatabaseGuardCode =
   | "DATABASE_URLS_EQUAL"
   | "KNOWN_MUV_DATABASE"
   | "TEST_DATABASE_FALLBACK"
-  | "TEST_POINTS_TO_PRODUCTION";
+  | "TEST_POINTS_TO_PRODUCTION"
+  | "UNKNOWN_DATABASE_TARGET"
+  | "DATABASE_ROLE_MISMATCH"
+  | "PRODUCTION_WRITE_PROHIBITED";
 
 export class DatabaseIdentityError extends Error {
   readonly code: DatabaseGuardCode;
@@ -126,4 +129,41 @@ export function requireDatabaseUrlForRole(
 
   inspectDatabaseUrl(env.DATABASE_URL, "production");
   return env.DATABASE_URL as string;
+}
+
+export function classifyDatabaseTarget(input: {
+  targetUrl?: string;
+  productionUrl?: string;
+  testUrl?: string;
+}): SanitizedDatabaseIdentity {
+  const identities = validateDatabaseIsolation({
+    productionUrl: input.productionUrl,
+    testUrl: input.testUrl,
+  });
+  const target = inspectDatabaseUrl(input.targetUrl, "test");
+
+  if (target.fingerprint === identities.production.fingerprint) return identities.production;
+  if (target.fingerprint === identities.test.fingerprint) return identities.test;
+
+  throw new DatabaseIdentityError(
+    "UNKNOWN_DATABASE_TARGET",
+    "database target is neither the configured Seera production nor test identity",
+  );
+}
+
+export function authorizeDatabaseCommand(input: {
+  intendedRole: DatabaseRole;
+  write: boolean;
+  targetUrl?: string;
+  productionUrl?: string;
+  testUrl?: string;
+}): SanitizedDatabaseIdentity {
+  const target = classifyDatabaseTarget(input);
+  if (target.role !== input.intendedRole) {
+    throw new DatabaseIdentityError("DATABASE_ROLE_MISMATCH", "database target does not match the intended role");
+  }
+  if (input.write && target.role === "production") {
+    throw new DatabaseIdentityError("PRODUCTION_WRITE_PROHIBITED", "production database writes are prohibited");
+  }
+  return target;
 }

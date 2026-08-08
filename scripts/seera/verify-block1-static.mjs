@@ -87,9 +87,17 @@ check("test fallback and production identity reuse rejected", () => {
   );
 });
 
-check("active migration path contains no copied migration", () => {
+check("active migration path is Seera-only", () => {
   const active = walk(path.join(root, "prisma/migrations")).filter((file) => path.basename(file) !== ".gitkeep");
-  assert.deepEqual(active, []);
+  const sql = active.filter((file) => path.basename(file) === "migration.sql");
+  assert.equal(sql.length <= 1, true);
+  if (sql.length === 1) {
+    assert.match(sql[0], /001_seera_foundation/);
+    const content = readFileSync(sql[0], "utf8");
+    for (const forbidden of ["Retailer", "Distributor", "SuperStockist", "CommercialOrder", "Payment", "Product"]) {
+      assert.doesNotMatch(content, new RegExp(`CREATE TABLE \\"${forbidden}`, "i"));
+    }
+  }
 });
 
 check("migration archive manifest complete", () => {

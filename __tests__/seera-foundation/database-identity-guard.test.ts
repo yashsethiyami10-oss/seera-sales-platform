@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  authorizeDatabaseCommand,
+  classifyDatabaseTarget,
   DatabaseIdentityError,
   inspectDatabaseUrl,
   requireDatabaseUrlForRole,
@@ -51,12 +53,52 @@ describe("Seera database identity guard", () => {
 
   it("rejects missing test URL instead of falling back to production", () => {
     expectCode(() => validateDatabaseIsolation({ productionUrl: production }), "TEST_DATABASE_FALLBACK");
-    expectCode(() => requireDatabaseUrlForRole("test", { DATABASE_URL: production }), "TEST_DATABASE_FALLBACK");
+    expectCode(
+      () => requireDatabaseUrlForRole("test", { DATABASE_URL: production, TEST_DATABASE_URL: undefined }),
+      "TEST_DATABASE_FALLBACK",
+    );
   });
 
   it("rejects missing and malformed identities", () => {
     expectCode(() => inspectDatabaseUrl(undefined, "production"), "MISSING_DATABASE_URL");
     expectCode(() => inspectDatabaseUrl("not-a-url", "production"), "INVALID_DATABASE_URL");
   });
-});
 
+  it("classifies only configured process targets", () => {
+    expect(classifyDatabaseTarget({ targetUrl: test, productionUrl: production, testUrl: test }).role).toBe("test");
+    expect(classifyDatabaseTarget({ targetUrl: production, productionUrl: production, testUrl: test }).role).toBe(
+      "production",
+    );
+    expectCode(
+      () => classifyDatabaseTarget({
+        targetUrl: "postgresql://user:secret@unknown.example.test/unknown",
+        productionUrl: production,
+        testUrl: test,
+      }),
+      "UNKNOWN_DATABASE_TARGET",
+    );
+  });
+
+  it("fails closed for role mismatch and every production write attempt", () => {
+    expectCode(
+      () => authorizeDatabaseCommand({
+        intendedRole: "test",
+        write: true,
+        targetUrl: production,
+        productionUrl: production,
+        testUrl: test,
+      }),
+      "DATABASE_ROLE_MISMATCH",
+    );
+    expectCode(
+      () => authorizeDatabaseCommand({
+        intendedRole: "production",
+        write: true,
+        targetUrl: production,
+        productionUrl: production,
+        testUrl: test,
+      }),
+      "PRODUCTION_WRITE_PROHIBITED",
+    );
+  });
+});
