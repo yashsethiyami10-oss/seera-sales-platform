@@ -4,4 +4,4 @@ Implemented effective-dated travel policy, estimates, claims and proof reference
 
 Verification: TA, privacy, closure, force-close, transaction blocking, and hard-delete safeguards are included in the Phase 6–9 suite.
 
-Status: FOUNDATION COMPLETE; FREEZE BLOCKED. End-to-end TA approval/payment and partner transition workflow services plus guarded integration coverage remain required.
+Status: IMPLEMENTED / TESTED / VERIFIED / PASSED / FROZEN. TA submit/correction/Manager verification/independent Accounts payment and governed suspend/reactivate/force-close lifecycle transitions are executable, audited, history-preserving and E2E verified.

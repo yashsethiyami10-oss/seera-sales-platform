@@ -4,4 +4,4 @@ Implemented as an organisation-scoped Seera subsystem. It supports canonical doc
 
 Verification: Phase 6 rule coverage is included in the 28/28 Phase 6–9 suite. The consolidated migration was applied once through the guarded TEST-only runner. Production was not targeted.
 
-Status: FOUNDATION COMPLETE; FREEZE BLOCKED. A professional PDF renderer/download surface and end-to-end guarded document workflow tests remain required.
+Status: IMPLEMENTED / TESTED / VERIFIED / PASSED / FROZEN. Snapshot-only Unicode PDF rendering, authenticated scoped download, private manual-file download, expiring/revocable secure sharing, and transactional invoice/credit/debit ledger posting are executable and covered by guarded E2E tests.

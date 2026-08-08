@@ -4,4 +4,4 @@ Implemented organisation-scoped accounting periods, append-only financial entrie
 
 Verification: allocation, ageing, extension, reversal, portal, and RBAC rules are covered by local tests and the guarded TEST migration checkpoint.
 
-Status: FOUNDATION COMPLETE; FREEZE BLOCKED. End-to-end posting, allocation, reconciliation and settlement workflow services plus guarded integration coverage remain required.
+Status: IMPLEMENTED / TESTED / VERIFIED / PASSED / FROZEN. Transactional posting/reversal, verified advances, partial allocation, distinct ageing dates, ledger read model, reconciliation, claim settlement, APIs and bilingual Accounts controls are executable and E2E verified.
