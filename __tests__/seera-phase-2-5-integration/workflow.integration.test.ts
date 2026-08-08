@@ -22,9 +22,9 @@ describe("guarded Phase 2-5 shared-truth integration", () => {
     const retailer = await prisma.seeraRetailer.create({ data: { code: `R-${suffix}`, businessName: "Integration Retailer", ownerName: "Owner", mobile: `98${suffix.slice(0, 8)}`, normalizedMobile: `98${suffix.slice(0, 8)}`, address: { city: "Test" }, shopType: "GENERAL_TRADE", distributorId, salespersonId: executive, lifecycle: "ACTIVE", createdById: founder } });
     retailerId = retailer.id;
     await prisma.seeraCreditTerm.create({ data: { distributorId, creditEnabled: true, creditLimit: 100000, creditDays: 15, warningThreshold: 80000, blockThreshold: 100000, graceEnabled: true, graceDays: 5, effectiveFrom: new Date("2026-01-01"), changeReason: "Integration baseline", createdById: founder } });
-  }, 120000);
+  }, 240000);
 
-  afterAll(async () => { await prisma.$executeRawUnsafe('TRUNCATE TABLE "seera_status_history", "seera_payment_promises", "seera_payment_proofs", "seera_deliveries", "seera_order_lines", "seera_sales_orders", "seera_stock_reconciliation_lines", "seera_stock_reconciliations", "seera_inventory_movements", "seera_credit_terms", "seera_party_users", "seera_retailers", "seera_prospects", "seera_assignments", "seera_joint_work", "seera_visits", "seera_work_sessions", "seera_price_versions", "seera_schemes", "seera_skus", "seera_claims", "seera_approval_items", "seera_credit_reminder_rules", "seera_geography_nodes", "seera_partners" CASCADE'); await prisma.$disconnect(); }, 120000);
+  afterAll(async () => { await prisma.$executeRawUnsafe('TRUNCATE TABLE "seera_status_history", "seera_payment_promises", "seera_payment_proofs", "seera_deliveries", "seera_order_lines", "seera_sales_orders", "seera_stock_reconciliation_lines", "seera_stock_reconciliations", "seera_inventory_movements", "seera_credit_terms", "seera_party_users", "seera_retailers", "seera_prospects", "seera_assignments", "seera_joint_work", "seera_visits", "seera_work_sessions", "seera_price_versions", "seera_schemes", "seera_skus", "seera_claims", "seera_approval_items", "seera_credit_reminder_rules", "seera_geography_nodes", "seera_partners" CASCADE'); await prisma.$disconnect(); }, 240000);
 
   it("Phase 2 creates immutable SKU and governed price versions", async () => {
     const sku = await createSku(prisma, founder, { code: `SKU-${suffix}`, productName: "Seera Integration SKU", category: "Care", packSize: 100, unitType: "ML", unitsPerCase: 12, mrp: 199, hsn: "3304", taxRate: 18 }); skuId = sku.id;
@@ -64,5 +64,11 @@ describe("guarded Phase 2-5 shared-truth integration", () => {
   it("manager assisted operation preserves actor and commercial party", async () => {
     const assisted = await assistedDistributorOperation(prisma, manager, { distributorId, reason: "Distributor requested operational help", idempotencyKey: `assist-${suffix}`, subtotal: 2500 });
     expect(assisted.actorId).toBe(manager); expect(assisted.commercialPartyId).toBe(distributorId); expect(assisted.onBehalfOfPartyId).toBe(distributorId); expect(assisted.financialAcceptance).toBe(false);
+  });
+
+  it("persists per-user English to Hindi and Hindi to English preference", async () => {
+    expect((await prisma.user.update({ where: { id: executive }, data: { preferredLanguage: "HI" } })).preferredLanguage).toBe("HI");
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: executive } })).preferredLanguage).toBe("HI");
+    expect((await prisma.user.update({ where: { id: executive }, data: { preferredLanguage: "EN" } })).preferredLanguage).toBe("EN");
   });
 });

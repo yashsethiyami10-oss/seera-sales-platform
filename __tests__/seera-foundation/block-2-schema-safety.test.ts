@@ -15,11 +15,11 @@ describe("Block 2 schema and RBAC boundary", () => {
     for (const name of forbiddenModels) expect(schema).not.toMatch(new RegExp(`^model ${name} \\{`, "m"));
   });
 
-  it("contains only the seven explicitly approved Seera migrations", () => {
+  it("contains only the eight explicitly approved Seera migrations", () => {
     const migrationRoot = path.join(root, "prisma/migrations");
     const directories = readdirSync(migrationRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-    expect(directories).toHaveLength(7);
-    expect(directories.map((item) => item.name)).toEqual(expect.arrayContaining([expect.stringMatching(/_001_seera_foundation$/), expect.stringMatching(/_002_user_disabled_status$/), expect.stringMatching(/_003_phase_2_5_sales_distribution$/), expect.stringMatching(/_004_partner_user_scope$/), expect.stringMatching(/_005_company_order_states$/), expect.stringMatching(/_006_active_work_session_constraint$/), expect.stringMatching(/_007_phase_2_3_operational_records$/)]));
+    expect(directories).toHaveLength(8);
+    expect(directories.map((item) => item.name)).toEqual(expect.arrayContaining([expect.stringMatching(/_001_seera_foundation$/), expect.stringMatching(/_002_user_disabled_status$/), expect.stringMatching(/_003_phase_2_5_sales_distribution$/), expect.stringMatching(/_004_partner_user_scope$/), expect.stringMatching(/_005_company_order_states$/), expect.stringMatching(/_006_active_work_session_constraint$/), expect.stringMatching(/_007_phase_2_3_operational_records$/), expect.stringMatching(/_008_user_ui_language$/)]));
     for (const migration of directories) { const sql = readFileSync(path.join(migrationRoot, migration.name, "migration.sql"), "utf8"); for (const name of forbiddenModels) expect(sql).not.toContain(`CREATE TABLE "${name}"`); }
   });
 

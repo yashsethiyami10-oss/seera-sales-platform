@@ -90,7 +90,7 @@ check("test fallback and production identity reuse rejected", () => {
 check("active migration path is Seera-only", () => {
   const active = walk(path.join(root, "prisma/migrations")).filter((file) => path.basename(file) !== ".gitkeep");
   const sql = active.filter((file) => path.basename(file) === "migration.sql");
-  assert.equal(sql.length, 7);
+  assert.equal(sql.length, 8);
   assert.equal(sql.some((file) => /001_seera_foundation/.test(file)), true);
   const authorized = [
     /001_seera_foundation/,
@@ -100,6 +100,7 @@ check("active migration path is Seera-only", () => {
     /005_company_order_states/,
     /006_active_work_session_constraint/,
     /007_phase_2_3_operational_records/,
+    /008_user_ui_language/,
   ];
   assert.equal(sql.every((file) => authorized.some((pattern) => pattern.test(file))), true);
   for (const file of sql) {
