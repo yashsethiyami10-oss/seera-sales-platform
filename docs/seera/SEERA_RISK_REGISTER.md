@@ -4,10 +4,10 @@ Last reviewed: 2026-08-08
 
 | ID | Risk | Severity | Current control | Required closure/evidence | Status |
 |---|---|---:|---|---|---|
-| R-001 | Seera commands reach a MUV database. | Critical | No commands executed; known hosts identified. | Remove MUV values, create isolated DBs, identity guard, verify fingerprints. | Open/blocking |
-| R-002 | Production and test DB are the same. | Critical | Tests/builds prohibited. | Separate credentials and destructive-test refusal guard. | Open/blocking |
-| R-003 | No independent Seera Git history. | High | Architecture files are isolated by path only. | Initialize independent repository after confirming no parent/nested MUV history; baseline commit under Founder authorization. | Open/blocking |
-| R-004 | Copied MUV application is mistaken for Seera-ready code. | High | Current-state warning in master architecture. | Phase 1 inventory, selective adaptation/removal, app identity and schema replacement with regression evidence. | Open |
+| R-001 | Seera commands reach a MUV database. | Critical | Non-connecting denylist/equality/fallback guard; DB scripts blocked. | Maintain static vectors and require guard in every future DB entrypoint. | Mitigated |
+| R-002 | Production and test DB are the same. | Critical | Separate identities verified; normalized equality rejected. | Add database-resident marker before DB-backed tests. | Mitigated |
+| R-003 | No independent Seera Git history. | High | Independent root baseline commit `0192067`. | Maintain reviewed commits/rollback evidence. | Closed |
+| R-004 | Copied MUV application is mistaken for Seera-ready code. | High | Routes/scripts/schema/migrations archived; active surface Seera-only. | Selective adaptation with dependency proof. | Mitigated |
 | R-005 | Cross-party/territory authorization leakage. | Critical | Deny-by-default policy architecture. | Authorization matrix and adversarial integration tests every phase. | Planned |
 | R-006 | Booked orders counted as actual sales. | Critical | Item fulfilment events and constitutional formula. | Partial/refused/return/reversal reconciliation tests. | Planned |
 | R-007 | Payment proof treated as verified funds. | Critical | Separate proof/review/allocation states. | Duplicate UTR and maker-checker workflow tests. | Planned |
@@ -24,4 +24,4 @@ Last reviewed: 2026-08-08
 | R-018 | Migration causes irreversible loss. | Critical | Forward-only governance. | Disposable test rehearsal, backup/restore and rollback evidence per migration. | Planned |
 | R-019 | Large field/network datasets cause unusable UX. | High | Pagination, caching, indexes, mobile budgets. | Realistic-volume and 30–40-call-day performance tests. | Planned |
 | R-020 | Copied historical Seera docs direct work back into MUV. | High | New constitution and decision register supersede them. | Mark historical docs superseded during Phase 1 documentation cleanup without deleting evidence. | Open |
-
+| R-021 | MUV changes concurrently during Seera zero-harm verification. | High | No Seera write path found; external divergence record and current hash baseline captured. | Re-baseline and re-check Seera write paths when future differences appear; never revert unrelated MUV work. | Mitigated |

@@ -17,6 +17,24 @@
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./*"] }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "lib/database/**/*.ts",
+    "lib/foundation/**/*.ts",
+    "middleware.ts",
+    "instrumentation.ts",
+    "vitest.static.config.ts",
+    "__tests__/seera-foundation/**/*.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "reference/**",
+    "actions/**",
+    "components/**",
+    "scripts/**",
+    "__tests__/muv-ai/**"
+  ]
 }

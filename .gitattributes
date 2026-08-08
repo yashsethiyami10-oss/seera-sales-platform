@@ -1,0 +1,5 @@
+# Preserve copied MUV reference evidence byte-for-byte across platforms.
+docs/seera/pre-phase-1/reference/MUV_COPIED_SCHEMA_SNAPSHOT.prisma -text
+docs/seera/pre-phase-1/reference/muv-migrations/** -text
+reference/muv-app/** -text
+reference/muv-db-scripts/** -text

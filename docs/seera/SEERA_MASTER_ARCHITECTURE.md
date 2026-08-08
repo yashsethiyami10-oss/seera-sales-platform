@@ -288,15 +288,7 @@ The architecture does not decide commercial or legal policy. Before the affected
 
 ## 19. Architecture gate verdict
 
-The target architecture is **READY** as a Phase 1 planning contract. Implementation is **BLOCKED** because repository and data isolation are not ready:
-
-1. Seera has no independent Git history.
-2. Seera environment files contain known MUV database credentials.
-3. production and test database identities are not separate.
-4. application identity and copied schema/code are still MUV.
-5. Seera production/test databases, secrets, storage, providers, and deployment are not configured.
-
-The exact safe handoff is documented in `SEERA_INFRASTRUCTURE_SETUP_CHECKLIST.md`. Stop before live initialization and await Founder confirmation.
+Infrastructure isolation and an independent Git rollback baseline are verified. Phase 1 Block 1 establishes a file-only foundation; database execution remains prohibited. Storage providers, operational authentication, production deployment and later business modules remain pending their frozen blocks/phases.
 
 ## 20. Pre-Phase 1 package and schema preparation
 
@@ -305,3 +297,13 @@ Infrastructure isolation was reverified after independent `.env` and `.env.test`
 The active `prisma/schema.prisma` and its 60 copied migration directories remain unchanged and must not be executed. The schema is preserved as a hashed reference snapshot under `docs/seera/pre-phase-1/reference/`. The approved transition direction is a clean Seera foundation schema and a new Seera-only migration history after the copied migrations are archived outside Prisma’s active path.
 
 Preparation evidence and remaining gates are maintained in `docs/seera/pre-phase-1/`. This work does not start Phase 1 and does not authorize Prisma generation, migration creation/application, `db push`, builds, tests, seeds, or database access.
+
+## 21. Phase 1 Block 1 implementation state
+
+This section supersedes the pre-implementation state recorded in Section 20.
+
+The copied schema remains preserved as a hashed reference snapshot. Its 60 migrations are archived byte-for-byte under `docs/seera/pre-phase-1/reference/muv-migrations/`; the active migration path contains no copied history. The active schema contains only Phase 1 identity, RBAC, audit, configuration, idempotency, outbox, file and notification foundations.
+
+The 225-file MUV route tree and 24 Prisma-writing scripts are preserved in non-runtime reference archives. Active portals fail closed pending independent authentication and permission enforcement. Block 1 evidence is maintained in `docs/seera/phase-1/block-1/`. No database access, migration, generation, seed or build occurred.
+
+Block 1A reconciled the route divergence under the Founder-approved read-only isolation model. No Seera write path to MUV was found; the differences are external/unattributed, and baseline `MUV-RO-20260808T061738Z-FA7A044CB89D` now anchors future comparisons without freezing unrelated MUV development.

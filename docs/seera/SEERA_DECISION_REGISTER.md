@@ -22,8 +22,10 @@ Last reviewed: 2026-08-08
 | ADR-016 | Architecture first, isolated infrastructure second, implementation third. | Accepted | Phase 1 remains blocked until Founder confirms the setup checklist. |
 | ADR-017 | AI is optional and non-authoritative; Phase 10 starts with deterministic intelligence. | Accepted | Core correctness remains explainable and auditable. |
 | ADR-018 | Forward migrations only; production-significant changes require test rehearsal, backup, and rollback runbook. | Accepted | Deployed migrations are never rewritten to hide errors. |
+| ADR-019 | Copied MUV migrations are immutable reference archives outside Prisma’s active path; Seera starts a clean migration history. | Implemented in Block 1 | A fresh Seera database cannot receive copied MUV migrations through the active path. |
+| ADR-020 | Copied MUV routes and Prisma-writing scripts are preserved outside active runtime paths until selectively adapted. | Implemented in Block 1 | Clean schema transition does not require mass deletion or continued MUV model compilation. |
+| ADR-021 | Phase 1 portal shells fail closed until independent authentication and permission enforcement exist. | Implemented in Block 1 | Route ownership is prepared without granting premature access. |
 
 ## Superseded decisions
 
 All Phase 0/0.1/0.2 documents that recommend organisation-scoped Seera tables, shared identity, MUV backfill, or shared finance inside the MUV application are retained as historical records but are superseded by ADR-001 and ADR-002.
-

@@ -1,19 +1,14 @@
-/**
- * Next.js's own boot hook (Phase 16) — `register()` runs once when the
- * server actually starts (dev and prod), not during `next build`'s static
- * analysis, so this can never turn a missing-env-var problem into a build
- * failure. Runs in the nodejs runtime only (middleware/edge already has its
- * own, separate env surface) — see https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
- */
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { validateEnv } = await import("@/lib/env");
-    const { logger } = await import("@/lib/logger");
-    const { ok, missing } = validateEnv();
-    if (!ok) {
-      logger.error("startup:missing-env-vars", { missing });
-    } else {
-      logger.info("startup:env-check-passed");
-    }
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const { inspectDatabaseUrl } = await import("@/lib/database/identity-guard");
+  try {
+    const identity = inspectDatabaseUrl(process.env.DATABASE_URL, "production");
+    console.info("[SEERA] production database identity accepted", { fingerprint: identity.fingerprint });
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "DATABASE_IDENTITY_REJECTED";
+    console.error("[SEERA] database identity guard failed", { code });
+    throw error;
   }
 }
+

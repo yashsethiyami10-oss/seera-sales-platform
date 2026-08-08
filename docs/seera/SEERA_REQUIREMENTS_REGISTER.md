@@ -7,7 +7,7 @@ Architecture locations refer to `SEERA_MASTER_ARCHITECTURE.md` unless otherwise 
 
 | ID | Phase | Requirement | Architecture location | Planned verification | Status |
 |---|---:|---|---|---|---|
-| SR-001 | 1 | Seera is fully independent; MUV remains read-only reference with zero runtime/data coupling. | §§1–2 | Isolation scan and DB fingerprint guard | Blocked |
+| SR-001 | 1 | Seera is fully independent; MUV remains read-only reference with zero runtime/data coupling. | §§1–2; phase-1/block-1 | Isolation scan and DB fingerprint guard | Verified |
 | SR-002 | 1 | Independent Git, app identity, auth realm, schema, migrations, databases, deployment, secrets, files, logs, and backups. | §§1–5, 8, 16 | Infrastructure gate and foundation tests | Blocked |
 | SR-003 | 1 | Architecture precedes infrastructure and implementation; credentials are never fabricated. | §19; infrastructure checklist | Founder handoff confirmation | Verified |
 | SR-004 | 1–11 | Preserve the exact frozen 11-phase names, order, boundaries, and milestones. | Frozen roadmap; §17 | Phase register audit | Verified |
@@ -68,7 +68,7 @@ Architecture locations refer to `SEERA_MASTER_ARCHITECTURE.md` unless otherwise 
 | SR-059 | 7/10 | Founder dashboard exposes the constitutional sales, collection, outstanding, network, product, returns, stock, targets, expenses, and credit views. | §14 | Scoped source reconciliation | Planned |
 | SR-060 | 7/8/10 | Sales, field, delivery, and finance report catalog is complete and reconciled. | §14 | Report-to-source test matrix | Planned |
 | SR-061 | 10 | Intelligence starts deterministic for next retailer, dormant/reorder/stock/delivery/target/collection/service signals; AI is optional. | §14 | Explainability and accuracy tests | Planned |
-| SR-062 | 1 | Independent foundation provides identity, branding, auth, RBAC, sessions, guards, shells, audit, config, flags, adapters, errors, tests, logs, DB/env contracts. | §§3–6, 10–16 | Phase 1 acceptance suite | Planned |
+| SR-062 | 1 | Independent foundation provides identity, branding, auth, RBAC, sessions, guards, shells, audit, config, flags, adapters, errors, tests, logs, DB/env contracts. | §§3–6, 10–16; phase-1/block-1 | Block 1 static suite; later Block acceptance | Implemented |
 | SR-063 | 2 | Master data/network phase enforces configuration, assignment, duplicate control, lifecycle/billing foundations, and audit. | §§6–8 | Phase 2 acceptance suite | Planned |
 | SR-064 | 3 | Field phase completes Start/End Day through next counter and validates territory, GPS privacy, attribution, duplicate and mobile behavior. | §§7, 9, 11–12 | Phase 3 acceptance suite | Planned |
 | SR-065 | 4 | Distributor phase proves booked is not delivered and covers partial/refusal/return paths. | §§7, 9 | Phase 4 acceptance suite | Planned |

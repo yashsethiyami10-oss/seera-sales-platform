@@ -12,12 +12,13 @@
     "start:passenger": "node server.js",
     "lint": "next lint",
     "test": "vitest run",
-    "postinstall": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
-    "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts",
+    "postinstall": "node scripts/seera/pre-phase-1-postinstall.cjs",
+    "db:migrate": "node scripts/seera/blocked-database-command.cjs prisma-migrate-dev",
+    "db:push": "node scripts/seera/blocked-database-command.cjs prisma-db-push",
+    "db:deploy": "node scripts/seera/blocked-database-command.cjs prisma-migrate-deploy",
+    "db:studio": "node scripts/seera/blocked-database-command.cjs prisma-studio",
+    "db:seed": "node scripts/seera/blocked-database-command.cjs prisma-seed",
+    "verify:seera:block1:static": "node scripts/seera/verify-block1-static.mjs",
     "verify:phase2:build": "tsc lib/sales-channel/routing.ts lib/sales-channel/identity-matching.ts lib/sales-channel/assignment.ts lib/sales-channel/validation.ts --outDir .tmp-phase2-services --rootDir lib/sales-channel --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck",
     "verify:phase2": "npm run verify:phase2:build && node scripts/verify-sales-phase2.cjs",
     "verify:knowledge-publisher": "tsx scripts/verify-knowledge-publisher.ts",
@@ -72,7 +73,7 @@
     "vitest": "^4.1.10"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "node scripts/seera/blocked-database-command.cjs prisma-seed"
   },
   "overrides": {
     "postcss": "^8.5.20"
