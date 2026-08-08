@@ -1,0 +1,40 @@
+{
+  "productFamily": "MUV Fresh Bathroom Cleaner™",
+  "skus": [
+    {
+      "koid": "KO-BC-VAR-001",
+      "packSize": "500 ml",
+      "status": "CONFIRMED",
+      "fillWeightGrams": 508,
+      "fillWeightConfidence": "HIGH",
+      "fragranceName": null,
+      "colourName": null,
+      "namedVariantNote": "Neither fragrance nor colour is named in any source — unlike Liquid Detergent/Toilet Cleaner/Dishwash Gel.",
+      "pricing": {
+        "status": "LIVE_LOOKUP_REQUIRED",
+        "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]",
+        "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md.",
+        "historicalCitation": {
+          "note": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API, never from this figure.",
+          "ref": "19_Source_Conflict_Register.md#CONFLICT-001, source_conflicts.json#CONFLICT-001"
+        },
+        "founderDecisionRequired": false
+      },
+      "skuCode": "REQUIRES FOUNDER INPUT",
+      "barcode": "REQUIRES FOUNDER INPUT",
+      "packagingDimensions": "REQUIRES FOUNDER INPUT",
+      "shippingWeight": "REQUIRES FOUNDER INPUT"
+    },
+    {
+      "koid": "KO-BC-VAR-002",
+      "packSize": "5 Litre",
+      "status": "NOT CONFIRMED",
+      "existsInAnySource": false,
+      "note": "No Product Chart row, no SOP reference. Not asserted to exist. REQUIRES FOUNDER INPUT to determine whether this SKU should be created at all.",
+      "pricing": null
+    }
+  ],
+  "totalSkus": 2,
+  "confirmedSkus": 1,
+  "unconfirmedSkus": 1
+}

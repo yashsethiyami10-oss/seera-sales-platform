@@ -1,0 +1,69 @@
+{
+  "repository": "MUV Customer Care Knowledge Factory™",
+  "founderProtocol": "Founder Execution Protocol v2.0 (Customer Care Knowledge Factory)",
+  "koidPrefix": "KO-CR-",
+  "createdDate": "2026-08-01",
+  "status": "Founder Review Ready",
+  "totalKnowledgeObjects": 22,
+  "breakdown": {
+    "citationOnly": 15,
+    "gapRecordsFounderDecisionRequired": 6,
+    "repositorySummary": 1,
+    "freshMirroredSourceContent": 0
+  },
+  "scopeFinding": "The natural source for Customer Care (MUV Knowledge Library Part IX, 'MUV Customer Experience™', Chapters 41-45) was already mirrored in full by Marketing Knowledge Factory Domain 3 (Customer Intelligence, KO-CI- prefix, 51 KOs) before this repository was built. This repository therefore contains zero fresh mirrored source content by design, not by omission.",
+  "crossRepositoryCitations": {
+    "marketingKnowledgeFactoryDomain3": {
+      "koidPrefix": "KO-CI-",
+      "citedKoidCount": 29,
+      "citedKoids": [
+        "KO-CI-CH1-001", "KO-CI-CH1-003", "KO-CI-CH1-005", "KO-CI-CH1-006", "KO-CI-CH1-008",
+        "KO-CI-CH2-004", "KO-CI-CH2-005", "KO-CI-CH2-006", "KO-CI-CH2-007",
+        "KO-CI-CH3-001", "KO-CI-CH3-004", "KO-CI-CH3-005", "KO-CI-CH3-006", "KO-CI-CH3-007",
+        "KO-CI-CH4-001", "KO-CI-CH4-002", "KO-CI-CH4-003", "KO-CI-CH4-004", "KO-CI-CH4-005", "KO-CI-CH4-006", "KO-CI-CH4-008",
+        "KO-CI-CH5-001", "KO-CI-CH5-002", "KO-CI-CH5-003", "KO-CI-CH5-004", "KO-CI-CH5-007", "KO-CI-CH5-008",
+        "KO-CI-CH7-001", "KO-CI-CH7-002"
+      ]
+    },
+    "institutionalSalesKnowledgeFactory": {
+      "koidPrefix": "KO-IS-",
+      "citedKoidCount": 2,
+      "citedKoids": ["KO-IS-011", "KO-IS-019"]
+    },
+    "founderIntelligenceKnowledgeFactory": {
+      "koidPrefix": "KO-FD- / Constitution Article",
+      "citedKoidCount": 5,
+      "citedKoids": ["KO-FD-SI-002", "KO-FD-LN-001", "KO-FD-AG-002", "Constitution Article 3", "Constitution Article 7"]
+    },
+    "productKnowledgeFactory": {
+      "koidPrefix": "KO-DW- / KO-TC-",
+      "citedKoidCount": 7,
+      "citedKoids": ["KO-DW-SUPPORT-001", "KO-DW-TROUBLE-001", "KO-DW-COMPLAINT-001", "KO-DW-FAQ-001", "KO-TC-SAFETY-006", "KO-TC-SAFETY-007", "KO-TC-FAQ-001"],
+      "note": "Representative citations only (Dishwash Gel + Toilet Cleaner) — not a complete per-product index across all 6 product families. See KO-CR-014."
+    }
+  },
+  "knowledgeObjects": [
+    { "koid": "KO-CR-001", "title": "Customer Care Philosophy & Culture", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-002", "title": "Customer Communication & Support Channels", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-003", "title": "Customer Journey After Purchase", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-004", "title": "Complaint Philosophy & Issue Classification", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-005", "title": "Escalation Process", "type": "CITATION_ONLY_PARTIAL", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-006", "title": "Resolution Framework & Service Recovery", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-007", "title": "Customer Trust as an Asset", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-008", "title": "Customer Satisfaction & Feedback Collection", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-009", "title": "Review Management & Customer Insight", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-010", "title": "Loyalty, Retention & After-Sales Care", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-011", "title": "Customer Relationship Continuity", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-012", "title": "Care Governance & CX Ownership", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-013", "title": "Care Analytics & Complaint Metrics", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-014", "title": "Product-Specific Support, Troubleshooting & FAQ Ownership", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-015", "title": "Governing Reasoning: Never Invent, Never Promise Unauthorized", "type": "CITATION_ONLY", "status": "Founder Review Ready" },
+    { "koid": "KO-CR-GAP-001", "title": "Escalation Matrix (Built Artifact)", "type": "GAP_RECORD", "status": "OPEN - Founder Decision Required" },
+    { "koid": "KO-CR-GAP-002", "title": "Returns Policy", "type": "GAP_RECORD", "status": "OPEN - Founder Decision Required" },
+    { "koid": "KO-CR-GAP-003", "title": "Replacement Policy", "type": "GAP_RECORD", "status": "OPEN - Founder Decision Required" },
+    { "koid": "KO-CR-GAP-004", "title": "Refund Policy", "type": "GAP_RECORD", "status": "OPEN - Founder Decision Required" },
+    { "koid": "KO-CR-GAP-005", "title": "Warranty", "type": "GAP_RECORD", "status": "OPEN - Founder Decision Required" },
+    { "koid": "KO-CR-GAP-006", "title": "Customer Happiness (as a distinctly defined concept)", "type": "GAP_RECORD", "status": "OPEN - Founder Decision Required" },
+    { "koid": "KO-CR-016", "title": "Repository Governance Summary", "type": "SUMMARY", "status": "Founder Review Ready" }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "productFamily": "MUV Floor Cleaner™",
+  "variants": [
+    {
+      "name": "MUV Velvet Mist Floor Cleaner™",
+      "shortName": "Velvet Mist",
+      "koidInfix": "VM",
+      "status": "FULLY SOURCED",
+      "colour": "Lavender",
+      "fragranceIdentity": "Not specifically named beyond the variant name itself",
+      "skus": [
+        { "koid": "KO-FC-VM-VAR-001", "packSize": "1L", "fillWeightGrams": 1015, "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md. Historical source-audit figures (Chart ₹150 / SOP ₹150, clean/no conflict) are recorded, labeled as non-live, only in 00_Source_Register.md and 20_Source_Conflict_Register.md." } },
+        { "koid": "KO-FC-VM-VAR-002", "packSize": "5L", "fillWeightGrams": 5020, "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md. Historical source-audit figures (Chart ₹550 / SOP ₹549, CONFLICT-001) are recorded, labeled as non-live, only in 00_Source_Register.md and 20_Source_Conflict_Register.md." } }
+      ]
+    },
+    {
+      "name": "MUV Cloud Walk Floor Cleaner™",
+      "shortName": "Cloud Walk",
+      "koidInfix": "CW",
+      "status": "FULLY SOURCED",
+      "colour": "Blue",
+      "fragranceIdentity": "Not specifically named beyond the variant name itself",
+      "skus": [
+        { "koid": "KO-FC-CW-VAR-001", "packSize": "1L", "fillWeightGrams": 1015, "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md. Historical source-audit figures (Chart ₹150 / SOP ₹150, clean/no conflict) are recorded, labeled as non-live, only in 00_Source_Register.md and 20_Source_Conflict_Register.md." } },
+        { "koid": "KO-FC-CW-VAR-002", "packSize": "5L", "fillWeightGrams": 5020, "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md. Historical source-audit figures (Chart ₹600 / SOP ₹549, CONFLICT-002 — the largest pricing gap of any product/variant across all six product families audited this session) are recorded, labeled as non-live, only in 00_Source_Register.md and 20_Source_Conflict_Register.md." } }
+      ]
+    },
+    {
+      "name": "MUV Rose Water Floor Cleaner™",
+      "shortName": "Rose Water",
+      "koidInfix": "RW",
+      "status": "NAMED BUT UNSOURCED",
+      "colour": null,
+      "fragranceIdentity": null,
+      "skus": [],
+      "note": "Founder Instruction confirms the name and family membership only. No source confirms formulation, colour, fragrance, pack size, or pricing."
+    }
+  ]
+}

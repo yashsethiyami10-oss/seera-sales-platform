@@ -1,0 +1,30 @@
+{
+  "chapter": "Sales & Distribution",
+  "relationships": [
+    { "from": "KO-SC-CH2-001", "type": "governs", "to": ["KO-SC-CH2-002","KO-SC-CH2-003","KO-SC-CH2-004","KO-SC-CH2-005","KO-SC-CH2-006","KO-SC-CH2-007","KO-SC-CH2-008","KO-SC-CH2-009","KO-SC-CH2-010","KO-SC-CH2-011","KO-SC-CH2-012","KO-SC-CH2-013","KO-SC-CH2-014"] },
+    { "from": "KO-SC-CH2-002", "type": "feeds", "to": ["KO-SC-CH2-003"] },
+    { "from": "KO-SC-CH2-003", "type": "feeds", "to": ["KO-SC-CH2-004"] },
+    { "from": "KO-SC-CH2-004", "type": "feeds", "to": ["KO-SC-CH2-005"] },
+    { "from": "KO-SC-CH2-005", "type": "feeds", "to": ["KO-SC-CH2-006"] },
+    { "from": "KO-SC-CH2-006", "type": "feeds", "to": ["KO-SC-CH2-007"] },
+    { "from": "KO-SC-CH2-007", "type": "feeds", "to": ["KO-SC-CH2-008"] },
+    { "from": "KO-SC-CH2-008", "type": "feeds", "to": ["KO-SC-CH2-009"] },
+    { "from": "KO-SC-CH2-009", "type": "feeds", "to": ["KO-SC-CH2-010"] },
+    { "from": "KO-SC-CH2-010", "type": "feeds", "to": ["KO-SC-CH2-011"] },
+    { "from": "KO-SC-CH2-011", "type": "feeds", "to": ["KO-SC-CH2-012"] },
+    { "from": "KO-SC-CH2-012", "type": "feeds", "to": ["KO-SC-CH2-013"] },
+    { "from": "KO-SC-CH2-013", "type": "feeds", "to": ["KO-SC-CH2-014"] },
+    { "from": "KO-SC-CH2-001", "type": "summarizedBy", "to": ["KO-SC-CH2-015"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-SC-CH2-008", "type": "relatesTo", "to": "KO-SC-CH1-005" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-SC-CH2-007", "type": "complementsNotDuplicates", "to": "KO-CI-CH6-001" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-SC-CH2-015", "type": "transitionsTo", "to": "Chapter 3 (Marketplace Operations)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

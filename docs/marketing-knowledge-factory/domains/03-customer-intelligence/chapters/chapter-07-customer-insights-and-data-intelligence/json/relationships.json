@@ -1,0 +1,15 @@
+{
+  "chapter": "Customer Insights & Data Intelligence (Excerpt)",
+  "relationships": [
+    { "from": "KO-CI-CH7-001", "type": "governs", "to": ["KO-CI-CH7-002"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-CI-CH7-001", "type": "dependsOn", "to": "KO-CI-CH1-001" },
+    { "from": "KO-CI-CH7-002", "type": "complementsNotDuplicates", "to": "KO-CI-CH4-005" },
+    { "from": "KO-CI-CH7-002", "type": "complementsNotDuplicates", "to": "KO-CI-CH4-006" }
+  ],
+  "crossDomainRelationships": [],
+  "forwardRelationships": [],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

@@ -1,0 +1,13 @@
+{
+  "chapter": "Customer Promise & Experience Context",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part IX, Chapter 41", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-BI-CH1-001 (Domain 1, frozen)", "type": "crossDomainKO", "status": "exists, frozen, unmodified" },
+    { "source": "KO-PM-CH1-002, 005, 006 (Domain 2, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 3 Chapters 2-7", "status": "in progress this batch" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

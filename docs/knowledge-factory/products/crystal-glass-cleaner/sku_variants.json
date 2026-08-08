@@ -1,0 +1,41 @@
+{
+  "productFamily": "MUV Crystal Glass Cleaner™",
+  "skus": [
+    {
+      "koid": "KO-GC-VAR-001",
+      "packSize": "500 ml",
+      "status": "CONFIRMED",
+      "fillWeightGrams": 515,
+      "fillWeightConfidence": "HIGH",
+      "colourName": "Ocean Blue",
+      "fragranceName": null,
+      "pricing": {
+        "status": "LIVE_LOOKUP_REQUIRED",
+        "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]",
+        "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md.",
+        "historicalSourceCitation": {
+          "productChartMrpInr": 90,
+          "sopMrpInr": 90,
+          "conflictStatus": "CLEAN — both sources agreed at time of research",
+          "label": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API, never from these figures."
+        },
+        "founderDecisionRequired": false
+      },
+      "skuCode": "REQUIRES FOUNDER INPUT",
+      "barcode": "REQUIRES FOUNDER INPUT",
+      "packagingDimensions": "REQUIRES FOUNDER INPUT",
+      "shippingWeight": "REQUIRES FOUNDER INPUT"
+    },
+    {
+      "koid": "KO-GC-VAR-002",
+      "packSize": "5 Litre",
+      "status": "NOT CONFIRMED",
+      "existsInAnySource": false,
+      "note": "No Product Chart row, no SOP reference. Not asserted to exist. REQUIRES FOUNDER INPUT to determine whether this SKU should be created at all.",
+      "pricing": null
+    }
+  ],
+  "totalSkus": 2,
+  "confirmedSkus": 1,
+  "unconfirmedSkus": 1
+}

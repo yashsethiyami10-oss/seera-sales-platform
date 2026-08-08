@@ -1,0 +1,47 @@
+{
+  "repository": "MUV AI Runtime Engineering™",
+  "authorizedVia": "Founder Execution Protocol v1.0 (Runtime Engineering)",
+  "status": "COMPLETE — Founder Review Ready. Critical Findings resolved at specification level, two with disclosed bounded mechanisms.",
+  "documentType": "Runtime engineering specification — zero application code, zero API implementations",
+  "additiveTo": "docs/ai-intelligence-core/ (existing INTELLIGENCE_CORE_MASTER.md, ENGINE_ARCHITECTURE.md, ENGINE_RELATIONSHIPS.md, ENGINE_VALIDATION.md, FOUNDER_DECISION_PACKET.md, ENGINEERING_TEST_REPORT.md all remain in force, none modified)",
+  "criticalFindingsResolved": {
+    "total": 6,
+    "fullyResolvedMechanism": ["CF-02", "CF-03", "CF-04"],
+    "resolvedMechanismContentPending": ["CF-01"],
+    "resolvedWithDisclosedBound": ["CF-05", "CF-06"]
+  },
+  "runtimeModules": 10,
+  "moduleList": [
+    "Module 1 — Semantic Retrieval Engine™ (resolves CF-02)",
+    "Module 2 — Intent Intelligence Engine™ (resolves CF-03)",
+    "Module 3 — Context Builder™ (extends former Layer 4)",
+    "Module 4 — Founder Reasoning Runtime™ (resolves CF-04, hosts CF-01 mechanism)",
+    "Module 5 — Decision Runtime™ (extends former Layer 6, resolves MF-06)",
+    "Module 6 — Conflict Resolution Runtime™ (resolves CF-05)",
+    "Module 7 — Confidence Runtime™ (extends former Layer 9, resolves MF-08)",
+    "Module 8 — Safety Runtime™ (resolves CF-06)",
+    "Module 9 — Response Assembly Runtime™ (extends former Layer 11)",
+    "Module 10 — Learning Runtime™ (extends former Layer 13)"
+  ],
+  "outOfScopeUnchangedLayers": [
+    "Layer 2 Knowledge Graph (MF-02/03 Major only, not Critical)",
+    "Layer 7 Memory Engine (MF-07 Major only, not Critical)",
+    "Layer 10 Care Engine (MF-09 Major only, not Critical)",
+    "Layer 12 Tool Orchestration Engine (Mn-01 Minor only, not Critical)"
+  ],
+  "pipelineStages": 12,
+  "moduleToStageNote": "10 modules map to 12 stages because Module 1 owns 2 stages (Semantic Retrieval + Knowledge Ranking) and Module 9 owns 2 stages (draft + final assembly)",
+  "determinismRequirement": "Every runtime decision point is a fixed rule/lookup/formula; no probabilistic model is the source of any decision (intent, retrieval ranking, conflict, confidence, safety); a future generative step's output is treated as content to be checked, never as a decision source",
+  "disclosedResidualLimitations": 4,
+  "founderDecisionRegistry": {
+    "purpose": "Resolves CF-01's mechanism gap",
+    "modeledOn": "Product Knowledge Factory's real FOUNDER_RULES.md pattern (append-only, dated)",
+    "contentStatus": "Mechanism fully specified; no confirmed entries exist yet for OI-001, OI-002, OI-003, or Task 3's flagged items — honestly disclosed, not assumed resolved"
+  },
+  "internalQAChecks": {
+    "total": 10,
+    "passed": 10,
+    "withDisclosedBounds": 2
+  },
+  "founderReviewPackage": "FOUNDER_REVIEW.md"
+}

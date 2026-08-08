@@ -1,0 +1,28 @@
+{
+  "productFamily": "MUV Pure Bleach™",
+  "sourcesChecked": [
+    { "source": "Product Chart", "file": "MUV_Product_Chart_with_USP (1)(1).pdf", "result": "FOUND — row 23: MUV Bleach | 500ml | 60" },
+    { "source": "Production SOP", "file": "SOPs/FABRIC CARE/MUV_Bleach_SOP_10L_Batch_500ml.docx", "result": "FOUND — full formulation, process, QC, and real safety content" },
+    { "source": "Knowledge Library", "file": "# final MUV Knowledge Library™.txt", "result": "NOT FOUND — zero matches" },
+    { "source": "AI Sutra Master", "file": "Muv_AI_Sutra_Master_MASTER1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "AI Sutra Phase1", "file": "Muv_AI_Sutra_Master_Phase1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "Seed data", "file": "prisma/seed.ts", "result": "NOT FOUND — zero matches" },
+    { "source": "Schema", "file": "prisma/schema.prisma", "result": "NOT FOUND — zero matches" },
+    { "source": "Institutional consumption rules", "file": "lib/inst-sales/consumption-rules.ts", "result": "NOT FOUND — no BLEACH category exists at all" },
+    { "source": "Conflict service", "file": "lib/knowledge-factory/conflict-service.ts", "result": "NOT FOUND — Bleach not named among known-conflict products" },
+    { "source": "General repository scan", "file": "*.ts,*.tsx,*.json,*.md,*.txt repo-wide", "result": "9 files matched — all either prior products' generic bleach-mixing-hazard examples or this session's own forward-looking Stop Rule references; zero Bleach-product source content" }
+  ],
+  "competitorScan": {
+    "brandsChecked": ["Comfort", "Pril", "Vim", "Exo", "Genteel", "Surf Excel", "Fairy", "Harpic", "Domex", "Lizol", "Colin", "Robin", "Rin", "Ariel", "Tide", "Dettol", "Clorox"],
+    "result": "CLEAN — zero genuine hits, word-boundary matching used throughout",
+    "falsePositives": [{ "string": "comfort", "location": "Knowledge Library, unrelated evidence-scoring sentence", "verdict": "not a brand reference" }],
+    "specialAttention": ["Robin/Robin Blue — explicitly checked, zero hits"]
+  },
+  "namingFinding": {
+    "sourceName": "MUV Bleach",
+    "officialName": "MUV Pure Bleach™",
+    "resolution": "Direct, current Founder Instruction — same pattern as Bathroom Cleaner's 'Fresh' and Glass Cleaner's 'Crystal'"
+  },
+  "totalSourcesFound": 2,
+  "totalSourcesNotFound": 8
+}

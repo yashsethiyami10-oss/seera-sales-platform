@@ -1,0 +1,25 @@
+{
+  "chapter": "Operational Evolution & Decisions",
+  "relationships": [
+    { "from": "KO-DM-CH5-001", "type": "governs", "to": ["KO-DM-CH5-002","KO-DM-CH5-003","KO-DM-CH5-004","KO-DM-CH5-005","KO-DM-CH5-006"] },
+    { "from": "KO-DM-CH5-002", "type": "feeds", "to": ["KO-DM-CH5-003"] },
+    { "from": "KO-DM-CH5-003", "type": "feeds", "to": ["KO-DM-CH5-004"] },
+    { "from": "KO-DM-CH5-004", "type": "feeds", "to": ["KO-DM-CH5-005"] },
+    { "from": "KO-DM-CH5-005", "type": "feeds", "to": ["KO-DM-CH5-006"] },
+    { "from": "KO-DM-CH5-001", "type": "summarizedBy", "to": ["KO-DM-CH5-007"] },
+    { "from": "KO-DM-CH5-007", "type": "summarizedByPartLevel", "to": ["KO-DM-CH5-008"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-DM-CH5-002", "type": "extends", "to": "KO-DM-CH3-006" },
+    { "from": "KO-DM-CH5-004", "type": "extends", "to": "KO-DM-CH3-006" },
+    { "from": "KO-DM-CH5-005", "type": "extends", "to": "KO-DM-CH1-002" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-DM-CH5-007", "type": "transitionsTo", "to": "Part III / Domain 1 (frozen) — cited, not transcribed" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-DM-CH5-008", "type": "grounds", "to": "Domain 5 02_knowledge_coverage_audit.md (Part II portion)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

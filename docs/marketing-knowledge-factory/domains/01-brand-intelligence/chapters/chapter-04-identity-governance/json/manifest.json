@@ -1,0 +1,27 @@
+{
+  "domain": "Brand Intelligence",
+  "domainNumber": 1,
+  "chapter": "Identity Governance",
+  "chapterNumber": 4,
+  "koidPrefix": "KO-BI-CH4-",
+  "sourceChapter": "MUV Knowledge Library, Part III, Chapter 14",
+  "sourceLineRange": "2205-2420",
+  "totalKnowledgeObjects": 9,
+  "status": "Founder Review Ready",
+  "governanceNote": "No governance documents authored in this repository. Constitution, Founder Rules ledger, Knowledge Efficiency Framework, and Validation Framework are Founder-controlled and intentionally live outside this repository, per Execution Prompt v3.0's Founder Governance Protocol.",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository"
+  ],
+  "crossSourceConflictFound": {
+    "topic": "Use of the word 'Premium' (recurring in Typography Principle 2)",
+    "note": "Not a new conflict — referenced from KO-BI-CH1-006, not re-recorded"
+  },
+  "outOfScopeDeferral": {
+    "topic": "Detailed packaging production",
+    "note": "Explicitly belongs to Volume IV — MUV Design System™ (Part IV), a different domain — never duplicated in KO-BI-CH4-005"
+  }
+}

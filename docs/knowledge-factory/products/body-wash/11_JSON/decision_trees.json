@@ -1,0 +1,24 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "totalDecisionTrees": 8,
+  "parentDecisionTrees": [
+    { "koid": "KO-BW-DT-001", "title": "Is MUV Body Wash™ the Correct Product?", "confidence": "MEDIUM" },
+    { "koid": "KO-BW-DT-002", "title": "When NOT to Recommend MUV Body Wash™", "confidence": "MEDIUM" },
+    { "koid": "KO-BW-DT-003", "title": "When Another MUV Product Is More Suitable", "confidence": "MEDIUM" },
+    { "koid": "KO-BW-DT-004", "title": "Safety Escalation Conditions", "confidence": "HIGH",
+      "escalationTriggers": [
+        "Real skin irritation, allergic reaction, or eye contact reported",
+        "Real dermatological/contraindication question asked",
+        "First-aid or medical guidance requested",
+        "Question asked on behalf of a child"
+      ]
+    },
+    { "koid": "KO-BW-DT-COMPARE-001", "title": "Cross-Variant Comparison", "confidence": "HIGH" }
+  ],
+  "variantRecommendationLogic": [
+    { "koid": "KO-BW-DT-CV-001", "variant": "Crimson Veil", "fragranceFamily": "Premium Floral", "confidence": "MEDIUM" },
+    { "koid": "KO-BW-DT-VO-001", "variant": "Velvet Oak", "fragranceFamily": "Woody Premium", "confidence": "MEDIUM" },
+    { "koid": "KO-BW-DT-MF-001", "variant": "Midnight Frost", "fragranceFamily": "Fresh Cooling", "confidence": "MEDIUM" }
+  ],
+  "neverInventFragranceNotesOrEmotionalClaims": true
+}

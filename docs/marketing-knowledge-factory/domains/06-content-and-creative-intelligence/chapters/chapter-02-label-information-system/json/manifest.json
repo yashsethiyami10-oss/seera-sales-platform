@@ -1,0 +1,19 @@
+{
+  "domain": "Content & Creative Intelligence™",
+  "domainNumber": 6,
+  "chapter": "Label Information System",
+  "chapterNumber": 2,
+  "koidPrefix": "KO-CC-CH2-",
+  "sourceChapter": "MUV Knowledge Library, Part IV, Chapter 17",
+  "sourceLineRange": "2905-3092",
+  "totalKnowledgeObjects": 7,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Founder Execution Protocol v2.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-5, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 6 is a Founder-designated merged domain: Part IV (Chapters 1-5, genuinely new) + Cross-Domain Creative Synthesis (Chapter 6, citation-only) + Creative Governance Gap Records (Chapter 7, no source content)."
+}

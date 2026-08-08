@@ -1,0 +1,25 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "chapter": "Outlet Culture & Environment",
+  "chapterNumber": 3,
+  "koidPrefix": "KO-CI-CH3-",
+  "sourceChapter": "MUV Knowledge Library, Part IX, Chapter 43",
+  "sourceLineRange": "10515-10831",
+  "totalKnowledgeObjects": 9,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domain 1 and Domain 2, both frozen)"
+  ],
+  "domainSynthesisNote": "Domain 3 is a Founder-approved synthesized domain (Part IX + CRM excerpt from Part VIII Ch.40 + Data Insights excerpt from Part XII Ch.61), not a single clean Part mirror like Domains 1-2. See domain README for the full escalation record.",
+  "scopeEmphasisNote": "The chapter's title foregrounds physical/digital environment; its body is dominantly a customer-support-operations system. Both are real and disclosed, not silently resolved to one.",
+  "specialHandlingNote": {
+    "koid": "KO-CI-CH3-007",
+    "topic": "Escalation Process safety-priority WARNING",
+    "note": "Preserved verbatim: 'Never delay a safety or serious product-quality escalation while attempting to satisfy a normal response target.'"
+  }
+}

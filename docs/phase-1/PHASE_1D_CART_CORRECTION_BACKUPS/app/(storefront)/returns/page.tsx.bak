@@ -1,0 +1,72 @@
+import { PackageX, MessageCircle } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
+import { buildMetadata } from "@/lib/seo";
+
+export const metadata = buildMetadata({
+  title: "Returns",
+  description: "How to request a return or replacement for a Muv order.",
+  path: "/returns",
+});
+
+/**
+ * Deliberately does not state a specific return-window (e.g. "within 30
+ * days") or refund-processing time — no such policy value exists anywhere
+ * in this codebase (checked actions/, prisma/schema.prisma) to state
+ * honestly. Fabricating one would be a real customer-facing policy claim,
+ * not harmless copy — this page states what's actually true today (how to
+ * start a return) and points to a human for anything specific, rather than
+ * inventing a number.
+ */
+export default function ReturnsPage() {
+  return (
+    <div className="px-6" style={{ paddingTop: 96, paddingBottom: 96 }}>
+      <div className="max-w-3xl mx-auto">
+        <Reveal>
+          <p className="muv-eyebrow mb-5">Returns</p>
+        </Reveal>
+        <Reveal delay={0.08}>
+          <h1 className="font-display text-white mb-8" style={{ fontWeight: 400, fontSize: "clamp(2rem,4.4vw,3rem)" }}>
+            If something arrived wrong.
+          </h1>
+        </Reveal>
+
+        <Reveal delay={0.16}>
+          <div className="muv-card flex items-start gap-4 mb-8">
+            <span className="muv-icon-circle flex-shrink-0" style={{ width: 38, height: 38 }} aria-hidden>
+              <PackageX size={16} />
+            </span>
+            <div>
+              <p className="muv-text-solid text-sm font-medium mb-1.5">Damaged, incorrect, or defective items</p>
+              <p className="muv-text-meta text-sm" style={{ lineHeight: 1.7 }}>
+                If an order arrives damaged, incorrect, or defective, get in touch with your order number and
+                we&rsquo;ll sort out a return or replacement.
+              </p>
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal delay={0.24}>
+          <div className="muv-card flex items-start gap-4">
+            <span className="muv-icon-circle flex-shrink-0" style={{ width: 38, height: 38 }} aria-hidden>
+              <MessageCircle size={16} />
+            </span>
+            <div>
+              <p className="muv-text-solid text-sm font-medium mb-1.5">Start a return</p>
+              <p className="muv-text-meta text-sm" style={{ lineHeight: 1.7 }}>
+                Have your order number ready — find it in{" "}
+                <a href="/account/orders" className="muv-footer-link muv-text-solid">
+                  your order history
+                </a>{" "}
+                — then{" "}
+                <a href="/contact" className="muv-footer-link muv-text-solid">
+                  contact us
+                </a>{" "}
+                and a real person will confirm eligibility and next steps for your specific order.
+              </p>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </div>
+  );
+}

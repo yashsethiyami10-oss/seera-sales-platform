@@ -1,0 +1,16 @@
+{
+  "chapter": "Language, Pronunciation & Tagline",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part III, Chapter 13", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "Muv AI Sutra §6.6", "type": "corroboratingSource", "usedBy": ["KO-BI-CH3-005"], "status": "exists, verified, unmodified — used to characterize the gap only, not resolve it" },
+    { "source": "KO-BI-CH1-001, KO-BI-CH1-003, KO-BI-CH1-006, KO-BI-CH2-002", "type": "intraRepositoryKO", "status": "exist, Founder Review Ready, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 1 Chapter 4 — Identity Governance", "status": "not started" },
+    { "dependent": "Domain 4 — Campaign Intelligence", "status": "not started" },
+    { "dependent": "Domain 6 — Content Intelligence", "status": "not started" },
+    { "dependent": "Any future 'Muving Soon™' KO", "status": "blocked pending Founder resolution" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

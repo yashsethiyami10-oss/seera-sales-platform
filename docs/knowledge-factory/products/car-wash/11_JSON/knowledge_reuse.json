@@ -1,0 +1,42 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "founderRules": ["FR-003 — Knowledge Reuse First", "FR-006 — Single Source of Truth Architecture"],
+  "comparedAgainst": "All eleven prior packages, with Pure Bleach (the original single-SKU, no-variant package) given particular weight as the closest structural precedent.",
+  "totalKnowledgeObjects": 54,
+  "structuralNote": "No FR-004 structural split — this package has zero variant-level Knowledge Objects (single-variant product family).",
+  "reuseBreakdown": {
+    "parentObjectsReused": {
+      "count": 17,
+      "koids": ["KO-CW-IDENT-001", "KO-CW-NAME-001", "KO-CW-SAFETY-006", "KO-CW-DT-001", "KO-CW-DT-002", "KO-CW-CONV-001", "KO-CW-CONV-002", "KO-CW-CONV-003", "KO-CW-CONV-004", "KO-CW-CONV-005", "KO-CW-CONV-006", "KO-CW-CONV-007", "KO-CW-CONV-008", "KO-CW-CONV-009", "KO-CW-CONV-010", "KO-CW-CONV-011", "KO-CW-CONV-012"],
+      "reusedFrom": [
+        { "pattern": "Product-family identity table structure", "origin": "Black Phenyl / White Phenyl / Body Wash / Hand Wash IDENT-001 pattern", "usedBy": "KO-CW-IDENT-001" },
+        { "pattern": "Naming-resolution/verification methodology", "origin": "Every prior package's own naming-resolution KO", "usedBy": "KO-CW-NAME-001" },
+        { "pattern": "Emergency-guidance behavioral rule", "origin": "Pure Bleach → Black Phenyl → White Phenyl → Body Wash → Hand Wash", "usedBy": "KO-CW-SAFETY-006" },
+        { "pattern": "Single-SKU-family need/pack-size decision tree structure", "origin": "Pure Bleach (the original single-SKU package, pre-FR-004)", "usedBy": "KO-CW-DT-001, KO-CW-DT-002" },
+        { "pattern": "12-flow Customer Conversation structure (Care Intelligence sequence per flow)", "origin": "Bathroom Cleaner (originating package), reused through every subsequent package", "usedBy": "all 12 KO-CW-CONV-* KOs" }
+      ]
+    },
+    "sharedObjects": {
+      "count": 1,
+      "koids": ["KO-CW-FAQ-002"],
+      "note": "Grounded in real platform code shared factory-wide (lib/intelligence/confidence-engine.ts)."
+    },
+    "variantObjects": {
+      "count": 0,
+      "note": "FR-004 Not Applicable — single-variant product, no variant-level Knowledge Objects."
+    },
+    "newProductSpecificObjects": {
+      "count": 36,
+      "note": "Genuinely new content: the formula/process/QC facts themselves, the Claims Validation finding (KO-CW-INTEL-008, a first-of-its-kind concern for this session), the MUV Shield naming-adjacency comparison, the institutional BUSINESS_TYPES-vs-consumption-category gap finding, all six FR-006 CMS-reference KOs (the mechanism is reused from FR-006 itself, but each field's application here is product-specific), and the FR-004/FR-006 application records."
+    }
+  },
+  "additionalReusedTemplates": [
+    { "template": "10_LIVE_DATA_MAPPING.md commercial-field table, extended with a new FR-006 operational-fields table", "origin": "Black Phenyl / White Phenyl / Body Wash / Hand Wash (commercial table); this package (operational table, new)" },
+    { "template": "14_FOUNDER_GAPS.md priority-tiered register structure", "origin": "Black Phenyl / White Phenyl / Body Wash / Hand Wash" },
+    { "template": "Two-track Product Quality Score methodology", "origin": "Pure Bleach" },
+    { "template": "Commercial Data Grep Check validation methodology", "origin": "Pure Bleach" }
+  ],
+  "duplicateKnowledgePrevented": "No product-specific fact was copied from any other package. The single-SKU-family architecture pattern was reused from Pure Bleach, but Car Wash's actual formula, process, QC, and Claims Validation findings were independently sourced from this product's own Chart rows and SOP.",
+  "reusePercentage": 33.3,
+  "reusePercentageBasis": "(17 Parent Objects Reused + 1 Shared Object) / 54 total Knowledge Objects = 18/54 = 33.3%. Higher than every prior package this session because this package has zero variant-level content (no FR-004 split) and FR-006 consolidated what would have been many separate safety-field KOs into fewer, template-reusable CMS-reference KOs."
+}

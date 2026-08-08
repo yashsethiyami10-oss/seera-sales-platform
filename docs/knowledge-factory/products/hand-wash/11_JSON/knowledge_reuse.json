@@ -1,0 +1,49 @@
+{
+  "productFamily": "MUV Hand Wash™",
+  "founderRules": ["FR-003 — Knowledge Reuse First", "FR-004 — Variant Inheritance Architecture", "FR-005 — Safety Critical Product Classification"],
+  "comparedAgainst": "No specific subset was named in this task's instruction — compared against the full set of ten prior packages, with Body Wash (the only other FR-004 package) and Floor Cleaner (the original Variant Inheritance precedent) given particular weight.",
+  "totalKnowledgeObjects": 77,
+  "structuralBreakdown": {
+    "note": "Per FR-004's Parent/Variant architecture — a structural dimension, distinct from the FR-003 reuse dimension below.",
+    "parentObjects": 65,
+    "variantObjects": 12
+  },
+  "reuseBreakdown": {
+    "note": "Per FR-003's methodology-reuse dimension — cuts across the Parent/Variant structural split above.",
+    "parentObjectsReused": {
+      "count": 17,
+      "koids": ["KO-HW-INHERIT-001", "KO-HW-IDENT-001", "KO-HW-NAME-001", "KO-HW-DT-COMPARE-001", "KO-HW-SAFETY-011", "KO-HW-CONV-001", "KO-HW-CONV-002", "KO-HW-CONV-003", "KO-HW-CONV-004", "KO-HW-CONV-005", "KO-HW-CONV-006", "KO-HW-CONV-007", "KO-HW-CONV-008", "KO-HW-CONV-009", "KO-HW-CONV-010", "KO-HW-CONV-011", "KO-HW-CONV-012"],
+      "reusedFrom": [
+        { "pattern": "Variant Inheritance Architecture (Parent/Variant KO split, override-point identification)", "origin": "KO-FC-INHERIT-001 (Floor Cleaner), reused via KO-BW-INHERIT-001 (Body Wash)", "usedBy": "KO-HW-INHERIT-001" },
+        { "pattern": "Product-family identity table structure", "origin": "Black Phenyl / White Phenyl / Body Wash ARCH-001/IDENT-001 pattern", "usedBy": "KO-HW-IDENT-001" },
+        { "pattern": "Naming-resolution/verification methodology", "origin": "Bathroom Cleaner / Glass Cleaner / Pure Bleach / Floor Cleaner / Body Wash", "usedBy": "KO-HW-NAME-001" },
+        { "pattern": "Cross-variant factual comparison table methodology", "origin": "KO-FC comparison pattern, reused via KO-BW-DT-COMPARE-001 (Body Wash)", "usedBy": "KO-HW-DT-COMPARE-001" },
+        { "pattern": "Emergency-guidance behavioral rule (never diagnose, always escalate)", "origin": "KO-PB-SAFETY-013 (Pure Bleach), reused KO-BP-SAFETY-013 / KO-WP-SAFETY-013 / KO-BW-SAFETY-010", "usedBy": "KO-HW-SAFETY-011" },
+        { "pattern": "12-flow Customer Conversation structure (Care Intelligence sequence applied per flow)", "origin": "Bathroom Cleaner (originating package), reused through every subsequent package including Body Wash", "usedBy": "all 12 KO-HW-CONV-* KOs" }
+      ]
+    },
+    "sharedObjects": {
+      "count": 1,
+      "koids": ["KO-HW-FAQ-002"],
+      "note": "Grounded in real platform code shared factory-wide (lib/intelligence/confidence-engine.ts). No direct equivalent to Body Wash's KO-BW-DT-004 (Safety Escalation Conditions tree) exists in this package — Hand Wash's escalation behavior lives in KO-HW-SAFETY-011 instead, already counted under parentObjectsReused."
+    },
+    "variantObjectsCreatedFreshPerVariant": {
+      "count": 12,
+      "koids": ["KO-HW-SB-VAR-500", "KO-HW-SB-VAR-5L", "KO-HW-OF-VAR-500", "KO-HW-OF-VAR-5L", "KO-HW-CB-VAR-250", "KO-HW-CB-VAR-500", "KO-HW-LS-VAR-250", "KO-HW-LS-VAR-500", "KO-HW-DT-REC-SB-001", "KO-HW-DT-REC-OF-001", "KO-HW-DT-REC-CB-001", "KO-HW-DT-REC-LS-001"],
+      "note": "The inheritance FORMAT is reused (already counted via KO-HW-INHERIT-001's pattern reuse); the actual variant-specific CONTENT (colour, availability) is genuinely new, independently sourced. Higher count than Body Wash's 9 because this package has 4 variants with asymmetric availability (8 SKUs) rather than 3 symmetric variants (6 SKUs)."
+    },
+    "newProductSpecificObjects": {
+      "count": 47,
+      "note": "Genuinely new content: the Variant Availability Architecture itself (KO-HW-AVAIL-001, a first-of-its-kind pattern, not reused from anywhere), formulation/mechanism/pearl-effect facts, the two-override-point (colour+fragrance) structural finding, the Chart-vs-Founder-matrix conflict finding, the Life Shield antibacterial-claim investigation, the GLOW/seed-data naming-adjacency findings, all Objection Handling content, most Product Intelligence and Safety KOs, and the FR-005 application record itself."
+    }
+  },
+  "additionalReusedTemplates": [
+    { "template": "10_LIVE_DATA_MAPPING.md commercial-field table", "origin": "Black Phenyl / White Phenyl / Body Wash" },
+    { "template": "14_FOUNDER_GAPS.md priority-tiered register structure", "origin": "Black Phenyl / White Phenyl / Body Wash" },
+    { "template": "Two-track Product Quality Score methodology, extended with Safety Risk Flag", "origin": "Pure Bleach (two-track), Body Wash (Safety Risk Flag)" },
+    { "template": "Commercial Data Grep Check validation methodology", "origin": "Pure Bleach" }
+  ],
+  "duplicateKnowledgePrevented": "No product-specific fact was copied from any other package. The Variant Inheritance ARCHITECTURE (Parent/Variant split methodology) was reused from Floor Cleaner/Body Wash, but Hand Wash's actual override points (colour AND fragrance — a genuinely new two-field case), its asymmetric availability matrix, and all formulation/safety facts were independently sourced from this product's own Chart rows and SOP.",
+  "reusePercentage": 23.4,
+  "reusePercentageBasis": "(17 Parent Objects Reused + 1 Shared Object) / 77 total Knowledge Objects = 18/77 = 23.4%. Lower than Body Wash's 26.4% because this package's Variant-level content (12 KOs, driven by 4 asymmetric variants vs. Body Wash's 3 symmetric ones) and its genuinely new Variant Availability Architecture (a first-of-its-kind pattern, not reusable from any prior package) make up a larger share of the total."
+}

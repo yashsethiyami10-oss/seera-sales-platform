@@ -1,0 +1,43 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env*.local
+.env.production
+.env.development
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+Thumbs.db
+npm-debug.log*
+*.log
+*.pem
+*.key
+coverage/
+.tmp-phase2-services/
+.verification/
+
+# Git Safety Cleanup — machine-local Claude Code settings (contains a
+# local DB connection string) and proprietary Founder IP (Knowledge
+# Library, product SOPs/formulas). Kept on disk, excluded from Git only.
+.claude/settings.local.json
+.claude/docs/
+
+# Git Safety Cleanup — confirmed stray/temporary files, not source
+temp-cloudcheck.cjs
+_docx_extract.txt
+tsconfig.zip
+
+.vercel
+.env*
+SEERA_DATABASE_URLS.txt
+
+# Execution Sprint 1 — raw source product photography (2.3GB, ~220 files).
+# Already uploaded to Cloudinary and referenced by URL in the database
+# (Product.images / MediaAsset) — the actual production storage. The local
+# folder is the Founder's working copy, not a repository artifact.
+product-images-import/
+
+# Local Claude Code tool state, not project source.
+.claude/scheduled_tasks.lock

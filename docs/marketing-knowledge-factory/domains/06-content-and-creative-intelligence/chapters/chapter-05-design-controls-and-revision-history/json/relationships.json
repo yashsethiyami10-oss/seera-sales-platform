@@ -1,0 +1,20 @@
+{
+  "chapter": "Design Controls & Revision History",
+  "relationships": [
+    { "from": "KO-CC-CH5-001", "type": "governs", "to": ["KO-CC-CH5-002","KO-CC-CH5-003","KO-CC-CH5-004","KO-CC-CH5-005","KO-CC-CH5-006","KO-CC-CH5-007"] },
+    { "from": "KO-CC-CH5-002", "type": "feeds", "to": ["KO-CC-CH5-003"] },
+    { "from": "KO-CC-CH5-003", "type": "feeds", "to": ["KO-CC-CH5-004"] },
+    { "from": "KO-CC-CH5-004", "type": "feeds", "to": ["KO-CC-CH5-005"] },
+    { "from": "KO-CC-CH5-005", "type": "feeds", "to": ["KO-CC-CH5-006"] },
+    { "from": "KO-CC-CH5-006", "type": "feeds", "to": ["KO-CC-CH5-007"] },
+    { "from": "KO-CC-CH5-007", "type": "feeds", "to": ["KO-CC-CH5-008"] },
+    { "from": "KO-CC-CH5-009", "type": "summarizes", "to": ["KO-CC-CH5-001","KO-CC-CH5-002","KO-CC-CH5-003","KO-CC-CH5-004","KO-CC-CH5-005","KO-CC-CH5-006","KO-CC-CH5-007","KO-CC-CH5-008"] }
+  ],
+  "crossDomainRelationships": [],
+  "forwardRelationships": [
+    { "from": "KO-CC-CH5-009", "type": "notesTransitionTo", "to": "Part V (MUV Product Sutra™) - out of scope for Domain 6" },
+    { "from": "KO-CC-CH5-008", "type": "transitionsTo", "to": "Chapter 6 (Cross-Domain Creative Synthesis)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

@@ -1,0 +1,65 @@
+{
+  "productFamily": "MUV Floor Cleaner™",
+  "parentKnowledgeObjects": [
+    "KO-FC-IDENT-001", "KO-FC-IDENT-002", "KO-FC-IDENT-003", "KO-FC-IDENT-004", "KO-FC-IDENT-005",
+    "KO-FC-DESC-001", "KO-FC-DESC-002",
+    "KO-FC-ING-001",
+    "KO-FC-THEORY-001",
+    "KO-FC-MFG-001", "KO-FC-MFG-002", "KO-FC-MFG-003",
+    "KO-FC-RECON-001",
+    "KO-FC-QC-001",
+    "KO-FC-SAFETY-001", "KO-FC-SAFETY-002", "KO-FC-SAFETY-003", "KO-FC-SAFETY-004",
+    "KO-FC-PKG-001", "KO-FC-STORAGE-001", "KO-FC-TRANSPORT-001", "KO-FC-SHELF-001",
+    "KO-FC-SALES-001", "KO-FC-SALES-002", "KO-FC-SALES-003",
+    "KO-FC-MKT-001",
+    "KO-FC-SUPPORT-001",
+    "KO-FC-TROUBLE-001", "KO-FC-COMPLAINT-001",
+    "KO-FC-FAQ-001",
+    "KO-FC-AI-001", "KO-FC-AI-002", "KO-FC-AI-003",
+    "KO-FC-CRO-001", "KO-FC-CRO-002", "KO-FC-CRO-003", "KO-FC-CRO-004", "KO-FC-CRO-005", "KO-FC-CRO-006",
+    "KO-FC-FAM-001",
+    "KO-FC-NAME-001",
+    "KO-FC-COMPETITOR-001",
+    "KO-FC-VIS-001",
+    "KO-FC-INHERIT-001",
+    "KO-FC-GQ-001",
+    "KO-FC-REUSE-001"
+  ],
+  "singleOverridePoint": {
+    "location": "Manufacturing SOP, Step 5",
+    "instruction": "Add colour (Blue for Cloud Walk / Lavender for Velvet Mist)",
+    "note": "The only variant-specific line in the entire 8-step process and raw materials table."
+  },
+  "variantInheritance": [
+    {
+      "variant": "Velvet Mist",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "overrides": [
+        { "koid": "KO-FC-VM-VAR-001", "overrideField": "colour", "value": "Lavender" },
+        { "koid": "KO-FC-VM-VAR-001", "overrideField": "pricing_1L", "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md." } },
+        { "koid": "KO-FC-VM-VAR-002", "overrideField": "pricing_5L", "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md. Historical CONFLICT-001 citation only in 20_Source_Conflict_Register.md." } }
+      ],
+      "variantSpecificKOs": ["KO-FC-VM-VAR-001", "KO-FC-VM-VAR-002", "KO-FC-CRO-007"]
+    },
+    {
+      "variant": "Cloud Walk",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "overrides": [
+        { "koid": "KO-FC-CW-VAR-001", "overrideField": "colour", "value": "Blue" },
+        { "koid": "KO-FC-CW-VAR-001", "overrideField": "pricing_1L", "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md." } },
+        { "koid": "KO-FC-CW-VAR-002", "overrideField": "pricing_5L", "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md. Historical CONFLICT-002 citation only in 20_Source_Conflict_Register.md (largest pricing gap of any product/variant this session)." } }
+      ],
+      "variantSpecificKOs": ["KO-FC-CW-VAR-001", "KO-FC-CW-VAR-002", "KO-FC-CRO-008"]
+    },
+    {
+      "variant": "Rose Water",
+      "inheritsParent": false,
+      "inheritanceConfirmed": false,
+      "inheritanceStatus": "UNCONFIRMED — an open Founder decision, not an assumption. No source confirms Rose Water uses the shared base formula, process, fill weights, or any other Parent-level manufacturing/QC/safety fact.",
+      "overrides": [],
+      "variantSpecificKOs": ["KO-FC-RW-VAR-001", "KO-FC-CRO-009"]
+    }
+  ]
+}

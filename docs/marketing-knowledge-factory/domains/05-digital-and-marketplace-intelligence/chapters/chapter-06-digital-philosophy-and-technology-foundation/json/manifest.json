@@ -1,0 +1,19 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "Digital Philosophy & Technology Foundation",
+  "chapterNumber": 6,
+  "koidPrefix": "KO-DM-CH6-",
+  "sourceChapter": "MUV Knowledge Library, Part XII, Chapter 58",
+  "sourceLineRange": "15523-15689",
+  "totalKnowledgeObjects": 9,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer). This chapter is the first of Part XII's portion (Chapters 6-12)."
+}

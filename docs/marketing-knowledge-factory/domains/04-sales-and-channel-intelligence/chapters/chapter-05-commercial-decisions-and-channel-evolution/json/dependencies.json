@@ -1,0 +1,16 @@
+{
+  "chapter": "Commercial Decisions & Channel Evolution",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part VIII, Chapter 40", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "MUV Knowledge Library, Part VIII, Part Summary + Part End Note", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-SC-CH1-002, 005 (this domain, Chapter 1)", "type": "crossChapterKO", "status": "exist, unmodified" },
+    { "source": "KO-SC-CH2-007, 008, 011, 013, 014 (this domain, Chapter 2)", "type": "crossChapterKO", "status": "exist, unmodified" },
+    { "source": "KO-CI-CH6-001, 002 (Domain 3, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified — cited, not restated" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 4 audit sequence", "status": "begins immediately after this chapter" },
+    { "dependent": "Domain 4 02_knowledge_coverage_audit.md", "status": "will be grounded by KO-SC-CH5-019" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

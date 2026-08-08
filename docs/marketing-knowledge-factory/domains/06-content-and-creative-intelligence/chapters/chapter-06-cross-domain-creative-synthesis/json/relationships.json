@@ -1,0 +1,25 @@
+{
+  "chapter": "Cross-Domain Creative Synthesis",
+  "relationships": [
+    { "from": "KO-CC-CH6-001", "type": "feeds", "to": ["KO-CC-CH6-002"] },
+    { "from": "KO-CC-CH6-002", "type": "feeds", "to": ["KO-CC-CH6-003"] },
+    { "from": "KO-CC-CH6-003", "type": "feeds", "to": ["KO-CC-CH6-004"] },
+    { "from": "KO-CC-CH6-004", "type": "feeds", "to": ["KO-CC-CH6-005"] },
+    { "from": "KO-CC-CH6-005", "type": "feeds", "to": ["KO-CC-CH6-006"] },
+    { "from": "KO-CC-CH6-006", "type": "feeds", "to": ["KO-CC-CH6-007"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CC-CH6-001", "type": "cites", "to": "KO-PM-CH2-003, KO-PM-CH2-004, KO-PM-CH2-008, KO-PM-CH2-013 (Domain 2)" },
+    { "from": "KO-CC-CH6-002", "type": "cites", "to": "KO-PM-CH3-004, KO-PM-CH3-005, KO-PM-CH3-008, KO-PM-CH3-012 (Domain 2)" },
+    { "from": "KO-CC-CH6-003", "type": "cites", "to": "KO-SC-CH4-002, KO-SC-CH4-003, KO-SC-CH4-005, KO-SC-CH4-006 (Domain 4)" },
+    { "from": "KO-CC-CH6-004", "type": "cites", "to": "KO-BI-CH4-001 through KO-BI-CH4-007 (Domain 1)" },
+    { "from": "KO-CC-CH6-005", "type": "cites", "to": "KO-DM-CH10-001, KO-DM-CH10-007, KO-DM-CH10-008, KO-DM-CH10-009 (Domain 5)" },
+    { "from": "KO-CC-CH6-006", "type": "cites", "to": "KO-CC-CH3-009, KO-CC-CH4-008 (this domain), KO-PM-CH3-012 (Domain 2), KO-DM-CH10-004, KO-DM-CH10-005 (Domain 5)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CC-CH6-006", "type": "feeds", "to": "Chapter 7 (AI Creative Feedback System, Creative Review Standards Gap Records)" },
+    { "from": "KO-CC-CH6-007", "type": "transitionsTo", "to": "Chapter 7 (Creative Governance Gap Records)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

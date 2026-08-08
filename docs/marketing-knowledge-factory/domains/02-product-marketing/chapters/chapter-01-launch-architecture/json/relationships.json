@@ -1,0 +1,24 @@
+{
+  "chapter": "Launch Architecture",
+  "relationships": [
+    { "from": "KO-PM-CH1-001", "type": "governs", "to": ["KO-PM-CH1-002","KO-PM-CH1-003","KO-PM-CH1-004","KO-PM-CH1-005","KO-PM-CH1-006","KO-PM-CH1-007","KO-PM-CH1-008","KO-PM-CH1-009"] },
+    { "from": "KO-PM-CH1-002", "type": "feeds", "to": ["KO-PM-CH1-004"] },
+    { "from": "KO-PM-CH1-004", "type": "feeds", "to": ["KO-PM-CH1-005"] },
+    { "from": "KO-PM-CH1-006", "type": "feeds", "to": ["KO-PM-CH1-007"] },
+    { "from": "KO-PM-CH1-007", "type": "feeds", "to": ["KO-PM-CH1-008"] },
+    { "from": "KO-PM-CH1-008", "type": "feeds", "to": ["KO-PM-CH1-009"] },
+    { "from": "KO-PM-CH1-001", "type": "summarizedBy", "to": ["KO-PM-CH1-010"] },
+    { "from": "KO-PM-CH1-009", "type": "summarizedBy", "to": ["KO-PM-CH1-010"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-PM-CH1-001", "type": "cites", "to": ["KO-BI-CH1-001", "KO-BI-CH2-002", "KO-BI-CH3-003"] },
+    { "from": "KO-PM-CH1-005", "type": "extends", "to": "KO-BI-CH5-004" },
+    { "from": "KO-PM-CH1-002", "type": "extends", "to": "KO-BI-CH5-004" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-PM-CH1-005", "type": "willGovern", "to": "Chapter 2 claim discipline" },
+    { "from": "KO-PM-CH1-006", "type": "willOrganize", "to": "Chapters 2-4" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

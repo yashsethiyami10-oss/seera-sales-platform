@@ -1,0 +1,19 @@
+{
+  "productFamily": "MUV Hand Wash™",
+  "totalConversationFlows": 12,
+  "careIntelligenceSequence": "Truth → Safety → Care → Clarity → Actionability → Validation",
+  "flows": [
+    { "koid": "KO-HW-CONV-001", "title": "General Product Inquiry" },
+    { "koid": "KO-HW-CONV-002", "title": "Pack Size Selection" },
+    { "koid": "KO-HW-CONV-003", "title": "Fragrance / Variant Selection" },
+    { "koid": "KO-HW-CONV-004", "title": "Price Inquiry" },
+    { "koid": "KO-HW-CONV-005", "title": "Availability Inquiry", "newFlow": true, "note": "Specific to this package's asymmetric matrix — honest, non-stock-framed absence explanation" },
+    { "koid": "KO-HW-CONV-006", "title": "Ingredient Inquiry" },
+    { "koid": "KO-HW-CONV-007", "title": "Safety / Skin-Sensitivity Inquiry", "riskLevel": "HIGH" },
+    { "koid": "KO-HW-CONV-008", "title": "Antibacterial / Protective Claim Inquiry", "newFlow": true, "riskLevel": "CRITICAL", "note": "Life Shield-specific; the single highest-risk conversation in this package, explicitly anticipated by FR-005" },
+    { "koid": "KO-HW-CONV-009", "title": "Usage Instructions Inquiry" },
+    { "koid": "KO-HW-CONV-010", "title": "Comparison Request" },
+    { "koid": "KO-HW-CONV-011", "title": "Complaint / Quality Issue" },
+    { "koid": "KO-HW-CONV-012", "title": "Shelf Life / Storage Inquiry" }
+  ]
+}

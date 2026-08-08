@@ -1,0 +1,21 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "chapter": "Customer Insights & Data Intelligence (Excerpt)",
+  "chapterNumber": 7,
+  "koidPrefix": "KO-CI-CH7-",
+  "sourceChapter": "MUV Knowledge Library, Part XII, Chapter 61 (\"Data Architecture & Intelligence System\"), sections 4.6-4.7 only",
+  "sourceLineRange": "16153-16183",
+  "totalKnowledgeObjects": 2,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domain 1 and Domain 2, both frozen)"
+  ],
+  "domainSynthesisNote": "Domain 3 is a Founder-approved synthesized domain (Part IX + CRM excerpt from Part VIII Ch.40 + Data Insights excerpt from Part XII Ch.61), not a single clean Part mirror like Domains 1-2. See domain README for the full escalation record.",
+  "excerptNote": "This chapter imports ONLY sections 4.6 (Business Intelligence) and 4.7 (Customer Insights) of the much larger, ten-section Chapter 61 (4.1 Data Philosophy through 4.10 Data Governance, plus closing governance content). The rest of Chapter 61 is out of scope and not transcribed.",
+  "finalChapterNote": "This is Domain 3's 7th and final chapter. All 7 chapters are now complete; the domain audit sequence follows next."
+}

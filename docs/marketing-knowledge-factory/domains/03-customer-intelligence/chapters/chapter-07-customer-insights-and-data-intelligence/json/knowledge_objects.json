@@ -1,0 +1,9 @@
+{
+  "chapter": "Customer Insights & Data Intelligence (Excerpt)",
+  "koidPrefix": "KO-CI-CH7-",
+  "totalKnowledgeObjects": 2,
+  "knowledgeObjects": [
+    { "koid": "KO-CI-CH7-001", "name": "Business Intelligence Discipline", "purpose": "Preserve the eight-field discipline a useful intelligence product must state, and the warning against decision-less dashboards", "scope": "4.6 Business Intelligence, complete", "inputs": ["MUV Knowledge Library Part XII Ch.61 4.6 (lines 16153-16168)"], "outputs": ["Eight-field intelligence-product discipline", "visibility theatre warning"], "dependencies": ["KO-CI-CH1-001"], "relationships": ["KO-CI-CH7-002"], "governanceRules": ["Dashboards that accumulate numbers without decisions create visibility theatre"], "validationRules": ["All eight fields preserved together; the warning never dropped"], "version": "1.0", "status": "Founder Review Ready", "changeHistory": [{ "date": "2026-07-31", "change": "created" }], "evidenceClassification": "Verified" },
+    { "koid": "KO-CI-CH7-002", "name": "Customer Insights: Evidence Sources & the Observation-vs-Explanation Rule", "purpose": "Preserve the eight possible customer-insight evidence sources and the observation-is-not-explanation discipline", "scope": "4.7 Customer Insights, complete", "inputs": ["MUV Knowledge Library Part XII Ch.61 4.7 (lines 16170-16183)"], "outputs": ["Eight evidence sources", "observation-vs-explanation rule"], "dependencies": ["KO-CI-CH7-001"], "relationships": ["KO-CI-CH4-005", "KO-CI-CH4-006"], "governanceRules": ["Observation is not explanation. Muv must distinguish what happened from why it happened."], "validationRules": ["All eight evidence sources preserved together; the observation/explanation rule never softened or dropped"], "version": "1.0", "status": "Founder Review Ready", "changeHistory": [{ "date": "2026-07-31", "change": "created" }], "evidenceClassification": "Verified" }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "chapter": "Customer Insights & Data Intelligence (Excerpt)",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part XII, Chapter 61, sections 4.6-4.7 (lines 16153-16183)", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-CI-CH1-001 (this domain, Chapter 1)", "type": "crossChapterKO", "status": "exists, unmodified" },
+    { "source": "KO-CI-CH4-005, 006 (this domain, Chapter 4)", "type": "crossChapterKO", "status": "exist, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 3 audit sequence (Relationship Integrity, Knowledge Coverage, Domain Consistency, Domain Validation, Domain Merge)", "status": "begins immediately after this chapter" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

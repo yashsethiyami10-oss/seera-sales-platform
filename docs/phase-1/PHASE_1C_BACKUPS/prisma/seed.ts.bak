@@ -1,0 +1,193 @@
+/**
+ * Run with: npm run db:seed (see package.json — invokes `tsx prisma/seed.ts`)
+ *
+ * This is intentionally the first thing to run after `prisma migrate deploy`
+ * — every page built in this assembly pass queries real tables, and an
+ * empty database means every one of them renders an empty state. This seed
+ * mirrors the mock data that lived in the original `.jsx` files (same
+ * product names, same category structure) so the assembled app looks like
+ * the designs it was built from, rather than a blank shell.
+ */
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
+
+async function main() {
+  console.log("Seeding…");
+
+  // ---- Categories ----
+  const categoryData = [
+    { name: "Home Care", slug: "home-care", sortOrder: 0 },
+    { name: "Fabric Care", slug: "fabric-care", sortOrder: 1 },
+    { name: "Body Care", slug: "body-care", sortOrder: 2 },
+    { name: "Personal Care", slug: "personal-care", sortOrder: 3 },
+    { name: "Car Care", slug: "car-care", sortOrder: 4 },
+    { name: "Skin Care", slug: "skin-care", sortOrder: 5, comingSoon: true },
+  ];
+  const categories: Record<string, string> = {};
+  for (const c of categoryData) {
+    const created = await prisma.category.upsert({ where: { slug: c.slug }, update: {}, create: c });
+    categories[c.slug] = created.id;
+  }
+  console.log(`  ${categoryData.length} categories`);
+
+  // ---- Products + variants + inventory ----
+  const productData = [
+    {
+      name: "MUV Noir", slug: "muv-noir", category: "home-care", hsnCode: "3307", gstRate: 18, isFeatured: true, bestSellerRank: 1,
+      shortDescription: "A concentrated home fragrance built on oud, amber and musk.",
+      fragranceNotes: "Oud, Amber, Musk",
+      ingredients: "Alcohol Denat., Parfum, Aqua, Limonene, Linalool.",
+      directions: "Spray 2-3 times in the room, away from fabric and direct sunlight.",
+      benefits: "Long-lasting room fragrance in a premium refillable bottle.",
+      safety: "Keep away from open flame. For external/ambient use only.",
+      variants: [{ size: "250ml", price: 499, mrp: 599, sku: "MUV-HC-NOR-250", stock: 128 }],
+    },
+    {
+      name: "MUV Bloom", slug: "muv-bloom", category: "home-care", hsnCode: "3307", gstRate: 18,
+      shortDescription: "A floral home fragrance built around peony and white tea.",
+      fragranceNotes: "Peony, White Tea", ingredients: "Alcohol Denat., Parfum, Aqua.",
+      directions: "Spray 2-3 times in the room.", benefits: "Bright, everyday floral fragrance.",
+      safety: "Keep away from open flame.",
+      variants: [{ size: "250ml", price: 449, mrp: 549, sku: "MUV-HC-BLM-250", stock: 60 }],
+    },
+    {
+      name: "MUV Renew", slug: "muv-renew", category: "fabric-care", hsnCode: "3402", gstRate: 18, isFeatured: true, bestSellerRank: 2,
+      shortDescription: "A liquid detergent that lifts stains and leaves fabric smelling premium for days.",
+      fragranceNotes: "White Musk, Jasmine",
+      ingredients: "Aqua, Anionic Surfactants, Fabric Softening Agents, Enzymes, Perfume.",
+      directions: "Add one cap (30ml) to the drum before loading clothes.",
+      benefits: "Stain removal, 48-hour fragrance, colour-safe formula.",
+      safety: "Keep out of reach of children. Avoid contact with eyes.",
+      variants: [
+        { size: "500ml", price: 349, mrp: 429, sku: "MUV-FC-REN-500", stock: 84 },
+        { size: "1L", price: 599, mrp: 749, sku: "MUV-FC-REN-1L", stock: 40 },
+      ],
+    },
+    {
+      name: "MUV Cleanse", slug: "muv-cleanse", category: "body-care", hsnCode: "3401", gstRate: 18, isFeatured: true, bestSellerRank: 3,
+      shortDescription: "A rich, foaming body wash with 1% Salicylic Acid for a deep cleanse that never strips the skin.",
+      fragranceNotes: "Citrus, Bergamot",
+      ingredients: "Aqua, Sodium Laureth Sulfate, Salicylic Acid (1%), Glycerin, Perfume.",
+      directions: "Apply to wet skin, lather, and rinse. Suitable for daily use.",
+      benefits: "Deep-cleanses pores without over-drying, refreshing citrus fragrance.",
+      safety: "For external use only. Discontinue if irritation occurs.",
+      variants: [
+        { size: "250ml", price: 299, mrp: 349, sku: "MUV-BC-CLN-250", stock: 210 },
+        { size: "500ml", price: 499, mrp: 599, sku: "MUV-BC-CLN-500", stock: 90 },
+      ],
+    },
+    {
+      name: "MUV Silk Hair Wash", slug: "muv-silk-hair-wash", category: "personal-care", hsnCode: "3305", gstRate: 18,
+      shortDescription: "A gentle daily shampoo with argan oil and keratin.",
+      fragranceNotes: "Argan, Keratin", ingredients: "Aqua, Cocamidopropyl Betaine, Argan Oil, Keratin.",
+      directions: "Apply to wet hair, lather, rinse. Follow with conditioner.",
+      benefits: "Smoother, more manageable hair with daily use.",
+      safety: "Avoid contact with eyes.",
+      variants: [{ size: "250ml", price: 379, mrp: 449, sku: "MUV-PC-SLK-250", stock: 2 }],
+    },
+    {
+      name: "MUV Shield", slug: "muv-shield", category: "car-care", hsnCode: "3405", gstRate: 18, bestSellerRank: 4,
+      shortDescription: "A professional-grade car shampoo with a gloss-lock finish.",
+      fragranceNotes: null, ingredients: "Aqua, Surfactants, Wax Emulsion.",
+      directions: "Dilute per label, apply with a wash mitt, rinse thoroughly.",
+      benefits: "Gloss-lock formula, safe on all exterior finishes.",
+      safety: "Avoid contact with eyes and skin for prolonged periods.",
+      variants: [{ size: "500ml", price: 599, mrp: 749, sku: "MUV-CC-SHD-500", stock: 4 }],
+    },
+  ];
+
+  for (const p of productData) {
+    const { variants, category, ...rest } = p;
+    const categoryId = categories[category];
+    if (!categoryId) throw new Error(`Seed data references unknown category slug: ${category}`);
+    const product = await prisma.product.upsert({
+      where: { slug: p.slug },
+      update: {},
+      create: { ...rest, categoryId, status: "ACTIVE" },
+    });
+
+    for (const v of variants) {
+      const variant = await prisma.productVariant.upsert({
+        where: { sku: v.sku },
+        update: {},
+        create: { productId: product.id, size: v.size, price: v.price, mrp: v.mrp, sku: v.sku },
+      });
+      await prisma.inventory.upsert({
+        where: { variantId: variant.id },
+        update: { quantity: v.stock },
+        create: { variantId: variant.id, quantity: v.stock, lowStockThreshold: 10 },
+      });
+    }
+  }
+  console.log(`  ${productData.length} products with variants + inventory`);
+
+  // ---- Homepage CMS content ----
+  await prisma.banner.upsert({
+    where: { id: "seed-hero-1" },
+    update: {},
+    create: {
+      id: "seed-hero-1", type: "HERO", title: "Keep Muving",
+      subtitle: "An affordable luxury from India", ctaLabel: "Shop the range", ctaLink: "/shop", active: true, sortOrder: 0,
+    },
+  });
+
+  const sectionData = [
+    { key: "hero", label: "Hero", sortOrder: 0 },
+    { key: "marquee", label: "Trust Marquee", sortOrder: 1 },
+    { key: "categories", label: "Categories", sortOrder: 2 },
+    { key: "bestsellers", label: "Best Sellers", sortOrder: 3 },
+    // "brandstory" and "business" back PHASE_6C/6D's homepage sections
+    // (components/storefront/brand-story.tsx, business-section.tsx) — added
+    // here so a fresh-seeded database doesn't silently hide them the way
+    // this one did before this fix (showSection() hides any key not
+    // registered here once at least one HomepageSection row exists).
+    { key: "brandstory", label: "Brand Story", sortOrder: 4 },
+    { key: "reviews", label: "Customer Reviews", sortOrder: 5 },
+    { key: "business", label: "Business", sortOrder: 6 },
+    { key: "newsletter", label: "Newsletter", sortOrder: 7 },
+  ];
+  for (const s of sectionData) {
+    await prisma.homepageSection.upsert({ where: { key: s.key }, update: {}, create: { ...s, visible: true } });
+  }
+
+  await prisma.announcementBar.upsert({
+    where: { id: "singleton" }, update: {},
+    create: { id: "singleton", message: "Free delivery on orders above ₹999", link: "/shop", active: true },
+  });
+  await prisma.newsletterContent.upsert({
+    where: { id: "singleton" }, update: {},
+    create: { id: "singleton", heading: "Join the movement", subtext: "Early access to new launches, and nothing else." },
+  });
+  console.log("  Homepage CMS content (banners, sections, announcement bar, newsletter)");
+
+  // ---- Coupon ----
+  await prisma.coupon.upsert({
+    where: { code: "MUV10" }, update: {},
+    create: { code: "MUV10", type: "PERCENT", value: 10, minOrderValue: 500, active: true },
+  });
+  console.log("  1 coupon (MUV10 — 10% off, min ₹500)");
+
+  // ---- Admin user ----
+  // Password below is a seed-only placeholder — change it immediately after
+  // first login in any environment beyond local development.
+  const adminPasswordHash = await bcrypt.hash("ChangeMe123", 12);
+  await prisma.user.upsert({
+    where: { email: "admin@muv.co.in" },
+    update: {},
+    create: { name: "MUV Admin", email: "admin@muv.co.in", passwordHash: adminPasswordHash, role: "ADMIN" },
+  });
+  console.log("  1 admin user (admin@muv.co.in / ChangeMe123 — change this immediately)");
+
+  console.log("Seed complete.");
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

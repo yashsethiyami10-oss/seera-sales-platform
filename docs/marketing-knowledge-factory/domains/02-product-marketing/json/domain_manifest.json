@@ -1,0 +1,47 @@
+{
+  "domain": "Product Marketing",
+  "domainNumber": 2,
+  "status": "COMPLETE — Founder Review Ready (all 5 chapters + domain audit)",
+  "totalChapters": 5,
+  "totalKnowledgeObjects": 65,
+  "sourceDocument": "MUV Knowledge Library, Part VII — Marketing, Communication & Growth (Volume VII — MUV Marketing Playbook™, Chapters 31-35)",
+  "chapters": [
+    { "number": 1, "name": "Launch Architecture", "koidPrefix": "KO-PM-CH1-", "koCount": 10, "sourceChapter": 31, "status": "Founder Review Ready" },
+    { "number": 2, "name": "Campaign Concepts & Advertising", "koidPrefix": "KO-PM-CH2-", "koCount": 14, "sourceChapter": 32, "status": "Founder Review Ready" },
+    { "number": 3, "name": "Content, Scripts & Video", "koidPrefix": "KO-PM-CH3-", "koCount": 14, "sourceChapter": 33, "status": "Founder Review Ready" },
+    { "number": 4, "name": "Creators, Influencers & Reach", "koidPrefix": "KO-PM-CH4-", "koCount": 12, "sourceChapter": 34, "status": "Founder Review Ready" },
+    { "number": 5, "name": "Marketing Decisions & Learning", "koidPrefix": "KO-PM-CH5-", "koCount": 15, "sourceChapter": 35, "status": "Founder Review Ready" }
+  ],
+  "relationshipTotals": {
+    "intraChapter": 31,
+    "crossDomain": 13,
+    "crossChapter": 17,
+    "forward": 4,
+    "forwardFulfilledWithinDomain": 1,
+    "forwardPendingFutureDomains": 3
+  },
+  "crossDomainCitationIntegrity": {
+    "uniqueKOBICitations": 9,
+    "verifiedAgainstDomain1Registry": true,
+    "brokenReferences": 0
+  },
+  "domainAudits": {
+    "relationshipIntegrityAudit": "PASS",
+    "knowledgeCoverageAudit": "PASS (14/14 marketing areas, 10/10 Master Marketing Principles, 15/15 Master Marketing Checklist items)",
+    "domainConsistencyAudit": "PASS",
+    "domainValidation": "PASS (40/40 chapter checks + 3/3 domain audits)"
+  },
+  "founderDecisionsAppliedToThisDomain": [],
+  "openGaps": [
+    { "koid": "KO-PM-CH4-003", "topic": "Creator Brief: disclosure requirements and usage rights", "status": "Founder Decision Required" }
+  ],
+  "outOfScopeReferences": [
+    "Volume III — MUV Brand Sutra™ (Domain 1, frozen — cited, never restated)",
+    "Volume V — MUV Product Sutra™ (product truth/claims evidence)",
+    "Volume VI — MUV Manufacturing System™ (technical/quality causes)",
+    "Volume VIII — MUV Sales & Distribution System™ (commercial/listing/pricing)",
+    "Volume IX — MUV Customer Experience™ (service/experience operations)",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007) — referenced, never modified"
+  ],
+  "founderReviewPackage": "domains/02-product-marketing/DOMAIN_2_FOUNDER_REVIEW_PACKAGE.md"
+}

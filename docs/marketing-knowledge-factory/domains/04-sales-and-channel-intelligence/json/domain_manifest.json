@@ -1,0 +1,42 @@
+{
+  "domain": "Sales & Channel Intelligence",
+  "domainNumber": 4,
+  "status": "COMPLETE — Founder Review Ready (all 5 chapters + domain audit)",
+  "domainType": "Clean single-Part mirror — no synthesis or Founder escalation required",
+  "totalChapters": 5,
+  "totalKnowledgeObjects": 65,
+  "sourceDocument": "MUV Knowledge Library, Part VIII — Sales, Pricing, Distribution & Marketplaces (Volume VIII — MUV Sales & Distribution System™, Chapters 36-40)",
+  "chapters": [
+    { "number": 1, "name": "Pricing & MRP Architecture", "koidPrefix": "KO-SC-CH1-", "koCount": 9, "sourceChapter": 36, "status": "Founder Review Ready" },
+    { "number": 2, "name": "Sales & Distribution", "koidPrefix": "KO-SC-CH2-", "koCount": 15, "sourceChapter": 37, "status": "Founder Review Ready" },
+    { "number": 3, "name": "Marketplace Operations", "koidPrefix": "KO-SC-CH3-", "koCount": 11, "sourceChapter": 38, "status": "Founder Review Ready" },
+    { "number": 4, "name": "Marketplace Content & Conversion", "koidPrefix": "KO-SC-CH4-", "koCount": 11, "sourceChapter": 39, "status": "Founder Review Ready" },
+    { "number": 5, "name": "Commercial Decisions & Channel Evolution", "koidPrefix": "KO-SC-CH5-", "koCount": 19, "sourceChapter": "40 (+ Part VIII Part Summary)", "status": "Founder Review Ready" }
+  ],
+  "crossDomainCitationIntegrity": {
+    "uniqueDomain3Citations": 2,
+    "citationType": "citation-only (Zero Duplicate Knowledge) — CRM System subsection",
+    "verifiedAgainstDomain3Registry": true,
+    "brokenReferences": 0
+  },
+  "domainAudits": {
+    "relationshipIntegrityAudit": "PASS (65/65 KOs relationship-complete, 0 orphans, 0 circular; 2/2 cross-domain citations verified)",
+    "knowledgeCoverageAudit": "PASS — 12/12 commercial areas, 10/10 Master Commercial Principles, 15/15 Master Commercial Checklist items covered (grounded in Part VIII's own Part Summary)",
+    "domainConsistencyAudit": "PASS (4 disclosed, source-driven departures from Domains 1-2's pattern, none silent)",
+    "domainValidation": "PASS (65/65 KO checks + 4/4 domain audits)"
+  },
+  "founderDecisionsAppliedToThisDomain": [],
+  "openGaps": [
+    { "topic": "\"Dealer\" as a distinct commercial concept", "status": "Confirmed absent from the entire MUV Knowledge Library (0 occurrences) — not a Domain 4 coverage gap, a real source-material absence, disclosed in domain README" }
+  ],
+  "outOfScopeReferences": [
+    "Part X — Expansion, Franchise, Partnerships & Enterprise Governance / MUV Business Blueprint™ (franchise/legal/capital architecture, cited by Chapter 5, never transcribed)",
+    "Volume V — MUV Product Sutra™ (product truth/claims evidence, cited by Chapter 4)",
+    "Volume IV — MUV Design System (pack/image truth, cited by Chapter 4)",
+    "Domain 1 — Brand Intelligence (frozen, Volume III — identity/voice, cited by Chapter 4)",
+    "Domain 2 — Product Marketing (frozen, Marketing — communication tone, cited by Chapter 3)",
+    "Domain 3 — Customer Intelligence (frozen, Customer Experience — resolution; CRM System content cited directly and specifically by Chapter 5)",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007) — referenced, never modified"
+  ],
+  "founderReviewPackage": "domains/04-sales-and-channel-intelligence/DOMAIN_4_FOUNDER_REVIEW_PACKAGE.md"
+}

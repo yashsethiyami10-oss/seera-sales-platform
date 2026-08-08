@@ -1,0 +1,43 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "parentKnowledgeObjectCount": 63,
+  "variantKnowledgeObjectCount": 9,
+  "singleOverridePoint": {
+    "location": "Manufacturing SOP, Step 9",
+    "instruction": "Add the required fragrance (Crimson Veil / Velvet Oak / Midnight Frost)",
+    "note": "The only variant-specific line in the entire 12-step process and formula table. Colour is explicitly shared/generic across all variants — not an override point, a real structural difference from Floor Cleaner where colour WAS the override."
+  },
+  "variantInheritance": [
+    {
+      "variant": "Crimson Veil",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "overrides": [
+        { "koid": "KO-BW-CV-VAR-001", "overrideField": "fragrance", "value": "Premium Floral" },
+        { "koid": "KO-BW-CV-VAR-002", "overrideField": "fragrance", "value": "Premium Floral" }
+      ],
+      "variantSpecificKOs": ["KO-BW-CV-VAR-001", "KO-BW-CV-VAR-002", "KO-BW-DT-CV-001"]
+    },
+    {
+      "variant": "Velvet Oak",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "overrides": [
+        { "koid": "KO-BW-VO-VAR-001", "overrideField": "fragrance", "value": "Woody Premium" },
+        { "koid": "KO-BW-VO-VAR-002", "overrideField": "fragrance", "value": "Woody Premium" }
+      ],
+      "variantSpecificKOs": ["KO-BW-VO-VAR-001", "KO-BW-VO-VAR-002", "KO-BW-DT-VO-001"]
+    },
+    {
+      "variant": "Midnight Frost",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "overrides": [
+        { "koid": "KO-BW-MF-VAR-001", "overrideField": "fragrance", "value": "Fresh Cooling" },
+        { "koid": "KO-BW-MF-VAR-002", "overrideField": "fragrance", "value": "Fresh Cooling" }
+      ],
+      "variantSpecificKOs": ["KO-BW-MF-VAR-001", "KO-BW-MF-VAR-002", "KO-BW-DT-MF-001"]
+    }
+  ],
+  "comparisonToFloorCleaner": "Unlike Floor Cleaner (3 named variants, 1 unsourced — Rose Water), all 3 Body Wash variants are fully, symmetrically sourced. Unlike Floor Cleaner's colour override, this product's override point is fragrance; colour is shared."
+}

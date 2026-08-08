@@ -1,0 +1,36 @@
+"use server";
+
+import { headers } from "next/headers";
+import { prisma } from "@/lib/prisma";
+import { toErrorResponse, AppError } from "@/lib/errors";
+import { businessInquirySchema } from "@/lib/validations/inquiry";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+import { sendAdminNewInquiryAlert } from "@/lib/notify/send";
+
+/**
+ * Public, unauthenticated form (no requireX call — anyone reaching /contact
+ * can submit one) — rate-limited by IP the same way signup() is, since it's
+ * the same shape of risk (an anonymous form that could be spammed).
+ */
+export async function submitBusinessInquiry(input: unknown) {
+  try {
+    const data = businessInquirySchema.parse(input);
+
+    const headersList = await headers();
+    const ip = headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const { allowed } = checkRateLimit(`business-inquiry:${ip}`, 5, 60 * 60 * 1000);
+    if (!allowed) {
+      throw new AppError("Too many submissions. Please try again later.", 429, "RATE_LIMITED");
+    }
+
+    const inquiry = await prisma.businessInquiry.create({ data });
+
+    logger.info("inquiry:business:submitted", { inquiryId: inquiry.id, businessType: inquiry.businessType });
+    sendAdminNewInquiryAlert({ name: inquiry.contactPerson, businessType: inquiry.businessType, email: inquiry.email }).catch((err) => logger.error("notify:admin-new-inquiry:failed", { error: String(err) }));
+
+    return { success: true as const, data: { id: inquiry.id } };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}

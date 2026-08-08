@@ -1,0 +1,24 @@
+{
+  "chapter": "Visual Asset Production",
+  "relationships": [
+    { "from": "KO-CC-CH3-001", "type": "governs", "to": ["KO-CC-CH3-002","KO-CC-CH3-003","KO-CC-CH3-004","KO-CC-CH3-005","KO-CC-CH3-006","KO-CC-CH3-007","KO-CC-CH3-008","KO-CC-CH3-009"] },
+    { "from": "KO-CC-CH3-002", "type": "feeds", "to": ["KO-CC-CH3-003"] },
+    { "from": "KO-CC-CH3-003", "type": "feeds", "to": ["KO-CC-CH3-004"] },
+    { "from": "KO-CC-CH3-004", "type": "feeds", "to": ["KO-CC-CH3-005"] },
+    { "from": "KO-CC-CH3-005", "type": "feeds", "to": ["KO-CC-CH3-006"] },
+    { "from": "KO-CC-CH3-006", "type": "feeds", "to": ["KO-CC-CH3-007"] },
+    { "from": "KO-CC-CH3-007", "type": "feeds", "to": ["KO-CC-CH3-008"] },
+    { "from": "KO-CC-CH3-008", "type": "feeds", "to": ["KO-CC-CH3-009"] },
+    { "from": "KO-CC-CH3-001", "type": "summarizedBy", "to": ["KO-CC-CH3-010"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CC-CH3-008", "type": "relatesTo", "to": "KO-SC-CH4-003, KO-SC-CH3-006" },
+    { "from": "KO-CC-CH3-009", "type": "relatesTo", "to": "KO-PM-CH3-012, KO-DM-CH10-004, KO-DM-CH10-005" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CC-CH3-009", "type": "feeds", "to": "Chapter 6 (synthesis) and Chapter 7 (Image Analysis Rules Gap Record)" },
+    { "from": "KO-CC-CH3-010", "type": "transitionsTo", "to": "Chapter 4 (3D Visualization & Mockups)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

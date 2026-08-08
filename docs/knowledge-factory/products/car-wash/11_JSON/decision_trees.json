@@ -1,0 +1,10 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "totalDecisionTreeKOs": 3,
+  "note": "Lean set — no variant recommendation trees, FR-004 Not Applicable (single-variant product).",
+  "trees": [
+    { "koid": "KO-CW-DT-001", "title": "General Need / Purchase-Fit Tree" },
+    { "koid": "KO-CW-DT-002", "title": "Pack Size Selection Tree", "note": "Both 500ml and 5L always available, no restriction to navigate — unlike Hand Wash's asymmetric matrix" },
+    { "koid": "KO-CW-DT-003", "title": "Use-Case Fit Tree", "note": "Compatibility boundary explicitly Unknown, never assumed" }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "totalConversationFlows": 12,
+  "careIntelligenceSequence": "Truth → Safety → Care → Clarity → Actionability → Validation",
+  "flows": [
+    { "koid": "KO-CW-CONV-001", "title": "General Product Inquiry" },
+    { "koid": "KO-CW-CONV-002", "title": "Pack Size Selection" },
+    { "koid": "KO-CW-CONV-003", "title": "Price Inquiry" },
+    { "koid": "KO-CW-CONV-004", "title": "Usage Instructions Inquiry", "fr006Referenced": true },
+    { "koid": "KO-CW-CONV-005", "title": "Ingredient Inquiry" },
+    { "koid": "KO-CW-CONV-006", "title": "Safety Inquiry", "fr006Referenced": true },
+    { "koid": "KO-CW-CONV-007", "title": "Compatibility Inquiry", "riskLevel": "HIGH" },
+    { "koid": "KO-CW-CONV-008", "title": "Claims Inquiry (wax / gloss-lock / paint protection)", "riskLevel": "CRITICAL", "note": "Highest-risk flow in this package" },
+    { "koid": "KO-CW-CONV-009", "title": "Comparison Request (vs. MUV Shield)" },
+    { "koid": "KO-CW-CONV-010", "title": "Complaint / Quality Issue" },
+    { "koid": "KO-CW-CONV-011", "title": "Storage / Shelf Life Inquiry", "fr006Referenced": true },
+    { "koid": "KO-CW-CONV-012", "title": "Institutional / Bulk Use Inquiry" }
+  ]
+}

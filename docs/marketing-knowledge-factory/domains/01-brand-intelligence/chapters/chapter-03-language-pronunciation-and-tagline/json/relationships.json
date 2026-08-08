@@ -1,0 +1,26 @@
+{
+  "chapter": "Language, Pronunciation & Tagline",
+  "relationships": [
+    { "from": "KO-BI-CH3-001", "type": "pairedWith", "to": ["KO-BI-CH3-002"] },
+    { "from": "KO-BI-CH3-001", "type": "summarizedBy", "to": ["KO-BI-CH3-007"] },
+    { "from": "KO-BI-CH3-002", "type": "summarizedBy", "to": ["KO-BI-CH3-007"] },
+    { "from": "KO-BI-CH3-003", "type": "summarizedBy", "to": ["KO-BI-CH3-007"] },
+    { "from": "KO-BI-CH3-004", "type": "summarizedBy", "to": ["KO-BI-CH3-007"] },
+    { "from": "KO-BI-CH3-005", "type": "summarizedBy", "to": ["KO-BI-CH3-007"] },
+    { "from": "KO-BI-CH3-006", "type": "summarizedBy", "to": ["KO-BI-CH3-007"] },
+    { "from": "KO-BI-CH3-001", "type": "verifiedBy", "to": ["KO-BI-CH3-006"] },
+    { "from": "KO-BI-CH3-004", "type": "verifiedBy", "to": ["KO-BI-CH3-006"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-BI-CH1-001", "type": "isExtendedBy", "to": "KO-BI-CH3-005", "note": "Forward relationship predicted in Chapter 1, fulfilled here" },
+    { "from": "KO-BI-CH2-002", "type": "grounds", "to": "KO-BI-CH3-003" },
+    { "from": "KO-BI-CH1-006", "type": "referencedBy", "to": "KO-BI-CH3-003" },
+    { "from": "KO-BI-CH1-003", "type": "grounds", "to": "KO-BI-CH3-004" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-BI-CH3-004", "type": "willGovern", "to": "Domain 4 — Campaign Intelligence, Domain 6 — Content Intelligence" },
+    { "from": "KO-BI-CH3-005", "type": "blocksUntilResolved", "to": "any future KO using 'Muving Soon™'" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

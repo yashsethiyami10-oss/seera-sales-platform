@@ -1,0 +1,27 @@
+{
+  "productFamily": "MUV Pure Bleach™",
+  "totalDecisionTrees": 4,
+  "decisionTrees": [
+    { "koid": "KO-PB-DT-001", "title": "Is MUV Pure Bleach™ the Correct Product?", "confidence": "MEDIUM" },
+    { "koid": "KO-PB-DT-002", "title": "When NOT to Recommend MUV Pure Bleach™", "confidence": "MEDIUM" },
+    { "koid": "KO-PB-DT-003", "title": "When Another MUV Product Is More Suitable", "confidence": "HIGH",
+      "crossReferences": [
+        { "need": "Glass/mirror surfaces", "product": "MUV Crystal Glass Cleaner™" },
+        { "need": "Floor cleaning", "product": "MUV Floor Cleaner™" },
+        { "need": "Toilet bowl cleaning", "product": "MUV Floral Toilet Cleaner™", "note": "acid-based — mixing restriction applies" },
+        { "need": "Bathroom surface cleaning", "product": "MUV Fresh Bathroom Cleaner™", "note": "acid-based — mixing restriction applies" },
+        { "need": "Dishware", "product": "MUV Spark Dishwash Gel™" },
+        { "need": "Laundry (general detergent)", "product": "MUV Liquid Detergent™" }
+      ]
+    },
+    { "koid": "KO-PB-DT-004", "title": "Safety Escalation Conditions", "confidence": "HIGH",
+      "escalationTriggers": [
+        "Real eye/skin/inhalation/ingestion contact reported",
+        "Intent to mix with acid or ammonia-based product described",
+        "First-aid instructions requested",
+        "Spill, leak, or damaged container reported",
+        "Exposure involving a child or pet described"
+      ]
+    }
+  ]
+}

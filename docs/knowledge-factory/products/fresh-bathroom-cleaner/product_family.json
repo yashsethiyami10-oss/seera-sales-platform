@@ -1,0 +1,32 @@
+{
+  "officialName": "MUV Fresh Bathroom Cleaner™",
+  "legacyName": "MUV Bathroom Cleaner",
+  "manufacturingName": "MUV BATHROOM CLEANER",
+  "category": "Home Care",
+  "categoryConfidence": "MEDIUM",
+  "fragranceVariants": 0,
+  "fragranceVariantsNote": "Unlike Liquid Detergent (3 fragrance variants), this product has no named fragrance/colour variant of any kind — the single fragrance and colour used are unnamed in every source.",
+  "packSizes": [
+    {
+      "size": "500 ml",
+      "status": "CONFIRMED",
+      "koid": "KO-BC-VAR-001"
+    },
+    {
+      "size": "5 Litre",
+      "status": "NOT CONFIRMED — REQUIRES FOUNDER INPUT",
+      "koid": "KO-BC-VAR-002",
+      "note": "No source (Product Chart, SOP, Knowledge Library) documents this size. Not asserted to exist."
+    }
+  ],
+  "totalConfirmedSkus": 1,
+  "totalUnconfirmedSkus": 1,
+  "sourceAuthorityOrder": [
+    "1. Current Product Chart (name/variants/pack sizes/current MRP)",
+    "2. Founder Instructions",
+    "3. Final Production SOP (formula/manufacturing/process/colour/fragrance/QC)",
+    "4. Knowledge Library",
+    "5. Seed Data",
+    "6. Historical Documents"
+  ]
+}

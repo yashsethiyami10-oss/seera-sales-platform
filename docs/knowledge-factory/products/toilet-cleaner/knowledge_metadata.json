@@ -1,0 +1,84 @@
+{
+  "package": "MUV Toilet Cleaner™ Enterprise Knowledge Package",
+  "productFamily": "MUV Toilet Cleaner™",
+  "parentProductRule": "One parent product, two pack-size SKUs (500 ml, 5 L) — no fragrance/colour variants for this product family, unlike Liquid Detergent's three. ONE knowledge package, no duplication across SKUs.",
+  "version": "1.0",
+  "createdAt": "2026-07-30",
+  "approvalStatus": "DRAFT — Pending Founder Review",
+  "governedBy": [
+    "MUV Knowledge Book (.claude/docs/MUV_Knowledge/ constitution files) — supreme constitution, not modified by this package",
+    "MUV AI Knowledge Factory™ architecture — frozen, not modified by this package"
+  ],
+  "sourceDocumentsUsed": [
+    {
+      "path": ".claude/docs/MUV-KNOWLEDGE/SOURCE DOCUMENTS/SOPs/HOME CARE/MUV_Toilet_Cleaner_Final_Production_SOP.docx",
+      "usedFor": "Raw material list, process steps, real manufacturing-floor safety section, pack net weights, pricing",
+      "extractionMethod": "Read-only zip extraction of word/document.xml (binary .docx, no repo files modified)"
+    },
+    {
+      "path": ".claude/docs/MUV-KNOWLEDGE/SOURCE DOCUMENTS/PRODUCT CHART/MUV_Product_Chart_with_USP (1)(1).pdf",
+      "usedFor": "Per-SKU MRP pricing (rows 7-8) — confirmed to match the SOP exactly, no conflict",
+      "extractionMethod": "PDF text extraction; USP column referenced in filename not recoverable as text"
+    },
+    {
+      "path": "prisma/seed.ts",
+      "usedFor": "Confirming Home Care category exists; confirming NO real Product/ProductVariant record exists yet for this product",
+      "extractionMethod": "Direct source read"
+    },
+    {
+      "path": "lib/inst-sales/consumption-rules.ts",
+      "usedFor": "Identifying a self-described placeholder institutional-pricing constant (₹130/Ltr) that must NOT be used as real pricing",
+      "extractionMethod": "Direct source read"
+    },
+    {
+      "path": "lib/knowledge-factory/conflict-service.ts",
+      "usedFor": "Confirming no prior Toilet Cleaner conflict has ever been flagged in the codebase",
+      "extractionMethod": "Direct source read"
+    }
+  ],
+  "knownConflicts": [],
+  "conflictNote": "No conflict was found for this product — see Source_Conflict_Register.md for the full comparison record (4 comparisons performed, 0 conflicts).",
+  "openFounderDecisions": [
+    {
+      "description": "The source SOP names this product's fragrance 'Harpic Floral' — a competitor brand name used as internal shorthand. Requires an explicit Founder decision before any customer-facing use.",
+      "koid": "KO-TC-SALES-002"
+    }
+  ],
+  "totalKnowledgeObjects": 38,
+  "totalFiles": 18,
+  "noHallucinationRuleApplied": true,
+  "fieldsMarkedRequiresFounderInput": [
+    "SKU codes / product codes (both SKUs)",
+    "Barcodes (both SKUs)",
+    "Packaging dimensions (both SKUs)",
+    "Shipping/carton weight (both SKUs)",
+    "Marketplace metadata (both SKUs)",
+    "Variant images / packaging photo review",
+    "HSN code and GST rate specific to this product",
+    "Formal brand positioning statement",
+    "Product line launch date / market history",
+    "Customer problems solved",
+    "Target customer segment",
+    "Usage scenarios beyond the general product category",
+    "Approved marketing/brand-voice copy",
+    "USP text",
+    "Batch scaling validation beyond the confirmed 10L batch",
+    "Equipment specification (including acid-resistant construction)",
+    "Temperature control requirements",
+    "Filling line process, labelling, batch-coding procedure",
+    "Finished-product acceptance criteria (no in-process checkpoint exists at all)",
+    "Sampling plan, test methods, OOS handling, retention samples",
+    "Shelf life",
+    "Storage conditions",
+    "Transportation / hazard-classification requirements",
+    "PPE requirements for the finished consumer product",
+    "Full first-aid procedure",
+    "Wholesale/institutional pricing",
+    "Cost of goods / margin data",
+    "Competitor comparison",
+    "Marketing campaign history / content strategy",
+    "Product-specific troubleshooting guide",
+    "Batch/lot numbering scheme",
+    "Fabric/surface compatibility and mixing-hazard guidance"
+  ]
+}

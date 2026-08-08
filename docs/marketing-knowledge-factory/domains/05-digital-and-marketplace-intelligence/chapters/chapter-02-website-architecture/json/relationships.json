@@ -1,0 +1,26 @@
+{
+  "chapter": "Website Architecture",
+  "relationships": [
+    { "from": "KO-DM-CH2-001", "type": "governs", "to": ["KO-DM-CH2-002","KO-DM-CH2-003","KO-DM-CH2-004","KO-DM-CH2-005","KO-DM-CH2-006","KO-DM-CH2-007","KO-DM-CH2-008","KO-DM-CH2-009"] },
+    { "from": "KO-DM-CH2-002", "type": "feeds", "to": ["KO-DM-CH2-003"] },
+    { "from": "KO-DM-CH2-003", "type": "feeds", "to": ["KO-DM-CH2-004"] },
+    { "from": "KO-DM-CH2-004", "type": "feeds", "to": ["KO-DM-CH2-005"] },
+    { "from": "KO-DM-CH2-005", "type": "feeds", "to": ["KO-DM-CH2-006"] },
+    { "from": "KO-DM-CH2-006", "type": "feeds", "to": ["KO-DM-CH2-007"] },
+    { "from": "KO-DM-CH2-007", "type": "feeds", "to": ["KO-DM-CH2-008"] },
+    { "from": "KO-DM-CH2-008", "type": "feeds", "to": ["KO-DM-CH2-009"] },
+    { "from": "KO-DM-CH2-001", "type": "summarizedBy", "to": ["KO-DM-CH2-010"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-DM-CH2-007", "type": "extends", "to": "KO-DM-CH1-004" },
+    { "from": "KO-DM-CH2-008", "type": "extends", "to": "KO-DM-CH1-004" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-DM-CH2-009", "type": "relatesTo", "to": "KO-CI-CH2-002" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-DM-CH2-010", "type": "transitionsTo", "to": "Chapter 3 (Backend, Integration & Automation)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

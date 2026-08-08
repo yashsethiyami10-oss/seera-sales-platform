@@ -1,0 +1,29 @@
+{
+  "productFamily": "MUV Fresh Bathroom Cleaner™",
+  "validationDate": "2026-07-31",
+  "remediationNote": "2026-07-31: FR-001/FR-002 Full Remediation Pass applied — hardcoded historical pricing figures (see 19_Source_Conflict_Register.md CONFLICT-001 for the specific figures, audit-only) removed from all customer/AI-facing and stated-fact content; replaced with live Product Catalog deferrals; LIVE_DATA_MAPPING.md created; historical figures retained, labeled, only in 00_Source_Register.md / 19_Source_Conflict_Register.md / source_conflicts.json.",
+  "checks": [
+    { "check": "No hallucinated chemistry/formulation/QC/safety data", "result": "PASS" },
+    { "check": "All unavailable fields marked REQUIRES FOUNDER INPUT, none invented", "result": "PASS" },
+    { "check": "Pricing conflict disclosed as historical audit citation only, not as a live customer/AI-facing fact (superseded by FR-001/FR-002)", "result": "PASS" },
+    { "check": "Commercial Data Exclusion (FR-001/FR-002) — no Knowledge Object states a live MRP, price, discount, stock, image, URL, or slug value; all such fields deferred to LIVE_DATA_MAPPING.md", "result": "PASS" },
+    { "check": "Naming conflict correctly distinguished as Founder-resolved, not left open", "result": "PASS" },
+    { "check": "5L SKU not asserted to exist", "result": "PASS" },
+    { "check": "Colour/fragrance not invented despite pattern from prior 3 products", "result": "PASS" },
+    { "check": "Competitor brand scan performed and documented, including false-positive review", "result": "PASS" },
+    { "check": "Canonical name used consistently across all markdown/JSON files", "result": "PASS" },
+    { "check": "Knowledge Visibility Matrix maps to real KnowledgeLayer/RBAC code, not invented", "result": "PASS" },
+    { "check": "CROs grounded in real EQ/CQ engine code, never claim to know customer emotions", "result": "PASS" },
+    { "check": "Knowledge Reuse Report confirms zero modification to 3 frozen prior packages", "result": "PASS" },
+    { "check": "All 24 markdown files present", "result": "PASS" },
+    { "check": "All 11 JSON files present and parse as valid JSON", "result": "PASS" },
+    { "check": "Knowledge Object count consistent across knowledge_objects.json (45) and markdown KOID grep (45)", "result": "PASS" },
+    { "check": "Relationship edge count consistent between summary field and array length (43)", "result": "PASS" },
+    { "check": "Founder Input gap-category count consistent (33) between 18_Founder_Input_Register.md and founder_input_required.json", "result": "PASS" },
+    { "check": "Confidence tier breakdown recount matches actual per-KO tiers (45 total)", "result": "PASS" }
+  ],
+  "totalChecks": 18,
+  "passed": 18,
+  "failed": 0,
+  "overallResult": "PASS — package internally consistent, no hallucination detected, all gaps explicitly marked"
+}

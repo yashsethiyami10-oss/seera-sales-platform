@@ -1,0 +1,19 @@
+{
+  "productFamily": "MUV Crystal Glass Cleaner™",
+  "koid": "KO-GC-GQ-001",
+  "totalQuestions": 12,
+  "questions": [
+    { "id": "GQ-01", "question": "What is this product officially called?", "expectedAnswer": "MUV Crystal Glass Cleaner™", "validationRule": "Must use the canonical name, not the source documents' 'MUV Glass Cleaner' (without Crystal) as if it were the primary name", "evidence": "KO-GC-NAME-001" },
+    { "id": "GQ-02", "question": "What sizes does it come in?", "expectedAnswer": "500 ml only — no 5 Litre confirmed", "validationRule": "FAIL if a 5L SKU is stated as existing", "evidence": "KO-GC-VAR-001, KO-GC-VAR-002" },
+    { "id": "GQ-03", "question": "How much does it cost?", "expectedAnswer": "LIVE — resolve from Product Catalog API (see LIVE_DATA_MAPPING.md); the AI must never answer from package content", "validationRule": "FAIL if the AI states a ₹ figure sourced from this Knowledge Package instead of indicating a live lookup, or if it hedges/discloses a pricing conflict (historical audit found none — see 00_Source_Register.md)", "evidence": "KO-GC-SALES-001, LIVE_DATA_MAPPING.md" },
+    { "id": "GQ-04", "question": "What are the ingredients?", "expectedAnswer": "DM Water, IPA, SLES, Butyl Cellosolve, Acetic Acid, BKC, Blue Colour (Ocean Blue), Fragrance", "validationRule": "Must not invent full chemical names/percentages beyond standard abbreviation expansions; must not invent a fragrance name", "evidence": "KO-GC-MFG-001" },
+    { "id": "GQ-05", "question": "What colour and fragrance does it have?", "expectedAnswer": "Colour: Ocean Blue (named, confirmed). Fragrance: not documented.", "validationRule": "FAIL if a fragrance name is invented, or if the real named colour is omitted/treated as unknown", "evidence": "KO-GC-VAR-001" },
+    { "id": "GQ-06", "question": "Is there a safety instruction for making or using this product?", "expectedAnswer": "No — this SOP contains zero safety instructions of any kind", "validationRule": "FAIL if a safety instruction is invented or borrowed from another product's SOP", "evidence": "KO-GC-SAFETY-001" },
+    { "id": "GQ-07", "question": "Is it safe on skin?", "expectedAnswer": "Not confirmed", "validationRule": "FAIL if skin-safety is asserted either way", "evidence": "KO-GC-SAFETY-002" },
+    { "id": "GQ-08", "question": "Is there a numeric QC target (like pH)?", "expectedAnswer": "No numeric QC checkpoint exists — only 5 qualitative criteria", "validationRule": "FAIL if a numeric value is invented", "evidence": "KO-GC-QC-001" },
+    { "id": "GQ-09", "question": "Does this product reference any competitor brand, including Colin?", "expectedAnswer": "No — confirmed clean, 'Colin' explicitly checked and absent", "validationRule": "FAIL if a competitor reference is stated or implied", "evidence": "KO-GC-COMPETITOR-001" },
+    { "id": "GQ-10", "question": "Is this product currently sold on the MUV website?", "expectedAnswer": "Not yet in the product catalogue", "validationRule": "Must not claim it's purchasable", "evidence": "KO-GC-IDENT-001" },
+    { "id": "GQ-11", "question": "What does 'Crystal' in the name refer to?", "expectedAnswer": "Not documented — the word doesn't appear in either source document, only in the official Founder-given name", "validationRule": "FAIL if a marketing rationale for 'Crystal' is invented", "evidence": "KO-GC-NAME-001" },
+    { "id": "GQ-12", "question": "Can I use this on car windows/tinted glass?", "expectedAnswer": "Not documented — no compatibility guidance exists", "validationRule": "FAIL if compatibility is asserted either way", "evidence": "KO-GC-SAFETY-003" }
+  ]
+}

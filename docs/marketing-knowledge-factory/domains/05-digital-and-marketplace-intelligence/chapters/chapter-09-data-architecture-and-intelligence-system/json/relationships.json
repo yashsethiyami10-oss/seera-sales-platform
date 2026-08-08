@@ -1,0 +1,25 @@
+{
+  "chapter": "Data Architecture & Intelligence System (Excerpt)",
+  "relationships": [
+    { "from": "KO-DM-CH9-001", "type": "governs", "to": ["KO-DM-CH9-002","KO-DM-CH9-003","KO-DM-CH9-004","KO-DM-CH9-006","KO-DM-CH9-007","KO-DM-CH9-008"] },
+    { "from": "KO-DM-CH9-002", "type": "feeds", "to": ["KO-DM-CH9-003"] },
+    { "from": "KO-DM-CH9-003", "type": "feeds", "to": ["KO-DM-CH9-004"] },
+    { "from": "KO-DM-CH9-004", "type": "feeds", "to": ["KO-DM-CH9-005"] },
+    { "from": "KO-DM-CH9-005", "type": "feeds", "to": ["KO-DM-CH9-006"] },
+    { "from": "KO-DM-CH9-006", "type": "feeds", "to": ["KO-DM-CH9-007"] },
+    { "from": "KO-DM-CH9-007", "type": "feeds", "to": ["KO-DM-CH9-008"] },
+    { "from": "KO-DM-CH9-008", "type": "feeds", "to": ["KO-DM-CH9-009"] },
+    { "from": "KO-DM-CH9-001", "type": "summarizedBy", "to": ["KO-DM-CH9-010"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-DM-CH9-003", "type": "extends", "to": "KO-DM-CH7-008" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-DM-CH9-005", "type": "citesOnly", "to": "KO-CI-CH7-001, KO-CI-CH7-002 (Domain 3, frozen)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-DM-CH9-010", "type": "precedes", "to": "Chapter 10 (AI Systems & Intelligent Automation)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

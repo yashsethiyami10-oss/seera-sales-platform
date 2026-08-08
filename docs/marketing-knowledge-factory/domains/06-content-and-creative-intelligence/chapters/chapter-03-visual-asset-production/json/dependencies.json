@@ -1,0 +1,15 @@
+{
+  "chapter": "Visual Asset Production",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part IV, Chapter 18", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-PM-CH3-012 (Domain 2, frozen)", "type": "crossDomainKO", "status": "exists, frozen, unmodified" },
+    { "source": "KO-DM-CH10-004, 005 (Domain 5, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified" },
+    { "source": "KO-SC-CH4-003, KO-SC-CH3-006 (Domain 4, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 6 Chapter 4 (3D Visualization & Mockups)", "status": "not yet built, this batch" },
+    { "dependent": "Domain 6 Chapters 6-7", "status": "will draw on KO-CC-CH3-009" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

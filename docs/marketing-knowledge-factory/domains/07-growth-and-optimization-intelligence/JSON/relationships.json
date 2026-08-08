@@ -1,0 +1,27 @@
+{
+  "domain": "Growth & Optimization Intelligence™",
+  "relationships": [
+    { "from": "KO-GO-001", "type": "feeds", "to": ["KO-GO-002"] },
+    { "from": "KO-GO-002", "type": "feeds", "to": ["KO-GO-003"] },
+    { "from": "KO-GO-003", "type": "feeds", "to": ["KO-GO-004"] },
+    { "from": "KO-GO-004", "type": "feeds", "to": ["KO-GO-005"] },
+    { "from": "KO-GO-005", "type": "feeds", "to": ["KO-GO-006"] },
+    { "from": "KO-GO-006", "type": "feeds", "to": ["KO-GO-007"] },
+    { "from": "KO-GO-007", "type": "feeds", "to": ["KO-GO-008"] },
+    { "from": "KO-GO-008", "type": "feeds", "to": ["KO-GO-009"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-GO-001", "type": "cites", "to": "KO-PM-CH1-001, KO-PM-CH1-007, KO-PM-CH1-009 (Domain 2)" },
+    { "from": "KO-GO-002", "type": "cites", "to": "KO-PM-CH5-002, KO-PM-CH5-003 (Domain 2)" },
+    { "from": "KO-GO-003", "type": "cites", "to": "KO-PM-CH5-004, KO-PM-CH5-005 (Domain 2)" },
+    { "from": "KO-GO-004", "type": "cites", "to": "KO-PM-CH5-006, KO-PM-CH5-007 (Domain 2)" },
+    { "from": "KO-GO-005", "type": "cites", "to": "KO-PM-CH5-008 (Domain 2)" },
+    { "from": "KO-GO-006", "type": "cites", "to": "KO-PM-CH5-014 (Domain 2)" },
+    { "from": "KO-GO-008", "type": "relatesTo (non-satisfying analog)", "to": "KO-PM-CH5-012 (Domain 2)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-GO-009", "type": "feeds", "to": "Marketing Knowledge Factory Final Review, Global Repository Health Snapshot" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

@@ -1,0 +1,29 @@
+{
+  "chapter": "Creative Governance Gap Records",
+  "relationships": [
+    { "from": "KO-CC-CH7-001", "type": "sequentialTo", "to": ["KO-CC-CH7-002"] },
+    { "from": "KO-CC-CH7-002", "type": "sequentialTo", "to": ["KO-CC-CH7-003"] },
+    { "from": "KO-CC-CH7-003", "type": "sequentialTo", "to": ["KO-CC-CH7-004"] },
+    { "from": "KO-CC-CH7-004", "type": "sequentialTo", "to": ["KO-CC-CH7-005"] },
+    { "from": "KO-CC-CH7-005", "type": "sequentialTo", "to": ["KO-CC-CH7-006"] },
+    { "from": "KO-CC-CH7-006", "type": "sequentialTo", "to": ["KO-CC-CH7-007"] },
+    { "from": "KO-CC-CH7-007", "type": "sequentialTo", "to": ["KO-CC-CH7-008"] },
+    { "from": "KO-CC-CH7-008", "type": "sequentialTo", "to": ["KO-CC-CH7-009"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CC-CH7-001", "type": "closestAnalog (does not satisfy)", "to": "KO-SC-CH4-005 (Domain 4)" },
+    { "from": "KO-CC-CH7-002", "type": "closestAnalog (does not satisfy)", "to": "KO-CC-CH3-009 (this domain)" },
+    { "from": "KO-CC-CH7-003", "type": "closestAnalog (does not satisfy)", "to": "KO-PM-CH3-005 (Domain 2)" },
+    { "from": "KO-CC-CH7-004", "type": "closestAnalog (does not satisfy)", "to": "KO-SC-CH4-005 (Domain 4)" },
+    { "from": "KO-CC-CH7-005", "type": "closestAnalog (does not satisfy)", "to": "KO-CC-CH6-006 (this domain)" },
+    { "from": "KO-CC-CH7-006", "type": "closestAnalog (does not satisfy)", "to": "KO-CC-CH5-007 (this domain)" },
+    { "from": "KO-CC-CH7-007", "type": "closestAnalog (does not satisfy)", "to": "KO-PM-CH2-003, KO-PM-CH2-008 (Domain 2)" },
+    { "from": "KO-CC-CH7-008", "type": "closestAnalog (does not satisfy)", "to": "KO-CC-CH2-003 (this domain)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CC-CH7-009", "type": "closesDomain", "to": "Domain 6 (Content & Creative Intelligence™)" },
+    { "from": "KO-CC-CH7-009", "type": "feeds", "to": "Domain-audit sequence, Global Repository Health Snapshot, DOMAIN_6_FOUNDER_REVIEW_PACKAGE.md" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

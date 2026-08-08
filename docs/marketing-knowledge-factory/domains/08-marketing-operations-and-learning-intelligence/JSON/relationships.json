@@ -1,0 +1,26 @@
+{
+  "domain": "Marketing Operations & Learning Intelligence™",
+  "relationships": [
+    { "from": "KO-MO-001", "type": "feeds", "to": ["KO-MO-002"] },
+    { "from": "KO-MO-002", "type": "feeds", "to": ["KO-MO-003"] },
+    { "from": "KO-MO-003", "type": "feeds", "to": ["KO-MO-004"] },
+    { "from": "KO-MO-004", "type": "feeds", "to": ["KO-MO-005"] },
+    { "from": "KO-MO-005", "type": "feeds", "to": ["KO-MO-006"] },
+    { "from": "KO-MO-006", "type": "feeds", "to": ["KO-MO-007"] },
+    { "from": "KO-MO-007", "type": "feeds", "to": ["KO-MO-008"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-MO-001", "type": "cites", "to": "KO-PM-CH5-001 (Domain 2)" },
+    { "from": "KO-MO-002", "type": "cites", "to": "KO-PM-CH5-009 (Domain 2)" },
+    { "from": "KO-MO-003", "type": "cites", "to": "KO-PM-CH5-010 (Domain 2)" },
+    { "from": "KO-MO-004", "type": "cites", "to": "KO-PM-CH5-011 (Domain 2)" },
+    { "from": "KO-MO-005", "type": "cites", "to": "KO-PM-CH5-012 (Domain 2)" },
+    { "from": "KO-MO-006", "type": "cites", "to": "KO-PM-CH5-013 (Domain 2)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-MO-008", "type": "feeds", "to": "Marketing Knowledge Factory Final Review, Global Repository Health Snapshot" },
+    { "from": "KO-MO-008", "type": "closesBatch", "to": "Final Execution Mode batch (Domains 7-8)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

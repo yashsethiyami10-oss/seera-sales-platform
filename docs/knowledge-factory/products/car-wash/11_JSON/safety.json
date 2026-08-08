@@ -1,0 +1,24 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "totalSafetyKOs": 7,
+  "fr006ReferencedFields": {
+    "usage": { "koid": "KO-CW-INTEL-003", "location": "03_Product_Intelligence.md" },
+    "safety": { "koid": "KO-CW-SAFETY-001" },
+    "contraindications": { "koid": "KO-CW-SAFETY-002" },
+    "firstAid": { "koid": "KO-CW-SAFETY-003" },
+    "storage": { "koid": "KO-CW-SAFETY-004" },
+    "shelfLife": { "koid": "KO-CW-SAFETY-005" }
+  },
+  "cmsSourcePopulated": false,
+  "cmsSourceNote": "ProductIntelligence/ProductIntelligenceVersion (the inferred CMS mapping) is not yet populated for this or any MUV product — the reference pattern is architecturally correct, not evidence the content exists.",
+  "safetyKOs": [
+    { "koid": "KO-CW-SAFETY-001", "title": "Safety", "confidence": "CMS_REFERENCED" },
+    { "koid": "KO-CW-SAFETY-002", "title": "Contraindications", "confidence": "CMS_REFERENCED" },
+    { "koid": "KO-CW-SAFETY-003", "title": "First Aid", "confidence": "CMS_REFERENCED" },
+    { "koid": "KO-CW-SAFETY-004", "title": "Storage Conditions", "confidence": "CMS_REFERENCED" },
+    { "koid": "KO-CW-SAFETY-005", "title": "Shelf Life", "confidence": "CMS_REFERENCED" },
+    { "koid": "KO-CW-SAFETY-006", "title": "Emergency Guidance Behavioral Rule", "confidence": "HIGH", "reusedFrom": ["KO-PB-SAFETY-013", "KO-BP-SAFETY-013", "KO-WP-SAFETY-013", "KO-BW-SAFETY-010", "KO-HW-SAFETY-011"], "note": "Not delegated to CMS — a real, code-grounded AI behavioral rule" },
+    { "koid": "KO-CW-SAFETY-007", "title": "Claims Validation Cross-Reference", "confidence": "HIGH" }
+  ],
+  "comparisonToHandWash": "Hand Wash (pre-FR-006) documented 11 Safety KOs with field-by-field 'Unknown — Founder Decision Required' markers for all six FR-005 fields. Car Wash (first FR-006 package) documents the same underlying absence with 5 CMS-reference KOs instead — a structural simplification, not a change in what content actually exists."
+}

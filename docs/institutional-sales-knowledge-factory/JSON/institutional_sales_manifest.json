@@ -1,0 +1,63 @@
+{
+  "repository": "MUV Institutional Sales Knowledge Factory™",
+  "authorizedVia": "Founder Execution Protocol v1.0 (Institutional Sales), Fast Execution Mode",
+  "status": "COMPLETE — Founder Review Ready (repository construction) / Founder Decision Required (21 Gap Records)",
+  "repositoryType": "Standalone repository, mirrored content + Gap Records — not a domain of the MUV Marketing Knowledge Factory",
+  "artifactFormat": "lean single-repository format — INSTITUTIONAL_SALES_MASTER.md, KNOWLEDGE_OBJECTS.md, RELATIONSHIPS.md, VALIDATION.md, FOUNDER_REVIEW.md, JSON/*",
+  "totalKnowledgeObjects": 33,
+  "koidPrefix": "KO-IS-",
+  "sourceDocuments": [
+    "MUV Knowledge Library, Part VIII, Chapter 37 (Sales & Distribution) — Institutional Partnerships subsection + generic sales-process content mirrored as required supporting context",
+    "MUV Knowledge Library, Part VIII, Chapter 36 (Pricing & MRP Architecture) — Revenue Responsibility & Long-Term Relationship Building, closest analog",
+    "MUV Knowledge Library, Part VII, Chapter 32 (Campaign Concepts & Advertising) — Retail and Institutional Communication",
+    "MUV Knowledge Library, Part VII, Chapter 34 (Creators, Influencers & Reach) — Channel Marketing (Institutional), Sales Enablement, Marketing Asset System"
+  ],
+  "scopeDiscipline": "Institutional Sales only. Retail, dealer, distributor, and general-sales content genuinely scoped to those channels (partner onboarding, distributor relationships, geographic/channel expansion, conflict management, generic sales training) explicitly excluded, even though present in the same source chapters mirrored here.",
+  "knowledgeObjectBreakdown": {
+    "mirrored": 11,
+    "gapRecordsTopic": 12,
+    "gapRecordsFounderIP": 9,
+    "repositorySummary": 1
+  },
+  "provenanceCrossReferenceIntegrity": {
+    "totalUniqueCrossReferences": 14,
+    "targetRepository": "MUV Marketing Knowledge Factory (docs/marketing-knowledge-factory/)",
+    "verifiedAgainstFrozenOrCompleteRegistries": true,
+    "brokenReferences": 0,
+    "note": "Cross-references are informational provenance notes, not runtime dependencies — this repository is fully self-contained"
+  },
+  "founderOriginalIP": {
+    "total": 9,
+    "items": [
+      "AI Opportunity Scoring Engine™", "AI Consumption Prediction Engine™", "AI Meeting Review Engine™",
+      "AI Negotiation Engine™", "AI Proposal Optimizer™", "AI Territory Planner™",
+      "AI Sales Coach™", "AI Follow-up Intelligence™", "AI Revenue Forecast Engine™"
+    ],
+    "recordedAs": "KO-IS-024 through KO-IS-032",
+    "evidenceClassification": "Founder Decision Required for all nine",
+    "note": "None designed, none partially designed, per explicit protocol instruction"
+  },
+  "topicGapRecords": {
+    "total": 12,
+    "items": [
+      "Institutional Customer Type Taxonomy", "Requirement Discovery Methodology", "Product Recommendation Logic",
+      "Consumption Estimation", "Proposal Preparation", "ROI & Business Value Communication Framework",
+      "Competitive Positioning", "Institutional Relationship Building & Account Growth", "Sales Visit Planning",
+      "Institutional Sales Governance & SOP", "Institutional Customer Segmentation", "Institutional Customer Journey"
+    ],
+    "recordedAs": "KO-IS-012 through KO-IS-023",
+    "evidenceClassification": "Founder Decision Required for all twelve"
+  },
+  "repositoryAudits": {
+    "relationshipAudit": "PASS (33/33 KOs relationship-complete, 0 orphans, 0 circular)",
+    "knowledgeCoverageAudit": "PASS (every Expected Knowledge Scope item mirrored or Gap-Recorded, none omitted)",
+    "crossDomainIntegrity": "PASS (14/14 cross-references verified)",
+    "duplicateAudit": "PASS (mirror architecturally necessary, not accidental duplication)",
+    "repositoryConsistency": "PASS (new lean format applied exactly as specified)",
+    "jsonValidation": "PASS (4/4 files parse, KO count reconciles)",
+    "repositoryHealth": "PASS (see FOUNDER_REVIEW.md Global Repository Health Snapshot)"
+  },
+  "founderDecisionsAppliedToThisRepository": [],
+  "openGaps": 21,
+  "founderReviewPackage": "FOUNDER_REVIEW.md"
+}

@@ -1,0 +1,32 @@
+{
+  "repository": "MUV AI Runtime Engineering™",
+  "stages": [
+    { "order": 1, "name": "User Input", "module": null },
+    { "order": 2, "name": "Intent Classification", "module": "Module 2", "blocking": true },
+    { "order": 3, "name": "Semantic Retrieval", "module": "Module 1 (phase 1)", "blocking": true },
+    { "order": 4, "name": "Knowledge Ranking", "module": "Module 1 (phase 2)", "blocking": true },
+    { "order": 5, "name": "Context Construction", "module": "Module 3", "blocking": true },
+    { "order": 6, "name": "Founder Reasoning", "module": "Module 4", "blocking": false, "note": "degrades gracefully if no framework applies" },
+    { "order": 7, "name": "Decision Runtime", "module": "Module 5", "blocking": true },
+    { "order": 8, "name": "Conflict Resolution", "module": "Module 6", "blocking": false, "note": "conditional — only runs when ≥2 same-subject results retrieved" },
+    { "order": 9, "name": "Confidence Evaluation", "module": "Module 7", "blocking": true },
+    { "order": 10, "name": "Response Assembly (draft)", "module": "Module 9 (phase 1)", "blocking": true },
+    { "order": 11, "name": "Safety Runtime", "module": "Module 8", "blocking": true, "note": "hard gate, no bypass" },
+    { "order": 12, "name": "Response Assembly (final)", "module": "Module 9 (phase 2)", "blocking": true },
+    { "order": 13, "name": "Learning Runtime", "module": "Module 10", "blocking": false, "note": "asynchronous, never blocks delivery" }
+  ],
+  "crossCuttingUnchangedDependencies": [
+    "Memory Engine (Layer 7) — feeds Module 3, Module 5",
+    "Care Engine (Layer 10) — feeds Module 5",
+    "Tool Orchestration Engine (Layer 12) — invoked from Module 9/5"
+  ],
+  "fallbackPaths": [
+    { "trigger": "IntentClassification = UNKNOWN", "path": "unscoped retrieval → Decision cascade resolves to clarifying question, never a guess" },
+    { "trigger": "IntentClassification = CREATIVE_REVIEW_REQUEST", "path": "short-circuits to existing reserved Founder Original IP Gap Record" },
+    { "trigger": "Conflict Resolution = UNRESOLVED_CONFLICT", "path": "Confidence capped below threshold → Decision cascade escalates" },
+    { "trigger": "Safety Runtime = BLOCKED", "path": "falls back to Module 9's fixed deterministic lookup-table response; block logged to Learning Runtime" },
+    { "trigger": "Founder Reasoning finds no applicable framework", "path": "Decision Runtime proceeds on its original 5 inputs" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS (Learning Runtime's feedback to Module 1/6 is external-governance-gated, never a same-request cycle)"
+}

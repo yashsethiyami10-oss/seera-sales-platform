@@ -1,0 +1,20 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "chapter": "CRM System (Excerpt)",
+  "chapterNumber": 6,
+  "koidPrefix": "KO-CI-CH6-",
+  "sourceChapter": "MUV Knowledge Library, Part VIII, Chapter 40 (\"Commercial Decisions & Channel Evolution\"), \"CRM System\" subsection only",
+  "sourceLineRange": "9700-9721",
+  "totalKnowledgeObjects": 2,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domain 1 and Domain 2, both frozen)"
+  ],
+  "domainSynthesisNote": "Domain 3 is a Founder-approved synthesized domain (Part IX + CRM excerpt from Part VIII Ch.40 + Data Insights excerpt from Part XII Ch.61), not a single clean Part mirror like Domains 1-2. See domain README for the full escalation record.",
+  "excerptNote": "This chapter imports ONLY the 'CRM System' subsection of the much larger Chapter 40 (which also covers revenue planning, forecasting, targets, incentives, sales metrics, customer acquisition economics, territory intelligence, channel evolution, expansion decisions, documentation, knowledge transfer, and sales team development). The rest of Chapter 40 is out of scope and not transcribed."
+}

@@ -1,0 +1,22 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "koid": "KO-WP-FAQ-001",
+  "totalQuestions": 15,
+  "questions": [
+    { "question": "What is MUV White Phenyl™?", "answer": "A pine-oil-emulsion-based, milky white floor cleaner.", "sourced": true },
+    { "question": "What sizes does it come in?", "answer": "1L and 5L, both confirmed by both sources, no conflict.", "sourced": true },
+    { "question": "How much does it cost?", "answer": "LIVE — resolve from Product Catalog API.", "sourced": "N/A (commercial, live)" },
+    { "question": "What's in it?", "answer": "Pine Oil, Turkey Red Oil, Non-Ionic Surfactant, Sodium Carbonate, Preservative, Phenyl Fragrance, pH adjuster/colour.", "sourced": true },
+    { "question": "How do I use it?", "answer": "Not documented.", "sourced": false },
+    { "question": "Do I need to dilute it?", "answer": "Not documented.", "sourced": false },
+    { "question": "How long should I leave it on the floor?", "answer": "Not documented.", "sourced": false },
+    { "question": "Can I use it on any floor surface?", "answer": "Not documented — do not assume safe.", "sourced": false },
+    { "question": "Is this the same as MUV Black Phenyl™?", "answer": "No — independently confirmed to be a genuinely separate, distinctly formulated product.", "sourced": true },
+    { "question": "Does it disinfect?", "answer": "Formula roles are cleaning-focused — no specific efficacy claim is sourced.", "sourced": "MIXED" },
+    { "question": "How should I store it?", "answer": "Not documented — no storage condition exists in the SOP.", "sourced": false },
+    { "question": "What's the shelf life?", "answer": "Not documented.", "sourced": false },
+    { "question": "What should I do if it gets in my eyes/on my skin?", "answer": "Not documented — seek professional/emergency guidance.", "sourced": false },
+    { "question": "Is it safe around kids and pets?", "answer": "Not confirmed.", "sourced": false },
+    { "question": "What does it smell like?", "answer": "The SOP's QC criteria describe a 'characteristic pine/phenyl fragrance.'", "sourced": true }
+  ]
+}

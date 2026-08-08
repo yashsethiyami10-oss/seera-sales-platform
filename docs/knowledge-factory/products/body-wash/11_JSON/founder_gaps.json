@@ -1,0 +1,27 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "totalGaps": 18,
+  "priority1Critical": 3,
+  "priority2Important": 7,
+  "priority3Standard": 8,
+  "gaps": [
+    { "id": 1, "priority": 1, "gap": "Zero safety content of any kind exists in the source SOP", "relatedKoid": "KO-BW-SAFETY-001" },
+    { "id": 2, "priority": 1, "gap": "MUV Cleanse seed-data conflict — different, non-matching product", "relatedKoid": "KO-BW-IDENT-001" },
+    { "id": 3, "priority": 1, "gap": "Consumer usage instructions", "relatedKoid": "KO-BW-INTEL-005" },
+    { "id": 4, "priority": 2, "gap": "Skin-type suitability (oily, dry, sensitive)", "relatedKoid": "KO-BW-INTEL-004" },
+    { "id": 5, "priority": 2, "gap": "Contraindications", "relatedKoid": "KO-BW-INTEL-014" },
+    { "id": 6, "priority": 2, "gap": "Storage condition", "relatedKoid": "KO-BW-SAFETY-008" },
+    { "id": 7, "priority": 2, "gap": "Shelf-life duration", "relatedKoid": "KO-BW-INTEL-011" },
+    { "id": 8, "priority": 2, "gap": "Container material", "relatedKoid": "KO-BW-INTEL-009" },
+    { "id": 9, "priority": 2, "gap": "Fill weight (per pack size)", "relatedKoid": "KO-BW-CV-VAR-001" },
+    { "id": 10, "priority": 2, "gap": "Fragrance-note detail beyond family label", "relatedKoid": "KO-BW-INTEL-008" },
+    { "id": 11, "priority": 3, "gap": "Manufacturer name", "relatedKoid": "KO-BW-IDENT-001" },
+    { "id": 12, "priority": 3, "gap": "SKU codes, barcodes (6 real SKUs)", "relatedKoid": "KO-BW-CV-VAR-001" },
+    { "id": 13, "priority": 3, "gap": "Packaging dimensions, shipping weight", "relatedKoid": "KO-BW-CV-VAR-001" },
+    { "id": 14, "priority": 3, "gap": "Product images", "relatedKoid": "10_LIVE_DATA_MAPPING.md" },
+    { "id": 15, "priority": 3, "gap": "Disposal guidance", "relatedKoid": "KO-BW-SAFETY-009" },
+    { "id": 16, "priority": 3, "gap": "Institutional consumption-estimation tooling", "relatedKoid": null },
+    { "id": 17, "priority": 3, "gap": "Formal positioning/marketing statement", "relatedKoid": "KO-BW-INTEL-015" },
+    { "id": 18, "priority": 3, "gap": "Equipment specification", "relatedKoid": null }
+  ]
+}

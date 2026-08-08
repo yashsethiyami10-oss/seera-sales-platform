@@ -1,0 +1,14 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "totalObjections": 8,
+  "objections": [
+    { "koid": "KO-BW-OBJ-001", "objection": "Is this safe for my skin?", "sourced": false, "priority": "critical" },
+    { "koid": "KO-BW-OBJ-002", "objection": "Does it contain harsh chemicals like SLES?", "sourced": "MIXED" },
+    { "koid": "KO-BW-OBJ-003", "objection": "Is this good for sensitive skin?", "sourced": false },
+    { "koid": "KO-BW-OBJ-004", "objection": "Why doesn't the description say how to use it?", "sourced": true },
+    { "koid": "KO-BW-OBJ-005", "objection": "How is this different from other body washes?", "sourced": false },
+    { "koid": "KO-BW-OBJ-006", "objection": "What's the difference between the three variants?", "sourced": true },
+    { "koid": "KO-BW-OBJ-007", "objection": "Is this actually the same as 'MUV Cleanse'?", "sourced": true, "note": "resolves a real, confirmed data conflict" },
+    { "koid": "KO-BW-OBJ-008", "objection": "Why is there no MRP shown?", "sourced": true, "note": "FR-001/FR-002 governance" }
+  ]
+}

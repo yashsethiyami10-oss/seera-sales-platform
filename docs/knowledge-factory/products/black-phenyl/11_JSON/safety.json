@@ -1,0 +1,25 @@
+{
+  "productFamily": "MUV Black Phenyl™",
+  "totalSafetyKOs": 13,
+  "sourcedContent": {
+    "verbatim": "Use gloves, goggles and protective clothing. Handle raw materials according to their safety data sheets. Ensure adequate ventilation during manufacturing.",
+    "source": "MUV_Black_Phenyl_SOP_10L_Batch.docx §7"
+  },
+  "safetyKOs": [
+    { "koid": "KO-BP-SAFETY-001", "topic": "Source Safety Content (verbatim)", "sourced": true },
+    { "koid": "KO-BP-SAFETY-002", "topic": "Safe Handling", "sourced": "MIXED" },
+    { "koid": "KO-BP-SAFETY-003", "topic": "Mixing Restrictions", "sourced": false, "note": "no restriction sourced, unlike Pure Bleach" },
+    { "koid": "KO-BP-SAFETY-004", "topic": "Eye Contact", "sourced": false, "priority": "HIGH" },
+    { "koid": "KO-BP-SAFETY-005", "topic": "Skin Contact", "sourced": false },
+    { "koid": "KO-BP-SAFETY-006", "topic": "Inhalation", "sourced": "MIXED" },
+    { "koid": "KO-BP-SAFETY-007", "topic": "Accidental Ingestion", "sourced": false, "priority": "HIGHEST" },
+    { "koid": "KO-BP-SAFETY-008", "topic": "Child Safety", "sourced": false },
+    { "koid": "KO-BP-SAFETY-009", "topic": "Pet Safety", "sourced": false },
+    { "koid": "KO-BP-SAFETY-010", "topic": "Storage", "sourced": false, "note": "no storage condition at all, unlike Pure Bleach" },
+    { "koid": "KO-BP-SAFETY-011", "topic": "Spill Management", "sourced": false },
+    { "koid": "KO-BP-SAFETY-012", "topic": "Disposal", "sourced": false },
+    { "koid": "KO-BP-SAFETY-013", "topic": "Emergency Guidance (AI behavior)", "sourced": true, "note": "behavioral rule, not medical content" }
+  ],
+  "neverGenerateUnsupportedMedicalAdvice": true,
+  "founderDecisionRequiredCount": 9
+}

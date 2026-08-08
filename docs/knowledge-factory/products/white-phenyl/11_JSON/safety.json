@@ -1,0 +1,27 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "totalSafetyKOs": 13,
+  "sourcedContent": {
+    "verbatim": "Wear gloves, safety glasses and apron during manufacturing. Use adequate ventilation. Handle chemicals according to their safety data sheets.",
+    "source": "MUV_White_Phenyl_SOP_10L_Batch.docx §7",
+    "independentlySourced": true,
+    "note": "Structurally similar to but not copied from Black Phenyl's SOP §7 — verified by direct textual comparison"
+  },
+  "safetyKOs": [
+    { "koid": "KO-WP-SAFETY-001", "topic": "Source Safety Content (verbatim)", "sourced": true },
+    { "koid": "KO-WP-SAFETY-002", "topic": "Safe Handling", "sourced": "MIXED" },
+    { "koid": "KO-WP-SAFETY-003", "topic": "Mixing Restrictions", "sourced": false },
+    { "koid": "KO-WP-SAFETY-004", "topic": "Eye Contact", "sourced": false, "priority": "HIGH" },
+    { "koid": "KO-WP-SAFETY-005", "topic": "Skin Contact", "sourced": false },
+    { "koid": "KO-WP-SAFETY-006", "topic": "Inhalation", "sourced": "MIXED" },
+    { "koid": "KO-WP-SAFETY-007", "topic": "Accidental Ingestion", "sourced": false, "priority": "HIGHEST" },
+    { "koid": "KO-WP-SAFETY-008", "topic": "Child Safety", "sourced": false },
+    { "koid": "KO-WP-SAFETY-009", "topic": "Pet Safety", "sourced": false },
+    { "koid": "KO-WP-SAFETY-010", "topic": "Storage", "sourced": false },
+    { "koid": "KO-WP-SAFETY-011", "topic": "Spill Management", "sourced": false },
+    { "koid": "KO-WP-SAFETY-012", "topic": "Disposal", "sourced": false },
+    { "koid": "KO-WP-SAFETY-013", "topic": "Emergency Guidance (AI behavior)", "sourced": true, "reusedFrom": "KO-PB-SAFETY-013 / KO-BP-SAFETY-013" }
+  ],
+  "neverGenerateUnsupportedMedicalAdvice": true,
+  "founderDecisionRequiredCount": 9
+}

@@ -1,0 +1,47 @@
+{
+  "domain": "Growth & Optimization Intelligence™",
+  "domainNumber": 7,
+  "status": "COMPLETE — Founder Review Ready (domain construction) / Founder Decision Required (2 Gap Records)",
+  "domainType": "Citation-only reorganization of Domain 2 content + Founder Original IP Gap Records — zero newly-transcribed source content",
+  "artifactFormat": "lean domain-level (Founder Execution Protocol v4.0) — no chapter-level artifacts",
+  "totalKnowledgeObjects": 9,
+  "sourceDocuments": [
+    "None new. Cites Domain 2 (Product Marketing, frozen), Chapter 1 (Launch Architecture) and Chapter 5 (Marketing Decisions & Learning), both sourced from MUV Knowledge Library Part VII."
+  ],
+  "koidPrefix": "KO-GO-",
+  "knowledgeObjectBreakdown": {
+    "citationOnly": 6,
+    "gapRecords": 2,
+    "domainSummary": 1
+  },
+  "crossDomainCitationIntegrity": {
+    "uniqueDomain2Citations": 11,
+    "additionalNonSatisfyingAnalogReferences": 1,
+    "citationType": "100% citation-only for non-gap-record KOs",
+    "verifiedAgainstFrozenRegistry": true,
+    "brokenReferences": 0
+  },
+  "gapRecords": {
+    "total": 2,
+    "items": ["Marketing Optimization Engine™", "Autonomous Marketing Intelligence™"],
+    "evidenceClassification": "Founder Decision Required for both",
+    "note": "Both are named Founder Original IP per Founder Execution Protocol v4.0; neither designed nor partially designed"
+  },
+  "crossReferencedGapRecords": {
+    "domain": 6,
+    "count": 6,
+    "items": ["AI Creative Scoring Engine™", "Image Analysis Engine™", "Video Analysis Engine™", "Content Quality Engine™", "Creative Review Engine™", "AI Creative Feedback Engine™"],
+    "note": "Already recorded in Domain 6 Chapter 7; not duplicated here"
+  },
+  "domainAudits": {
+    "relationshipAudit": "PASS (9/9 KOs relationship-complete, 0 orphans, 0 circular)",
+    "knowledgeCoverageAudit": "PASS (all growth/optimization-relevant Domain 2 content cited)",
+    "crossDomainIntegrity": "PASS (9/9 citations verified)",
+    "duplicateAudit": "PASS (zero restated content)",
+    "repositoryConsistency": "PASS (new lean format applied exactly as specified)",
+    "jsonValidation": "PASS (4/4 files parse, KO count reconciles)"
+  },
+  "founderDecisionsAppliedToThisDomain": [],
+  "openGaps": ["Marketing Optimization Engine™ (KO-GO-007)", "Autonomous Marketing Intelligence™ (KO-GO-008)"],
+  "founderReviewPackage": "domains/07-growth-and-optimization-intelligence/FOUNDER_REVIEW.md"
+}

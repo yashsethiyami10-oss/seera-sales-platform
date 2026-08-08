@@ -1,0 +1,14 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "totalObjections": 8,
+  "objections": [
+    { "koid": "KO-WP-OBJ-001", "objection": "Phenyl products are harsh on floors", "sourced": false },
+    { "koid": "KO-WP-OBJ-002", "objection": "I'm worried about the strong phenyl smell", "sourced": true, "note": "expected per QC criteria" },
+    { "koid": "KO-WP-OBJ-003", "objection": "Can I use it on marble/wood/[specific surface]?", "sourced": false },
+    { "koid": "KO-WP-OBJ-004", "objection": "Is it safe around my kids/pets?", "sourced": false },
+    { "koid": "KO-WP-OBJ-005", "objection": "Why doesn't the description tell me how to dilute/use it?", "sourced": true, "note": "honest gap — SOP is manufacturing-only" },
+    { "koid": "KO-WP-OBJ-006", "objection": "Is this the same as MUV Black Phenyl?", "sourced": true, "note": "independently confirmed distinct product" },
+    { "koid": "KO-WP-OBJ-007", "objection": "Does this actually disinfect, or is it just a floor cleaner?", "sourced": "MIXED", "note": "sourced role, no efficacy claim" },
+    { "koid": "KO-WP-OBJ-008", "objection": "Why is there no MRP shown?", "sourced": true, "note": "FR-001/FR-002 governance, not a data gap" }
+  ]
+}

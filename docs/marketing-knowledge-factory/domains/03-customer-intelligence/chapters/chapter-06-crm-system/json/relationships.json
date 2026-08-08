@@ -1,0 +1,17 @@
+{
+  "chapter": "CRM System (Excerpt)",
+  "relationships": [
+    { "from": "KO-CI-CH6-001", "type": "governs", "to": ["KO-CI-CH6-002"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-CI-CH6-001", "type": "dependsOn", "to": "KO-CI-CH1-001" },
+    { "from": "KO-CI-CH6-001", "type": "complementsNotDuplicates", "to": "KO-CI-CH1-005" },
+    { "from": "KO-CI-CH6-001", "type": "complementsNotDuplicates", "to": "KO-CI-CH3-005" }
+  ],
+  "crossDomainRelationships": [],
+  "forwardRelationships": [
+    { "from": "KO-CI-CH6-002", "type": "precedes", "to": "Chapter 7 (Customer Insights & Data Intelligence)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

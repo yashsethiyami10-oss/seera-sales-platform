@@ -1,0 +1,22 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "totalSafetyKOs": 10,
+  "sourcedContent": {
+    "verbatim": null,
+    "note": "ZERO safety content exists in the source SOP — no seventh section exists, unlike Pure Bleach/Black Phenyl/White Phenyl which all had at least a 3-sentence safety passage. This is the most severe safety gap of any product family this session."
+  },
+  "safetyKOs": [
+    { "koid": "KO-BW-SAFETY-001", "topic": "Source Safety Content", "sourced": false, "priority": "CRITICAL" },
+    { "koid": "KO-BW-SAFETY-002", "topic": "Safe Handling", "sourced": false },
+    { "koid": "KO-BW-SAFETY-003", "topic": "Skin Contact / Irritation", "sourced": false, "priority": "CRITICAL" },
+    { "koid": "KO-BW-SAFETY-004", "topic": "Eye Contact", "sourced": false, "priority": "HIGH" },
+    { "koid": "KO-BW-SAFETY-005", "topic": "Accidental Ingestion", "sourced": false },
+    { "koid": "KO-BW-SAFETY-006", "topic": "Contraindications and Dermatological Advice", "sourced": false },
+    { "koid": "KO-BW-SAFETY-007", "topic": "Child Safety", "sourced": false },
+    { "koid": "KO-BW-SAFETY-008", "topic": "Storage", "sourced": false },
+    { "koid": "KO-BW-SAFETY-009", "topic": "Disposal", "sourced": false },
+    { "koid": "KO-BW-SAFETY-010", "topic": "Emergency Guidance (AI behavior)", "sourced": true, "reusedFrom": "KO-PB-SAFETY-013 / KO-BP-SAFETY-013 / KO-WP-SAFETY-013" }
+  ],
+  "neverGenerateUnsupportedMedicalOrDermatologicalAdvice": true,
+  "founderDecisionRequiredCount": 9
+}

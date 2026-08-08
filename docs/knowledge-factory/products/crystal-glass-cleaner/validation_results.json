@@ -1,0 +1,31 @@
+{
+  "productFamily": "MUV Crystal Glass Cleaner™",
+  "validationDate": "2026-07-30",
+  "remediationDate": "2026-07-31",
+  "remediationNote": "Updated per FR-001/FR-002 (Full Remediation Pass). Added the Commercial Data Exclusion check below; no other check was altered.",
+  "checks": [
+    { "check": "No hallucinated chemistry/formulation/QC/safety data", "result": "PASS" },
+    { "check": "All unavailable fields marked REQUIRES FOUNDER INPUT, none invented", "result": "PASS" },
+    { "check": "Pricing comparison correctly reported as clean (no conflict)", "result": "PASS" },
+    { "check": "Naming conflict correctly distinguished as Founder-resolved, not left open", "result": "PASS" },
+    { "check": "5L SKU not asserted to exist", "result": "PASS" },
+    { "check": "Colour correctly reported as named; fragrance correctly reported as not named (mixed state)", "result": "PASS" },
+    { "check": "Zero manufacturing safety instructions correctly reported as absent, not invented from other products' SOPs", "result": "PASS" },
+    { "check": "Competitor brand scan performed, including explicit 'Colin' check, documented", "result": "PASS" },
+    { "check": "Canonical name used consistently across all markdown/JSON files", "result": "PASS" },
+    { "check": "Knowledge Visibility Matrix maps to real KnowledgeLayer/RBAC code, not invented", "result": "PASS" },
+    { "check": "8 CROs grounded in real EQ/CQ engine code, never claim to know customer emotions; 6 explicitly requested glass-scenario CROs present", "result": "PASS" },
+    { "check": "Knowledge Reuse Report confirms zero modification to 4 frozen prior packages", "result": "PASS" },
+    { "check": "All 25 markdown files present, in the file order specified by this task (16/17 swapped vs. Bathroom Cleaner)", "result": "PASS" },
+    { "check": "All 10 JSON files present and parse as valid JSON", "result": "PASS" },
+    { "check": "Knowledge Object count consistent across knowledge_objects.json (48) and markdown KOID grep (48)", "result": "PASS" },
+    { "check": "Relationship edge count consistent between summary field and array length (41)", "result": "PASS" },
+    { "check": "Founder Input gap-category count consistent (31) between register markdown and JSON", "result": "PASS" },
+    { "check": "Confidence tier breakdown recount matches actual per-KO tiers (48 total)", "result": "PASS" },
+    { "check": "Commercial Data Exclusion (FR-001/FR-002) — no Knowledge Object states a live MRP, price, discount, stock, image, URL, or slug value; all such fields deferred to LIVE_DATA_MAPPING.md", "result": "PASS" }
+  ],
+  "totalChecks": 19,
+  "passed": 19,
+  "failed": 0,
+  "overallResult": "PASS — package internally consistent, no hallucination detected, all gaps explicitly marked, FR-001/FR-002 commercial-data exclusion confirmed"
+}

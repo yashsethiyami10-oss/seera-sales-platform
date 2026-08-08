@@ -1,0 +1,23 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "AI Systems & Intelligent Automation",
+  "chapterNumber": 10,
+  "koidPrefix": "KO-DM-CH10-",
+  "sourceChapter": "MUV Knowledge Library, Part XII, Chapter 62",
+  "sourceLineRange": "16274-16480",
+  "totalKnowledgeObjects": 12,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer).",
+  "specialHandlingNote": {
+    "topic": "This domain's central AI-governance chapter",
+    "note": "Comparable in weight to Domain 2's KO-PM-CH3-012 (AI-Assisted Marketing). Confirmed via dedicated research: 'AI Sutra' / 'Muv AI Sutra' appears nowhere in the MUV Knowledge Library — this chapter is the real, substantive AI content within the source document."
+  }
+}

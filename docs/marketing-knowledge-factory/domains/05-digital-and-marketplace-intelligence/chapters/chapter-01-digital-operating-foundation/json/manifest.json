@@ -1,0 +1,19 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "Digital Operating Foundation",
+  "chapterNumber": 1,
+  "koidPrefix": "KO-DM-CH1-",
+  "sourceChapter": "MUV Knowledge Library, Part II, Chapter 6",
+  "sourceLineRange": "928-1060",
+  "totalKnowledgeObjects": 7,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer), pre-authorized by the Founder's own Domain 5 execution prompt. See domain README for the full source-mapping record."
+}

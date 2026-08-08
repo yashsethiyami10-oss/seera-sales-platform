@@ -1,0 +1,36 @@
+{
+  "productFamily": "MUV Dishwash Gel™",
+  "packageVersion": "1.0",
+  "status": "DRAFT — Pending Founder Review",
+  "generatedAt": "2026-07-30",
+  "remediatedAt": "2026-07-31",
+  "remediationNote": "FR-001/FR-002 Commercial/Knowledge Separation remediation applied 2026-07-31. Only commercial-figure cells/fields were changed across this package; no product intelligence, SOP, safety, FAQ, or Care Intelligence substantive content was altered. See LIVE_DATA_MAPPING.md.",
+  "checks": [
+    { "check": "One Parent Product", "result": "PASS", "koid": "KO-DW-IDENT-001" },
+    { "check": "Three SKU Variants", "result": "PASS", "koids": ["KO-DW-VAR-001", "KO-DW-VAR-002", "KO-DW-VAR-003"] },
+    { "check": "Source Traceability", "result": "PASS", "file": "00_Source_Register.md" },
+    { "check": "Knowledge Object Integrity", "result": "PASS", "totalKnowledgeObjects": 41 },
+    { "check": "Relationship Graph", "result": "PASS", "file": "knowledge_relationships.json" },
+    { "check": "JSON Validation", "result": "PASS", "detail": "All 10 required JSON files generated and parse as valid JSON" },
+    { "check": "Founder Input Register", "result": "PASS", "gapCount": 36, "file": "17_Founder_Input_Register.md" },
+    { "check": "Source Conflict Register", "result": "PASS", "conflicts": 1, "dataGaps": 1, "cleanMatches": 2, "file": "18_Source_Conflict_Register.md" },
+    { "check": "Competitor Detection", "result": "PASS", "referencesFound": 0, "file": "20_Competitor_Reference_Register.md" },
+    { "check": "Canonical Naming", "result": "PASS", "openDecision": true, "file": "19_Canonical_Naming_Register.md" },
+    { "check": "Visibility Matrix", "result": "PASS", "file": "21_Knowledge_Visibility_Matrix.md" },
+    { "check": "Knowledge Reuse", "result": "PASS", "crossPackageReuses": 7, "modificationsToFrozenPackages": 0, "file": "22_Knowledge_Reuse_Report.md" },
+    { "check": "Golden Questions", "result": "PASS", "questionCount": 17, "file": "16_Golden_Questions.md" },
+    { "check": "AI Response Validation", "result": "PASS", "file": "14_FAQs_and_AI_Responses.md" },
+    { "check": "Commercial Data Exclusion (FR-001/FR-002)", "result": "PASS", "detail": "No Knowledge Object states a live MRP, price, discount, stock, image, URL, or slug value; all such fields deferred to LIVE_DATA_MAPPING.md. Historical Product Chart pricing citation retained, explicitly labeled as non-live, only in 00_Source_Register.md, 18_Source_Conflict_Register.md, source_conflicts.json, and sku_variants.json's historicalMrpCitation fields.", "file": "LIVE_DATA_MAPPING.md" }
+  ],
+  "overallResult": "PASS",
+  "openItemsBlockingFullApproval": [
+    "Canonical product name decision (KO-DW-NAME-001)",
+    "36 REQUIRES FOUNDER INPUT gaps (see founder_input_required.json)"
+  ],
+  "priorPackagesModified": {
+    "liquidDetergent": false,
+    "toiletCleaner": false
+  },
+  "nextProductFamilyStarted": false,
+  "stopRuleHonoured": true
+}

@@ -1,0 +1,23 @@
+{
+  "domain": "Product Marketing",
+  "domainNumber": 2,
+  "chapter": "Marketing Decisions & Learning",
+  "chapterNumber": 5,
+  "koidPrefix": "KO-PM-CH5-",
+  "sourceChapter": "MUV Knowledge Library, Part VII, Chapter 35",
+  "sourceLineRange": "7871-8236",
+  "totalKnowledgeObjects": 15,
+  "status": "Founder Review Ready",
+  "isDomainFinalChapter": true,
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (incl. Domain 1, frozen)"
+  ],
+  "reservedForDomainAudit": {
+    "topic": "Part VII Summary (lines 8238-8300): 'MUV Marketing Playbook in One View' (14-row table), 'Master Marketing Principles' (10 items), 'Master Marketing Checklist' (15 items), Part End Note",
+    "note": "Deliberately not built as Chapter 5 KOs — genuine domain-wide synthesis, reserved as grounding material for the domain-level Knowledge Coverage Audit"
+  }
+}

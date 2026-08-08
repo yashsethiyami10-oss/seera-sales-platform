@@ -1,0 +1,15 @@
+{
+  "chapter": "Cross-Domain Creative Synthesis",
+  "upstreamDependencies": [
+    { "source": "KO-BI-CH4-001 through 007 (Domain 1, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified, PowerShell-verified" },
+    { "source": "KO-PM-CH2-003, 004, 008, 013 and KO-PM-CH3-004, 005, 008, 012 (Domain 2, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified, PowerShell-verified" },
+    { "source": "KO-SC-CH4-002, 003, 005, 006 (Domain 4, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified, PowerShell-verified" },
+    { "source": "KO-DM-CH10-001, 004, 005, 007, 008, 009 (Domain 5, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified, PowerShell-verified" },
+    { "source": "KO-CC-CH3-009, KO-CC-CH4-008 (this domain, complete)", "type": "sameDomainKO", "status": "exist, complete, unmodified, PowerShell-verified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 6 Chapter 7 (Creative Governance Gap Records)", "status": "not yet built, this batch" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

@@ -1,0 +1,28 @@
+{
+  "productFamily": "MUV Pure Bleach™",
+  "koidPrefix": "KO-PB-",
+  "status": "DRAFT — Pending Founder Review",
+  "packageVersion": "1.0",
+  "sequenceInKnowledgeFactory": 7,
+  "structureVersion": "v2 (README/00-09/10_LIVE_DATA_MAPPING/11_JSON/12_Validation/13_Reports/MASTER — the new standard structure introduced for this package)",
+  "precedingFrozenFamilies": [
+    "MUV Liquid Detergent™ (KO-LD-, frozen, approved, FR-001/FR-002 remediated)",
+    "MUV Floral Toilet Cleaner™ (KO-TC-, frozen, approved, FR-001/FR-002 remediated)",
+    "MUV Spark Dishwash Gel™ (KO-DW-, frozen, approved, FR-001/FR-002 remediated)",
+    "MUV Fresh Bathroom Cleaner™ (KO-BC-, frozen, approved, FR-001/FR-002 remediated)",
+    "MUV Crystal Glass Cleaner™ (KO-GC-, frozen, approved, FR-001/FR-002 remediated)",
+    "MUV Floor Cleaner™ (KO-FC-, frozen, approved, FR-001/FR-002 remediated)"
+  ],
+  "totalKnowledgeObjects": 62,
+  "totalMarkdownFiles": 12,
+  "jsonFolder": "11_JSON/",
+  "validationFolder": "12_Validation/",
+  "reportsFolder": "13_Reports/",
+  "commercialDataStored": false,
+  "commercialDataNote": "Zero commercial fields stored anywhere in this package. The one pricing figure found during source research (₹60, Product Chart row 23) exists only as a labeled historical citation in 00_Source_Register.md. All commercial fields resolve via 10_LIVE_DATA_MAPPING.md.",
+  "canonicalName": "MUV Pure Bleach™",
+  "legacyName": "MUV Bleach",
+  "packSizes": ["500ml"],
+  "governanceDocuments": ["CONSTITUTION.md", "ARCHITECTURE.md", "VALIDATION_RULES.md", "FOUNDER_RULES.md"],
+  "stopRule": "Wait for explicit Founder approval before beginning the next Product Family."
+}

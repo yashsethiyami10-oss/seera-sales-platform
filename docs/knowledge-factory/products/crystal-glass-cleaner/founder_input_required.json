@@ -1,0 +1,22 @@
+{
+  "productFamily": "MUV Crystal Glass Cleaner™",
+  "priorityItems": [
+    { "item": "Manufacturing & consumer safety documentation (zero exists)", "whyItMatters": "The single most severe safety-documentation gap of any of the five product families audited this session", "koid": ["KO-GC-SAFETY-001", "KO-GC-SAFETY-002", "KO-GC-SAFETY-004"] },
+    { "item": "Fragrance identity", "whyItMatters": "Colour is named ('Ocean Blue') but fragrance is not — the only ingredient gap in an otherwise fully-specified formulation", "koid": ["KO-GC-ING-001", "KO-GC-VAR-001"] },
+    { "item": "Confirm whether a 5 Litre SKU should exist at all", "whyItMatters": "No source has one; if the Founder intends one, new source material is needed", "koid": ["KO-GC-VAR-002"] },
+    { "item": "Rationale for 'Crystal' in the official name", "whyItMatters": "Neither source uses this word — worth Founder elaboration, though the name itself is already settled", "koid": ["KO-GC-NAME-001"] },
+    { "item": "Product Chart's missing USP column", "whyItMatters": "The chart filename implies USP content that isn't actually present — worth checking against the original chart file", "koid": ["KO-GC-DESC-001"] }
+  ],
+  "categories": {
+    "Product Identity & Description": ["Manufacturer name confirmation", "Formal brand positioning statement", "Customer problems solved", "Target customer segment", "Usage scenarios", "Rationale for 'Crystal'", "Product Chart USP-column gap"],
+    "Identification & Catalogue Data": ["SKU code", "Barcode", "Packaging dimensions", "Shipping weight", "Marketplace metadata", "Variant image review"],
+    "Ingredients & Manufacturing": ["Full INCI/chemical names, concentrations, grades, suppliers", "Fragrance identity/name", "Equipment specification", "Real measured batch yield"],
+    "Quality Control": ["Numeric QC targets", "Test methods", "Sampling plan, OOS handling, retention samples"],
+    "Safety": ["Manufacturing PPE / hazard-handling instructions (none sourced at all)", "Consumer safety data sheet, first-aid procedure", "Surface/material compatibility and mixing-hazard guidance"],
+    "Storage & Transport": ["Shelf life", "Storage temperature range", "Transportation/hazard classification"],
+    "Sales & Marketing": ["Wholesale/institutional pricing", "Cost of goods / margin data", "Marketing campaign history"],
+    "Support": ["Product-specific troubleshooting guide", "Batch/lot numbering scheme"]
+  },
+  "totalGapCategories": 31,
+  "totalGapCategoriesNote": "31 matches the itemized bullet count in 18_Founder_Input_Register.md's category sections (7+6+4+3+3+3+3+2), and matches knowledge_metadata.json's founderInputGapCategories array length exactly — no split-bullet discrepancy this time."
+}

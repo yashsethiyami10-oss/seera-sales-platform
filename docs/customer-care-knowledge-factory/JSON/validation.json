@@ -1,0 +1,28 @@
+{
+  "repository": "MUV Customer Care Knowledge Factory™",
+  "validationDate": "2026-08-01",
+  "validationMethod": "scripts/verify-customer-care-kf.ts — real, programmatic checks against the actual repository files, not manual assertion.",
+  "results": {
+    "totalChecks": 24,
+    "passed": 24,
+    "failed": 0
+  },
+  "categories": [
+    { "category": "JSON Parse Health", "status": "PASS", "detail": "3/3 JSON files parse without error" },
+    { "category": "KOID Health", "status": "PASS", "detail": "22/22 KOIDs unique across manifest and knowledge_objects.json, 0 duplicates, 0 malformed" },
+    { "category": "Repository Consistency", "status": "PASS", "detail": "Manifest KOID list matches knowledge_objects.json KOID list exactly" },
+    { "category": "Repository Health (counts)", "status": "PASS", "detail": "Declared totalKnowledgeObjects (22) matches actual; citation/gap/summary breakdown counts all match" },
+    { "category": "Relationship Integrity", "status": "PASS", "detail": "0/45 broken internal relationships — every from/to resolves to a real KOID in this repository" },
+    { "category": "Citation Integrity", "status": "PASS", "detail": "Every knowledge_objects.json citedKoids entry has a matching relationships.json edge (46/46); no missing or orphaned citation edges" },
+    { "category": "Relationship Validation", "status": "PASS", "detail": "relationships.json's own declared totals (45 internal, 46 external) match actual array lengths exactly (corrected from initial manual-count drafting errors of 43/41, caught and fixed before this validation run — see DOMAIN_VALIDATION.md)" },
+    { "category": "Gap Validation", "status": "PASS", "detail": "Exactly 6 Gap Records, all correctly marked OPEN - Founder Decision Required, none fabricates a citation to fill its own gap" },
+    { "category": "Cross Repository Integrity", "status": "PASS", "detail": "All 5 spot-checked cross-repository source files exist; independently, all 43 unique external KOIDs/Articles cited were confirmed present by direct text search against the real source files (not just file existence) — see DOMAIN_VALIDATION.md §Citation Verification" },
+    { "category": "Repository Health (naming)", "status": "PASS", "detail": "KO-CR- prefix does not collide with any of the 10 known existing prefixes in the ecosystem" },
+    { "category": "Knowledge Coverage", "status": "PASS (documented, not script-checked)", "detail": "All 24 Founder-named scope topics accounted for — 18 via citation, 6 via explicit Gap Record; see DOMAIN_MANIFEST.md's coverage table" },
+    { "category": "Founder Review Preparation", "status": "READY", "detail": "See DOMAIN_FOUNDER_REVIEW_PACKAGE.md" }
+  ],
+  "knownLimitations": [
+    "KO-CR-014's Product KF citations are representative (Dishwash Gel + Toilet Cleaner only), not a complete per-product index across all 6 product families — disclosed explicitly in the KO itself, not a validation defect.",
+    "This is a Knowledge Repository build only — no runtime/retrieval integration was performed or tested as part of this validation, per the Founder's explicit 'NOT Runtime Engineering, NOT AI Integration' scope statement."
+  ]
+}

@@ -1,0 +1,16 @@
+import { z } from "zod";
+
+export const BUSINESS_TYPES = ["Hotel", "Restaurant", "Hospital", "Office", "Car Wash", "Laundry", "Other"] as const;
+
+export const businessInquirySchema = z.object({
+  companyName: z.string().min(2, "Enter your company name").max(150),
+  contactPerson: z.string().min(2, "Enter a contact name").max(100),
+  email: z.string().email("Enter a valid email address"),
+  phone: z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number"),
+  businessType: z.enum(BUSINESS_TYPES, { errorMap: () => ({ message: "Select a business type" }) }),
+  city: z.string().min(2, "Enter your city").max(60),
+  state: z.string().min(2, "Enter your state").max(60),
+  message: z.string().min(10, "Tell us a little about what you need").max(2000),
+});
+
+export type BusinessInquiryInput = z.infer<typeof businessInquirySchema>;

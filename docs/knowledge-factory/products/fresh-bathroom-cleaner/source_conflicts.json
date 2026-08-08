@@ -1,0 +1,50 @@
+{
+  "productFamily": "MUV Fresh Bathroom Cleaner™",
+  "totalComparisons": 4,
+  "genuineUnresolvedConflicts": 1,
+  "resolvedByDirectFounderInstruction": 1,
+  "dataGaps": 1,
+  "cleanResults": 1,
+  "conflicts": [
+    {
+      "id": "CONFLICT-001",
+      "topic": "Pricing (500 ml)",
+      "historicalCitationOnly": true,
+      "historicalCitationNote": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API, never from these figures. See LIVE_DATA_MAPPING.md.",
+      "sourceA": { "name": "Product Chart", "file": "MUV_Product_Chart_with_USP (1)(1).pdf", "location": "row 12", "value": "₹70" },
+      "sourceB": { "name": "Production SOP", "file": "MUV_Bathroom_Cleaner_Production_SOP_With_Photo.docx", "location": "Packing Standard table", "value": "₹65" },
+      "conflict": "Same SKU (500 ml), two different MRPs recorded in two pre-launch source documents, a real ₹5 discrepancy between them — a fact about the source documents, not about current live pricing",
+      "activeSourceDefault": "Historical only: Product Chart (₹70) was the original default per Source Authority order. Superseded by FR-001/FR-002 — no value from either source is used live; pricing is always resolved from the Product Catalog API.",
+      "reason": "Very likely the exact conflict referenced generically in lib/knowledge-factory/conflict-service.ts's header comment (written earlier this session, before any product-family package existed).",
+      "founderDecisionRequired": false,
+      "status": "SUPERSEDED BY FR-001/FR-002 (2026-07-31) — no longer a customer/AI-facing blocker; retained as audit record only"
+    },
+    {
+      "id": "CONFLICT-002",
+      "topic": "Naming",
+      "sourceA": { "name": "Product Chart", "value": "MUV Bathroom Cleaner" },
+      "sourceB": { "name": "Production SOP title", "value": "MUV BATHROOM CLEANER" },
+      "conflict": "Neither source uses 'Fresh'; the official name given directly by the Founder in this task is 'MUV Fresh Bathroom Cleaner™'",
+      "activeSourceDefault": "Founder Instruction (authority #2, superseding the Product Chart's own historical naming for this specific field since the Founder has spoken directly)",
+      "reason": "Per the instruction's own explicit rule: 'Do not use legacy names unless recording them in historical references.'",
+      "founderDecisionRequired": false,
+      "status": "RESOLVED — already decided by direct Founder instruction in this task"
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "Comparison-3",
+      "topic": "Fragrance/colour identity",
+      "conflict": "None — an absence, not a conflict. Neither source names the colour or fragrance.",
+      "founderDecisionRequired": "Not for conflict-resolution purposes, but yes for filling the gap.",
+      "status": "DATA GAP"
+    },
+    {
+      "id": "Comparison-4",
+      "topic": "Competitor-name check",
+      "conflict": "None — zero competitor names found",
+      "founderDecisionRequired": false,
+      "status": "CLEAN"
+    }
+  ]
+}

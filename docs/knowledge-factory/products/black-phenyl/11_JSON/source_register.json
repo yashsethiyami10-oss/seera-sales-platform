@@ -1,0 +1,33 @@
+{
+  "productFamily": "MUV Black Phenyl™",
+  "sourcesChecked": [
+    { "source": "Product Chart", "file": "MUV_Product_Chart_with_USP (1)(1).pdf", "result": "FOUND — row 22: MUV Black Phenyl | 500ml | 80 (conflicts with SOP pack size)" },
+    { "source": "Production SOP", "file": "SOPs/HOME CARE/MUV_Black_Phenyl_SOP_10L_Batch.docx", "result": "FOUND — full formulation, process, QC, and safety content; pack size stated as 1L" },
+    { "source": "Stray extraction file", "file": "_docx_extract.txt (repo root)", "result": "Cross-checked against fresh extraction — MATCHES exactly, no discrepancy" },
+    { "source": "Knowledge Library", "file": "# final MUV Knowledge Library™.txt", "result": "NOT FOUND — zero matches" },
+    { "source": "AI Sutra Master", "file": "Muv_AI_Sutra_Master_MASTER1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "AI Sutra Phase1", "file": "Muv_AI_Sutra_Master_Phase1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "Seed data", "file": "prisma/seed.ts", "result": "NOT FOUND — zero matches" },
+    { "source": "Schema", "file": "prisma/schema.prisma", "result": "NOT FOUND — zero matches" },
+    { "source": "Institutional consumption rules", "file": "lib/inst-sales/consumption-rules.ts", "result": "NOT FOUND — no PHENYL category exists at all" },
+    { "source": "Conflict service", "file": "lib/knowledge-factory/conflict-service.ts", "result": "FOUND — Black Phenyl explicitly named in the header comment's list of known pre-existing conflicts" }
+  ],
+  "competitorScan": {
+    "brandsChecked": ["Comfort", "Pril", "Vim", "Exo", "Genteel", "Surf Excel", "Fairy", "Harpic", "Domex", "Lizol", "Colin", "Robin", "Rin", "Ariel", "Tide", "Dettol"],
+    "result": "CLEAN — zero hits, no false positives, word-boundary matching used throughout"
+  },
+  "namingFinding": {
+    "sourceName": "MUV Black Phenyl",
+    "officialName": "MUV Black Phenyl™",
+    "resolution": "No discrepancy — both sources already match the Founder-given official name exactly"
+  },
+  "confirmedConflict": {
+    "field": "Pack size",
+    "productChart": "500ml, MRP ₹80",
+    "productionSOP": "1L, no MRP stated",
+    "resolution": "1L presented to customers per direct Founder Instruction; discrepancy itself remains open, see 14_FOUNDER_GAPS.md"
+  },
+  "relatedButDistinctProduct": "MUV Phenyl (Chart rows 20-21, 1L/5L) — believed to correspond to a separate 'White Phenyl' SOP, out of scope for this package",
+  "totalSourcesFound": 3,
+  "totalSourcesNotFound": 7
+}

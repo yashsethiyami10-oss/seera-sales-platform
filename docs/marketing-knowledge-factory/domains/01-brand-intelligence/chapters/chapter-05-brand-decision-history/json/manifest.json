@@ -1,0 +1,24 @@
+{
+  "domain": "Brand Intelligence",
+  "domainNumber": 1,
+  "chapter": "Brand Decision History",
+  "chapterNumber": 5,
+  "koidPrefix": "KO-BI-CH5-",
+  "sourceChapter": "MUV Knowledge Library, Part III, Chapter 15",
+  "sourceLineRange": "2421-2575",
+  "totalKnowledgeObjects": 7,
+  "status": "Founder Review Ready",
+  "isDomainFinalChapter": true,
+  "governanceNote": "No governance documents authored in this repository. Constitution, Founder Rules ledger, Knowledge Efficiency Framework, and Validation Framework are Founder-controlled and intentionally live outside this repository, per Execution Prompt v3.0's Founder Governance Protocol.",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository"
+  ],
+  "reservedForDomainAudit": {
+    "topic": "Part III Summary (lines 2577-2643): 'MUV Brand Sutra in One View' (20-row table), 'Master Brand Rules' (10 items), 'Complete Brand Action Checklist' (15 items), Part End Note",
+    "note": "Deliberately not built as Chapter 5 KOs — genuine domain-wide synthesis, reserved as grounding material for the domain-level Knowledge Coverage Audit and consolidated Founder Review Package"
+  }
+}

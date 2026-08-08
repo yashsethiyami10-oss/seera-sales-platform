@@ -1,0 +1,37 @@
+{
+  "productFamily": "MUV Hand Wash™",
+  "note": "New architectural concern, distinct from variant_inheritance.json. Answers 'does this SKU exist at all?' before inheritance questions are even relevant.",
+  "authoritativeSource": "Direct Founder Instruction (Product Family 11 task) — ranks above the Product Chart for this specific package, per established precedent (e.g. Black Phenyl's pack-size decision)",
+  "allPackSizes": ["250ml", "500ml", "5L"],
+  "allVariants": ["Silk Blossom", "Ocean Fresh", "Citrus Blast", "Life Shield"],
+  "theoreticalCombinations": 12,
+  "realCombinations": 8,
+  "matrix": [
+    { "variant": "Silk Blossom", "250ml": false, "500ml": true, "5L": true },
+    { "variant": "Ocean Fresh", "250ml": false, "500ml": true, "5L": true },
+    { "variant": "Citrus Blast", "250ml": true, "500ml": true, "5L": false },
+    { "variant": "Life Shield", "250ml": true, "500ml": true, "5L": false }
+  ],
+  "realSKUs": [
+    { "koid": "KO-HW-SB-VAR-500", "variant": "Silk Blossom", "packSize": "500ml" },
+    { "koid": "KO-HW-SB-VAR-5L", "variant": "Silk Blossom", "packSize": "5L" },
+    { "koid": "KO-HW-OF-VAR-500", "variant": "Ocean Fresh", "packSize": "500ml" },
+    { "koid": "KO-HW-OF-VAR-5L", "variant": "Ocean Fresh", "packSize": "5L" },
+    { "koid": "KO-HW-CB-VAR-250", "variant": "Citrus Blast", "packSize": "250ml" },
+    { "koid": "KO-HW-CB-VAR-500", "variant": "Citrus Blast", "packSize": "500ml" },
+    { "koid": "KO-HW-LS-VAR-250", "variant": "Life Shield", "packSize": "250ml" },
+    { "koid": "KO-HW-LS-VAR-500", "variant": "Life Shield", "packSize": "500ml" }
+  ],
+  "explicitlyExcludedCombinations": [
+    { "variant": "Silk Blossom", "packSize": "250ml", "status": "NOT REAL — never created, never inferred" },
+    { "variant": "Ocean Fresh", "packSize": "250ml", "status": "NOT REAL — never created, never inferred" },
+    { "variant": "Citrus Blast", "packSize": "5L", "status": "NOT REAL — never created, never inferred, despite a conflicting Product Chart row (row 31, see source_register.json for the historical citation)" },
+    { "variant": "Life Shield", "packSize": "5L", "status": "NOT REAL — never created, never inferred" }
+  ],
+  "chartConflict": {
+    "chartSilentOn": [{ "variant": "Silk Blossom", "packSize": "5L" }],
+    "chartConflictsOn": [{ "variant": "Citrus Blast", "packSize": "5L", "chartPrice": 650, "founderStatus": "NOT REAL" }],
+    "resolution": "Founder's matrix governs SKU creation for this package; the Chart discrepancy itself is left open in 14_FOUNDER_GAPS.md, not silently resolved"
+  },
+  "distinctFromPriorPatterns": "Unlike Floor Cleaner's Rose Water (named but zero corroborating source — 'unconfirmed') or Black Phenyl's pack-size conflict (two sources disagreeing about the same SKU), these 4 excluded combinations are combinations the Founder has directly stated do not exist — a new, explicit-absence category, never marked 'unconfirmed'."
+}

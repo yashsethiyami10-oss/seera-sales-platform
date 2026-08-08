@@ -1,0 +1,20 @@
+{
+  "chapter": "Pricing & MRP Architecture",
+  "relationships": [
+    { "from": "KO-SC-CH1-001", "type": "governs", "to": ["KO-SC-CH1-002","KO-SC-CH1-003","KO-SC-CH1-004","KO-SC-CH1-005","KO-SC-CH1-006","KO-SC-CH1-007","KO-SC-CH1-008"] },
+    { "from": "KO-SC-CH1-002", "type": "feeds", "to": ["KO-SC-CH1-003"] },
+    { "from": "KO-SC-CH1-003", "type": "feeds", "to": ["KO-SC-CH1-004"] },
+    { "from": "KO-SC-CH1-004", "type": "feeds", "to": ["KO-SC-CH1-005"] },
+    { "from": "KO-SC-CH1-005", "type": "feeds", "to": ["KO-SC-CH1-006"] },
+    { "from": "KO-SC-CH1-006", "type": "feeds", "to": ["KO-SC-CH1-007"] },
+    { "from": "KO-SC-CH1-007", "type": "feeds", "to": ["KO-SC-CH1-008"] },
+    { "from": "KO-SC-CH1-001", "type": "summarizedBy", "to": ["KO-SC-CH1-009"] }
+  ],
+  "crossDomainRelationships": [],
+  "forwardRelationships": [
+    { "from": "KO-SC-CH1-005", "type": "willBeExtendedBy", "to": "Chapter 5 (Channel Evolution)" },
+    { "from": "KO-SC-CH1-009", "type": "transitionsTo", "to": "Chapter 2 (Sales & Distribution)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

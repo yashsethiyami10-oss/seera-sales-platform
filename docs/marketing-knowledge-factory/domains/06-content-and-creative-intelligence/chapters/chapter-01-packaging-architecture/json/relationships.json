@@ -1,0 +1,20 @@
+{
+  "chapter": "Packaging Architecture",
+  "relationships": [
+    { "from": "KO-CC-CH1-001", "type": "governs", "to": ["KO-CC-CH1-002","KO-CC-CH1-003","KO-CC-CH1-004","KO-CC-CH1-005","KO-CC-CH1-006","KO-CC-CH1-007"] },
+    { "from": "KO-CC-CH1-002", "type": "feeds", "to": ["KO-CC-CH1-003"] },
+    { "from": "KO-CC-CH1-003", "type": "feeds", "to": ["KO-CC-CH1-004"] },
+    { "from": "KO-CC-CH1-004", "type": "feeds", "to": ["KO-CC-CH1-005"] },
+    { "from": "KO-CC-CH1-005", "type": "feeds", "to": ["KO-CC-CH1-006"] },
+    { "from": "KO-CC-CH1-006", "type": "feeds", "to": ["KO-CC-CH1-007"] },
+    { "from": "KO-CC-CH1-001", "type": "summarizedBy", "to": ["KO-CC-CH1-008"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CC-CH1-005", "type": "relatesTo", "to": "KO-BI-CH4-002 (Domain 1, Colour Philosophy, category-colour exploration list; cited in Chapter 6)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CC-CH1-008", "type": "transitionsTo", "to": "Chapter 2 (Label Information System)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

@@ -1,0 +1,40 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "sourcesChecked": [
+    { "source": "Product Chart", "file": "MUV_Product_Chart_with_USP (1)(1).pdf", "result": "FOUND — rows 32-37, all 3 variants × both pack sizes" },
+    { "source": "Production SOP", "file": "SOPs/BODY CARE/MUV_Body_Wash_SOP_10kg_1percent_Salicylic_Acid.docx", "result": "FOUND — full formulation, process, QC; zero safety content" },
+    { "source": "Knowledge Library", "file": "# final MUV Knowledge Library™.txt", "result": "FOUND (governance rule only) — no product-specific facts for any of the 3 variants; 1 real governance rule forbidding unsupported dermatological claims; 1 generic complaint-example" },
+    { "source": "AI Sutra Master", "file": "Muv_AI_Sutra_Master_MASTER1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "AI Sutra Phase1", "file": "Muv_AI_Sutra_Master_Phase1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "Seed data", "file": "prisma/seed.ts", "result": "CONFLICT FOUND — zero matches for the 3 real variant names; 1 match for a different, non-matching placeholder product ('MUV Cleanse')" },
+    { "source": "Schema", "file": "prisma/schema.prisma", "result": "NOT FOUND — zero matches" },
+    { "source": "Institutional consumption rules", "file": "lib/inst-sales/consumption-rules.ts", "result": "NOT FOUND — no BODY_WASH/BODY_CARE category exists" },
+    { "source": "Conflict service", "file": "lib/knowledge-factory/conflict-service.ts", "result": "NOT FOUND — Body Wash not named among known conflicts (the MUV Cleanse conflict is a new discovery, not yet reflected there)" }
+  ],
+  "competitorScan": {
+    "brandsChecked": ["Comfort", "Pril", "Vim", "Exo", "Genteel", "Surf Excel", "Fairy", "Harpic", "Domex", "Lizol", "Colin", "Robin", "Rin", "Ariel", "Tide", "Dettol", "Dove", "Nivea", "Fiama", "Lux", "Pears", "Palmolive", "Cinthol", "Santoor", "Park Avenue", "Wild Stone", "Axe", "Denver", "Engage"],
+    "result": "CLEAN — zero hits across both the standard 16-brand list and the new 13-brand personal-care-specific list, no false positives"
+  },
+  "namingFinding": {
+    "result": "No discrepancy — all four names (parent + 3 variants) match the Product Chart and SOP exactly"
+  },
+  "variantSourcingFinding": {
+    "result": "All three variants fully and symmetrically sourced — unlike Floor Cleaner's Rose Water, no variant is named-but-unsourced",
+    "overridePoint": "Fragrance (SOP Step 9) — colour is explicitly shared/generic, not a variant override, a real structural difference from Floor Cleaner"
+  },
+  "seedDataConflict": {
+    "product": "MUV Cleanse",
+    "slug": "muv-cleanse",
+    "conflictsWith": "All 3 real variants — different fragrance, pack sizes (250ml/500ml vs real 250ml/950ml), and pricing",
+    "resolution": "Never used as a source for Crimson Veil, Velvet Oak, or Midnight Frost — flagged as a priority Founder gap"
+  },
+  "cosmeticClaimFinding": {
+    "result": "Zero cosmetic/dermatological claims found in any source ('sensitive skin', 'dermatologically tested', 'pH balanced', 'hypoallergenic', 'moisturizing')",
+    "governanceRule": "Knowledge Library explicitly forbids unsupported 'safe', 'non-toxic', 'chemical-free', or 'dermatologically tested' claims — followed strictly throughout this package"
+  },
+  "safetyFinding": {
+    "result": "ZERO safety content of any kind in the SOP — the most severe gap of any product this session"
+  },
+  "totalSourcesFound": 4,
+  "totalSourcesNotFound": 5
+}

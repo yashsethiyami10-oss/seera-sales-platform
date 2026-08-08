@@ -1,0 +1,24 @@
+{
+  "chapter": "Customer Communication & Promotion",
+  "relationships": [
+    { "from": "KO-CI-CH4-001", "type": "governs", "to": ["KO-CI-CH4-002","KO-CI-CH4-003","KO-CI-CH4-004","KO-CI-CH4-005","KO-CI-CH4-006","KO-CI-CH4-007","KO-CI-CH4-008"] },
+    { "from": "KO-CI-CH4-002", "type": "feeds", "to": ["KO-CI-CH4-003"] },
+    { "from": "KO-CI-CH4-004", "type": "feeds", "to": ["KO-CI-CH4-005"] },
+    { "from": "KO-CI-CH4-005", "type": "feeds", "to": ["KO-CI-CH4-006"] },
+    { "from": "KO-CI-CH4-006", "type": "feeds", "to": ["KO-CI-CH4-007"] },
+    { "from": "KO-CI-CH4-007", "type": "feeds", "to": ["KO-CI-CH4-008"] },
+    { "from": "KO-CI-CH4-001", "type": "summarizedBy", "to": ["KO-CI-CH4-009"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-CI-CH4-001", "type": "dependsOn", "to": "KO-CI-CH1-001, KO-CI-CH3-004" },
+    { "from": "KO-CI-CH4-003", "type": "extends", "to": "KO-CI-CH3-007" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CI-CH4-007", "type": "relatesTo", "to": "Domain 2 (Product Marketing) via Volume VII/Marketing table reference" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CI-CH4-009", "type": "transitionsTo", "to": "Chapter 5 (Experience, Franchise & Expansion References — Part IX's final chapter)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

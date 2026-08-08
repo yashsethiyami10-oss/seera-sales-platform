@@ -1,0 +1,15 @@
+{
+  "chapter": "Logo & Mark System",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part III, Chapter 12", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-BI-CH1-001, KO-BI-CH1-003, KO-BI-CH1-005, KO-BI-CH1-006", "type": "intraRepositoryKO", "status": "exist, Founder Review Ready, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 1 Chapter 3 — Language, Pronunciation & Tagline", "status": "not started" },
+    { "dependent": "Domain 1 Chapter 4 — Identity Governance", "status": "not started" },
+    { "dependent": "Domain 5 — Channel Intelligence", "status": "not started" },
+    { "dependent": "Domain 7 — Creative Intelligence", "status": "not started" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

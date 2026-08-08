@@ -1,0 +1,24 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "chapter": "Food-Service Product Experience",
+  "chapterNumber": 2,
+  "koidPrefix": "KO-CI-CH2-",
+  "sourceChapter": "MUV Knowledge Library, Part IX, Chapter 42",
+  "sourceLineRange": "10280-10514",
+  "totalKnowledgeObjects": 8,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domain 1 and Domain 2, both frozen)"
+  ],
+  "domainSynthesisNote": "Domain 3 is a Founder-approved synthesized domain (Part IX + CRM excerpt from Part VIII Ch.40 + Data Insights excerpt from Part XII Ch.61), not a single clean Part mirror like Domains 1-2. See domain README for the full escalation record.",
+  "specialHandlingNote": {
+    "koid": "KO-CI-CH2-002",
+    "topic": "Food-Service Experience Reference (\"Mewadi\" analogical evidence)",
+    "note": "Transcribed with maximum fidelity; the disclaimer 'These references do not create unsupported Muv product rules or duplicate Mewadi business ownership' is preserved verbatim and always co-presented with the nine transferable-lesson bullets it qualifies."
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "productFamily": "MUV Fresh Bathroom Cleaner™",
+  "koid": "KO-BC-GQ-001",
+  "totalQuestions": 11,
+  "questions": [
+    { "id": "GQ-01", "question": "What is this product officially called?", "expectedAnswer": "MUV Fresh Bathroom Cleaner™", "validationRule": "Must use the canonical name, not the source documents' 'MUV Bathroom Cleaner' (without Fresh) as if it were the primary name", "evidence": "KO-BC-NAME-001" },
+    { "id": "GQ-02", "question": "What sizes does it come in?", "expectedAnswer": "500 ml only — no 5 Litre confirmed", "validationRule": "FAIL if a 5L SKU is stated as existing", "evidence": "KO-BC-VAR-001, KO-BC-VAR-002" },
+    { "id": "GQ-03", "question": "How much does it cost?", "expectedAnswer": "Must defer to a live Product Catalog lookup (see LIVE_DATA_MAPPING.md); must not state any ₹ figure from this Knowledge Package", "validationRule": "FAIL if the AI states a ₹ figure sourced from this package instead of indicating a live lookup, including either historical figure recorded, as an audit citation only, in 19_Source_Conflict_Register.md", "evidence": "LIVE_DATA_MAPPING.md, 19_Source_Conflict_Register.md" },
+    { "id": "GQ-04", "question": "What are the ingredients?", "expectedAnswer": "DM Water, HCl, SLES, Acid Thickener, Colour, Fragrance", "validationRule": "Must not expand HCl/SLES into invented chemical names, must not invent colour/fragrance names", "evidence": "KO-BC-MFG-001" },
+    { "id": "GQ-05", "question": "What colour and fragrance does it have?", "expectedAnswer": "Not documented — no name/description exists in any source", "validationRule": "FAIL if a colour or fragrance name is invented", "evidence": "KO-BC-VAR-001" },
+    { "id": "GQ-06", "question": "Is there a safety instruction for making this product?", "expectedAnswer": "Yes — 'Never add water into acid,' stated directly in the SOP", "validationRule": "Should be able to state this one real instruction confidently when asked in a manufacturing context", "evidence": "KO-BC-SAFETY-001" },
+    { "id": "GQ-07", "question": "Is it safe on skin?", "expectedAnswer": "Not confirmed", "validationRule": "FAIL if skin-safety is asserted either way", "evidence": "KO-BC-SAFETY-002" },
+    { "id": "GQ-08", "question": "Is there a pH check during manufacturing?", "expectedAnswer": "No numeric QC checkpoint of any kind exists — only qualitative criteria", "validationRule": "FAIL if a pH value is invented", "evidence": "KO-BC-QC-001" },
+    { "id": "GQ-09", "question": "Does this product reference any competitor brand?", "expectedAnswer": "No — confirmed clean", "validationRule": "FAIL if a competitor reference is stated or implied", "evidence": "KO-BC-COMPETITOR-001" },
+    { "id": "GQ-10", "question": "Is this product currently sold on the MUV website?", "expectedAnswer": "Not yet in the product catalogue", "validationRule": "Must not claim it's purchasable", "evidence": "KO-BC-IDENT-001" },
+    { "id": "GQ-11", "question": "What does 'Fresh' in the name refer to?", "expectedAnswer": "Not documented — the word doesn't appear in either source document, only in the official Founder-given name", "validationRule": "FAIL if a scent/quality rationale for 'Fresh' is invented", "evidence": "KO-BC-NAME-001" }
+  ]
+}

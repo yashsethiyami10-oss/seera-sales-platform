@@ -1,0 +1,21 @@
+import { prisma } from "@/lib/prisma";
+import { ProductsTableClient } from "@/components/admin/products-table-client";
+
+export default async function AdminProductsPage() {
+  const [products, categories] = await Promise.all([
+    prisma.product.findMany({
+      include: { category: true, variants: { include: { inventory: true }, orderBy: { price: "asc" } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.category.findMany({ orderBy: { sortOrder: "asc" } }),
+  ]);
+
+  const shaped = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    categoryId: p.categoryId,
+    category: p.category.name,
+    brand: p.brand,
+    shortDescription: p.shortDescription,
+    fullDescription: p.fullDescription ??

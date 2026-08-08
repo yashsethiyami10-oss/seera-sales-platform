@@ -1,0 +1,25 @@
+{
+  "productFamily": "MUV Pure Bleach™",
+  "totalSafetyKOs": 13,
+  "sourcedContent": {
+    "verbatim": "Store below 30°C away from direct sunlight. Do not mix with acids or ammonia-based cleaners. Wear gloves, eye protection and protective clothing during manufacturing. Ensure adequate ventilation.",
+    "source": "MUV_Bleach_SOP_10L_Batch_500ml.docx §7"
+  },
+  "safetyKOs": [
+    { "koid": "KO-PB-SAFETY-001", "topic": "Source Safety Content (verbatim)", "sourced": true },
+    { "koid": "KO-PB-SAFETY-002", "topic": "Safe Handling", "sourced": "MIXED — manufacturing PPE sourced, consumer handling not" },
+    { "koid": "KO-PB-SAFETY-003", "topic": "Mixing Restrictions", "sourced": true, "note": "strongest single safety fact in this package" },
+    { "koid": "KO-PB-SAFETY-004", "topic": "Eye Contact", "sourced": false, "priority": "HIGH" },
+    { "koid": "KO-PB-SAFETY-005", "topic": "Skin Contact", "sourced": false },
+    { "koid": "KO-PB-SAFETY-006", "topic": "Inhalation", "sourced": false },
+    { "koid": "KO-PB-SAFETY-007", "topic": "Accidental Ingestion", "sourced": false, "priority": "HIGHEST" },
+    { "koid": "KO-PB-SAFETY-008", "topic": "Child Safety", "sourced": false },
+    { "koid": "KO-PB-SAFETY-009", "topic": "Pet Safety", "sourced": false },
+    { "koid": "KO-PB-SAFETY-010", "topic": "Storage", "sourced": true },
+    { "koid": "KO-PB-SAFETY-011", "topic": "Spill Management", "sourced": false },
+    { "koid": "KO-PB-SAFETY-012", "topic": "Disposal", "sourced": false },
+    { "koid": "KO-PB-SAFETY-013", "topic": "Emergency Guidance (AI behavior)", "sourced": true, "note": "behavioral rule, not medical content" }
+  ],
+  "neverGenerateUnsupportedMedicalAdvice": true,
+  "founderDecisionRequiredCount": 8
+}

@@ -1,0 +1,27 @@
+{
+  "domain": "Product Marketing",
+  "domainNumber": 2,
+  "chapter": "Launch Architecture",
+  "chapterNumber": 1,
+  "koidPrefix": "KO-PM-CH1-",
+  "sourceChapter": "MUV Knowledge Library, Part VII, Chapter 31",
+  "sourceLineRange": "6708-7004",
+  "totalKnowledgeObjects": 10,
+  "status": "Founder Review Ready",
+  "governanceNote": "No governance documents authored in this repository. Founder-controlled and intentionally live outside this repository.",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (incl. Domain 1, frozen)"
+  ],
+  "crossDomainCitations": {
+    "topic": "Brand identity/voice ownership, Message Protection",
+    "note": "Cited from Domain 1 (KO-BI-CH1-001, KO-BI-CH2-002, KO-BI-CH3-003, KO-BI-CH5-004), never duplicated"
+  },
+  "outOfScopeDeferral": {
+    "topic": "Technical causes/product changes from customer feedback",
+    "note": "Explicitly deferred to Volume V (Product Sutra) and Volume VI (Manufacturing System) — out of this domain's scope"
+  }
+}

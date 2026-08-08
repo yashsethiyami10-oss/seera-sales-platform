@@ -1,0 +1,21 @@
+{
+  "chapter": "Brand Origin & Naming",
+  "relationships": [
+    { "from": "KO-BI-CH1-001", "type": "foundationFor", "to": ["KO-BI-CH1-002", "KO-BI-CH1-003", "KO-BI-CH1-004", "KO-BI-CH1-005"] },
+    { "from": "KO-BI-CH1-003", "type": "pairedWith", "to": ["KO-BI-CH1-004"] },
+    { "from": "KO-BI-CH1-003", "type": "feeds", "to": ["KO-BI-CH1-005"] },
+    { "from": "KO-BI-CH1-004", "type": "feeds", "to": ["KO-BI-CH1-005"] },
+    { "from": "KO-BI-CH1-005", "type": "implicatedBy", "to": ["KO-BI-CH1-006"] },
+    { "from": "KO-BI-CH1-001", "type": "summarizedBy", "to": ["KO-BI-CH1-007"] },
+    { "from": "KO-BI-CH1-002", "type": "summarizedBy", "to": ["KO-BI-CH1-007"] },
+    { "from": "KO-BI-CH1-003", "type": "summarizedBy", "to": ["KO-BI-CH1-007"] },
+    { "from": "KO-BI-CH1-004", "type": "summarizedBy", "to": ["KO-BI-CH1-007"] },
+    { "from": "KO-BI-CH1-005", "type": "summarizedBy", "to": ["KO-BI-CH1-007"] }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-BI-CH1-005", "type": "willBeExtendedBy", "to": "Domain 1 Chapter 2 — Brand Personality (Ch.12 §6)" },
+    { "from": "KO-BI-CH1-001", "type": "willBeExtendedBy", "to": "Domain 1 Chapter 3 — Keep Muving™ Philosophy (Ch.13 §9)" }
+  ],
+  "orphanCheck": "PASS — every KOID appears in at least one relationship",
+  "circularCheck": "PASS — no circular relationship detected"
+}

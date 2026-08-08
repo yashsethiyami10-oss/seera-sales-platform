@@ -1,0 +1,48 @@
+{
+  "domain": "Marketing Operations & Learning Intelligence™",
+  "domainNumber": 8,
+  "status": "COMPLETE — Founder Review Ready (domain construction) / Founder Decision Required (1 Gap Record)",
+  "domainType": "Citation-only reorganization of Domain 2 content + Founder Original IP Gap Record — zero newly-transcribed source content",
+  "artifactFormat": "lean domain-level (Founder Execution Protocol v4.0) — no chapter-level artifacts",
+  "totalKnowledgeObjects": 8,
+  "sourceDocuments": [
+    "None new. Cites Domain 2 (Product Marketing, frozen), Chapter 5 (Marketing Decisions & Learning), sourced from MUV Knowledge Library Part VII. Part XI (People, Leadership, Learning & Culture) checked and excluded as HR-scoped."
+  ],
+  "koidPrefix": "KO-MO-",
+  "knowledgeObjectBreakdown": {
+    "citationOnly": 6,
+    "gapRecords": 1,
+    "domainSummary": 1
+  },
+  "crossDomainCitationIntegrity": {
+    "uniqueDomain2Citations": 6,
+    "citationType": "100% citation-only for non-gap-record KOs",
+    "disjointFromDomain7Citations": true,
+    "verifiedAgainstFrozenRegistry": true,
+    "brokenReferences": 0
+  },
+  "gapRecords": {
+    "total": 1,
+    "items": ["Founder Decision Engine™"],
+    "evidenceClassification": "Founder Decision Required",
+    "note": "Named Founder Original IP per Founder Execution Protocol v4.0; neither designed nor partially designed"
+  },
+  "crossReferencedGapRecords": {
+    "domain6Count": 6,
+    "domain6Items": ["AI Creative Scoring Engine™", "Image Analysis Engine™", "Video Analysis Engine™", "Content Quality Engine™", "Creative Review Engine™", "AI Creative Feedback Engine™"],
+    "domain7Count": 2,
+    "domain7Items": ["Marketing Optimization Engine™", "Autonomous Marketing Intelligence™"],
+    "note": "All 9 Founder Original IP capabilities named in Founder Execution Protocol v4.0 now accounted for repository-wide across Domains 6, 7, and 8"
+  },
+  "domainAudits": {
+    "relationshipAudit": "PASS (8/8 KOs relationship-complete, 0 orphans, 0 circular)",
+    "knowledgeCoverageAudit": "PASS (all operations/learning-relevant Domain 2 content cited; Part XI correctly excluded)",
+    "crossDomainIntegrity": "PASS (6/6 citations verified)",
+    "duplicateAudit": "PASS (zero restated content; zero overlap with Domain 7's citation set)",
+    "repositoryConsistency": "PASS (new lean format applied exactly as specified)",
+    "jsonValidation": "PASS (4/4 files parse, KO count reconciles)"
+  },
+  "founderDecisionsAppliedToThisDomain": [],
+  "openGaps": ["Founder Decision Engine™ (KO-MO-007)"],
+  "founderReviewPackage": "domains/08-marketing-operations-and-learning-intelligence/FOUNDER_REVIEW.md"
+}

@@ -1,0 +1,22 @@
+{
+  "productFamily": "MUV Black Phenyl™",
+  "koid": "KO-BP-FAQ-001",
+  "totalQuestions": 15,
+  "questions": [
+    { "question": "What is MUV Black Phenyl™?", "answer": "A black-phenyl-concentrate-based floor cleaner.", "sourced": true },
+    { "question": "What size does it come in?", "answer": "1L, per direct Founder Instruction (Chart has a conflicting 500ml entry).", "sourced": "MIXED" },
+    { "question": "How much does it cost?", "answer": "LIVE — resolve from Product Catalog API.", "sourced": "N/A (commercial, live)" },
+    { "question": "What's in it?", "answer": "Black Phenyl Concentrate, Turkey Red Oil, Non-Ionic Surfactant, Sodium Carbonate, Preservative, Black Phenyl Fragrance, pH adjuster/colour if required.", "sourced": true },
+    { "question": "How do I use it?", "answer": "Not documented.", "sourced": false },
+    { "question": "Do I need to dilute it?", "answer": "Not documented.", "sourced": false },
+    { "question": "How long should I leave it on the floor?", "answer": "Not documented.", "sourced": false },
+    { "question": "Can I use it on any floor surface?", "answer": "Not documented — do not assume safe.", "sourced": false },
+    { "question": "Is this the same as MUV Phenyl?", "answer": "No — believed to be a separate product corresponding to a distinct White Phenyl SOP.", "sourced": true },
+    { "question": "Does it disinfect?", "answer": "The concentrate's role is described as 'Cleaning & disinfecting base' — no specific efficacy claim is sourced.", "sourced": "MIXED" },
+    { "question": "How should I store it?", "answer": "Not documented — no storage condition exists in the SOP.", "sourced": false },
+    { "question": "What's the shelf life?", "answer": "Not documented.", "sourced": false },
+    { "question": "What should I do if it gets in my eyes/on my skin?", "answer": "Not documented — seek professional/emergency guidance.", "sourced": false },
+    { "question": "Is it safe around kids and pets?", "answer": "Not confirmed.", "sourced": false },
+    { "question": "What does it smell like?", "answer": "The SOP's QC criteria describe a 'characteristic black phenyl fragrance.'", "sourced": true }
+  ]
+}

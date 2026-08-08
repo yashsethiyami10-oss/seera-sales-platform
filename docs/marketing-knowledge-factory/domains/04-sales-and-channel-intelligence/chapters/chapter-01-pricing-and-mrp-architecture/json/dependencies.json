@@ -1,0 +1,11 @@
+{
+  "chapter": "Pricing & MRP Architecture",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part VIII, Chapter 36", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 4 Chapters 2-5", "status": "in progress this batch" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

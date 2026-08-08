@@ -1,0 +1,9 @@
+{
+  "chapter": "CRM System (Excerpt)",
+  "koidPrefix": "KO-CI-CH6-",
+  "totalKnowledgeObjects": 2,
+  "knowledgeObjects": [
+    { "koid": "KO-CI-CH6-001", "name": "CRM as Commercial Memory & the Fourteen Maintained Fields", "purpose": "Establish CRM's role as the commercial memory of relationships and commitments, and preserve the fourteen fields a CRM record must maintain", "scope": "CRM System, opening definition and field list, complete", "inputs": ["MUV Knowledge Library Part VIII Ch.40 CRM System subsection (lines 9700-9721)"], "outputs": ["CRM definition statement", "fourteen maintained fields"], "dependencies": ["KO-CI-CH1-001", "KO-CI-CH1-005"], "relationships": ["KO-CI-CH6-002", "KO-CI-CH1-005", "KO-CI-CH3-005"], "governanceRules": [], "validationRules": ["All fourteen fields preserved in original order; the definition sentence never dropped"], "version": "1.0", "status": "Founder Review Ready", "changeHistory": [{ "date": "2026-07-31", "change": "created" }], "evidenceClassification": "Verified" },
+    { "koid": "KO-CI-CH6-002", "name": "CRM Data Quality Discipline", "purpose": "Preserve the explicit rule against judging CRM quality by field completion alone", "scope": "CRM System, closing quality statement, complete", "inputs": ["MUV Knowledge Library Part VIII Ch.40 CRM System subsection (lines 9700-9721)"], "outputs": ["Data-quality governance statement"], "dependencies": ["KO-CI-CH6-001"], "relationships": [], "governanceRules": ["CRM quality must not be judged by field completion alone. Data must support decisions and handovers."], "validationRules": ["The rule preserved verbatim, never softened into a pure data-hygiene metric"], "version": "1.0", "status": "Founder Review Ready", "changeHistory": [{ "date": "2026-07-31", "change": "created" }], "evidenceClassification": "Verified" }
+  ]
+}

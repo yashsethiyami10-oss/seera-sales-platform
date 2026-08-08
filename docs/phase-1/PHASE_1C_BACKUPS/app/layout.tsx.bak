@@ -1,0 +1,55 @@
+import type { Metadata } from "next";
+import { Fraunces, Inter } from "next/font/google";
+import { ToastProvider } from "@/components/ui/toast";
+import { CartProvider } from "@/lib/cart-context";
+import { RecentlyViewedSync } from "@/components/storefront/recently-viewed-sync";
+import { buildMetadata, buildOrganizationSchema } from "@/lib/seo";
+import "@/styles/globals.css";
+
+/**
+ * next/font self-hosts and inlines font files at build time — a real
+ * upgrade over every original .jsx file's `useFonts()` hook, which injected
+ * a <link> to Google's CDN at runtime (a render-blocking third-party
+ * request on every page load, plus a layout shift while the fallback font
+ * was visible). This is one of the few places this assembly pass changes
+ * *how* something works, not just *where* the code lives — flagged here
+ * because it's a genuine behavior change worth knowing about, even though
+ * the visual result is identical.
+ */
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-fraunces",
+  axes: ["opsz"],
+  weight: "variable",
+  display: "swap",
+});
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  weight: ["300", "400", "500", "600"],
+  display: "swap",
+});
+
+export const metadata: Metadata = buildMetadata({
+  title: "MUV — Keep Muving",
+  description: "MUV is a premium Indian care brand — Home, Fabric, Body, Personal, and Car Care, all held to one standard.",
+  path: "/",
+});
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const orgSchema = buildOrganizationSchema();
+
+  return (
+    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
+      <head>
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }} />
+      </head>
+      <body>
+        <ToastProvider>
+          <CartProvider>{children}</CartProvider>
+        </ToastProvider>
+        <RecentlyViewedSync />
+      </body>
+    </html>
+  );
+}

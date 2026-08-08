@@ -1,0 +1,27 @@
+{
+  "chapter": "Brand Decision History",
+  "relationships": [
+    { "from": "KO-BI-CH5-001", "type": "citedBy", "to": ["KO-BI-CH5-004"] },
+    { "from": "KO-BI-CH5-003", "type": "grounds", "to": ["KO-BI-CH5-005"] },
+    { "from": "KO-BI-CH5-004", "type": "sharesRiskThemeWith", "to": ["KO-BI-CH5-005"] },
+    { "from": "KO-BI-CH5-001", "type": "summarizedBy", "to": ["KO-BI-CH5-007"] },
+    { "from": "KO-BI-CH5-002", "type": "summarizedBy", "to": ["KO-BI-CH5-007"] },
+    { "from": "KO-BI-CH5-003", "type": "summarizedBy", "to": ["KO-BI-CH5-007"] },
+    { "from": "KO-BI-CH5-004", "type": "summarizedBy", "to": ["KO-BI-CH5-007"] },
+    { "from": "KO-BI-CH5-005", "type": "summarizedBy", "to": ["KO-BI-CH5-007"] },
+    { "from": "KO-BI-CH5-006", "type": "summarizedBy", "to": ["KO-BI-CH5-007"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-BI-CH5-002", "type": "retroactivelyGrounds", "to": ["KO-BI-CH1-005", "KO-BI-CH4-002"], "note": "Backward relationship — a new type for this repository, correctly labeled as such" },
+    { "from": "KO-BI-CH5-004", "type": "restatesCrossReferenced", "to": ["KO-BI-CH1-002", "KO-BI-CH1-006", "KO-BI-CH2-002", "KO-BI-CH3-001", "KO-BI-CH3-005"] },
+    { "from": "KO-BI-CH5-004", "type": "extends", "to": ["KO-BI-CH2-004", "KO-BI-CH4-004", "KO-BI-CH4-005"] },
+    { "from": "KO-BI-CH5-003", "type": "governsApplicationOf", "to": "KO-BI-CH4-008" },
+    { "from": "KO-BI-CH5-006", "type": "partOfChecklistFamilyWith", "to": ["KO-BI-CH2-006", "KO-BI-CH3-006", "KO-BI-CH4-009"] }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-BI-CH5-004", "type": "bindsAllFutureDomains", "to": "Domains 2-10, wherever brand expression is touched" }
+  ],
+  "domainClosingNote": "Last chapter of Domain 1. No forward relationship to a Chapter 6 within this domain exists.",
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

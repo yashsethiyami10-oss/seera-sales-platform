@@ -1,0 +1,30 @@
+{
+  "domain": "Brand Intelligence",
+  "domainNumber": 1,
+  "chapter": "Language, Pronunciation & Tagline",
+  "chapterNumber": 3,
+  "koidPrefix": "KO-BI-CH3-",
+  "sourceChapter": "MUV Knowledge Library, Part III, Chapter 13",
+  "sourceLineRange": "2062-2202",
+  "totalKnowledgeObjects": 7,
+  "status": "Founder Review Ready",
+  "governanceNote": "No governance documents authored in this repository. Constitution, Founder Rules ledger, Knowledge Efficiency Framework, and Validation Framework are Founder-controlled and intentionally live outside this repository, per Execution Prompt v3.0's Founder Governance Protocol.",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository"
+  ],
+  "crossSourceConflictFound": {
+    "topic": "Use of the word 'Premium' (recurring in the Tone of Voice table)",
+    "note": "Not a new conflict — referenced from KO-BI-CH1-006, not re-recorded"
+  },
+  "openGapFound": {
+    "topic": "'Muving Soon™'",
+    "note": "Used in production and named in Muv AI Sutra §6.6, but was absent from this chapter's Correct Use/Incorrect Use lists and the Knowledge Library's searchable text generally. Originally recorded as Founder Decision Required in KO-BI-CH3-005, not resolved by inference.",
+    "status": "RESOLVED",
+    "resolution": "Founder Decision FR-008 (2026-07-31): 'Muving Soon™' approved as an official campaign teaser (product launch teasers, new fragrance launches, new category launches, website feature announcements, marketing countdown campaigns); restricted from ever replacing 'Keep Muving™', which remains the permanent MUV brand philosophy.",
+    "evidenceClassification": "Founder Approved"
+  }
+}

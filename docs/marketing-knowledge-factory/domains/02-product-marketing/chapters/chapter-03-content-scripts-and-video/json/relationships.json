@@ -1,0 +1,23 @@
+{
+  "chapter": "Content, Scripts & Video",
+  "relationships": [
+    { "from": "KO-PM-CH3-001", "type": "governs", "to": ["KO-PM-CH3-002","KO-PM-CH3-003","KO-PM-CH3-004","KO-PM-CH3-005","KO-PM-CH3-006","KO-PM-CH3-007","KO-PM-CH3-008","KO-PM-CH3-009","KO-PM-CH3-010","KO-PM-CH3-011","KO-PM-CH3-012","KO-PM-CH3-013"] },
+    { "from": "KO-PM-CH3-003", "type": "governs", "to": ["KO-PM-CH3-004","KO-PM-CH3-005","KO-PM-CH3-006","KO-PM-CH3-007","KO-PM-CH3-008","KO-PM-CH3-009","KO-PM-CH3-010","KO-PM-CH3-011"] },
+    { "from": "KO-PM-CH3-004", "type": "feeds", "to": ["KO-PM-CH3-005"] },
+    { "from": "KO-PM-CH3-006", "type": "feeds", "to": ["KO-PM-CH3-007"] },
+    { "from": "KO-PM-CH3-013", "type": "dependsOn", "to": ["KO-PM-CH3-012"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-PM-CH3-002", "type": "cites", "to": "KO-BI-CH3-005" },
+    { "from": "KO-PM-CH3-005", "type": "extends", "to": "KO-BI-CH4-004" },
+    { "from": "KO-PM-CH3-012", "type": "extends", "to": "KO-BI-CH5-004" }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-PM-CH2-008", "type": "isExtendedBy", "to": "KO-PM-CH3-005" },
+    { "from": "KO-PM-CH2-004", "type": "isExtendedBy", "to": "KO-PM-CH3-012" },
+    { "from": "KO-PM-CH1-006", "type": "isExtendedBy", "to": "KO-PM-CH3-007" }
+  ],
+  "reflexiveRelationship": { "koid": "KO-PM-CH3-012", "note": "Governs how this entire repository should be consumed by a downstream AI, not just this chapter's content" },
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

@@ -1,0 +1,15 @@
+{
+  "chapter": "Technology Operations & Security",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part XII, Chapter 63", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-DM-CH4-002, 005 (this domain, Chapter 4)", "type": "crossChapterKO", "status": "exist, unmodified" },
+    { "source": "KO-DM-CH5-006 (this domain, Chapter 5)", "type": "crossChapterKO", "status": "exists, unmodified" },
+    { "source": "KO-DM-CH7-007 (this domain, Chapter 7)", "type": "crossChapterKO", "status": "exists, unmodified" },
+    { "source": "KO-DM-CH8-008 (this domain, Chapter 8)", "type": "crossChapterKO", "status": "exists, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 5 Chapter 12 (Future Digital Evolution & MUV Universe™)", "status": "not yet built, this batch" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

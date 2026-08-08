@@ -1,0 +1,59 @@
+{
+  "repository": "MUV Founder Intelligence Knowledge Factory™",
+  "authorizedVia": "Founder Execution Protocol v1.0 (Founder Intelligence)",
+  "status": "COMPLETE — Founder Review Ready (repository construction) / Founder Decision Required (2 Gap Records)",
+  "repositoryType": "Reasoning Repository — reasoning frameworks only, never direct answers. Not a domain of the Marketing Knowledge Factory, not a fourth product/sales repository.",
+  "artifactFormat": "lean single-repository format — FOUNDER_CONSTITUTION.md, FOUNDER_CONSTITUTION_MAPPING.md, ENGINE_MASTER.md, KNOWLEDGE_OBJECTS.md, RELATIONSHIPS.md, VALIDATION.md, FOUNDER_REVIEW.md, JSON/*",
+  "constitutionStatus": "FROZEN — Version 1.0, 13 Articles, supreme authority of this repository",
+  "totalKnowledgeObjects": 32,
+  "koidPrefix": "KO-FD-",
+  "engines": [
+    { "number": 1, "name": "Founder Philosophy Engine™", "code": "PH", "koCount": 4, "primaryEvidence": "MUV Knowledge Library Part I, Ch.1-4 (previously unmirrored in any Knowledge Factory)" },
+    { "number": 2, "name": "Founder Decision Intelligence™", "code": "DI", "koCount": 4, "primaryEvidence": "MUV Knowledge Library Part I, Ch.5" },
+    { "number": 3, "name": "Founder Product Intelligence™", "code": "PI", "koCount": 3, "primaryEvidence": "Product Knowledge Factory CONSTITUTION.md / FOUNDER_RULES.md" },
+    { "number": 4, "name": "Founder Marketing Intelligence™", "code": "MI", "koCount": 3, "primaryEvidence": "Marketing Knowledge Factory Domains 1, 2, 6" },
+    { "number": 5, "name": "Founder Sales Intelligence™", "code": "SI", "koCount": 3, "primaryEvidence": "Marketing KF Domain 4, Institutional Sales Knowledge Factory" },
+    { "number": 6, "name": "Founder Business Intelligence™", "code": "BU", "koCount": 3, "primaryEvidence": "MUV Knowledge Library Part XIV (Capital); Marketing KF Domain 4 Ch.1" },
+    { "number": 7, "name": "Founder Optimization Intelligence™", "code": "OP", "koCount": 2, "primaryEvidence": "Marketing Knowledge Factory Domain 7" },
+    { "number": 8, "name": "Founder KPI Intelligence™", "code": "KP", "koCount": 2, "primaryEvidence": "Marketing Knowledge Factory Domain 2 Ch.5, Domain 7" },
+    { "number": 9, "name": "Founder Learning Intelligence™", "code": "LN", "koCount": 2, "primaryEvidence": "Marketing Knowledge Factory Domain 8; Part I Ch.5" },
+    { "number": 10, "name": "Founder AI Governance™", "code": "AG", "koCount": 3, "primaryEvidence": "Marketing KF Domain 5 Ch.10, Domain 2 Ch.3, Domain 6; Gap Record discipline across all three prior repositories" }
+  ],
+  "knowledgeObjectBreakdown": {
+    "reasoningFrameworks": 29,
+    "gapRecords": 2,
+    "repositorySummary": 1
+  },
+  "evidenceClassificationSummary": {
+    "founderNote": 20,
+    "derivedFounderPrinciple": 9,
+    "founderDecisionRequired": 3
+  },
+  "crossRepositoryCitationIntegrity": {
+    "marketingKnowledgeFactoryCitations": 30,
+    "institutionalSalesKnowledgeFactoryCitations": 13,
+    "productKnowledgeFactoryDocumentCitations": 3,
+    "totalUniqueKoidCitations": 43,
+    "verifiedAgainstFrozenOrCompleteRegistries": true,
+    "brokenReferences": 0,
+    "note": "All citations informational/authoritative-reference only, not runtime dependencies — this repository is fully self-contained"
+  },
+  "gapRecords": {
+    "total": 2,
+    "items": ["KPI Target-Setting Ambition Philosophy", "Cross-Repository Conflict Arbitration"],
+    "evidenceClassification": "Founder Decision Required for both"
+  },
+  "repositoryAudits": {
+    "relationshipAudit": "PASS (32/32 KOs relationship-complete, 0 orphans, 0 circular)",
+    "reasoningConsistency": "PASS (Pipeline and Decision Model applied consistently, no contradicting KOs)",
+    "constitutionConsistency": "PASS (all 13 Articles applied, all 32 KOs traced)",
+    "crossRepositoryIntegrity": "PASS (43/43 citations verified)",
+    "duplicateAudit": "PASS (Pipeline/Model defined once, referenced not repeated)",
+    "jsonValidation": "PASS (4/4 files parse, KO count reconciles)",
+    "repositoryHealth": "PASS (see FOUNDER_REVIEW.md Global Repository Health Snapshot)",
+    "founderReasoningValidation": "PASS (every KO's evidenceClassification resolves to exactly one of 3 permitted states)"
+  },
+  "founderDecisionsAppliedToThisRepository": [],
+  "openGaps": 2,
+  "founderReviewPackage": "FOUNDER_REVIEW.md"
+}

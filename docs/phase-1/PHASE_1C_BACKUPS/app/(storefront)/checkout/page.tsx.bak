@@ -1,0 +1,42 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { buildMetadata } from "@/lib/seo";
+import { CheckoutClient } from "@/components/checkout/checkout-client";
+
+export const metadata = buildMetadata({ title: "Checkout", path: "/checkout", noIndex: true });
+
+/**
+ * Phase 18 — guest checkout. Previously this redirected straight to /login
+ * for anyone without a session; now it only does that for a session that
+ * exists but somehow has no matching Customer row (a genuine data problem,
+ * not a guest). A visitor with no session at all now renders CheckoutClient
+ * in guest mode (customerId: null) instead of being turned away.
+ */
+export default async function CheckoutPage() {
+  const session = await auth();
+
+  if (!session?.user) {
+    return <CheckoutClient customerId={null} customerName="" customerEmail="" customerPhone={null} addresses={[]} />;
+  }
+
+  const customer = await prisma.customer.findUnique({
+    where: { userId: session.user.id },
+    include: { addresses: { orderBy: { isDefault: "desc" } } },
+  });
+  if (!customer) {
+    // A real session with no Customer profile is a genuine account-data
+    // problem (not the guest path) — same redirect as before for this case.
+    redirect("/login?callbackUrl=/checkout");
+  }
+
+  return (
+    <CheckoutClient
+      customerId={customer.id}
+      customerName={customer.name}
+      customerEmail={customer.email}
+      customerPhone={customer.phone}
+      addresses={customer.addresses}
+    />
+  );
+}

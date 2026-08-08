@@ -1,0 +1,52 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "status": "COMPLETE — Founder Review Ready (all 7 chapters + domain audit)",
+  "domainType": "Synthesized (Founder-approved), not a single-Part mirror",
+  "totalChapters": 7,
+  "totalKnowledgeObjects": 51,
+  "sourceDocuments": [
+    "MUV Knowledge Library, Part IX — MUV Customer Experience™ (Chapters 41-45, full mirror — Chapters 1-5)",
+    "MUV Knowledge Library, Part VIII, Chapter 40 — CRM System subsection only (excerpt — Chapter 6)",
+    "MUV Knowledge Library, Part XII, Chapter 61 — sections 4.6-4.7 only (excerpt — Chapter 7)"
+  ],
+  "synthesisEscalation": {
+    "issueRaised": "No single source Part cleanly matches 'Customer Intelligence' — the phrase never appears in the Library; CRM is owned by Part VIII Ch.40; Part IX is service/experience-focused, not customer-data-focused",
+    "resolutionMethod": "AskUserQuestion escalation to Founder, per Source Discipline's 'escalate through Founder Decision Required' rule",
+    "founderDecision": "Synthesized domain: Part IX + CRM + Data Insights",
+    "recordedIn": "domains/03-customer-intelligence/README.md"
+  },
+  "chapters": [
+    { "number": 1, "name": "Customer Promise & Experience Context", "koidPrefix": "KO-CI-CH1-", "koCount": 9, "sourceChapter": "Part IX Ch.41", "status": "Founder Review Ready" },
+    { "number": 2, "name": "Food-Service Product Experience", "koidPrefix": "KO-CI-CH2-", "koCount": 8, "sourceChapter": "Part IX Ch.42", "status": "Founder Review Ready" },
+    { "number": 3, "name": "Outlet Culture & Environment", "koidPrefix": "KO-CI-CH3-", "koCount": 9, "sourceChapter": "Part IX Ch.43", "status": "Founder Review Ready" },
+    { "number": 4, "name": "Customer Communication & Promotion", "koidPrefix": "KO-CI-CH4-", "koCount": 9, "sourceChapter": "Part IX Ch.44", "status": "Founder Review Ready" },
+    { "number": 5, "name": "Experience, Franchise & Expansion References", "koidPrefix": "KO-CI-CH5-", "koCount": 12, "sourceChapter": "Part IX Ch.45 (+ Part IX Part Summary)", "status": "Founder Review Ready" },
+    { "number": 6, "name": "CRM System (Excerpt)", "koidPrefix": "KO-CI-CH6-", "koCount": 2, "sourceChapter": "Part VIII Ch.40 (excerpt only)", "status": "Founder Review Ready" },
+    { "number": 7, "name": "Customer Insights & Data Intelligence (Excerpt)", "koidPrefix": "KO-CI-CH7-", "koCount": 2, "sourceChapter": "Part XII Ch.61 (excerpt only)", "status": "Founder Review Ready" }
+  ],
+  "crossDomainCitationIntegrity": {
+    "uniqueDomain1Citations": 1,
+    "uniqueDomain2Citations": 5,
+    "verifiedAgainstDomain1Registry": true,
+    "verifiedAgainstDomain2Registry": true,
+    "brokenReferences": 0
+  },
+  "domainAudits": {
+    "relationshipIntegrityAudit": "PASS (51/51 KOs relationship-complete, 0 orphans, 0 circular)",
+    "knowledgeCoverageAudit": "PASS — reported in two honest parts: Part A (Chapters 1-5 vs. Part IX's own summary: 13/13 areas, 10/10 principles, 14/14 checklist items); Part B (Chapters 6-7 vs. their own declared excerpt scope, both complete)",
+    "domainConsistencyAudit": "PASS (4 disclosed, source-driven departures from Domains 1-2's pattern, none silent)",
+    "domainValidation": "PASS (51/51 KO checks + 5/5 domain audits)"
+  },
+  "founderDecisionsAppliedToThisDomain": [
+    { "id": "synthesis-decision", "summary": "Synthesized domain: Part IX + CRM + Data Insights", "appliedTo": "entire domain structure" }
+  ],
+  "openGaps": [],
+  "outOfScopeReferences": [
+    "Part X — Expansion, Franchise, Partnerships & Enterprise Governance / MUV Business Blueprint™ (franchise business model, cited by Chapter 5, never transcribed)",
+    "The remainder of Part VIII Chapter 40 beyond the CRM System subsection (revenue planning, forecasting, targets, incentives, sales metrics, customer acquisition economics, territory planning, sales documentation, commercial decision record, channel evolution, expansion & market development, franchise & partnership support, partner performance review, knowledge transfer, sales team development)",
+    "The remainder of Part XII Chapter 61 beyond sections 4.6-4.7 (Data Philosophy, Data Domains and Ownership, Data Lifecycle, Data Collection, Data Quality, Operational Analytics, Evidence-Based Decisions, Data Governance, plus closing governance content)",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007) — referenced, never modified"
+  ],
+  "founderReviewPackage": "domains/03-customer-intelligence/DOMAIN_3_FOUNDER_REVIEW_PACKAGE.md"
+}

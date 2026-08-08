@@ -1,0 +1,52 @@
+import { Reveal } from "@/components/ui/reveal";
+
+/**
+ * Origin section (PHASE_6A §4.5 / PHASE_6B §6) — the deeper "why," placed
+ * after orientation and proof have already been earned. Copy draws directly
+ * from PHASE_3_BRAND_EXPERIENCE_LANGUAGE.md §1 (the frozen, approved brand
+ * soul), condensed per PHASE_3 §6's rules (short, declarative, never the
+ * word "premium"), not invented for this pass.
+ *
+ * No image: PHASE_6B §6 calls for one considered photo, but no real,
+ * brand-appropriate photograph exists in the asset library yet (only a
+ * product cutout and the logo — see public/hero/). Reusing the product
+ * photo here would misrepresent it as brand imagery it isn't. Text-only,
+ * generous whitespace, until real photography exists — never a stand-in.
+ */
+export function BrandStory() {
+  return (
+    <section className="py-28 md:py-36 px-6">
+      <div className="max-w-7xl mx-auto flex justify-center">
+        <div className="muv-brand-story text-center" style={{ maxWidth: "64ch", padding: "0 0.25rem" }}>
+          <Reveal>
+            <p className="muv-eyebrow mb-5">Our Belief</p>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <h2 className="font-display text-white" style={{ fontWeight: 400, fontSize: "clamp(1.7rem,3.2vw,2.4rem)", lineHeight: 1.2 }}>
+              Maintenance is not beneath care.
+            </h2>
+          </Reveal>
+          <Reveal delay={0.18}>
+            <p className="muv-section-strapline mt-6 md:mt-7" style={{ margin: "0 auto" }}>
+              The rituals we repeat every day shape how we live. MUV gives them the attention they deserve.
+            </p>
+          </Reveal>
+          <Reveal delay={0.24}>
+            <p className="muv-text-body mt-5 md:mt-6" style={{ fontWeight: 300, fontSize: "16px", lineHeight: 1.8, maxWidth: "58ch", margin: "0 auto" }}>
+              Nobody dreams about detergent the way they dream about a fragrance. MUV exists because the
+              unglamorous, repetitive parts of a life — wiping a counter, washing a shirt, cleaning a car —
+              still deserve craftsmanship. Home, Fabric, Body, Personal, Car: one standard, held the same
+              way across all five, because care isn&rsquo;t a category.
+            </p>
+          </Reveal>
+          <div className="muv-brand-story-divider" />
+          <Reveal delay={0.28}>
+            <p className="mt-9 md:mt-10 text-sm uppercase tracking-[0.3em]" style={{ color: "var(--lavender)", letterSpacing: "0.3em", fontWeight: 600 }}>
+              Keep Muving&trade;
+            </p>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}

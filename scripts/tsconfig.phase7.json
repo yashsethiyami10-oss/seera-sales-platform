@@ -1,0 +1,27 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "target": "ES2022",
+    "moduleResolution": "NodeNext",
+    "rootDir": "..",
+    "outDir": "../.tmp-phase7",
+    "noEmit": false,
+    "incremental": false
+  },
+  "include": [
+    "verify-sales-phase7-integration.ts",
+    "../lib/muv-ai/types.ts",
+    "../lib/muv-ai/security.ts",
+    "../lib/muv-ai/prompt.ts",
+    "../lib/muv-ai/gateway.ts",
+    "../lib/muv-ai/tools.ts",
+    "../lib/muv-ai/workflow.ts",
+    "../lib/muv-ai/orchestrator.ts",
+    "../lib/muv-ai/conversations.ts",
+    "../lib/growth/repository.ts",
+    "../lib/growth/analytics.ts",
+    "../lib/errors.ts",
+    "../lib/prisma.ts"
+  ]
+}

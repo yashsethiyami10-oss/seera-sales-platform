@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(\"cleaned\")",
+      "PowerShell(cd c:\\\\Users\\\\HP\\\\muv-platform-deployment-package; $lines = Get-Content prisma\\\\schema.prisma; $lines.Count; $lines[-20..-1])",
+      "PowerShell(npx vitest run __tests__/enterprise-finance/wave1-foundation.integration.test.ts 2>&1)",
+      "PowerShell(npx tsc --noEmit; Write-Output \"TSC_EXIT=$LASTEXITCODE\")",
+      "PowerShell(npx vitest run 2>&1)"
+    ]
+  }
+}

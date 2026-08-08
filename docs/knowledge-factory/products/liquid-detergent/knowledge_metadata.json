@@ -1,0 +1,79 @@
+{
+  "package": "MUV Liquid Detergent™ Enterprise Knowledge Package",
+  "productFamily": "MUV Liquid Detergent™",
+  "parentProductRule": "One parent product, three fragrance variants (Lavender Garden, Indian Rose, Cool Water), two pack sizes each (1L, 5L) — six SKUs total, ONE knowledge package, no duplication across SKUs.",
+  "version": "1.0",
+  "createdAt": "2026-07-30",
+  "approvalStatus": "DRAFT — Pending Founder Review",
+  "governedBy": [
+    "MUV Knowledge Book (.claude/docs/MUV_Knowledge/ constitution files) — supreme constitution, not modified by this package",
+    "MUV AI Knowledge Factory™ architecture — frozen, not modified by this package"
+  ],
+  "sourceDocumentsUsed": [
+    {
+      "path": ".claude/docs/MUV-KNOWLEDGE/SOURCE DOCUMENTS/SOPs/FABRIC CARE/MUV_Liquid_Detergent_Final_Production_SOP_v2-1.docx",
+      "usedFor": "Raw material list, process steps, critical control point, variant colour/fragrance assignment, pack weights, generic pricing figures",
+      "extractionMethod": "Read-only zip extraction of word/document.xml (binary .docx, no repo files modified)"
+    },
+    {
+      "path": ".claude/docs/MUV-KNOWLEDGE/SOURCE DOCUMENTS/PRODUCT CHART/MUV_Product_Chart_with_USP (1)(1).pdf",
+      "usedFor": "Per-variant MRP pricing (rows 1-6) — historical research use only; per FR-001/FR-002 (remediated 2026-07-31) this package no longer states any MRP as live content, see LIVE_DATA_MAPPING.md",
+      "extractionMethod": "PDF text extraction; note USP column referenced in filename was not recoverable as text — flagged for manual review"
+    },
+    {
+      "path": "prisma/seed.ts",
+      "usedFor": "Confirming Fabric Care category exists in the platform catalogue; confirming NO real Product/ProductVariant record exists yet for this product (checked, not fabricated)",
+      "extractionMethod": "Direct source read"
+    },
+    {
+      "path": "lib/knowledge-factory/conflict-service.ts",
+      "usedFor": "Corroborating that the Cool Water pricing conflict was already flagged in a prior session, independently re-confirmed here",
+      "extractionMethod": "Direct source read"
+    }
+  ],
+  "knownConflicts": [
+    {
+      "koid": "KO-LD-CONFLICT-001",
+      "description": "Cool Water MRP differs between the Product Chart (₹165/1L, ₹725/5L) and the Production SOP's generic pricing (₹155/1L, ₹699/5L)",
+      "note": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API, never from this figure. Open only as a historical/audit question; no longer blocks any AI-facing pricing answer.",
+      "status": "OPEN",
+      "resolutionOwner": "Founder"
+    }
+  ],
+  "totalKnowledgeObjects": 40,
+  "totalFiles": 16,
+  "noHallucinationRuleApplied": true,
+  "complianceRemediation": {
+    "founderRules": ["FR-001", "FR-002"],
+    "description": "Commercial/Knowledge Separation full remediation pass",
+    "remediatedAt": "2026-07-31",
+    "status": "REMEDIATED",
+    "liveDataMapping": "LIVE_DATA_MAPPING.md"
+  },
+  "fieldsMarkedRequiresFounderInput": [
+    "SKU codes / product codes (all 6 SKUs)",
+    "Barcodes (all 6 SKUs)",
+    "Packaging dimensions (all 6 SKUs)",
+    "Shipping/carton weight (all 6 SKUs)",
+    "Marketplace metadata (all 6 SKUs)",
+    "Variant images (all 6 SKUs)",
+    "Full INCI/chemical names for SLES, CAPB, CDEA, Slurry, Soda",
+    "HSN code and GST rate specific to this product",
+    "Customer usage dosage instructions",
+    "Institutional usage / dilution guidance",
+    "Shelf life",
+    "Storage conditions",
+    "Transportation/hazard classification",
+    "Safety data sheet / first-aid procedure",
+    "PPE requirements",
+    "Fabric compatibility/incompatibility",
+    "Marketing copy / brand messaging / USP text",
+    "Competitor comparison",
+    "Wholesale/institutional pricing",
+    "Sales/performance history (product not yet catalogued)",
+    "Batch scaling validation beyond the confirmed 10L batch",
+    "Equipment specification",
+    "QC acceptance criteria beyond the single documented pH check",
+    "Customer problems solved / target customer segment"
+  ]
+}

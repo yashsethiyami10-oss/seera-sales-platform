@@ -1,0 +1,17 @@
+{
+  "chapter": "Label Information System",
+  "relationships": [
+    { "from": "KO-CC-CH2-001", "type": "governs", "to": ["KO-CC-CH2-002","KO-CC-CH2-003","KO-CC-CH2-004","KO-CC-CH2-005","KO-CC-CH2-006"] },
+    { "from": "KO-CC-CH2-002", "type": "feeds", "to": ["KO-CC-CH2-003"] },
+    { "from": "KO-CC-CH2-003", "type": "feeds", "to": ["KO-CC-CH2-004"] },
+    { "from": "KO-CC-CH2-004", "type": "feeds", "to": ["KO-CC-CH2-005"] },
+    { "from": "KO-CC-CH2-005", "type": "feeds", "to": ["KO-CC-CH2-006"] },
+    { "from": "KO-CC-CH2-001", "type": "summarizedBy", "to": ["KO-CC-CH2-007"] }
+  ],
+  "crossDomainRelationships": [],
+  "forwardRelationships": [
+    { "from": "KO-CC-CH2-007", "type": "transitionsTo", "to": "Chapter 3 (Visual Asset Production)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

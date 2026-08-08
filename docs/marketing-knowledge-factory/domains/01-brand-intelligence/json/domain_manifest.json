@@ -1,0 +1,38 @@
+{
+  "domain": "Brand Intelligence",
+  "domainNumber": 1,
+  "status": "COMPLETE — Founder Review Ready (all 5 chapters + domain audit)",
+  "totalChapters": 5,
+  "totalKnowledgeObjects": 37,
+  "sourceDocument": "MUV Knowledge Library, Part III — MUV Brand Sutra™ (Chapters 11-15)",
+  "chapters": [
+    { "number": 1, "name": "Brand Origin & Naming", "koidPrefix": "KO-BI-CH1-", "koCount": 7, "sourceChapter": 11, "status": "Founder Review Ready" },
+    { "number": 2, "name": "Logo & Mark System", "koidPrefix": "KO-BI-CH2-", "koCount": 7, "sourceChapter": 12, "status": "Founder Review Ready" },
+    { "number": 3, "name": "Language, Pronunciation & Tagline", "koidPrefix": "KO-BI-CH3-", "koCount": 7, "sourceChapter": 13, "status": "Founder Review Ready", "amendments": [{ "koid": "KO-BI-CH3-005", "founderDecision": "FR-008", "note": "Muving Soon™ gap resolved" }] },
+    { "number": 4, "name": "Identity Governance", "koidPrefix": "KO-BI-CH4-", "koCount": 9, "sourceChapter": 14, "status": "Founder Review Ready" },
+    { "number": 5, "name": "Brand Decision History", "koidPrefix": "KO-BI-CH5-", "koCount": 7, "sourceChapter": 15, "status": "Founder Review Ready" }
+  ],
+  "relationshipTotals": {
+    "intraChapter": 48,
+    "crossChapter": 16,
+    "forward": 12,
+    "forwardFulfilledWithinDomain": 4,
+    "forwardPendingFutureDomains": 8,
+    "backward": 1
+  },
+  "domainAudits": {
+    "relationshipIntegrityAudit": "PASS",
+    "knowledgeCoverageAudit": "PASS (20/20 brand areas, 10/10 Master Brand Rules, 15/15 Action Checklist items)",
+    "domainConsistencyAudit": "PASS",
+    "domainValidation": "PASS (40/40 chapter checks + 3/3 domain audits)"
+  },
+  "founderDecisionsAppliedToThisDomain": [
+    { "decision": "FR-008", "topic": "Muving Soon™ campaign teaser", "appliedTo": "KO-BI-CH3-005", "method": "targeted edit, chapter not regenerated" }
+  ],
+  "outOfScopeReferences": [
+    "Part IV — MUV Design System™ (packaging production)",
+    "Volume I — MUV Darshan™ (full Founder philosophy text)",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007) — referenced, never modified"
+  ],
+  "founderReviewPackage": "domains/01-brand-intelligence/DOMAIN_1_FOUNDER_REVIEW_PACKAGE.md"
+}

@@ -1,0 +1,48 @@
+{
+  "productFamily": "MUV Crystal Glass Cleaner™",
+  "totalComparisons": 5,
+  "genuineUnresolvedConflicts": 0,
+  "resolvedByDirectFounderInstruction": 1,
+  "dataGaps": 2,
+  "cleanResults": 2,
+  "conflicts": [
+    {
+      "id": "CONFLICT-001",
+      "topic": "Naming",
+      "sourceA": { "name": "Product Chart", "value": "MUV Glass Cleaner" },
+      "sourceB": { "name": "Production SOP title", "value": "MUV GLASS CLEANER" },
+      "conflict": "Neither source uses 'Crystal'; the official name given directly by the Founder in this task is 'MUV Crystal Glass Cleaner™'",
+      "activeSourceDefault": "Founder Instruction (authority #2, superseding the Product Chart's own historical naming for this specific field)",
+      "reason": "Per the instruction's own explicit rule: preserve historical names only inside the Legacy section.",
+      "founderDecisionRequired": false,
+      "status": "RESOLVED — already decided by direct Founder instruction in this task"
+    }
+  ],
+  "cleanComparisons": [
+    {
+      "id": "Comparison-1",
+      "topic": "Pricing (500 ml)",
+      "sourceA": { "name": "Product Chart", "value": "₹90" },
+      "sourceB": { "name": "Production SOP", "value": "₹90" },
+      "result": "CLEAN — both sources agree exactly, no conflict",
+      "label": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API (see LIVE_DATA_MAPPING.md), never from this figure."
+    },
+    {
+      "id": "Comparison-5",
+      "topic": "Competitor-name check",
+      "result": "CLEAN — zero competitor names found, including 'Colin'"
+    }
+  ],
+  "dataGapComparisons": [
+    {
+      "id": "Comparison-3",
+      "topic": "Fragrance identity",
+      "note": "Colour is named ('Ocean Blue'); fragrance is present in the formulation but has no name/identity anywhere — a partial gap, not a conflict."
+    },
+    {
+      "id": "Comparison-4",
+      "topic": "Manufacturing safety documentation",
+      "note": "Complete absence of any safety instruction in the SOP — the most severe gap of any product family audited this session. An absence, not a conflict."
+    }
+  ]
+}

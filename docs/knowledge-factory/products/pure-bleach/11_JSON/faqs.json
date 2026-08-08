@@ -1,0 +1,21 @@
+{
+  "productFamily": "MUV Pure Bleach™",
+  "koid": "KO-PB-FAQ-001",
+  "totalQuestions": 14,
+  "questions": [
+    { "question": "What is MUV Pure Bleach™?", "answer": "A sodium-hypochlorite-based liquid bleach formulated for household cleaning and whitening applications.", "sourced": true },
+    { "question": "What size does it come in?", "answer": "500 ml only.", "sourced": true },
+    { "question": "How much does it cost?", "answer": "LIVE — resolve from Product Catalog API.", "sourced": "N/A (commercial, live)" },
+    { "question": "What's in it?", "answer": "Sodium Hypochlorite Solution (10–12%), RO/DM Water, and if required, Sodium Hydroxide Solution and Sodium Silicate.", "sourced": true },
+    { "question": "How do I use it?", "answer": "Not documented.", "sourced": false },
+    { "question": "Do I need to dilute it?", "answer": "Not documented.", "sourced": false },
+    { "question": "How long should I leave it on a surface?", "answer": "Not documented.", "sourced": false },
+    { "question": "Can I use it on coloured fabric?", "answer": "Not documented — do not assume safe.", "sourced": false },
+    { "question": "Can I mix it with other cleaners?", "answer": "No — SOP explicitly restricts mixing with acids or ammonia-based cleaners.", "sourced": true },
+    { "question": "How should I store it?", "answer": "Below 30°C, away from direct sunlight.", "sourced": true },
+    { "question": "What's the shelf life?", "answer": "Not documented — an expiry date exists on the label, but the duration isn't sourced.", "sourced": false },
+    { "question": "What should I do if it gets in my eyes/on my skin?", "answer": "Not documented in this package — seek professional/emergency guidance.", "sourced": false },
+    { "question": "Is it safe around kids and pets?", "answer": "Not confirmed.", "sourced": false },
+    { "question": "Is this available to buy right now?", "answer": "Not yet in the product catalogue.", "sourced": true }
+  ]
+}

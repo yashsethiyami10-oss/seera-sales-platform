@@ -1,0 +1,15 @@
+{
+  "chapter": "MUV Digital Ecosystem Architecture",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part XII, Chapter 59", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-DM-CH2-001 (this domain, Chapter 2)", "type": "crossChapterKO", "status": "exists, unmodified" },
+    { "source": "KO-CI-CH1-005 (Domain 3, frozen)", "type": "crossDomainKO", "status": "exists, frozen, unmodified" },
+    { "source": "KO-SC-CH2-008, KO-SC-CH3-001 (Domain 4, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 5 Chapter 8 (Website & Customer Technology System)", "status": "not yet built, this batch" },
+    { "dependent": "Domain 5 Chapter 9 (Data Architecture & Intelligence System excerpt)", "status": "will extend KO-DM-CH7-008" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

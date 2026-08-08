@@ -1,0 +1,14 @@
+{
+  "productFamily": "MUV Pure Bleach™",
+  "totalObjections": 8,
+  "objections": [
+    { "koid": "KO-PB-OBJ-001", "objection": "Bleach is harsh / damaging", "sourced": false },
+    { "koid": "KO-PB-OBJ-002", "objection": "I'm worried about the chlorine smell", "sourced": true, "note": "expected per QC criteria" },
+    { "koid": "KO-PB-OBJ-003", "objection": "Can I use it on coloured clothes?", "sourced": false },
+    { "koid": "KO-PB-OBJ-004", "objection": "Is it safe around my kids/pets?", "sourced": false },
+    { "koid": "KO-PB-OBJ-005", "objection": "Why doesn't the description tell me how to use it?", "sourced": true, "note": "honest gap — SOP is manufacturing-only" },
+    { "koid": "KO-PB-OBJ-006", "objection": "How is this different from other bleach brands?", "sourced": false, "note": "no sourced differentiator, no competitor comparison invented" },
+    { "koid": "KO-PB-OBJ-007", "objection": "Can I use this instead of my regular toilet/glass/floor cleaner?", "sourced": true, "note": "cross-product comparison, KO-PB-DT-003" },
+    { "koid": "KO-PB-OBJ-008", "objection": "Why is there no MRP shown?", "sourced": true, "note": "FR-001/FR-002 governance, not a data gap" }
+  ]
+}

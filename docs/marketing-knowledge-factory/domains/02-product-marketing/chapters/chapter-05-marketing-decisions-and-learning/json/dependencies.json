@@ -1,0 +1,14 @@
+{
+  "chapter": "Marketing Decisions & Learning",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part VII, Chapter 35", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-PM-CH1-001, 005, 009, KO-PM-CH2-001, 002, 008, 009, KO-PM-CH3-012, KO-PM-CH4-010 (this domain)", "type": "intraDomainKO", "status": "exist, unmodified" },
+    { "source": "KO-BI-CH5-001, KO-BI-CH5-002, KO-BI-CH5-003 (Domain 1, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 2 Knowledge Coverage Audit / consolidated Founder Review Package", "status": "next" },
+    { "dependent": "Domain 8 — Growth Intelligence", "status": "not started; will extend CAC/ROMI content" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

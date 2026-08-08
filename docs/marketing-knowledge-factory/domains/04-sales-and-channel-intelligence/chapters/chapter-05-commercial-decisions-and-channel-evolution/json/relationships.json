@@ -1,0 +1,45 @@
+{
+  "chapter": "Commercial Decisions & Channel Evolution",
+  "relationships": [
+    { "from": "KO-SC-CH5-001", "type": "governs", "to": ["KO-SC-CH5-002","KO-SC-CH5-003","KO-SC-CH5-004","KO-SC-CH5-005","KO-SC-CH5-006","KO-SC-CH5-007","KO-SC-CH5-008","KO-SC-CH5-009","KO-SC-CH5-010","KO-SC-CH5-011","KO-SC-CH5-012","KO-SC-CH5-013","KO-SC-CH5-014","KO-SC-CH5-015","KO-SC-CH5-016","KO-SC-CH5-017"] },
+    { "from": "KO-SC-CH5-002", "type": "feeds", "to": ["KO-SC-CH5-003"] },
+    { "from": "KO-SC-CH5-003", "type": "feeds", "to": ["KO-SC-CH5-004"] },
+    { "from": "KO-SC-CH5-004", "type": "feeds", "to": ["KO-SC-CH5-005"] },
+    { "from": "KO-SC-CH5-005", "type": "feeds", "to": ["KO-SC-CH5-006"] },
+    { "from": "KO-SC-CH5-006", "type": "feeds", "to": ["KO-SC-CH5-007"] },
+    { "from": "KO-SC-CH5-007", "type": "feeds", "to": ["KO-SC-CH5-008"] },
+    { "from": "KO-SC-CH5-008", "type": "feeds", "to": ["KO-SC-CH5-009"] },
+    { "from": "KO-SC-CH5-009", "type": "feeds", "to": ["KO-SC-CH5-010"] },
+    { "from": "KO-SC-CH5-010", "type": "feeds", "to": ["KO-SC-CH5-011"] },
+    { "from": "KO-SC-CH5-011", "type": "feeds", "to": ["KO-SC-CH5-012"] },
+    { "from": "KO-SC-CH5-012", "type": "feeds", "to": ["KO-SC-CH5-013"] },
+    { "from": "KO-SC-CH5-013", "type": "feeds", "to": ["KO-SC-CH5-014"] },
+    { "from": "KO-SC-CH5-014", "type": "feeds", "to": ["KO-SC-CH5-015"] },
+    { "from": "KO-SC-CH5-015", "type": "feeds", "to": ["KO-SC-CH5-016"] },
+    { "from": "KO-SC-CH5-016", "type": "feeds", "to": ["KO-SC-CH5-017"] },
+    { "from": "KO-SC-CH5-001", "type": "summarizedBy", "to": ["KO-SC-CH5-018"] },
+    { "from": "KO-SC-CH5-018", "type": "summarizedByPartLevel", "to": ["KO-SC-CH5-019"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-SC-CH5-001", "type": "extends", "to": "KO-SC-CH1-002" },
+    { "from": "KO-SC-CH5-006", "type": "relatesTo", "to": "KO-SC-CH2-011" },
+    { "from": "KO-SC-CH5-007", "type": "relatesTo", "to": "KO-SC-CH2-013" },
+    { "from": "KO-SC-CH5-009", "type": "relatesTo", "to": "KO-SC-CH2-007" },
+    { "from": "KO-SC-CH5-011", "type": "extends", "to": "KO-SC-CH1-005, KO-SC-CH2-008" },
+    { "from": "KO-SC-CH5-012", "type": "relatesTo", "to": "KO-SC-CH2-013" },
+    { "from": "KO-SC-CH5-014", "type": "relatesTo", "to": "KO-SC-CH2-011" },
+    { "from": "KO-SC-CH5-016", "type": "relatesTo", "to": "KO-SC-CH2-014" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-SC-CH5-008", "type": "citesOnly", "to": "KO-CI-CH6-001, KO-CI-CH6-002 (Domain 3, frozen)" },
+    { "from": "KO-SC-CH5-018", "type": "transitionsTo", "to": "Part IX / Domain 3 (frozen) — cited, not transcribed" }
+  ],
+  "crossPartRelationships": [
+    { "from": "KO-SC-CH5-013", "type": "cites (out of scope deferral)", "to": "Part X — franchise/legal/capital architecture" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-SC-CH5-019", "type": "grounds", "to": "Domain 4 02_knowledge_coverage_audit.md" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

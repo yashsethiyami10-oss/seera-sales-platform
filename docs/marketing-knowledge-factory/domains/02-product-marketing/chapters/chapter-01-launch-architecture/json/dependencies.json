@@ -1,0 +1,12 @@
+{
+  "chapter": "Launch Architecture",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part VII, Chapter 31", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" },
+    { "source": "KO-BI-CH1-001, KO-BI-CH2-002, KO-BI-CH3-003, KO-BI-CH5-004 (Domain 1, frozen)", "type": "crossDomainKO", "status": "exist, frozen, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 2 Chapters 2-5", "status": "in progress this batch" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

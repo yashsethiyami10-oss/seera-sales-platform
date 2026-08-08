@@ -1,0 +1,34 @@
+{
+  "officialName": "MUV Crystal Glass Cleaner™",
+  "legacyName": "MUV Glass Cleaner",
+  "manufacturingName": "MUV GLASS CLEANER",
+  "category": "Home Care",
+  "categoryConfidence": "MEDIUM",
+  "fragranceVariants": 0,
+  "colourIdentity": "Ocean Blue (named, confirmed)",
+  "fragranceIdentity": null,
+  "namedVariantNote": "Colour is named ('Ocean Blue'); fragrance is present in the formulation but not named anywhere — a mixed data-completeness state, unlike Bathroom Cleaner (neither named) or the earlier three products (both typically named).",
+  "packSizes": [
+    {
+      "size": "500 ml",
+      "status": "CONFIRMED",
+      "koid": "KO-GC-VAR-001"
+    },
+    {
+      "size": "5 Litre",
+      "status": "NOT CONFIRMED — REQUIRES FOUNDER INPUT",
+      "koid": "KO-GC-VAR-002",
+      "note": "No source (Product Chart, SOP, Knowledge Library) documents this size. Not asserted to exist."
+    }
+  ],
+  "totalConfirmedSkus": 1,
+  "totalUnconfirmedSkus": 1,
+  "sourceAuthorityOrder": [
+    "1. Current Product Chart",
+    "2. Founder Instructions",
+    "3. Final Production SOP",
+    "4. Knowledge Library",
+    "5. Seed Data",
+    "6. Historical Documents"
+  ]
+}

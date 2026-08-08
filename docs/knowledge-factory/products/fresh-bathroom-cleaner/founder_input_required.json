@@ -1,0 +1,22 @@
+{
+  "productFamily": "MUV Fresh Bathroom Cleaner™",
+  "priorityItems": [
+    { "item": "Historical pricing discrepancy in pre-launch source documents (see 19_Source_Conflict_Register.md CONFLICT-001, historical audit citation only — not a live figure)", "whyItMatters": "Traces directly to a pre-existing, named codebase conflict comment. Per FR-001/FR-002 (2026-07-31), no longer blocks anything customer/AI-facing — pricing is always resolved live from the Product Catalog API. Retained for historical context only.", "koid": ["KO-BC-SALES-001", "19_Source_Conflict_Register.md#CONFLICT-001"] },
+    { "item": "Confirm whether a 5 Litre SKU should exist at all", "whyItMatters": "No source has one; if the Founder intends one, new source material is needed, not inference", "koid": ["KO-BC-VAR-002"] },
+    { "item": "Colour and fragrance identity", "whyItMatters": "Unlike all three prior products, neither is named anywhere", "koid": ["KO-BC-VAR-001", "KO-BC-ING-001"] },
+    { "item": "Manufacturing PPE requirements", "whyItMatters": "None sourced at all, despite direct HCl handling", "koid": ["KO-BC-SAFETY-001"] },
+    { "item": "Rationale for 'Fresh' in the official name", "whyItMatters": "Neither source uses this word — worth Founder elaboration for future marketing copy, though the name itself is already settled", "koid": ["KO-BC-NAME-001"] }
+  ],
+  "categories": {
+    "Product Identity & Description": ["Manufacturer name confirmation", "Formal brand positioning statement", "Customer problems solved", "Target customer segment", "Usage scenarios", "Rationale for 'Fresh'"],
+    "Identification & Catalogue Data": ["SKU code", "Barcode", "Packaging dimensions", "Shipping weight", "Marketplace metadata", "Variant image review", "HSN code / GST rate", "Packaging container material/format"],
+    "Ingredients & Manufacturing": ["Full INCI/chemical names, concentrations, grades, suppliers", "Colour and fragrance identity/names", "Equipment specification", "Real measured batch yield"],
+    "Quality Control": ["Numeric targets for the five qualitative QC criteria", "Test methods", "Sampling plan, OOS handling, retention samples"],
+    "Safety": ["Manufacturing PPE requirements", "Consumer safety data sheet, first-aid procedure", "Surface/material compatibility and mixing-hazard guidance"],
+    "Storage & Transport": ["Shelf life", "Storage temperature range", "Transportation/hazard classification"],
+    "Sales & Marketing": ["Pricing conflict resolution", "Wholesale/institutional pricing", "Cost of goods / margin data", "Marketing campaign history"],
+    "Support": ["Product-specific troubleshooting guide", "Batch/lot numbering scheme"]
+  },
+  "totalGapCategories": 33,
+  "totalGapCategoriesNote": "33 matches the itemized bullet count in 18_Founder_Input_Register.md's category sections (6+8+4+3+3+3+4+2). knowledge_metadata.json's founderInputGapCategories array intentionally lists 36 items because it splits a few grouped bullets (e.g. 'concentrations/grades' and 'suppliers') into separate entries — the 33 figure is the authoritative one for this register's own bullet-count claim; see 24_Validation_Report.md for the reconciliation."
+}

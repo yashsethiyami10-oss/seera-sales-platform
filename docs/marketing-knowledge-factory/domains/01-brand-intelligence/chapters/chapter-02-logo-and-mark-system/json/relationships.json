@@ -1,0 +1,27 @@
+{
+  "chapter": "Logo & Mark System",
+  "relationships": [
+    { "from": "KO-BI-CH2-001", "type": "feeds", "to": ["KO-BI-CH2-002"] },
+    { "from": "KO-BI-CH2-003", "type": "grounds", "to": ["KO-BI-CH2-004"] },
+    { "from": "KO-BI-CH2-004", "type": "feeds", "to": ["KO-BI-CH2-005", "KO-BI-CH2-006"] },
+    { "from": "KO-BI-CH2-005", "type": "feeds", "to": ["KO-BI-CH2-006"] },
+    { "from": "KO-BI-CH2-001", "type": "summarizedBy", "to": ["KO-BI-CH2-007"] },
+    { "from": "KO-BI-CH2-002", "type": "summarizedBy", "to": ["KO-BI-CH2-007"] },
+    { "from": "KO-BI-CH2-003", "type": "summarizedBy", "to": ["KO-BI-CH2-007"] },
+    { "from": "KO-BI-CH2-004", "type": "summarizedBy", "to": ["KO-BI-CH2-007"] },
+    { "from": "KO-BI-CH2-005", "type": "summarizedBy", "to": ["KO-BI-CH2-007"] },
+    { "from": "KO-BI-CH2-006", "type": "summarizedBy", "to": ["KO-BI-CH2-007"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-BI-CH1-005", "type": "isExtendedBy", "to": "KO-BI-CH2-002", "note": "Forward relationship predicted in Chapter 1, fulfilled here" },
+    { "from": "KO-BI-CH1-001", "type": "grounds", "to": ["KO-BI-CH2-001", "KO-BI-CH2-003"] },
+    { "from": "KO-BI-CH1-006", "type": "referencedBy", "to": "KO-BI-CH2-002" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-BI-CH2-003", "type": "willBeExtendedBy", "to": "Domain 1 Chapter 4 — Identity Governance" },
+    { "from": "KO-BI-CH2-005", "type": "willBeExtendedBy", "to": "Domain 5 — Channel Intelligence" },
+    { "from": "KO-BI-CH2-004", "type": "constrains", "to": "Domain 7 — Creative Intelligence (Rule 10)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

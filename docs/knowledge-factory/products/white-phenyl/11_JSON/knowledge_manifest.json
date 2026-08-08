@@ -1,0 +1,33 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "koidPrefix": "KO-WP-",
+  "status": "DRAFT — Pending Founder Review",
+  "packageVersion": "1.0",
+  "sequenceInKnowledgeFactory": 9,
+  "structureVersion": "v2.1 (same structure as Black Phenyl, first package built under FR-003 Knowledge Reuse First)",
+  "precedingFrozenFamilies": [
+    "MUV Liquid Detergent™ (KO-LD-, FROZEN, remediated)",
+    "MUV Floral Toilet Cleaner™ (KO-TC-, FROZEN, remediated)",
+    "MUV Spark Dishwash Gel™ (KO-DW-, FROZEN, remediated)",
+    "MUV Fresh Bathroom Cleaner™ (KO-BC-, FROZEN, remediated)",
+    "MUV Crystal Glass Cleaner™ (KO-GC-, FROZEN, remediated)",
+    "MUV Floor Cleaner™ (KO-FC-, FROZEN, remediated)",
+    "MUV Pure Bleach™ (KO-PB-, CONDITIONAL FREEZE, compliant from inception)",
+    "MUV Black Phenyl™ (KO-BP-, CONDITIONAL FREEZE, compliant from inception)"
+  ],
+  "totalKnowledgeObjects": 65,
+  "totalMarkdownFiles": 13,
+  "jsonFolder": "11_JSON/",
+  "validationFolder": "12_Validation/",
+  "reportsFolder": "13_Reports/",
+  "commercialDataStored": false,
+  "commercialDataNote": "Zero commercial fields stored anywhere. The commercial figures found during source research (Chart rows 20-21, ₹65/1L and ₹275/5L) exist only as labeled historical citations in 00_Source_Register.md. All commercial fields resolve via 10_LIVE_DATA_MAPPING.md.",
+  "canonicalName": "MUV White Phenyl™",
+  "legacyName": "MUV Phenyl (Product Chart, no discrepancy with SOP, which already says 'White Phenyl')",
+  "packSizes": ["1L", "5L"],
+  "noConflict": "Pack sizes: both Chart and SOP agree exactly on 1L and 5L — the first Phenyl-family product this session with a clean pack-size match.",
+  "productIdentityConfirmed": "This package's own fresh audit independently confirms the Chart's 'MUV Phenyl' rows correspond to this SOP, resolving Black Phenyl's own open gap #20 for this package's purposes (not retroactively modifying the frozen Black Phenyl package).",
+  "knowledgeReuseApplied": true,
+  "governanceDocuments": ["CONSTITUTION.md", "ARCHITECTURE.md", "VALIDATION_RULES.md", "FOUNDER_RULES.md"],
+  "stopRule": "Wait for explicit Founder approval before beginning the next Product Family."
+}

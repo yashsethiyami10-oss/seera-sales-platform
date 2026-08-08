@@ -1,0 +1,20 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "totalGaps": 11,
+  "priority1Critical": 3,
+  "priority2Important": 4,
+  "priority3Standard": 4,
+  "gaps": [
+    { "id": 1, "priority": 1, "gap": "FR-006 CMS source (ProductIntelligence) not yet populated — Usage/Safety/Contraindications/First Aid/Storage/Shelf Life all resolve to an empty source", "relatedKoid": "KO-CW-SAFETY-001" },
+    { "id": 2, "priority": 1, "gap": "Vehicle-surface compatibility completely unsourced", "relatedKoid": "KO-CW-INTEL-009" },
+    { "id": 3, "priority": 1, "gap": "No source confirms or denies any wax/gloss-lock/paint-protection claim", "relatedKoid": "KO-CW-INTEL-008" },
+    { "id": 4, "priority": 2, "gap": "No institutional consumption-estimation category exists despite 'Car Wash' being a real tracked BUSINESS_TYPES segment", "relatedKoid": null },
+    { "id": 5, "priority": 2, "gap": "Container material, cap/nozzle type, dispenser mechanism not stated", "relatedKoid": "KO-CW-INTEL-007" },
+    { "id": 6, "priority": 2, "gap": "No formal product positioning statement", "relatedKoid": "KO-CW-INTEL-001" },
+    { "id": 7, "priority": 2, "gap": "MUV Shield naming-adjacency conflict not yet reflected in conflict-service.ts", "relatedKoid": null },
+    { "id": 8, "priority": 3, "gap": "Manufacturer name", "relatedKoid": "KO-CW-IDENT-001" },
+    { "id": 9, "priority": 3, "gap": "SKU codes, barcodes (2 real SKUs)", "relatedKoid": null },
+    { "id": 10, "priority": 3, "gap": "Packaging dimensions, shipping weight", "relatedKoid": null },
+    { "id": 11, "priority": 3, "gap": "Product images (SOP references exist but uncaptioned, unusable per-SKU)", "relatedKoid": "10_LIVE_DATA_MAPPING.md" }
+  ]
+}

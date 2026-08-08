@@ -1,0 +1,20 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "koid": "KO-BW-FAQ-001",
+  "totalQuestions": 13,
+  "questions": [
+    { "question": "What is MUV Body Wash™?", "answer": "A liquid body wash with 1% Salicylic Acid, SLES/CAPB cleansing system, three fragrance variants.", "sourced": true },
+    { "question": "What sizes does it come in?", "answer": "250ml and 950ml, all three variants.", "sourced": true },
+    { "question": "How much does it cost?", "answer": "LIVE — resolve from Product Catalog API.", "sourced": "N/A (commercial, live)" },
+    { "question": "What's in it?", "answer": "RO/DM Water, SLES 28%, CAPB, Cocamide DEA, Glycerin, Propylene Glycol, Salicylic Acid (1%), HEC, Preservative, Fragrance, Colour, pH Adjuster — a manufacturing formula, not a consumer label.", "sourced": true },
+    { "question": "Is it suitable for my skin type?", "answer": "Not documented for any skin type.", "sourced": false },
+    { "question": "How do I use it?", "answer": "Not documented.", "sourced": false },
+    { "question": "What does each variant smell like?", "answer": "Crimson Veil: Premium Floral. Velvet Oak: Woody Premium. Midnight Frost: Fresh Cooling.", "sourced": true },
+    { "question": "Is it dermatologically tested / hypoallergenic / pH balanced?", "answer": "Not documented — no such claim exists in any source.", "sourced": false },
+    { "question": "Is it safe?", "answer": "No safety information of any kind is sourced.", "sourced": false },
+    { "question": "What should I do if it irritates my skin?", "answer": "Discontinue use and consult a healthcare professional.", "sourced": false },
+    { "question": "Is it safe around kids?", "answer": "Not confirmed.", "sourced": false },
+    { "question": "Is this available to buy right now?", "answer": "Not yet in the product catalogue under any of the three real variant names.", "sourced": true },
+    { "question": "Is 'MUV Cleanse' the same as MUV Body Wash™?", "answer": "No — a different, unrelated placeholder product.", "sourced": true }
+  ]
+}

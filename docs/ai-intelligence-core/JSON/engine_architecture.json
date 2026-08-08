@@ -1,0 +1,22 @@
+{
+  "repository": "MUV AI Intelligence Core™",
+  "note": "Structured index only — full 15-dimension design for each layer lives in ENGINE_ARCHITECTURE.md, not duplicated here per Zero Duplicate Knowledge.",
+  "totalLayers": 13,
+  "layers": [
+    { "layer": 1, "name": "Knowledge Integration", "mapsToModule": "Module 1 (Knowledge Foundation) + V4 governance layer", "newWork": "Ingestion adapters per Factory; new sourceFactory enum value", "status": "Founder Review Ready" },
+    { "layer": 2, "name": "Knowledge Graph", "mapsToModule": "None directly — lib/retrieval/relationships.ts is closest precedent", "newWork": "New graph representation, sourced only from each Factory's own declared relationships.json", "status": "Founder Review Ready" },
+    { "layer": 3, "name": "Retrieval Engine", "mapsToModule": "Module 5 (Knowledge Retrieval Core)", "newWork": "Extend closed sourceType coverage — two documented options, recommendation given not mandated", "status": "Founder Review Ready" },
+    { "layer": 4, "name": "Context Engine", "mapsToModule": "Module 6 Context Engine", "newWork": "Populate existing but unused businessContext/institutionalContext fields", "status": "Founder Review Ready" },
+    { "layer": 5, "name": "Reasoning Engine", "mapsToModule": "Module 6 Priority/EQ/CQ Engines", "newWork": "Documentation-level grounding in Founder Intelligence KF reasoning KOs, no runtime change", "status": "Founder Review Ready" },
+    { "layer": 6, "name": "Decision Engine", "mapsToModule": "Module 6 Decision Engine", "newWork": "One new additive cascade outcome (institutional-sales handoff)", "status": "Founder Review Ready" },
+    { "layer": 7, "name": "Memory Engine", "mapsToModule": "Module 6 Memory Resolver + Module 8 ExperienceSession", "newWork": "None required for reuse; one open long-term-memory question logged, not decided", "status": "Founder Review Ready" },
+    { "layer": 8, "name": "Conflict Resolution Engine", "mapsToModule": "V4 KnowledgeConflict model (partial precedent only)", "newWork": "New detection mechanism designed; arbitration rule explicitly NOT designed — blocked on Founder Decision (= KO-FD-GAP-002)", "status": "Founder Decision Required (arbitration rule only; mechanism is Founder Review Ready)" },
+    { "layer": 9, "name": "Confidence Engine", "mapsToModule": "Module 6 Confidence Engine", "newWork": "Two new inputs: source-type diversity, unresolved-conflict penalty", "status": "Founder Review Ready" },
+    { "layer": 10, "name": "Care Engine", "mapsToModule": "Module 4 (CIF) + Module 6 CQ Engine", "newWork": "New institutional-care fields, directly matching Module 4's own disclosed known-limitations.md gap", "status": "Founder Review Ready" },
+    { "layer": 11, "name": "Response Assembly Engine", "mapsToModule": "Module 7 Response Composer + Module 8 Response Model", "newWork": "Largest gap: no LLM/generative step exists anywhere in the platform. Contract and guardrails specified; model selection and prompt/integration code explicitly out of scope", "status": "Founder Review Ready (contract only)" },
+    { "layer": 12, "name": "Tool Orchestration Engine", "mapsToModule": "Module 7 Action Engine + Module 8 Orchestrator", "newWork": "Tool-call classification for all 9 existing action types; contract reuses existing Server Action + RBAC + Zod convention", "status": "Founder Review Ready" },
+    { "layer": 13, "name": "Continuous Learning Architecture", "mapsToModule": "Module 8 ExperienceFeedback + review-preparer.ts (partial)", "newWork": "Structured learning-record loop using Founder Intelligence KF's ten-field Decision Record shape (KO-FD-LN-002), gated by external Factory governance — never self-executing", "status": "Founder Review Ready" }
+  ],
+  "founderThinkingPipelineStages": 11,
+  "pipelineToLayerCoverage": "10/11 stages map cleanly to an existing or specified layer; 1 disclosed sequencing note (Care stage position) — see ENGINE_VALIDATION.md"
+}

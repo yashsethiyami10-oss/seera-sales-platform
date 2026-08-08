@@ -1,0 +1,20 @@
+{
+  "chapter": "Digital Philosophy & Technology Foundation",
+  "relationships": [
+    { "from": "KO-DM-CH6-001", "type": "governs", "to": ["KO-DM-CH6-002","KO-DM-CH6-003","KO-DM-CH6-004","KO-DM-CH6-005","KO-DM-CH6-006","KO-DM-CH6-007"] },
+    { "from": "KO-DM-CH6-002", "type": "feeds", "to": ["KO-DM-CH6-003"] },
+    { "from": "KO-DM-CH6-003", "type": "feeds", "to": ["KO-DM-CH6-004"] },
+    { "from": "KO-DM-CH6-004", "type": "feeds", "to": ["KO-DM-CH6-005"] },
+    { "from": "KO-DM-CH6-005", "type": "feeds", "to": ["KO-DM-CH6-006"] },
+    { "from": "KO-DM-CH6-006", "type": "feeds", "to": ["KO-DM-CH6-007"] },
+    { "from": "KO-DM-CH6-007", "type": "feeds", "to": ["KO-DM-CH6-008"] },
+    { "from": "KO-DM-CH6-001", "type": "summarizedBy", "to": ["KO-DM-CH6-009"] }
+  ],
+  "crossDomainRelationships": [],
+  "forwardRelationships": [
+    { "from": "KO-DM-CH6-003", "type": "willBeExtendedBy", "to": "Chapter 10 (AI Systems & Intelligent Automation)" },
+    { "from": "KO-DM-CH6-009", "type": "precedes", "to": "Chapter 7 (MUV Digital Ecosystem Architecture)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

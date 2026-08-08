@@ -1,0 +1,17 @@
+{
+  "repository": "MUV AI Runtime Engineering™",
+  "note": "Structured index only — full 17-dimension specification for each module lives in RUNTIME_MODULES.md, not duplicated here per Zero Duplicate Engineering Specifications.",
+  "totalModules": 10,
+  "modules": [
+    { "module": 1, "name": "Semantic Retrieval Engine™", "resolvesFinding": "CF-02", "reuses": "Module 5 keyword pipeline (unchanged) + lib/retrieval/embedding-service.ts (existing, currently mocked)", "newDesign": "Hybrid merge/re-rank of keyword + semantic result sets; distinct GAP_RECORD_MATCH result type" },
+    { "module": 2, "name": "Intent Intelligence Engine™", "resolvesFinding": "CF-03", "reuses": "Module 6's existing EQ/CQ deterministic-engine style", "newDesign": "Fixed 9-value intent taxonomy with lexicon-based classification, always non-null output" },
+    { "module": 3, "name": "Context Builder™", "resolvesFinding": "extends Layer 4", "reuses": "Existing IntelligenceContext assembly logic", "newDesign": "Deterministic mapping from Module 2 intent to businessContext/institutionalContext population" },
+    { "module": 4, "name": "Founder Reasoning Runtime™", "resolvesFinding": "CF-04 (+ hosts CF-01 mechanism)", "reuses": "Founder Intelligence KF's 14-field Decision Model; FOUNDER_RULES.md's append-only ledger pattern", "newDesign": "Framework-selection mapping + Founder Decision Registry" },
+    { "module": 5, "name": "Decision Runtime™", "resolvesFinding": "extends Layer 6 (+ resolves MF-06)", "reuses": "Existing 5-input, first-match-wins cascade", "newDesign": "Explicit tiebreak rule (care-workflow over institutional-handoff) grounded in Constitution Article 10" },
+    { "module": 6, "name": "Conflict Resolution Runtime™", "resolvesFinding": "CF-05", "reuses": "FOUNDER_DECISION_PACKET.md Task 4's proposed cascade (explicitly labeled unconfirmed)", "newDesign": "Bounded structural subject-category conflict detector; Registry-first arbitration lookup order" },
+    { "module": 7, "name": "Confidence Runtime™", "resolvesFinding": "extends Layer 9 (+ resolves MF-08)", "reuses": "Existing evidence-count scoring model", "newDesign": "Proportional ceiling recalibration (8→16); percentage-based threshold; retrievalMethod weighting" },
+    { "module": 8, "name": "Safety Runtime™", "resolvesFinding": "CF-06", "reuses": "None directly — new mechanism", "newDesign": "Deterministic citation-completeness/grounding-overlap check, explicitly distinguished from truth-verification" },
+    { "module": 9, "name": "Response Assembly Runtime™", "resolvesFinding": "extends Layer 11", "reuses": "Existing deterministic lookup-table path and generative-path contract", "newDesign": "Per-sentence citation-tagging requirement Module 8 depends on" },
+    { "module": 10, "name": "Learning Runtime™", "resolvesFinding": "extends Layer 13", "reuses": "Existing ExperienceFeedback capture and KO-FD-LN-002 record shape", "newDesign": "Mandatory audit-sampling role over Module 8's grounding-check decisions" }
+  ]
+}

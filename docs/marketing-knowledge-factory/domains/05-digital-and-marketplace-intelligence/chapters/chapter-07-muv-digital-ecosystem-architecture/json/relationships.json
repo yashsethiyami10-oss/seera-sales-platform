@@ -1,0 +1,28 @@
+{
+  "chapter": "MUV Digital Ecosystem Architecture",
+  "relationships": [
+    { "from": "KO-DM-CH7-001", "type": "governs", "to": ["KO-DM-CH7-002","KO-DM-CH7-003","KO-DM-CH7-004","KO-DM-CH7-005","KO-DM-CH7-006","KO-DM-CH7-007","KO-DM-CH7-008","KO-DM-CH7-009"] },
+    { "from": "KO-DM-CH7-002", "type": "feeds", "to": ["KO-DM-CH7-003"] },
+    { "from": "KO-DM-CH7-003", "type": "feeds", "to": ["KO-DM-CH7-004"] },
+    { "from": "KO-DM-CH7-004", "type": "feeds", "to": ["KO-DM-CH7-005"] },
+    { "from": "KO-DM-CH7-005", "type": "feeds", "to": ["KO-DM-CH7-006"] },
+    { "from": "KO-DM-CH7-006", "type": "feeds", "to": ["KO-DM-CH7-007"] },
+    { "from": "KO-DM-CH7-007", "type": "feeds", "to": ["KO-DM-CH7-008"] },
+    { "from": "KO-DM-CH7-008", "type": "feeds", "to": ["KO-DM-CH7-009"] },
+    { "from": "KO-DM-CH7-009", "type": "feeds", "to": ["KO-DM-CH7-010"] },
+    { "from": "KO-DM-CH7-001", "type": "summarizedBy", "to": ["KO-DM-CH7-011"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-DM-CH7-003", "type": "relatesTo", "to": "KO-DM-CH2-001" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-DM-CH7-004", "type": "complementsNotDuplicates", "to": "KO-SC-CH2-008, KO-SC-CH3-001" },
+    { "from": "KO-DM-CH7-005", "type": "relatesTo", "to": "KO-CI-CH1-005" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-DM-CH7-008", "type": "willBeExtendedBy", "to": "Chapter 9 (Data Architecture & Intelligence System excerpt)" },
+    { "from": "KO-DM-CH7-011", "type": "precedes", "to": "Chapter 8 (Website & Customer Technology System)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

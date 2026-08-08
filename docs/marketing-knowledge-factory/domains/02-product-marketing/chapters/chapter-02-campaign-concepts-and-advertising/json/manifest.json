@@ -1,0 +1,26 @@
+{
+  "domain": "Product Marketing",
+  "domainNumber": 2,
+  "chapter": "Campaign Concepts & Advertising",
+  "chapterNumber": 2,
+  "koidPrefix": "KO-PM-CH2-",
+  "sourceChapter": "MUV Knowledge Library, Part VII, Chapter 32",
+  "sourceLineRange": "7005-7268",
+  "totalKnowledgeObjects": 14,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (incl. Domain 1, frozen)"
+  ],
+  "crossDomainCitations": {
+    "topic": "Brand voice ownership",
+    "note": "'Volume III owns voice. Marketing applies it.' — cited from Domain 1 (KO-BI-CH3-003, KO-BI-CH1-001), never restated"
+  },
+  "outOfScopeDeferral": {
+    "topic": "Marketplace/retail/institutional commercial terms",
+    "note": "Explicitly deferred to Volume VIII (Sales & Distribution System) — out of this domain's scope"
+  }
+}

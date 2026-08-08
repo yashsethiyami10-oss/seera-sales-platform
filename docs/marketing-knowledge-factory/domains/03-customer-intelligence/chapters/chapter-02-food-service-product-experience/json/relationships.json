@@ -1,0 +1,26 @@
+{
+  "chapter": "Food-Service Product Experience",
+  "relationships": [
+    { "from": "KO-CI-CH2-001", "type": "governs", "to": ["KO-CI-CH2-002","KO-CI-CH2-003","KO-CI-CH2-004","KO-CI-CH2-005","KO-CI-CH2-006","KO-CI-CH2-007"] },
+    { "from": "KO-CI-CH2-002", "type": "feeds", "to": ["KO-CI-CH2-003"] },
+    { "from": "KO-CI-CH2-003", "type": "feeds", "to": ["KO-CI-CH2-004"] },
+    { "from": "KO-CI-CH2-004", "type": "feeds", "to": ["KO-CI-CH2-005"] },
+    { "from": "KO-CI-CH2-005", "type": "feeds", "to": ["KO-CI-CH2-006"] },
+    { "from": "KO-CI-CH2-006", "type": "feeds", "to": ["KO-CI-CH2-007"] },
+    { "from": "KO-CI-CH2-001", "type": "summarizedBy", "to": ["KO-CI-CH2-008"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-CI-CH2-001", "type": "dependsOn", "to": "KO-CI-CH1-001" },
+    { "from": "KO-CI-CH2-002", "type": "governedBy", "to": "KO-CI-CH1-008" },
+    { "from": "KO-CI-CH2-005", "type": "reinforces", "to": "KO-CI-CH1-006" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CI-CH2-006", "type": "extends", "to": "KO-PM-CH4-008" },
+    { "from": "KO-CI-CH2-007", "type": "extends", "to": "KO-PM-CH5-014" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CI-CH2-008", "type": "transitionsTo", "to": "Chapter 3 (Outlet Culture & Environment)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

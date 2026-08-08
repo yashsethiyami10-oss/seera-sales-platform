@@ -1,0 +1,20 @@
+{
+  "productFamily": "MUV Black Phenyl™",
+  "totalFlows": 13,
+  "flows": [
+    { "koid": "KO-BP-CONV-001", "scenario": "First-Time Customer" },
+    { "koid": "KO-BP-CONV-002", "scenario": "Returning Customer" },
+    { "koid": "KO-BP-CONV-003", "scenario": "Household Cleaning" },
+    { "koid": "KO-BP-CONV-004", "scenario": "Commercial Cleaning (general)" },
+    { "koid": "KO-BP-CONV-005", "scenario": "Office" },
+    { "koid": "KO-BP-CONV-006", "scenario": "School", "note": "child-safety emphasis" },
+    { "koid": "KO-BP-CONV-007", "scenario": "Hospital", "note": "highest-stakes — never assert disinfection efficacy claim, always escalate" },
+    { "koid": "KO-BP-CONV-008", "scenario": "Restaurant", "note": "food-safety-adjacent honesty" },
+    { "koid": "KO-BP-CONV-009", "scenario": "Hotel" },
+    { "koid": "KO-BP-CONV-010", "scenario": "Heavy Floor Cleaning" },
+    { "koid": "KO-BP-CONV-011", "scenario": "Daily Floor Maintenance" },
+    { "koid": "KO-BP-CONV-012", "scenario": "Odour Control", "note": "sourced fragrance fact vs unsourced performance claim distinction" },
+    { "koid": "KO-BP-CONV-013", "scenario": "Hygiene-Related Queries", "note": "sourced disinfecting-base role vs unsourced efficacy claim" }
+  ],
+  "structure": ["Situation", "Customer Goal", "Care Goal", "Opening", "Guidance", "What to Avoid", "Escalation", "Closing"]
+}

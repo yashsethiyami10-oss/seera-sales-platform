@@ -1,0 +1,43 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "sourcesChecked": [
+    { "source": "Product Chart", "file": "MUV_Product_Chart_with_USP (1)(1).pdf", "result": "FOUND — rows 18-19, 500ml/₹70 and 5L/₹550, no variant name" },
+    { "source": "Production SOP", "file": "SOPs/CARE CARE/MUV_Car_Wash_Production_SOP_With_Photos.docx", "result": "FOUND — full formula, process, QC; exact match with Chart on pack sizes and pricing; zero safety content" },
+    { "source": "Knowledge Library", "file": "# final MUV Knowledge Library™.txt", "result": "FOUND (category-level only) — 6 generic 'car care' category mentions, one exploratory colour-philosophy note ('carbon-gloss orange'); no product-specific content, no claims-governance rule found" },
+    { "source": "AI Sutra Master", "file": "Muv_AI_Sutra_Master_MASTER1.md", "result": "NOT FOUND" },
+    { "source": "AI Sutra Phase1", "file": "Muv_AI_Sutra_Master_Phase1.md", "result": "NOT FOUND" },
+    { "source": "Seed data", "file": "prisma/seed.ts", "result": "CONFLICT FOUND — 'MUV Shield' is a different, unrelated product (different name, ~10x price, single vs dual pack size, unsourced wax/gloss-lock claims)" },
+    { "source": "Schema", "file": "prisma/schema.prisma", "result": "NOT FOUND" },
+    { "source": "Institutional consumption rules", "file": "lib/inst-sales/consumption-rules.ts", "result": "NOT FOUND — no CAR_WASH category exists in the ConsumptionCategory union" },
+    { "source": "Conflict service", "file": "lib/knowledge-factory/conflict-service.ts", "result": "FOUND (header only, unchanged) — no car-wash/shield mentions" },
+    { "source": "Institutional business types", "file": "lib/validations/inquiry.ts", "result": "FOUND — 'Car Wash' is a real, tracked BUSINESS_TYPES value" }
+  ],
+  "competitorScan": {
+    "brandsChecked": ["3M", "Turtle Wax", "Meguiar's", "Bosch", "CarPlan", "Autoglym", "Griot's Garage", "Chemical Guys", "Armor All"],
+    "result": "CLEAN — zero hits across the Product Chart, SOP, and Knowledge Library"
+  },
+  "namingFinding": {
+    "result": "No discrepancy between Chart and SOP — both say 'MUV Car Wash' exactly, no variant sub-name in either source"
+  },
+  "chartSopAgreement": {
+    "result": "Exact agreement on both pack sizes and pricing (500ml/₹70, 5L/₹550) — the cleanest source agreement of any product this session, zero conflict"
+  },
+  "seedDataConflict": {
+    "product": "MUV Shield",
+    "slug": "muv-shield",
+    "conflictsWith": "MUV Car Wash (name similarity/category overlap only)",
+    "priceComparison": "MUV Shield 500ml MRP ₹749 vs. MUV Car Wash 500ml MRP ₹70 (sourced) — over 10x difference",
+    "resolution": "Never used as a source — confirmed different product by direct field-by-field comparison, independently corroborating the Hand Wash package's own naming-adjacency finding"
+  },
+  "claimsFinding": {
+    "result": "Sourced claims: clear glossy liquid, rich foam, smooth finish on vehicle (from SOP QC). Unsourced claims never used: wax, gloss-lock, paint-safe, scratch-free (these appear only in the unrelated MUV Shield seed record)"
+  },
+  "safetyFinding": {
+    "result": "ZERO safety content of any kind in the SOP — same pattern as every prior MUV SOP, now governed by FR-006's CMS-reference architecture rather than field-by-field Unknown disclosure"
+  },
+  "institutionalGapFinding": {
+    "result": "'Car Wash' is a real, tracked BUSINESS_TYPES institutional customer segment, but no CAR_WASH consumption-estimation category exists in lib/inst-sales/consumption-rules.ts — a genuine, code-evidenced product-market gap"
+  },
+  "totalSourcesFound": 5,
+  "totalSourcesNotFound": 4
+}

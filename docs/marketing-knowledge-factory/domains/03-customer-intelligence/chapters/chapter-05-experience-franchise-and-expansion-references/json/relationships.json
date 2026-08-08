@@ -1,0 +1,29 @@
+{
+  "chapter": "Experience, Franchise & Expansion References",
+  "relationships": [
+    { "from": "KO-CI-CH5-001", "type": "governs", "to": ["KO-CI-CH5-002","KO-CI-CH5-003","KO-CI-CH5-004","KO-CI-CH5-005","KO-CI-CH5-006","KO-CI-CH5-007","KO-CI-CH5-008","KO-CI-CH5-009","KO-CI-CH5-010"] },
+    { "from": "KO-CI-CH5-002", "type": "feeds", "to": ["KO-CI-CH5-003"] },
+    { "from": "KO-CI-CH5-003", "type": "feeds", "to": ["KO-CI-CH5-004"] },
+    { "from": "KO-CI-CH5-004", "type": "feeds", "to": ["KO-CI-CH5-005"] },
+    { "from": "KO-CI-CH5-005", "type": "feeds", "to": ["KO-CI-CH5-006"] },
+    { "from": "KO-CI-CH5-006", "type": "feeds", "to": ["KO-CI-CH5-007"] },
+    { "from": "KO-CI-CH5-007", "type": "feeds", "to": ["KO-CI-CH5-008"] },
+    { "from": "KO-CI-CH5-008", "type": "feeds", "to": ["KO-CI-CH5-009"] },
+    { "from": "KO-CI-CH5-009", "type": "feeds", "to": ["KO-CI-CH5-010"] },
+    { "from": "KO-CI-CH5-001", "type": "summarizedBy", "to": ["KO-CI-CH5-011"] },
+    { "from": "KO-CI-CH5-011", "type": "summarizedByPartLevel", "to": ["KO-CI-CH5-012"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-CI-CH5-001", "type": "dependsOn", "to": "KO-CI-CH1-001" },
+    { "from": "KO-CI-CH5-001", "type": "extends", "to": "KO-CI-CH2-006" }
+  ],
+  "crossPartRelationships": [
+    { "from": "KO-CI-CH5-005", "type": "cites (out of scope deferral)", "to": "Part X — Business Blueprint / franchise business model" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CI-CH5-012", "type": "grounds", "to": "Domain 3 02_knowledge_coverage_audit.md" },
+    { "from": "KO-CI-CH5-011", "type": "closes", "to": "Part IX portion of Domain 3 (Chapters 1-5)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

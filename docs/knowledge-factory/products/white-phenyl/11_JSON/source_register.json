@@ -1,0 +1,35 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "sourcesChecked": [
+    { "source": "Product Chart", "file": "MUV_Product_Chart_with_USP (1)(1).pdf", "result": "FOUND — rows 20-21: MUV Phenyl | 1L | 65, MUV Phenyl | 5L | 275" },
+    { "source": "Production SOP", "file": "SOPs/HOME CARE/MUV_White_Phenyl_SOP_10L_Batch.docx", "result": "FOUND — full formulation, process, QC, safety content; pack sizes match Chart exactly" },
+    { "source": "Knowledge Library", "file": "# final MUV Knowledge Library™.txt", "result": "NOT FOUND — zero matches, cross-checked via two methods" },
+    { "source": "AI Sutra Master", "file": "Muv_AI_Sutra_Master_MASTER1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "AI Sutra Phase1", "file": "Muv_AI_Sutra_Master_Phase1.md", "result": "NOT FOUND — zero matches" },
+    { "source": "Seed data", "file": "prisma/seed.ts", "result": "NOT FOUND — zero matches" },
+    { "source": "Schema", "file": "prisma/schema.prisma", "result": "NOT FOUND — zero matches" },
+    { "source": "Institutional consumption rules", "file": "lib/inst-sales/consumption-rules.ts", "result": "NOT FOUND — no PHENYL category exists at all" },
+    { "source": "Conflict service", "file": "lib/knowledge-factory/conflict-service.ts", "result": "FOUND — White Phenyl explicitly named among known pre-existing conflicts (naming conflict, not pack-size)" }
+  ],
+  "competitorScan": {
+    "brandsChecked": ["Comfort", "Pril", "Vim", "Exo", "Genteel", "Surf Excel", "Fairy", "Harpic", "Domex", "Lizol", "Colin", "Robin", "Rin", "Ariel", "Tide", "Dettol"],
+    "result": "CLEAN — zero genuine hits, one false positive ('comfort' as common noun), word-boundary matching throughout"
+  },
+  "namingFinding": {
+    "chartName": "MUV Phenyl",
+    "sopName": "MUV White Phenyl",
+    "officialName": "MUV White Phenyl™",
+    "resolution": "Official name matches SOP exactly, per direct Founder Instruction — Chart's 'MUV Phenyl' preserved as legacy reference"
+  },
+  "productIdentityConfirmation": {
+    "status": "INDEPENDENTLY CONFIRMED (not merely presumed)",
+    "method": "Cross-checked pack-size match (1L, 5L exact) plus absence of any other candidate Phenyl product/SOP plus visibly distinct formulation from Black Phenyl",
+    "resolvesGap": "Black Phenyl package's own 14_FOUNDER_GAPS.md gap #20"
+  },
+  "packSizeConflict": {
+    "exists": false,
+    "note": "Unlike Black Phenyl (500ml vs 1L conflict), White Phenyl's pack sizes agree exactly between Chart and SOP"
+  },
+  "totalSourcesFound": 3,
+  "totalSourcesNotFound": 6
+}

@@ -1,0 +1,518 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { requireCustomer, requireStaff, requireUser } from "@/lib/rbac";
+import { toErrorResponse, AppError, NotFoundError, ForbiddenError } from "@/lib/errors";
+import {
+  createOrderSchema,
+  updateOrderStatusSchema,
+  cancelOrderSchema,
+  refundOrderSchema,
+  ALLOWED_TRANSITIONS,
+} from "@/lib/validations/order";
+import { calculateOrderGst } from "@/lib/tax/gst";
+import { processRefund } from "@/actions/payments";
+import { sendRefundProcessedEmail, sendShippingConfirmationEmail, sendDeliveryConfirmationEmail, sendOrderCancelledEmail, sendOrderConfirmationEmail, sendOrderProcessingEmail, sendAdminNewOrderAlert, sendAdminLowStockAlert } from "@/lib/notify/send";
+import { sendOrderConfirmationSms, sendDeliveryUpdateWhatsApp } from "@/lib/notify/send-messaging";
+import { logger } from "@/lib/logger";
+import { Prisma } from "@prisma/client";
+
+function generateOrderNumber() {
+  return `MUV${Math.floor(100000 + Math.random() * 900000)}`;
+}
+
+/** `orderNumber` is a unique column but the generator above is a bare random
+ * 6-digit number (900,000 possible values) — a collision is unlikely but not
+ * impossible, and would otherwise fail checkout with a raw constraint-
+ * violation error. Retries with a freshly generated number a few times
+ * before giving up, rather than surfacing that to the customer. */
+async function withOrderNumberRetry<T>(attempt: (orderNumber: string) => Promise<T>): Promise<T> {
+  for (let i = 0; i < 5; i++) {
+    try {
+      return await attempt(generateOrderNumber());
+    } catch (err) {
+      const isOrderNumberCollision =
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002" &&
+        (err.meta?.target as string[] | undefined)?.includes("orderNumber");
+      if (!isOrderNumberCollision || i === 4) throw err;
+    }
+  }
+  throw new Error("unreachable");
+}
+
+/**
+ * Creates an order from the current cart. Everything below happens in one
+ * transaction: stock is checked and decremented, the coupon's usedCount is
+ * incremented, and the order + items are written together. If any step
+ * fails (e.g. a size sold out between "add to cart" and checkout), the
+ * whole thing rolls back — the customer is never charged for stock that
+ * silently ran out mid-checkout.
+ */
+export async function createOrder(input: unknown) {
+  try {
+    const data = createOrderSchema.parse(input);
+
+    // Phase 1C (GAP-004) — shipping/COD pricing now comes from the real,
+    // admin-editable StoreSettings row (/admin/settings) instead of being
+    // hardcoded here. Falls back to the same values the hardcoded constants
+    // used (999/49/enabled/0) if the singleton row doesn't exist yet, so
+    // behavior is unchanged for any environment that hasn't touched these
+    // settings — see PHASE_1C_DECISION_LOG.md.
+    const storeSettings = await prisma.storeSettings.findUnique({ where: { id: "singleton" } });
+    const freeShippingThreshold = storeSettings?.freeShippingThreshold ?? 499;
+    const baseShippingFee = storeSettings?.shippingFee ?? 49;
+    const codEnabled = storeSettings?.codEnabled ?? true;
+    const codFee = storeSettings?.codFee ?? 0;
+
+    if (data.paymentMethod === "COD" && !codEnabled) {
+      throw new AppError("Cash on Delivery is currently unavailable", 400, "COD_DISABLED");
+    }
+
+    const session = await auth();
+
+    // Phase 18 — guest checkout. Which path runs is decided by whether a
+    // real session exists, never by which fields the request body happens
+    // to carry, so an unauthenticated request can't impersonate a logged-in
+    // customer's saved address by guessing an addressId.
+    let customer: Awaited<ReturnType<typeof prisma.customer.findUnique>>;
+    let address: Awaited<ReturnType<typeof prisma.address.findUnique>>;
+
+    if (session?.user) {
+      const user = await requireCustomer();
+      customer = await prisma.customer.findUnique({ where: { userId: user.id } });
+      if (!customer) throw new NotFoundError("Customer profile");
+
+      if (!data.addressId) throw new AppError("Select a delivery address", 400, "MISSING_ADDRESS");
+      address = await prisma.address.findUnique({ where: { id: data.addressId } });
+      if (!address || address.customerId !== customer.id) {
+        throw new ForbiddenError("That address doesn't belong to your account");
+      }
+    } else {
+      if (!data.guest) throw new AppError("Contact details are required to check out as a guest", 400, "MISSING_GUEST_INFO");
+
+      // A returning guest (same email, no password/account) reuses their
+      // existing Customer row instead of creating a duplicate one per
+      // order — but if that email belongs to a REAL registered account
+      // (customer.userId is set), this unauthenticated request never
+      // overwrites that account's real name/phone; it only attaches a new
+      // order + address to it.
+      const existing = await prisma.customer.findUnique({ where: { email: data.guest.email } });
+      customer = existing && !existing.userId
+        ? await prisma.customer.update({ where: { id: existing.id }, data: { name: data.guest.name, phone: data.guest.phone } })
+        : existing ?? (await prisma.customer.create({ data: { email: data.guest.email, name: data.guest.name, phone: data.guest.phone } }));
+
+      address = await prisma.address.create({
+        data: {
+          customerId: customer.id,
+          label: data.guest.address.label,
+          line1: data.guest.address.line1,
+          line2: data.guest.address.line2,
+          city: data.guest.address.city,
+          state: data.guest.address.state,
+          pincode: data.guest.address.pincode,
+          phone: data.guest.address.phone,
+        },
+      });
+    }
+
+    const { created: order, lowStockAlerts } = await withOrderNumberRetry((orderNumber) => prisma.$transaction(async (tx) => {
+      const variantIds = data.items.map((i) => i.variantId);
+      const variants = await tx.productVariant.findMany({
+        where: { id: { in: variantIds } },
+        include: { inventory: true, product: true },
+      });
+
+      let subtotal = 0;
+      const orderItemsData = data.items.map((item) => {
+        const variant = variants.find((v) => v.id === item.variantId);
+        if (!variant) throw new NotFoundError("Product");
+        if (!variant.inventory || variant.inventory.quantity < item.quantity) {
+          throw new AppError(`${variant.product.name} (${variant.size}) is out of stock`, 409, "OUT_OF_STOCK");
+        }
+        subtotal += variant.price * item.quantity;
+        return {
+          variantId: variant.id,
+          quantity: item.quantity,
+          priceAtPurchase: variant.price,
+          nameAtPurchase: variant.product.name,
+          sizeAtPurchase: variant.size,
+        };
+      });
+
+      // Coupon validation happens again here even though the cart UI already
+      // validated it — the coupon could have expired or hit maxUses in the
+      // time between the cart page and clicking "Place Order".
+      let discount = 0;
+      let couponId: string | undefined;
+      if (data.couponCode) {
+        const coupon = await tx.coupon.findUnique({ where: { code: data.couponCode.toUpperCase() } });
+        if (!coupon || !coupon.active) throw new AppError("Coupon is invalid or expired", 400, "INVALID_COUPON");
+        if (coupon.expiresAt && coupon.expiresAt < new Date()) throw new AppError("Coupon has expired", 400, "INVALID_COUPON");
+        if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) throw new AppError("Coupon usage limit reached", 400, "INVALID_COUPON");
+        if (subtotal < coupon.minOrderValue) throw new AppError(`Minimum order value for this coupon is ₹${coupon.minOrderValue}`, 400, "INVALID_COUPON");
+
+        discount = coupon.type === "PERCENT" ? Math.round((subtotal * coupon.value) / 100) : coupon.value;
+        couponId = coupon.id;
+        await tx.coupon.update({ where: { id: coupon.id }, data: { usedCount: { increment: 1 } } });
+      }
+
+      // Phase 1D — approved delivery policy: both methods use the same
+      // StoreSettings free-shipping threshold as their boundary. Standard is
+      // baseShippingFee below it, FREE at/above it; Express is a fixed ₹99
+      // below it, ₹50 at/above it. Matches exactly what
+      // components/checkout/checkout-client.tsx and components/cart/
+      // cart-client.tsx display, so what's shown on screen is what's
+      // charged. `shippingMethod` is now also persisted on the Order itself
+      // (previously only the resulting fee was stored, with no record of
+      // which method produced it) — see PHASE_1D_DEFECT_LOG.md.
+      const EXPRESS_SHIPPING_FEE = 99;
+      const EXPRESS_SHIPPING_FEE_ABOVE_THRESHOLD = 50;
+      const meetsFreeShippingThreshold = subtotal - discount >= freeShippingThreshold;
+      const baseFeeForMethod = data.shippingMethod === "EXPRESS"
+        ? (meetsFreeShippingThreshold ? EXPRESS_SHIPPING_FEE_ABOVE_THRESHOLD : EXPRESS_SHIPPING_FEE)
+        : (meetsFreeShippingThreshold ? 0 : baseShippingFee);
+      // codFee (if the admin sets one) is folded into shippingFee since
+      // Order has no separate COD-fee column — see the Phase 1C note above.
+      const shippingFee = baseFeeForMethod + (data.paymentMethod === "COD" ? codFee : 0);
+      const total = subtotal - discount + shippingFee;
+
+      // GST is calculated on what the customer actually pays for each item,
+      // not the pre-discount subtotal — so a coupon's discount is spread
+      // proportionally across every line before computing tax on each.
+      const discountRatio = subtotal > 0 ? discount / subtotal : 0;
+      const gstInput = orderItemsData.map((item) => {
+        const variant = variants.find((v) => v.id === item.variantId)!;
+        const rawLineTotal = item.priceAtPurchase * item.quantity;
+        return {
+          hsnCode: variant.product.hsnCode,
+          gstRate: variant.product.gstRate,
+          lineTotal: Math.round(rawLineTotal * (1 - discountRatio)),
+        };
+      });
+      const { totals: gst } = calculateOrderGst(gstInput, address.state);
+
+      const created = await tx.order.create({
+        data: {
+          orderNumber,
+          customerId: customer.id,
+          addressId: address.id,
+          paymentMethod: data.paymentMethod,
+          // COD is "pending" until delivery/collection; every other method
+          // stays PENDING until `verifyPayment` (app/actions/payments.ts)
+          // confirms Razorpay's signature — never PAID at order-creation time.
+          paymentStatus: "PENDING",
+          shippingMethod: data.shippingMethod,
+          subtotal,
+          discount,
+          shippingFee,
+          total,
+          taxableValue: gst.taxableValue,
+          cgst: gst.cgst,
+          sgst: gst.sgst,
+          igst: gst.igst,
+          placeOfSupply: address.state,
+          couponId,
+          deliveryInstructions: data.deliveryInstructions,
+          careCardIncluded: true,
+          surpriseSampleIncluded: meetsFreeShippingThreshold,
+          items: { create: orderItemsData },
+        },
+      });
+      const previousOrders = await tx.order.count({ where: { customerId: customer.id, id: { not: created.id } } });
+      await tx.salesTimelineEvent.create({
+        data: {
+          customerId: customer.id,
+          eventType: previousOrders > 0 ? "REPEAT_ORDER" : "ORDER_PLACED",
+          relatedRecordType: "Order",
+          relatedRecordId: created.id,
+          description: `${previousOrders > 0 ? "Repeat order" : "Order"} ${created.orderNumber} placed`,
+          metadata: { orderNumber: created.orderNumber, total: created.total },
+        },
+      });
+
+      // Decrement stock and log it, per variant, inside the same transaction.
+      // Also flags any variant that crossed *into* low/out-of-stock as a
+      // result of this specific order (previous quantity was above
+      // threshold, new quantity isn't) — an edge trigger, not "still low
+      // stock," so the same variant doesn't re-alert on every subsequent
+      // order once it's already known to be low.
+      const lowStockAlerts: { productName: string; size: string; quantity: number }[] = [];
+      for (const item of data.items) {
+        const variant = variants.find((v) => v.id === item.variantId)!;
+        const inv = variant.inventory!;
+        const nextQuantity = inv.quantity - item.quantity;
+        if (inv.quantity > inv.lowStockThreshold && nextQuantity <= inv.lowStockThreshold) {
+          lowStockAlerts.push({ productName: variant.product.name, size: variant.size, quantity: nextQuantity });
+        }
+        await tx.inventory.update({
+          where: { variantId: item.variantId },
+          data: { quantity: { decrement: item.quantity } },
+        });
+        await tx.stockHistory.create({
+          data: {
+            inventoryId: inv.id,
+            change: -item.quantity,
+            reason: "ORDER_FULFILLMENT",
+            note: `Order ${created.orderNumber}`,
+          },
+        });
+      }
+
+      return { created, lowStockAlerts };
+    }));
+
+    // COD orders have no payment-verification step to hang confirmation on
+    // (see app/actions/payments.ts) — send it immediately here instead.
+    // Non-COD orders intentionally do NOT send confirmation from this path;
+    // theirs fires from verifyPayment once the signature actually checks out,
+    // so a customer never gets an "order confirmed" email for a payment that
+    // hasn't happened yet.
+    if (order.paymentMethod === "COD") {
+      sendOrderConfirmationEmail(order.id).catch((err) => logger.error("notify:order-confirmation:failed", { orderId: order.id, error: String(err) }));
+      if (customer.phone) {
+        sendOrderConfirmationSms(customer.phone, order.orderNumber, order.id).catch((err) => logger.error("notify:sms:failed", { orderId: order.id, error: String(err) }));
+      }
+    }
+
+    // Admin alerts (Phase 18) — every real order, regardless of payment
+    // method/status, since even a payment-pending order is something staff
+    // should see. Each no-ops on its own if StoreSettings hasn't configured
+    // an admin email or turned this alert off (see lib/notify/send.ts).
+    sendAdminNewOrderAlert(order.id).catch((err) => logger.error("notify:admin-new-order:failed", { orderId: order.id, error: String(err) }));
+    for (const alert of lowStockAlerts) {
+      sendAdminLowStockAlert(alert).catch((err) => logger.error("notify:admin-low-stock:failed", { error: String(err) }));
+    }
+
+    revalidatePath("/account/orders");
+    revalidatePath("/admin/orders");
+    return { success: true as const, data: { orderId: order.id, orderNumber: order.orderNumber, paymentMethod: order.paymentMethod, customerEmail: customer.email, isGuest: !session?.user } };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+// NOTE on payment gateway integration: paymentStatus for non-COD orders is
+// provisionally set above, but the source of truth in production must be a
+// Razorpay webhook (payment.captured / payment.failed) verified against its
+// signature — never trust the client's redirect back to the success page as
+// proof of payment. That webhook handler would live at
+// app/api/webhooks/razorpay/route.ts and flip paymentStatus to PAID/FAILED
+// after verifying `x-razorpay-signature` with the webhook secret.
+
+// ---------------------------------------------------------------------------
+// Customer-facing reads (Phase 5.4, Customer Intelligence) — extracted from
+// what was, until now, only inline Prisma queries duplicated across
+// `app/account/orders/page.tsx` and `app/account/orders/[id]/page.tsx`.
+// Same ownership discipline both pages already established: resolve the
+// real `Customer` row from the authenticated session (never trust a
+// caller-supplied customerId), and return the identical NOT_FOUND response
+// whether an order doesn't exist or belongs to someone else, so existence
+// is never confirmed to a non-owner.
+// ---------------------------------------------------------------------------
+
+async function resolveOwnCustomer() {
+  const user = await requireCustomer();
+  const customer = await prisma.customer.findUnique({ where: { userId: user.id } });
+  if (!customer) throw new NotFoundError("Customer profile");
+  return customer;
+}
+
+export async function getMyOrders() {
+  try {
+    const customer = await resolveOwnCustomer();
+    const orders = await prisma.order.findMany({
+      where: { customerId: customer.id },
+      orderBy: { createdAt: "desc" },
+      include: { items: true },
+    });
+    return { success: true as const, data: orders };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+export async function getOrderById(orderId: string) {
+  try {
+    const customer = await resolveOwnCustomer();
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { address: true, coupon: true, items: true, shipment: { include: { events: true } }, returnRequests: true },
+    });
+    if (!order || order.customerId !== customer.id) throw new NotFoundError("Order");
+    return { success: true as const, data: order };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+/** Real timeline source: `ShipmentEvent[]` once a shipment exists (see
+ * `Shipment`/`ShipmentEvent` in schema.prisma); before that, only the
+ * order's own `status`+`createdAt` exist — returned as a single synthetic
+ * "Order placed" event rather than an empty array, so a caller always
+ * gets at least one real event instead of having to special-case "no
+ * shipment yet." `status` is normalized to plain `string` for both
+ * branches (not the real `ShipmentStatus` enum) — the synthetic event
+ * has no real shipment status to report yet, so forcing it into that
+ * enum would be a fabricated value, not a real one. */
+export async function getOrderTimeline(orderId: string) {
+  try {
+    const customer = await resolveOwnCustomer();
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { shipment: { include: { events: { orderBy: { occurredAt: "asc" } } } } },
+    });
+    if (!order || order.customerId !== customer.id) throw new NotFoundError("Order");
+
+    const events: { status: string; description: string; location: string | null; occurredAt: Date }[] =
+      order.shipment && order.shipment.events.length > 0
+        ? order.shipment.events.map((e) => ({ status: e.status, description: e.description, location: e.location, occurredAt: e.occurredAt }))
+        : [{ status: "PLACED", description: "Order placed", location: null, occurredAt: order.createdAt }];
+
+    return { success: true as const, data: { status: order.status, events } };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+export async function updateOrderStatus(input: unknown) {
+  try {
+    await requireStaff();
+    const data = updateOrderStatusSchema.parse(input);
+
+    const order = await prisma.order.findUnique({ where: { id: data.orderId }, include: { customer: true } });
+    if (!order) throw new NotFoundError("Order");
+
+    const allowed = ALLOWED_TRANSITIONS[order.status];
+    if (!allowed.includes(data.status)) {
+      throw new AppError(`Can't move an order from ${order.status} to ${data.status}`, 400, "INVALID_TRANSITION");
+    }
+
+    // Sprint 2 Part 7 — a COD order was reaching DELIVERED while still
+    // showing paymentStatus PENDING forever, since COD payment is only
+    // ever collected in person and no webhook exists to flip it. Cash is
+    // collected on delivery by construction, so DELIVERED is the one real
+    // signal that a COD order's payment is complete; non-COD orders are
+    // untouched here — their paymentStatus is only ever set by the
+    // Razorpay webhook, per the note above.
+    const paymentStatusUpdate = data.status === "DELIVERED" && order.paymentMethod === "COD" && order.paymentStatus === "PENDING" ? { paymentStatus: "PAID" as const } : {};
+
+    await prisma.order.update({ where: { id: data.orderId }, data: { status: data.status, ...paymentStatusUpdate } });
+
+    // Best-effort notification dispatch — never blocks or fails the status
+    // update itself. SHIPPED assumes a Shipment row already exists (created
+    // by app/actions/shipping.ts fulfillOrder) with an AWB number; if the
+    // fulfillment step hasn't run yet, sendShippingConfirmationEmail simply
+    // no-ops rather than sending an email with no tracking number.
+    if (data.status === "PACKED") {
+      sendOrderProcessingEmail(data.orderId).catch((err) => logger.error("notify:processing:failed", { orderId: data.orderId, error: String(err) }));
+    }
+    if (data.status === "SHIPPED") {
+      sendShippingConfirmationEmail(data.orderId).catch((err) => logger.error("notify:shipping:failed", { orderId: data.orderId, error: String(err) }));
+    }
+    if (data.status === "DELIVERED") {
+      sendDeliveryConfirmationEmail(data.orderId).catch((err) => logger.error("notify:delivery:failed", { orderId: data.orderId, error: String(err) }));
+      if (order.customer.phone) {
+        // "order_delivered" must be a pre-approved WhatsApp template name —
+        // same caveat as every other WhatsApp send in this codebase.
+        sendDeliveryUpdateWhatsApp(order.customer.phone, [order.orderNumber], order.id).catch((err) => logger.error("notify:whatsapp:failed", { orderId: data.orderId, error: String(err) }));
+      }
+    }
+
+    revalidatePath("/admin/orders");
+    revalidatePath("/account/orders");
+    return { success: true as const, data: { status: data.status } };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+export async function cancelOrder(input: unknown) {
+  try {
+    const user = await requireUser(); // either the owning customer or staff
+    const data = cancelOrderSchema.parse(input);
+
+    const order = await prisma.order.findUnique({ where: { id: data.orderId }, include: { customer: true, items: true } });
+    if (!order) throw new NotFoundError("Order");
+
+    const isOwner = order.customer.userId === user.id;
+    const isStaff = user.role === "ADMIN" || user.role === "STAFF";
+    if (!isOwner && !isStaff) throw new ForbiddenError();
+
+    // Founder Final Consolidated Polish, Part 3 — self-serve cancellation is
+    // only available strictly before PACKED. This comment already said so;
+    // the actual check previously still allowed PACKED through, a real
+    // contradiction between the stated rule and the enforced one, fixed
+    // here. Once packed, the parcel may already be physically in transit,
+    // so it goes through support instead.
+    if (order.status !== "PLACED") {
+      throw new AppError("Orders can only be cancelled before they enter the Packed stage. After Packed, cancellation is unavailable — please contact support.", 400, "NOT_CANCELLABLE");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelReason: data.reason } });
+
+      // Batched (Phase 16) — previously one findUnique per order item inside
+      // this loop; a single findMany covers every item's variant at once,
+      // same fix already applied to actions/cart.ts's checkCartStock.
+      const inventories = await tx.inventory.findMany({ where: { variantId: { in: order.items.map((i) => i.variantId) } } });
+      const byVariant = new Map(inventories.map((inv) => [inv.variantId, inv]));
+
+      for (const item of order.items) {
+        const inv = byVariant.get(item.variantId);
+        if (inv) {
+          await tx.inventory.update({ where: { variantId: item.variantId }, data: { quantity: { increment: item.quantity } } });
+          await tx.stockHistory.create({
+            data: { inventoryId: inv.id, change: item.quantity, reason: "ORDER_CANCELLED", note: `Order ${order.orderNumber} cancelled` },
+          });
+        }
+      }
+    });
+
+    sendOrderCancelledEmail(order.id).catch((err) => logger.error("notify:cancelled:failed", { orderId: order.id, error: String(err) }));
+
+    revalidatePath("/admin/orders");
+    revalidatePath("/account/orders");
+    return { success: true as const, data: { id: order.id } };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+export async function refundOrder(input: unknown) {
+  try {
+    await requireStaff();
+    const data = refundOrderSchema.parse(input);
+
+    const order = await prisma.order.findUnique({ where: { id: data.orderId } });
+    if (!order) throw new NotFoundError("Order");
+    if (order.paymentStatus !== "PAID") throw new AppError("Only paid orders can be refunded", 400, "NOT_REFUNDABLE");
+    if (data.amount > order.total) throw new AppError("Refund amount can't exceed the order total", 400, "INVALID_REFUND_AMOUNT");
+    if (order.paymentMethod === "COD") {
+      // COD refunds are a manual bank transfer/UPI payout process, not a
+      // Razorpay refund (there was never a captured Razorpay payment to
+      // refund) — record the outcome, don't call the gateway.
+      const status = data.amount === order.total ? "REFUNDED" : "PARTIALLY_REFUNDED";
+      await prisma.order.update({ where: { id: order.id }, data: { paymentStatus: status } });
+      revalidatePath("/admin/orders");
+      return { success: true as const, data: { status, method: "MANUAL_COD_REFUND" } };
+    }
+
+    // Real refund call — paymentStatus is only flipped after Razorpay
+    // confirms it, never before, so a failed refund call never leaves the
+    // order incorrectly marked as refunded.
+    await processRefund(order.id, data.amount);
+
+    const status = data.amount === order.total ? "REFUNDED" : "PARTIALLY_REFUNDED";
+    await prisma.order.update({ where: { id: order.id }, data: { paymentStatus: status } });
+
+    sendRefundProcessedEmail(order.id, data.amount).catch((err) => logger.error("notify:refund:failed", { orderId: order.id, error: String(err) }));
+
+    revalidatePath("/admin/orders");
+    return { success: true as const, data: { status } };
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}

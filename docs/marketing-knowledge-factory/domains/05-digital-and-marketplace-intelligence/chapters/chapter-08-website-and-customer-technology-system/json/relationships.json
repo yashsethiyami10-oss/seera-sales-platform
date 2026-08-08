@@ -1,0 +1,28 @@
+{
+  "chapter": "Website & Customer Technology System",
+  "relationships": [
+    { "from": "KO-DM-CH8-001", "type": "governs", "to": ["KO-DM-CH8-002","KO-DM-CH8-003","KO-DM-CH8-004","KO-DM-CH8-005","KO-DM-CH8-006","KO-DM-CH8-007","KO-DM-CH8-008","KO-DM-CH8-009"] },
+    { "from": "KO-DM-CH8-002", "type": "feeds", "to": ["KO-DM-CH8-003"] },
+    { "from": "KO-DM-CH8-003", "type": "feeds", "to": ["KO-DM-CH8-004"] },
+    { "from": "KO-DM-CH8-004", "type": "feeds", "to": ["KO-DM-CH8-005"] },
+    { "from": "KO-DM-CH8-005", "type": "feeds", "to": ["KO-DM-CH8-006"] },
+    { "from": "KO-DM-CH8-006", "type": "feeds", "to": ["KO-DM-CH8-007"] },
+    { "from": "KO-DM-CH8-007", "type": "feeds", "to": ["KO-DM-CH8-008"] },
+    { "from": "KO-DM-CH8-008", "type": "feeds", "to": ["KO-DM-CH8-009"] },
+    { "from": "KO-DM-CH8-009", "type": "feeds", "to": ["KO-DM-CH8-010"] },
+    { "from": "KO-DM-CH8-001", "type": "summarizedBy", "to": ["KO-DM-CH8-011"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-DM-CH8-002", "type": "relatesTo", "to": "KO-DM-CH2-002" },
+    { "from": "KO-DM-CH8-008", "type": "relatesTo", "to": "KO-DM-CH5-006" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-DM-CH8-004", "type": "relatesTo", "to": "KO-SC-CH4-003" },
+    { "from": "KO-DM-CH8-007", "type": "relatesTo", "to": "KO-SC-CH3-005" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-DM-CH8-011", "type": "precedes", "to": "Chapter 9 (Data Architecture & Intelligence System excerpt)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

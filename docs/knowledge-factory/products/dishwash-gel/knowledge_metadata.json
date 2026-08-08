@@ -1,0 +1,100 @@
+{
+  "package": "MUV Dishwash Gel™ Enterprise Knowledge Package",
+  "productFamily": "MUV Dishwash Gel™",
+  "parentProductRule": "One parent product, three pack-size SKUs (500 ml, 1 L, 5 L) — single formulation, no fragrance/colour variants. ONE knowledge package, no duplication across SKUs.",
+  "version": "1.0",
+  "createdAt": "2026-07-30",
+  "approvalStatus": "DRAFT — Pending Founder Review",
+  "governedBy": [
+    "MUV Knowledge Book (.claude/docs/MUV_Knowledge/ constitution files) — supreme constitution, not modified by this package",
+    "MUV AI Knowledge Factory™ architecture — frozen, not modified by this package"
+  ],
+  "sourceDocumentsUsed": [
+    {
+      "path": ".claude/docs/MUV-KNOWLEDGE/SOURCE DOCUMENTS/SOPs/HOME CARE/MUV_Dishwash_Liquid_Gel_Production_SOP.docx",
+      "usedFor": "Raw material list, 13-step process, real pH-range QC section (richest QC content of the three products audited), fill weights. Contains NO pricing data and NO safety section.",
+      "extractionMethod": "Read-only zip extraction of word/document.xml (binary .docx, no repo files modified)"
+    },
+    {
+      "path": ".claude/docs/MUV-KNOWLEDGE/SOURCE DOCUMENTS/PRODUCT CHART/MUV_Product_Chart_with_USP (1)(1).pdf",
+      "usedFor": "Per-SKU MRP pricing (rows 9-11) — the SOLE pricing source for this product (no second source exists to corroborate)",
+      "extractionMethod": "PDF text extraction"
+    },
+    {
+      "path": "prisma/seed.ts",
+      "usedFor": "Confirming Home Care category exists (inferred applicable, not confirmed); confirming NO real Product/ProductVariant record exists",
+      "extractionMethod": "Direct source read"
+    },
+    {
+      "path": "lib/inst-sales/consumption-rules.ts",
+      "usedFor": "Identifying a self-described placeholder institutional-pricing constant (DISHWASH: ₹150/Ltr) that must NOT be used as real pricing",
+      "extractionMethod": "Direct source read"
+    },
+    {
+      "path": "lib/knowledge-factory/conflict-service.ts",
+      "usedFor": "Confirming no prior Dishwash Gel conflict has ever been flagged in the codebase",
+      "extractionMethod": "Direct source read"
+    }
+  ],
+  "knownConflicts": [],
+  "knownDiscrepancies": [
+    {
+      "description": "Product Chart names this product 'MUV Dishwash Gel'; the SOP's own document title is 'MUV DISHWASH LIQUID GEL' — a genuine naming discrepancy, not a pricing conflict.",
+      "koid": "KO-DW-NAME-001",
+      "status": "OPEN — Founder decision required"
+    }
+  ],
+  "dataGaps": [
+    {
+      "description": "Pricing exists only in the Product Chart — the SOP has no MRP data at all, so pricing cannot be cross-validated the way Toilet Cleaner's was.",
+      "koid": "KO-DW-SALES-001"
+    }
+  ],
+  "competitorScanResult": {
+    "status": "CLEAN",
+    "referencesFound": 0,
+    "watchListChecked": ["Comfort", "Pril", "Vim", "Exo", "Genteel", "Surf Excel", "Fairy", "Harpic", "Domex", "Lizol", "Colin", "Robin", "Rin", "Ariel", "Tide", "Dettol"],
+    "koid": "KO-DW-COMPETITOR-001"
+  },
+  "totalKnowledgeObjects": 41,
+  "totalFiles": 33,
+  "noHallucinationRuleApplied": true,
+  "fieldsMarkedRequiresFounderInput": [
+    "Manufacturer name confirmation",
+    "Formal brand positioning statement",
+    "Customer problems solved",
+    "Target customer segment",
+    "Usage scenarios / dosage per wash",
+    "Dishwashing-machine suitability",
+    "Marketing/brand-voice copy, USP text",
+    "SKU codes (all 3 SKUs)",
+    "Barcodes (all 3 SKUs)",
+    "Packaging dimensions (all 3 SKUs)",
+    "Shipping weight (all 3 SKUs)",
+    "Marketplace metadata (all 3 SKUs)",
+    "Variant images (all 3 SKUs)",
+    "HSN code / GST rate",
+    "Packaging container material/format",
+    "Full INCI/chemical names for LABSA/SLES/CAPB/CDEA/EDTA",
+    "Ingredient concentrations, grades, suppliers",
+    "Confirmed (not generically inferred) ingredient functional roles",
+    "Equipment specification, stirrer speed/type",
+    "Real measured batch yield",
+    "Actual quantities for 'As Required'/'if required' ingredients",
+    "Numeric viscosity target and test method",
+    "Foam-height/grease-cleaning test method and threshold",
+    "Colour-match tolerance/reference standard",
+    "Sampling plan, OOS handling, retention samples",
+    "Manufacturing PPE requirements (none sourced at all)",
+    "Consumer safety data sheet, first-aid procedure",
+    "Surface/material compatibility guidance",
+    "Shelf life",
+    "Storage temperature range",
+    "Transportation/hazard classification",
+    "Wholesale/institutional pricing",
+    "Cost of goods / margin data",
+    "Marketing campaign history",
+    "Product-specific troubleshooting guide beyond QC's named failure modes",
+    "Batch/lot numbering scheme"
+  ]
+}

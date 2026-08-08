@@ -1,0 +1,72 @@
+{
+  "productFamily": "MUV Fresh Bathroom Cleaner™",
+  "koidPrefix": "KO-BC-",
+  "status": "DRAFT — Pending Founder Review",
+  "packageVersion": "1.1 (FR-001/FR-002 remediated, 2026-07-31)",
+  "sequenceInKnowledgeFactory": 4,
+  "precedingFrozenFamilies": [
+    "MUV Liquid Detergent™ (KO-LD-, frozen, approved)",
+    "MUV Toilet Cleaner™ (KO-TC-, frozen, approved)",
+    "MUV Dishwash Gel™ (KO-DW-, frozen, approved)"
+  ],
+  "totalKnowledgeObjects": 45,
+  "totalMarkdownFiles": 26,
+  "totalJsonFiles": 11,
+  "fr001Fr002Compliance": {
+    "status": "REMEDIATED",
+    "date": "2026-07-31",
+    "note": "FR-002 Full Remediation Pass applied. All hardcoded commercial pricing figures (the historical 500ml pricing discrepancy — see 19_Source_Conflict_Register.md for the specific historical figures, audit-only) removed from customer/AI-facing and stated-fact content across this package and replaced with live Product Catalog deferrals per FR-001. LIVE_DATA_MAPPING.md added as the authoritative live-resolution reference. Historical figures retained, explicitly labeled as audit-only citations, solely in 00_Source_Register.md, 19_Source_Conflict_Register.md, and source_conflicts.json. No product intelligence, SOP, safety, FAQ substance, or Care Intelligence behavior was altered beyond commercial-figure cells; KO-BC-CRO-001 guidance was rewritten (care behavior preserved) as the one deliberate, FR-002-permitted exception."
+  },
+  "files": {
+    "markdown": [
+      "LIVE_DATA_MAPPING.md",
+      "00_Source_Register.md",
+      "01_Product_Identity.md",
+      "02_Product_Family_and_SKUs.md",
+      "03_Product_Description.md",
+      "04_Ingredients_and_Functions.md",
+      "05_Manufacturing_Theory.md",
+      "06_Manufacturing_SOP.md",
+      "07_Batch_Reconciliation.md",
+      "08_Quality_Control.md",
+      "09_Safety_and_Risk.md",
+      "10_Packaging_Storage_Transport.md",
+      "11_Sales_Intelligence.md",
+      "12_Marketing_Intelligence.md",
+      "13_Customer_Support.md",
+      "14_FAQs_and_AI_Responses.md",
+      "15_Troubleshooting_and_Complaints.md",
+      "16_Golden_Questions.md",
+      "17_Care_Response_Objects.md",
+      "18_Founder_Input_Register.md",
+      "19_Source_Conflict_Register.md",
+      "20_Canonical_Naming_Register.md",
+      "21_Competitor_Reference_Register.md",
+      "22_Knowledge_Visibility_Matrix.md",
+      "23_Knowledge_Reuse_Report.md",
+      "24_Validation_Report.md"
+    ],
+    "json": [
+      "knowledge_manifest.json",
+      "knowledge_objects.json",
+      "knowledge_relationships.json",
+      "knowledge_metadata.json",
+      "product_family.json",
+      "sku_variants.json",
+      "golden_questions.json",
+      "founder_input_required.json",
+      "source_conflicts.json",
+      "validation_results.json",
+      "care_response_objects.json"
+    ]
+  },
+  "newSectionTypesIntroducedThisPackage": [
+    "Care Response Objects (17_Care_Response_Objects.md / care_response_objects.json)"
+  ],
+  "canonicalName": "MUV Fresh Bathroom Cleaner™",
+  "legacyName": "MUV Bathroom Cleaner",
+  "openConflicts": 1,
+  "resolvedConflicts": 1,
+  "founderInputGapCategories": 33,
+  "stopRule": "COMPLETE — do not begin the next Product Family without explicit Founder approval."
+}

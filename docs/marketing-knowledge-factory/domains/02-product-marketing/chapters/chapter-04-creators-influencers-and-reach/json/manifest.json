@@ -1,0 +1,23 @@
+{
+  "domain": "Product Marketing",
+  "domainNumber": 2,
+  "chapter": "Creators, Influencers & Reach",
+  "chapterNumber": 4,
+  "koidPrefix": "KO-PM-CH4-",
+  "sourceChapter": "MUV Knowledge Library, Part VII, Chapter 34",
+  "sourceLineRange": "7566-7870",
+  "totalKnowledgeObjects": 12,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (incl. Domain 1, frozen)"
+  ],
+  "openGapFound": {
+    "topic": "Disclosure requirements and content/usage rights",
+    "note": "Named in the chapter's own Purpose but have no dedicated rule set anywhere in the chapter body — exist only as single bullets in the Creator Brief field list. Recorded as Founder Decision Required in KO-PM-CH4-003, not invented.",
+    "evidenceClassification": "Founder Decision Required"
+  }
+}

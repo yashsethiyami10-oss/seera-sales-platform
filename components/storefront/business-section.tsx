@@ -1,0 +1,42 @@
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
+import { Button } from "@/components/ui/primitives";
+
+/**
+ * Acknowledgment section (PHASE_6A §4.7 / PHASE_6B §8) — a short, contained
+ * panel confirming Muv serves institutional and bulk buyers, without
+ * competing with the primary consumer narrative around it. CTA stays
+ * Secondary-tier (ghost button) by construction — never Primary, per
+ * PHASE_6B §14 article 9. Links to /contact, the same target the nav and
+ * footer's business links use. The public submission form and its backend
+ * (actions/inquiries.ts, the BusinessInquiry model) are real; as of
+ * Phase 1C an admin management view exists at /admin/inquiries too.
+ */
+export function BusinessSection() {
+  return (
+    <section className="px-6 pb-8">
+      <div className="max-w-7xl mx-auto">
+        <Reveal>
+          <div className="muv-business-panel flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+            <div>
+              <p className="muv-eyebrow mb-4">For Business</p>
+              <h2 className="font-display text-white" style={{ fontWeight: 400, fontSize: "clamp(1.4rem,2.6vw,1.9rem)" }}>
+                Supplied in bulk, for businesses that never stop Muving™.
+              </h2>
+              <p className="muv-text-meta text-sm mt-3" style={{ maxWidth: "52ch", lineHeight: 1.6 }}>
+                Hotels, hospitals, restaurants, offices, car washes, and laundry operations — the same five
+                categories, at the volume and consistency a business actually needs.
+              </p>
+            </div>
+            <Link href="/contact" className="flex-shrink-0">
+              <Button variant="ghost">
+                Enquire for business <ArrowRight size={15} />
+              </Button>
+            </Link>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}

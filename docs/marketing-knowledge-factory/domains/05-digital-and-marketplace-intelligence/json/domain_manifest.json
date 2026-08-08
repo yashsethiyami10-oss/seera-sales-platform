@@ -1,0 +1,58 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "status": "COMPLETE — Founder Review Ready (all 12 chapters + domain audit)",
+  "domainType": "Two-Part synthesized domain (Part II implementation layer + Part XII strategic layer)",
+  "totalChapters": 12,
+  "totalKnowledgeObjects": 120,
+  "sourceDocuments": [
+    "MUV Knowledge Library, Part II — Enterprise Operating System, Website Architecture & Knowledge Governance (Volume II — MUV Operating System™, Chapters 6-10, full mirror — Chapters 1-5)",
+    "MUV Knowledge Library, Part XII — Technology, Digital Ecosystem, Data & AI (Volume XII — MUV Technology & Digital Ecosystem™, Chapters 58-64, largely full mirror — Chapters 6-12; Chapter 61 excerpted, excluding sections already covered by Domain 3)"
+  ],
+  "synthesisAuthorization": {
+    "issueRaised": "Digital & Marketplace concepts distributed across multiple Parts (Part II implementation layer, Part XII strategic layer); marketplace content also risked overlap with Domain 4",
+    "resolutionMethod": "Founder's own Domain 5 execution prompt pre-authorized synthesis ('perform a Founder-grade synthesis exactly as previously approved'), no separate escalation question required",
+    "recordedIn": "domains/05-digital-and-marketplace-intelligence/README.md"
+  },
+  "chapters": [
+    { "number": 1, "name": "Digital Operating Foundation", "koidPrefix": "KO-DM-CH1-", "koCount": 7, "sourceChapter": "Part II Ch.6", "status": "Founder Review Ready" },
+    { "number": 2, "name": "Website Architecture", "koidPrefix": "KO-DM-CH2-", "koCount": 10, "sourceChapter": "Part II Ch.7", "status": "Founder Review Ready" },
+    { "number": 3, "name": "Backend, Integration & Automation", "koidPrefix": "KO-DM-CH3-", "koCount": 8, "sourceChapter": "Part II Ch.8", "status": "Founder Review Ready" },
+    { "number": 4, "name": "Security, Accessibility & Reliability", "koidPrefix": "KO-DM-CH4-", "koCount": 8, "sourceChapter": "Part II Ch.9", "status": "Founder Review Ready" },
+    { "number": 5, "name": "Operational Evolution & Decisions", "koidPrefix": "KO-DM-CH5-", "koCount": 8, "sourceChapter": "Part II Ch.10 (+ Part II Part Summary)", "status": "Founder Review Ready" },
+    { "number": 6, "name": "Digital Philosophy & Technology Foundation", "koidPrefix": "KO-DM-CH6-", "koCount": 9, "sourceChapter": "Part XII Ch.58", "status": "Founder Review Ready" },
+    { "number": 7, "name": "MUV Digital Ecosystem Architecture", "koidPrefix": "KO-DM-CH7-", "koCount": 11, "sourceChapter": "Part XII Ch.59", "status": "Founder Review Ready" },
+    { "number": 8, "name": "Website & Customer Technology System", "koidPrefix": "KO-DM-CH8-", "koCount": 11, "sourceChapter": "Part XII Ch.60", "status": "Founder Review Ready" },
+    { "number": 9, "name": "Data Architecture & Intelligence System (Excerpt)", "koidPrefix": "KO-DM-CH9-", "koCount": 10, "sourceChapter": "Part XII Ch.61 (excl. 4.6-4.7, cited from Domain 3)", "status": "Founder Review Ready" },
+    { "number": 10, "name": "AI Systems & Intelligent Automation", "koidPrefix": "KO-DM-CH10-", "koCount": 12, "sourceChapter": "Part XII Ch.62", "status": "Founder Review Ready" },
+    { "number": 11, "name": "Technology Operations & Security", "koidPrefix": "KO-DM-CH11-", "koCount": 13, "sourceChapter": "Part XII Ch.63", "status": "Founder Review Ready" },
+    { "number": 12, "name": "Future Digital Evolution & MUV Universe™", "koidPrefix": "KO-DM-CH12-", "koCount": 13, "sourceChapter": "Part XII Ch.64 (+ Part XII Part Summary)", "status": "Founder Review Ready" }
+  ],
+  "crossDomainCitationIntegrity": {
+    "uniqueDomain1Citations": 1,
+    "uniqueDomain2Citations": 2,
+    "uniqueDomain3Citations": 7,
+    "uniqueDomain4Citations": 4,
+    "citationType": "mostly relatesTo/cites; one citation-only KO (KO-DM-CH9-005) for Zero Duplicate Knowledge",
+    "verifiedAgainstAllFrozenRegistries": true,
+    "brokenReferences": 0
+  },
+  "domainAudits": {
+    "relationshipIntegrityAudit": "PASS (120/120 KOs relationship-complete, 0 orphans, 0 circular; 12/12 cross-domain citations verified)",
+    "knowledgeCoverageAudit": "PASS — reported in two honest parts: Part A (Chapters 1-5 vs. Part II's own summary: 8/8 areas, 7/7 principles, 11/11 checklist items); Part B (Chapters 6-12 vs. Part XII's own summary: 7/7 areas, 14/14 rules, 10/10 governance rules, 10/10 decision questions, 14/14 checklist items)",
+    "domainConsistencyAudit": "PASS (5 disclosed, source-driven structural departures, none silent)",
+    "domainValidation": "PASS (120/120 KO checks + 4/4 domain audits)"
+  },
+  "founderDecisionsAppliedToThisDomain": [],
+  "openGaps": [],
+  "outOfScopeReferences": [
+    "Part III — MUV Brand Sutra™ (Domain 1, frozen — cited by Chapter 1/5, never restated)",
+    "Part VII — MUV Marketing Playbook™ (Domain 2, frozen — cited by Chapter 10, never restated)",
+    "Part VIII — MUV Sales & Distribution System™ (Domain 4, frozen — cited by Chapters 7-8, never restated)",
+    "Part IX — MUV Customer Experience™ (Domain 3, frozen — cited by Chapters 2, 7, 12, never restated)",
+    "Sections 4.6-4.7 of Part XII Chapter 61 (Domain 3, frozen KO-CI-CH7-001/002 — cited by Chapter 9, never restated)",
+    "Part XIII — Finance, Accounting, Cash, Profitability & Enterprise Economics (cited by Chapter 12, out of scope, never transcribed)",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007) — not referenced, not relevant to this domain's content"
+  ],
+  "founderReviewPackage": "domains/05-digital-and-marketplace-intelligence/DOMAIN_5_FOUNDER_REVIEW_PACKAGE.md"
+}

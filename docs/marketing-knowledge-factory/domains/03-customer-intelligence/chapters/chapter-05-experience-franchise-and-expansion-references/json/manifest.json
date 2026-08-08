@@ -1,0 +1,21 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "chapter": "Experience, Franchise & Expansion References",
+  "chapterNumber": 5,
+  "koidPrefix": "KO-CI-CH5-",
+  "sourceChapter": "MUV Knowledge Library, Part IX, Chapter 45 (+ Part IX Part Summary and Part End Note)",
+  "sourceLineRange": "11116-11544",
+  "totalKnowledgeObjects": 12,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domain 1 and Domain 2, both frozen)"
+  ],
+  "domainSynthesisNote": "Domain 3 is a Founder-approved synthesized domain (Part IX + CRM excerpt from Part VIII Ch.40 + Data Insights excerpt from Part XII Ch.61), not a single clean Part mirror like Domains 1-2. See domain README for the full escalation record.",
+  "partClosingNote": "Chapter 45 is Part IX's final chapter. This chapter file additionally preserves Part IX's own closing Part Summary and Part End Note as KO-CI-CH5-012, flagged as the grounding source for Domain 3's Knowledge Coverage Audit.",
+  "partIXCompleteNote": "Chapters 1-5 complete the full Part IX mirror portion of Domain 3. Chapters 6-7 are synthesized excerpts from Part VIII Ch.40 and Part XII Ch.61 respectively, not a Part IX continuation."
+}

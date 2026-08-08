@@ -1,0 +1,28 @@
+{
+  "productFamily": "MUV Black Phenyl™",
+  "totalDecisionTrees": 4,
+  "decisionTrees": [
+    { "koid": "KO-BP-DT-001", "title": "Is MUV Black Phenyl™ the Correct Product?", "confidence": "MEDIUM" },
+    { "koid": "KO-BP-DT-002", "title": "When NOT to Recommend MUV Black Phenyl™", "confidence": "MEDIUM" },
+    { "koid": "KO-BP-DT-003", "title": "When Another MUV Product Is More Suitable", "confidence": "HIGH",
+      "crossReferences": [
+        { "need": "Glass/mirror surfaces", "product": "MUV Crystal Glass Cleaner™" },
+        { "need": "General household cleaning/whitening", "product": "MUV Pure Bleach™" },
+        { "need": "Toilet bowl cleaning", "product": "MUV Floral Toilet Cleaner™" },
+        { "need": "Bathroom surface cleaning", "product": "MUV Fresh Bathroom Cleaner™" },
+        { "need": "Dishware", "product": "MUV Spark Dishwash Gel™" },
+        { "need": "Laundry", "product": "MUV Liquid Detergent™" },
+        { "need": "Fragranced, non-disinfectant floor cleaning", "product": "MUV Floor Cleaner™ (Velvet Mist / Cloud Walk)" }
+      ]
+    },
+    { "koid": "KO-BP-DT-004", "title": "Safety Escalation Conditions", "confidence": "HIGH",
+      "escalationTriggers": [
+        "Real eye/skin/inhalation/ingestion contact reported",
+        "First-aid instructions requested",
+        "Spill, leak, or damaged container reported",
+        "Exposure involving a child or pet described",
+        "Intent to mix with another cleaning product described"
+      ]
+    }
+  ]
+}

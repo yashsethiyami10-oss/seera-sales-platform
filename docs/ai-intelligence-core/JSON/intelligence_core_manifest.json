@@ -1,0 +1,45 @@
+{
+  "repository": "MUV AI Intelligence Core™",
+  "authorizedVia": "Founder Execution Protocol v2.0 (AI Intelligence Core)",
+  "status": "COMPLETE — Founder Review Ready. Awaiting Founder feedback per Post Review rule (no Engineering Testing, no Freeze, no Continue until authorized).",
+  "documentType": "Pure engineering architecture — zero application code, zero API implementations, zero model selection",
+  "artifactFormat": "lean single-repository format — INTELLIGENCE_CORE_MASTER.md, ENGINE_ARCHITECTURE.md, ENGINE_RELATIONSHIPS.md, ENGINE_VALIDATION.md, FOUNDER_REVIEW.md, JSON/*",
+  "keyDecision": {
+    "summary": "Confirmed with the Founder before design began: this is an integration architecture on the existing, real, production-wired 9-module MUV Intelligence Platform, not a fresh standalone design.",
+    "priorFounderDecision": "2026-07-30, project memory: reuse existing 9-module platform, do not build a parallel structure",
+    "resolutionOfPriorBlocker": "That decision was contingent on canonical source documents being complete; all four Knowledge Factories this protocol names as read-only inputs have since been completed, resolving the blocker"
+  },
+  "readOnlyInputs": [
+    "Foundation (the live MUV platform: Next.js/Prisma/TypeScript, and the real 9-module MUV Intelligence Platform: docs/phase-3 through docs/phase-9)",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "Marketing Knowledge Factory (docs/marketing-knowledge-factory/, 8 domains)",
+    "Institutional Sales Knowledge Factory (docs/institutional-sales-knowledge-factory/)",
+    "Founder Intelligence Knowledge Factory (docs/founder-intelligence-knowledge-factory/)"
+  ],
+  "existingPlatformSummary": {
+    "totalModules": 9,
+    "liveProductionEntryPoint": "orchestrateExperience() in actions/experience.ts, called by components/muv-ai/use-muv-ai-chat.ts, mounted in app/layout.tsx",
+    "allContentTablesEmpty": true,
+    "noLLMAnywhereInPipeline": true,
+    "fourNewFactoriesReferencedAnywhereInExistingPlatform": false
+  },
+  "totalLayers": 13,
+  "layersMappedToExistingModule": 11,
+  "layersRequiringSubstantialNewDesign": 2,
+  "layersBlockedOnFounderDecision": 1,
+  "engineDesignDimensionsPerLayer": 15,
+  "internalQAChecks": {
+    "total": 14,
+    "passed": 14,
+    "withDisclosedOpenItems": 3,
+    "note": "Two are implementation choices reserved for developers (Layer 3 sourceType extension method, Pipeline Validation's Care-stage sequencing note); one is explicitly blocked on a Founder Decision (Layer 8's conflict arbitration rule) and correctly not invented"
+  },
+  "founderDecisionsAppliedToThisRepository": [],
+  "openFounderDecisionsIdentified": [
+    "Layer 8 Conflict Resolution Engine's cross-repository arbitration rule (directly = Founder Intelligence KF's own KO-FD-GAP-002)",
+    "Layer 7 Memory Engine's long-term (cross-session) memory question, given no PII redaction/anonymization layer exists anywhere in the codebase today",
+    "Layer 3 Retrieval Engine's sourceType extension implementation choice (recommended but not mandated)"
+  ],
+  "postReviewRule": "After Founder Review: wait. Do NOT perform Engineering Testing. Do NOT Freeze. Do NOT Continue. Wait for Founder feedback. Only after Founder approval shall Engineering Testing begin.",
+  "founderReviewPackage": "FOUNDER_REVIEW.md"
+}

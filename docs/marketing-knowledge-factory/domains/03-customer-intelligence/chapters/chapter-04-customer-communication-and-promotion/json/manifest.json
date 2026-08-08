@@ -1,0 +1,20 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "chapter": "Customer Communication & Promotion",
+  "chapterNumber": 4,
+  "koidPrefix": "KO-CI-CH4-",
+  "sourceChapter": "MUV Knowledge Library, Part IX, Chapter 44",
+  "sourceLineRange": "10832-11113",
+  "totalKnowledgeObjects": 9,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domain 1 and Domain 2, both frozen)"
+  ],
+  "domainSynthesisNote": "Domain 3 is a Founder-approved synthesized domain (Part IX + CRM excerpt from Part VIII Ch.40 + Data Insights excerpt from Part XII Ch.61), not a single clean Part mirror like Domains 1-2. See domain README for the full escalation record.",
+  "titleContentDivergenceNote": "Chapter title says '& Promotion' but the real body content, confirmed by independent re-extraction, is entirely complaint-handling, recovery, feedback, review analysis, and trust restoration. No promotional content exists in source and none was invented."
+}

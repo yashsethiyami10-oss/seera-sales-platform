@@ -1,0 +1,23 @@
+{
+  "chapter": "Creators, Influencers & Reach",
+  "relationships": [
+    { "from": "KO-PM-CH4-001", "type": "governs", "to": ["KO-PM-CH4-002","KO-PM-CH4-003","KO-PM-CH4-004","KO-PM-CH4-005","KO-PM-CH4-006","KO-PM-CH4-007","KO-PM-CH4-008","KO-PM-CH4-009","KO-PM-CH4-010","KO-PM-CH4-011"] },
+    { "from": "KO-PM-CH4-002", "type": "feeds", "to": ["KO-PM-CH4-003"] },
+    { "from": "KO-PM-CH4-003", "type": "feeds", "to": ["KO-PM-CH4-004"] },
+    { "from": "KO-PM-CH4-001", "type": "summarizedBy", "to": ["KO-PM-CH4-012"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-PM-CH4-007", "type": "cites", "to": "KO-BI-CH3-005" },
+    { "from": "KO-PM-CH4-004", "type": "extends", "to": "KO-BI-CH5-004" },
+    { "from": "KO-PM-CH4-006", "type": "extends", "to": "KO-BI-CH5-004" }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-PM-CH2-008", "type": "isExtendedBy", "to": "KO-PM-CH4-004" },
+    { "from": "KO-PM-CH1-005", "type": "isExtendedBy", "to": "KO-PM-CH4-008" },
+    { "from": "KO-PM-CH1-008", "type": "isParalleledBy", "to": "KO-PM-CH4-011", "note": "structural echo, not a duplicate" },
+    { "from": "KO-PM-CH2-011", "type": "overlapsCrossReferenced", "to": "KO-PM-CH4-009" },
+    { "from": "KO-PM-CH2-012", "type": "overlapsCrossReferenced", "to": "KO-PM-CH4-009" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

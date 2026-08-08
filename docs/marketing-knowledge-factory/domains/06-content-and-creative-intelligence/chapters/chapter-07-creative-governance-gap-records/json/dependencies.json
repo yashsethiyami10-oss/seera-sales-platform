@@ -1,0 +1,13 @@
+{
+  "chapter": "Creative Governance Gap Records",
+  "upstreamDependencies": [
+    { "source": "None - Gap Record chapter, zero source content by design", "type": "none", "status": "n/a" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 6 audit sequence", "status": "not yet built, this batch" },
+    { "dependent": "Global Repository Health Snapshot (Total Gap Records, Total Founder Decisions Referenced)", "status": "not yet built, this batch" },
+    { "dependent": "DOMAIN_6_FOUNDER_REVIEW_PACKAGE.md", "status": "not yet built, this batch" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

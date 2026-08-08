@@ -1,0 +1,22 @@
+{
+  "domain": "Product Marketing",
+  "domainNumber": 2,
+  "chapter": "Content, Scripts & Video",
+  "chapterNumber": 3,
+  "koidPrefix": "KO-PM-CH3-",
+  "sourceChapter": "MUV Knowledge Library, Part VII, Chapter 33",
+  "sourceLineRange": "7269-7565",
+  "totalKnowledgeObjects": 14,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (incl. Domain 1, frozen)"
+  ],
+  "highPriorityKO": {
+    "koid": "KO-PM-CH3-012",
+    "reason": "AI-Assisted Marketing governance — the exact permitted/forbidden AI action boundary, self-referentially applicable to this repository's own downstream AI consumers"
+  }
+}

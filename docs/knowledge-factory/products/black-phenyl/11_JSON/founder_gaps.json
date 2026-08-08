@@ -1,0 +1,29 @@
+{
+  "productFamily": "MUV Black Phenyl™",
+  "totalGaps": 20,
+  "priority1Critical": 3,
+  "priority2Important": 6,
+  "priority3Standard": 11,
+  "gaps": [
+    { "id": 1, "priority": 1, "gap": "Pack-size conflict — Chart 500ml/₹80 vs SOP 1L/no MRP", "relatedKoid": "KO-BP-ARCH-002" },
+    { "id": 2, "priority": 1, "gap": "First aid instructions (eye/skin/inhalation/ingestion)", "relatedKoid": "KO-BP-SAFETY-004" },
+    { "id": 3, "priority": 1, "gap": "Consumer usage/dilution/contact-time instructions", "relatedKoid": "KO-BP-INTEL-005" },
+    { "id": 4, "priority": 2, "gap": "Storage condition — completely unsourced", "relatedKoid": "KO-BP-SAFETY-010" },
+    { "id": 5, "priority": 2, "gap": "Surface compatibility", "relatedKoid": "KO-BP-INTEL-003" },
+    { "id": 6, "priority": 2, "gap": "Shelf-life duration", "relatedKoid": "KO-BP-INTEL-010" },
+    { "id": 7, "priority": 2, "gap": "Real Safety Data Sheets referenced but not included", "relatedKoid": "KO-BP-SAFETY-001" },
+    { "id": 8, "priority": 2, "gap": "Disinfection efficacy / regulatory certification", "relatedKoid": "KO-BP-CONV-007" },
+    { "id": 9, "priority": 2, "gap": "Mixing compatibility with other cleaning products", "relatedKoid": "KO-BP-SAFETY-003" },
+    { "id": 10, "priority": 3, "gap": "Manufacturer name", "relatedKoid": "KO-BP-ARCH-001" },
+    { "id": 11, "priority": 3, "gap": "SKU code, barcode", "relatedKoid": "KO-BP-ARCH-002" },
+    { "id": 12, "priority": 3, "gap": "Fill weight", "relatedKoid": "KO-BP-ARCH-002" },
+    { "id": 13, "priority": 3, "gap": "Packaging dimensions, shipping weight", "relatedKoid": "KO-BP-ARCH-002" },
+    { "id": 14, "priority": 3, "gap": "Product images", "relatedKoid": "10_LIVE_DATA_MAPPING.md" },
+    { "id": 15, "priority": 3, "gap": "Spill management procedure", "relatedKoid": "KO-BP-SAFETY-011" },
+    { "id": 16, "priority": 3, "gap": "Disposal guidance", "relatedKoid": "KO-BP-SAFETY-012" },
+    { "id": 17, "priority": 3, "gap": "Child/pet-specific safety guidance", "relatedKoid": "KO-BP-SAFETY-008" },
+    { "id": 18, "priority": 3, "gap": "Institutional consumption-estimation tooling", "relatedKoid": null },
+    { "id": 19, "priority": 3, "gap": "Formal positioning/marketing statement", "relatedKoid": null },
+    { "id": 20, "priority": 3, "gap": "Relationship between Black Phenyl and MUV Phenyl/White Phenyl", "relatedKoid": "KO-BP-INTEL-015" }
+  ]
+}

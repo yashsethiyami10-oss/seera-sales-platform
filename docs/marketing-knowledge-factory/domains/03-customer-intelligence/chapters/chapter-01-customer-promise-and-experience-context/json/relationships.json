@@ -1,0 +1,22 @@
+{
+  "chapter": "Customer Promise & Experience Context",
+  "relationships": [
+    { "from": "KO-CI-CH1-001", "type": "governs", "to": ["KO-CI-CH1-002","KO-CI-CH1-003","KO-CI-CH1-004","KO-CI-CH1-005","KO-CI-CH1-006","KO-CI-CH1-007","KO-CI-CH1-008"] },
+    { "from": "KO-CI-CH1-002", "type": "feeds", "to": ["KO-CI-CH1-003"] },
+    { "from": "KO-CI-CH1-005", "type": "feeds", "to": ["KO-CI-CH1-006"] },
+    { "from": "KO-CI-CH1-006", "type": "feeds", "to": ["KO-CI-CH1-008"] },
+    { "from": "KO-CI-CH1-007", "type": "feeds", "to": ["KO-CI-CH1-008"] },
+    { "from": "KO-CI-CH1-001", "type": "summarizedBy", "to": ["KO-CI-CH1-009"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CI-CH1-002", "type": "cites", "to": "KO-BI-CH1-001" },
+    { "from": "KO-CI-CH1-003", "type": "complementsNotDuplicates", "to": "KO-PM-CH1-005" },
+    { "from": "KO-CI-CH1-004", "type": "complementsNotDuplicates", "to": "KO-PM-CH1-002" },
+    { "from": "KO-CI-CH1-005", "type": "complementsNotDuplicates", "to": "KO-PM-CH1-006" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CI-CH1-008", "type": "willGovern", "to": "Chapter 2 (Food-Service Product Experience), Chapter 3 (Outlet Culture)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

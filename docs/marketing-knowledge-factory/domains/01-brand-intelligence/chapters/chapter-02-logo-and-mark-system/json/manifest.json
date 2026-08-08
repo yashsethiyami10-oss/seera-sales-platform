@@ -1,0 +1,23 @@
+{
+  "domain": "Brand Intelligence",
+  "domainNumber": 1,
+  "chapter": "Logo & Mark System",
+  "chapterNumber": 2,
+  "koidPrefix": "KO-BI-CH2-",
+  "sourceChapter": "MUV Knowledge Library, Part III, Chapter 12",
+  "sourceLineRange": "1918-2058",
+  "totalKnowledgeObjects": 7,
+  "status": "Founder Review Ready",
+  "governanceNote": "No governance documents authored in this repository. Constitution, Founder Rules ledger, Knowledge Efficiency Framework, and Validation Framework are Founder-controlled and intentionally live outside this repository, per Execution Prompt v3.0's Founder Governance Protocol.",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository"
+  ],
+  "crossSourceConflictFound": {
+    "topic": "Use of the word 'Premium' (recurring in the Brand Personality trait table)",
+    "note": "Not a new conflict — referenced from KO-BI-CH1-006 (Chapter 1), not re-recorded, per Zero Duplicate Knowledge"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "domain": "Customer Intelligence",
+  "domainNumber": 3,
+  "chapter": "Customer Promise & Experience Context",
+  "chapterNumber": 1,
+  "koidPrefix": "KO-CI-CH1-",
+  "sourceChapter": "MUV Knowledge Library, Part IX, Chapter 41",
+  "sourceLineRange": "10055-10279",
+  "totalKnowledgeObjects": 9,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domain 1 and Domain 2, both frozen)"
+  ],
+  "domainSynthesisNote": "Domain 3 is a Founder-approved synthesized domain (Part IX + CRM excerpt from Part VIII Ch.40 + Data Insights excerpt from Part XII Ch.61), not a single clean Part mirror like Domains 1-2. See domain README for the full escalation record.",
+  "crossDomainComplementaryNote": {
+    "topic": "Customer-First Thinking and Customer Journey Map both recur in Domain 2 with different framing",
+    "note": "Recorded as complementary, not duplicate — this chapter's versions are company-wide/experience-framed; Domain 2's are marketing-task-framed"
+  }
+}

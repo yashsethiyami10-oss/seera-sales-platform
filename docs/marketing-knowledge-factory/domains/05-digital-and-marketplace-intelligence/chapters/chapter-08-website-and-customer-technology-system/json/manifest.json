@@ -1,0 +1,19 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "Website & Customer Technology System",
+  "chapterNumber": 8,
+  "koidPrefix": "KO-DM-CH8-",
+  "sourceChapter": "MUV Knowledge Library, Part XII, Chapter 60",
+  "sourceLineRange": "15879-16069",
+  "totalKnowledgeObjects": 11,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer)."
+}

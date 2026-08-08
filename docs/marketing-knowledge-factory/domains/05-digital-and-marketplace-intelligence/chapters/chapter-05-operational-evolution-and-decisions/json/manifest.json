@@ -1,0 +1,21 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "Operational Evolution & Decisions",
+  "chapterNumber": 5,
+  "koidPrefix": "KO-DM-CH5-",
+  "sourceChapter": "MUV Knowledge Library, Part II, Chapter 10 (+ Part II Part Summary)",
+  "sourceLineRange": "1503-1680",
+  "totalKnowledgeObjects": 8,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer).",
+  "partClosingNote": "Chapter 10 is Part II's final chapter. This chapter file additionally preserves Part II's own closing Part Summary and Part End Note as KO-DM-CH5-008, flagged as the grounding source for the Part II portion of Domain 5's Knowledge Coverage Audit.",
+  "partIICompleteNote": "Chapters 1-5 complete the full Part II mirror portion of Domain 5. Chapters 6-12 mirror Part XII, the domain's second synthesized half."
+}

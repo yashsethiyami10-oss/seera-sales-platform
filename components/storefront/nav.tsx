@@ -1,0 +1,349 @@
+"use client";
+
+import { forwardRef, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { Search, ShoppingBag, Heart, User, Menu, X } from "lucide-react";
+import { useCart } from "@/lib/cart-context";
+
+const CATEGORY_LINKS = [
+  { name: "Home Care", slug: "home-care" },
+  { name: "Fabric Care", slug: "fabric-care" },
+  { name: "Body Care", slug: "body-care" },
+  { name: "Personal Care", slug: "personal-care" },
+  { name: "Car Care", slug: "car-care" },
+];
+
+export const Nav = forwardRef<HTMLElement, { topOffset?: number }>(function Nav({ topOffset = 0 }, ref) {
+  const pathname = usePathname();
+  const [solid, setSolid] = useState(false);
+  const [open, setOpen] = useState(false);
+  const { count } = useCart();
+  const mobilePanelRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const scrollPositionRef = useRef<{x: number; y: number} | null>(null);
+
+  const isActiveLink = (href: string) => pathname === href;
+
+  useEffect(() => {
+    const onScroll = () => setSolid(window.scrollY > 40);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Keyboard support: Escape closes the mobile menu from anywhere, without
+  // requiring focus to be inside it first.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  // Minimal focus trap — previously Tab could move focus straight through
+  // the open drawer into the page content behind it. Moves focus to the
+  // first link on open and cycles Tab/Shift+Tab between the drawer's own
+  // first/last focusable elements while it's open, without a new library.
+  useEffect(() => {
+    if (!open || !mobilePanelRef.current) return;
+    const panel = mobilePanelRef.current;
+    const focusable = panel.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    first?.focus();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Tab" || focusable.length === 0) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    }
+    panel.addEventListener("keydown", onKeyDown);
+    return () => panel.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const prevScrollPosition = scrollPositionRef.current ?? { x: window.scrollX, y: window.scrollY };
+    scrollPositionRef.current = prevScrollPosition;
+
+    const prevHtmlOverflow = html.style.overflow;
+    const prevHtmlHeight = html.style.height;
+    const prevHtmlPosition = html.style.position;
+    const prevHtmlWidth = html.style.width;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyHeight = body.style.height;
+    const prevBodyPosition = body.style.position;
+    const prevBodyWidth = body.style.width;
+    const prevBodyTouchAction = body.style.touchAction;
+    const prevHtmlTouchAction = html.style.touchAction;
+    const prevBodyOverscrollBehavior = body.style.overscrollBehavior;
+    const prevHtmlOverscrollBehavior = html.style.overscrollBehavior;
+
+    html.style.overflow = "hidden";
+    html.style.height = "100%";
+    html.style.position = "fixed";
+    html.style.width = "100%";
+    html.style.touchAction = "none";
+    html.style.overscrollBehavior = "none";
+    body.style.overflow = "hidden";
+    body.style.height = "100%";
+    body.style.position = "fixed";
+    body.style.width = "100%";
+    body.style.touchAction = "none";
+    body.style.overscrollBehavior = "none";
+
+    const lockScrollPosition = () => {
+      window.scrollTo({ top: prevScrollPosition.y, left: prevScrollPosition.x, behavior: "instant" as ScrollBehavior });
+    };
+
+    lockScrollPosition();
+
+    const handleResize = () => {
+      lockScrollPosition();
+    };
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+      html.style.overflow = prevHtmlOverflow;
+      html.style.height = prevHtmlHeight;
+      html.style.position = prevHtmlPosition;
+      html.style.width = prevHtmlWidth;
+      html.style.touchAction = prevHtmlTouchAction;
+      html.style.overscrollBehavior = prevHtmlOverscrollBehavior;
+      body.style.overflow = prevBodyOverflow;
+      body.style.height = prevBodyHeight;
+      body.style.position = prevBodyPosition;
+      body.style.width = prevBodyWidth;
+      body.style.touchAction = prevBodyTouchAction;
+      body.style.overscrollBehavior = prevBodyOverscrollBehavior;
+      window.scrollTo({ top: prevScrollPosition.y, left: prevScrollPosition.x, behavior: "instant" as ScrollBehavior });
+    };
+  }, [open]);
+
+  return (
+    <header
+      ref={ref}
+      className="fixed left-0 right-0 z-50 px-4 sm:px-6"
+      // Founder Final Consolidated Polish — when a bar sits above (topOffset
+      // > 0), paddingTop IS the entire visual gap between the bar and the
+      // visible pill (a fixed 9px, within the required 8–10px), never
+      // combined with any additional JS-computed offset. Unrelated to and
+      // unchanged for the no-bar/scrolled states.
+      style={{ top: topOffset, paddingTop: solid ? 10 : topOffset > 0 ? 9 : 16, transition: "padding 0.5s var(--ease), top 0.3s var(--ease)" }}
+    >
+      {/* Floating glass pill — detached from the viewport edge instead of a
+          full-bleed bar glued to the top, with its own elevation. */}
+      <div
+        className="max-w-7xl mx-auto flex items-center justify-between transition-all duration-500"
+        style={{
+          background: solid ? "rgba(17,17,23,0.75)" : "rgba(17,17,23,0.42)",
+          backdropFilter: "blur(20px) saturate(180%)",
+          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 999,
+          padding: "12px 16px 12px 24px",
+          boxShadow: solid ? "0 16px 40px rgba(0,0,0,0.35)" : "0 10px 30px rgba(0,0,0,0.22)",
+        }}
+      >
+        <Link href="/" className="flex items-center gap-4">
+          <Image src="/logo.png" alt="Muv" width={160} height={60} priority style={{ height: "40px", width: "auto" }} />
+          <span
+            className="hidden sm:inline-flex uppercase font-semibold tracking-widest text-[11px] px-3.5 py-1.5 rounded-full"
+            style={{
+              color: "var(--lavender)",
+              background: "linear-gradient(135deg, rgba(183,171,240,0.2), rgba(183,171,240,0.06))",
+              border: "1px solid rgba(183,171,240,0.35)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}
+          >
+            Keep Muving
+          </span>
+        </Link>
+
+        <nav aria-label="Primary" className="hidden lg:flex items-center gap-10">
+          {CATEGORY_LINKS.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/collections/${c.slug}`}
+              className="muv-nav-link text-[13px] uppercase tracking-wide muv-text-body hover:text-white"
+            >
+              {c.name}
+            </Link>
+          ))}
+          {/* Business acknowledgment in nav — deliberately quiet (meta-tier
+              text, not a button) so it never competes with the primary
+              shop path, per PHASE_6A §4.7 / PHASE_6B §8's "never
+              Primary-tier" rule. Points at /contact — the same target the
+              footer already uses for this; no dedicated business-inquiry
+              page or backend exists yet (a pre-existing gap, not
+              introduced here). */}
+          <Link href="/contact" className="muv-footer-link muv-text-meta hover:text-white text-[11px] uppercase tracking-widest">
+            For Business
+          </Link>
+        </nav>
+
+        <div className="flex items-center gap-2 sm:gap-3 muv-text-strong">
+          <Link href="/shop" aria-label="Search products" className="muv-icon-circle" style={{ width: 34, height: 34 }}>
+            <Search size={16} />
+          </Link>
+          <Link href="/account/wishlist" aria-label="Wishlist" className="muv-icon-circle" style={{ width: 34, height: 34 }}>
+            <Heart size={16} />
+          </Link>
+          <Link href="/cart" aria-label="Cart" className="muv-icon-circle relative" style={{ width: 34, height: 34 }}>
+            <ShoppingBag size={16} />
+            {count > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-semibold"
+                style={{ background: "var(--lavender)", color: "#0b0b0f" }}
+              >
+                {count}
+              </span>
+            )}
+          </Link>
+          <Link href="/account" aria-label="Account" className="muv-icon-circle hidden sm:flex" style={{ width: 34, height: 34 }}>
+            <User size={16} />
+          </Link>
+          <button
+            ref={menuButtonRef}
+            className="muv-icon-circle lg:hidden"
+            style={{ width: 44, height: 44 }}
+            onClick={() => setOpen(!open)}
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            aria-controls="mobile-nav"
+          >
+            {open ? <X size={17} /> : <Menu size={17} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Previously {open && <nav>...</nav>} — mounted/unmounted instantly
+          with zero transition. Always mounted now; .muv-mobile-nav
+          (styles/globals.css) animates opacity/transform off [data-open],
+          and aria-hidden + pointer-events:none keep it inert and
+          untabbable while visually closed.
+
+          CRITICAL: this must be `position: absolute`, not normal document
+          flow. `<header>` is `position: fixed` with no explicit height, so
+          its own box is sized by its content — while this panel sat in
+          normal flow, `visibility: hidden` kept it (correctly) un-tappable
+          itself, but `visibility: hidden` does NOT remove an element from
+          layout, so its full ~500px closed-state height still stretched
+          `<header>`'s own box down over most of the viewport. `<header>`
+          itself has default `pointer-events: auto` and sits above the page
+          (fixed + z-50), so every tap landing in that invisible, empty
+          phantom area was captured by `<header>` itself and never reached
+          the real page content underneath — even though the content was
+          visually right there and the drawer itself was correctly inert.
+          This was the confirmed, single shared cause of "most of the page
+          isn't tappable on a real phone": `position: absolute` removes this
+          panel from `<header>`'s layout flow entirely, so `<header>`'s box
+          now only ever covers the visible pill, open or closed. */}
+      <nav
+        id="mobile-nav"
+        ref={mobilePanelRef}
+        aria-label="Mobile"
+        aria-hidden={!open}
+        data-open={open}
+        className="muv-mobile-nav lg:hidden absolute left-4 right-4 sm:left-6 sm:right-6 max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3"
+        style={{
+          top: "calc(100% + 12px)",
+          background: "rgba(17,17,23,0.94)",
+          backdropFilter: "blur(20px) saturate(180%)",
+          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          border: "1px solid rgba(255,255,255,0.09)",
+          borderRadius: 24,
+          boxShadow: "0 16px 44px rgba(0,0,0,0.36)",
+          maxHeight: "calc(100dvh - 120px)",
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        <div className="flex items-start justify-between gap-4 pb-3 mb-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <div>
+            <p className="muv-text-meta text-[10px] uppercase tracking-[0.32em]">Explore Muv</p>
+            <p className="muv-text-strong text-sm mt-1">Premium care for every routine.</p>
+          </div>
+          <button
+            type="button"
+            className="muv-icon-circle"
+            style={{ width: 44, height: 44 }}
+            onClick={() => setOpen(false)}
+            onBlur={() => {
+              if (!open) {
+                menuButtonRef.current?.focus();
+              }
+            }}
+            aria-label="Close menu"
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5 mb-1">
+          <Link href="/shop" className="muv-btn-primary justify-center text-[11px] px-3 py-3" onClick={() => setOpen(false)} tabIndex={open ? 0 : -1}>
+            Shop all
+          </Link>
+          <Link href="/cart" className="muv-btn-ghost justify-center text-[11px] px-3 py-3" onClick={() => setOpen(false)} tabIndex={open ? 0 : -1}>
+            Cart
+          </Link>
+        </div>
+
+        <div className="flex flex-col gap-2 pt-1">
+          {CATEGORY_LINKS.map((c) => {
+            const href = `/collections/${c.slug}`;
+            const active = isActiveLink(href);
+
+            return (
+              <Link
+                key={c.slug}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className="group flex min-h-[44px] items-center justify-between rounded-2xl border px-3 py-3 transition-all duration-300 active:scale-[0.98]"
+                style={{
+                  borderColor: active ? "rgba(183,171,240,0.28)" : "transparent",
+                  background: active ? "rgba(183,171,240,0.10)" : "rgba(255,255,255,0.03)",
+                  boxShadow: active ? "inset 0 1px 0 rgba(255,255,255,0.05)" : "none",
+                }}
+                onClick={() => setOpen(false)}
+                tabIndex={open ? 0 : -1}
+              >
+                <span className="muv-text-strong text-sm uppercase tracking-[0.2em]">{c.name}</span>
+                <span className="muv-text-meta text-[10px] uppercase tracking-[0.24em]">{active ? "Open" : "View"}</span>
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <Link href="/account" className="flex min-h-[44px] items-center justify-between rounded-2xl px-3 py-3 transition-all duration-300 hover:bg-white/5 active:scale-[0.98] sm:hidden" onClick={() => setOpen(false)} tabIndex={open ? 0 : -1}>
+            <span className="muv-text-strong text-sm uppercase tracking-[0.2em]">Account</span>
+            <span className="muv-text-meta text-[10px] uppercase tracking-[0.24em]">Manage</span>
+          </Link>
+          <Link href="/contact" className="flex min-h-[44px] items-center justify-between rounded-2xl px-3 py-3 transition-all duration-300 hover:bg-white/5 active:scale-[0.98]" onClick={() => setOpen(false)} tabIndex={open ? 0 : -1}>
+            <span className="muv-text-strong text-sm uppercase tracking-[0.2em]">For Business</span>
+            <span className="muv-text-meta text-[10px] uppercase tracking-[0.24em]">Enquire</span>
+          </Link>
+        </div>
+      </nav>
+    </header>
+  );
+});

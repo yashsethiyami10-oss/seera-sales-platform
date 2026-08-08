@@ -1,0 +1,28 @@
+{
+  "chapter": "Marketing Decisions & Learning",
+  "relationships": [
+    { "from": "KO-PM-CH5-001", "type": "governs", "to": ["KO-PM-CH5-009","KO-PM-CH5-010"] },
+    { "from": "KO-PM-CH5-002", "type": "governs", "to": ["KO-PM-CH5-003","KO-PM-CH5-004","KO-PM-CH5-005","KO-PM-CH5-006","KO-PM-CH5-007"] },
+    { "from": "KO-PM-CH5-003", "type": "feeds", "to": ["KO-PM-CH5-004","KO-PM-CH5-005"] },
+    { "from": "KO-PM-CH5-008", "type": "feeds", "to": ["KO-PM-CH5-014"] },
+    { "from": "KO-PM-CH5-009", "type": "feeds", "to": ["KO-PM-CH5-010"] },
+    { "from": "KO-PM-CH5-001", "type": "summarizedBy", "to": ["KO-PM-CH5-015"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-PM-CH5-006", "type": "relatesTo", "to": "Domain 1 identity content (context only)" },
+    { "from": "KO-PM-CH5-012", "type": "parallelsStructurally", "to": "KO-BI-CH5-003" }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-PM-CH1-005", "type": "isExtendedBy", "to": "KO-PM-CH5-004" },
+    { "from": "KO-PM-CH2-001", "type": "isClosedBy", "to": "KO-PM-CH5-007" },
+    { "from": "KO-PM-CH2-002", "type": "isClosedBy", "to": "KO-PM-CH5-007" },
+    { "from": "KO-PM-CH2-008", "type": "isEnforcedBy", "to": "KO-PM-CH5-014" },
+    { "from": "KO-PM-CH2-009", "type": "isExtendedBy", "to": "KO-PM-CH5-008" },
+    { "from": "KO-PM-CH3-012", "type": "isComplementedBy", "to": "KO-PM-CH5-012" },
+    { "from": "KO-PM-CH4-010", "type": "isExtendedBy", "to": "KO-PM-CH5-011" },
+    { "from": "KO-PM-CH1-009", "type": "isParalleledBy", "to": "KO-PM-CH5-014" }
+  ],
+  "domainClosingNote": "Last chapter of Domain 2. No forward relationship to a Chapter 6 within this domain exists.",
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

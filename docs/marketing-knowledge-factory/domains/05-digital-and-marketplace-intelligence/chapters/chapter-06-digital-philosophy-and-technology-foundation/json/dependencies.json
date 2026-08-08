@@ -1,0 +1,12 @@
+{
+  "chapter": "Digital Philosophy & Technology Foundation",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part XII, Chapter 58", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 5 Chapter 7 (MUV Digital Ecosystem Architecture)", "status": "not yet built, this batch" },
+    { "dependent": "Domain 5 Chapter 10 (AI Systems & Intelligent Automation)", "status": "will extend KO-DM-CH6-003" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

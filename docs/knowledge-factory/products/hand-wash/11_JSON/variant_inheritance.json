@@ -1,0 +1,62 @@
+{
+  "productFamily": "MUV Hand Wash™",
+  "parentKnowledgeObjectCount": 65,
+  "variantKnowledgeObjectCount": 12,
+  "overridePoints": [
+    { "location": "Manufacturing SOP, Step 9", "instruction": "Add colour separately. Mix until shade is uniform. Do NOT premix with fragrance.", "field": "colour" },
+    { "location": "Manufacturing SOP, Step 10", "instruction": "Add fragrance separately. Mix gently for 10-15 minutes. Do NOT premix with colour.", "field": "fragrance" }
+  ],
+  "note": "Two variant-specific process lines exist here, unlike Floor Cleaner (colour only) or Body Wash (fragrance only, colour shared) — a real, sourced structural difference. The override point shape is never assumed to be a single field by default.",
+  "variantInheritance": [
+    {
+      "variant": "Silk Blossom",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "colour": "Purple",
+      "availablePackSizes": ["500ml", "5L"],
+      "overrides": [
+        { "koid": "KO-HW-SB-VAR-500", "overrideField": "colour", "value": "Purple" },
+        { "koid": "KO-HW-SB-VAR-5L", "overrideField": "colour", "value": "Purple" }
+      ],
+      "variantSpecificKOs": ["KO-HW-SB-VAR-500", "KO-HW-SB-VAR-5L", "KO-HW-DT-REC-SB-001"]
+    },
+    {
+      "variant": "Ocean Fresh",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "colour": "Blue",
+      "availablePackSizes": ["500ml", "5L"],
+      "overrides": [
+        { "koid": "KO-HW-OF-VAR-500", "overrideField": "colour", "value": "Blue" },
+        { "koid": "KO-HW-OF-VAR-5L", "overrideField": "colour", "value": "Blue" }
+      ],
+      "variantSpecificKOs": ["KO-HW-OF-VAR-500", "KO-HW-OF-VAR-5L", "KO-HW-DT-REC-OF-001"]
+    },
+    {
+      "variant": "Citrus Blast",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "colour": "Yellow",
+      "availablePackSizes": ["250ml", "500ml"],
+      "overrides": [
+        { "koid": "KO-HW-CB-VAR-250", "overrideField": "colour", "value": "Yellow" },
+        { "koid": "KO-HW-CB-VAR-500", "overrideField": "colour", "value": "Yellow" }
+      ],
+      "variantSpecificKOs": ["KO-HW-CB-VAR-250", "KO-HW-CB-VAR-500", "KO-HW-DT-REC-CB-001"]
+    },
+    {
+      "variant": "Life Shield",
+      "inheritsParent": true,
+      "inheritanceConfirmed": true,
+      "inheritanceNote": "Confirmed for formula/process/QC. NOT confirmed for any antibacterial/protective claim — no source assigns one (see safety.json KO-HW-SAFETY-010).",
+      "colour": "Pink",
+      "availablePackSizes": ["250ml", "500ml"],
+      "overrides": [
+        { "koid": "KO-HW-LS-VAR-250", "overrideField": "colour", "value": "Pink" },
+        { "koid": "KO-HW-LS-VAR-500", "overrideField": "colour", "value": "Pink" }
+      ],
+      "variantSpecificKOs": ["KO-HW-LS-VAR-250", "KO-HW-LS-VAR-500", "KO-HW-DT-REC-LS-001"]
+    }
+  ],
+  "comparisonToPriorPrecedents": "Unlike Floor Cleaner (colour-only override, 1 unsourced variant) and Body Wash (fragrance-only override, all variants symmetric), Hand Wash has TWO override points (colour + fragrance) AND asymmetric availability across variants — the first package combining both complications."
+}

@@ -1,0 +1,30 @@
+{
+  "productFamily": "MUV Black Phenyl™",
+  "koidPrefix": "KO-BP-",
+  "status": "DRAFT — Pending Founder Review",
+  "packageVersion": "1.0",
+  "sequenceInKnowledgeFactory": 8,
+  "structureVersion": "v2.1 (adds 14_FOUNDER_GAPS.md to the structure introduced for Pure Bleach)",
+  "precedingFrozenFamilies": [
+    "MUV Liquid Detergent™ (KO-LD-, FROZEN, FR-001/FR-002 remediated)",
+    "MUV Floral Toilet Cleaner™ (KO-TC-, FROZEN, remediated)",
+    "MUV Spark Dishwash Gel™ (KO-DW-, FROZEN, remediated)",
+    "MUV Fresh Bathroom Cleaner™ (KO-BC-, FROZEN, remediated)",
+    "MUV Crystal Glass Cleaner™ (KO-GC-, FROZEN, remediated)",
+    "MUV Floor Cleaner™ (KO-FC-, FROZEN, remediated)",
+    "MUV Pure Bleach™ (KO-PB-, CONDITIONAL FREEZE, compliant from inception)"
+  ],
+  "totalKnowledgeObjects": 65,
+  "totalMarkdownFiles": 13,
+  "jsonFolder": "11_JSON/",
+  "validationFolder": "12_Validation/",
+  "reportsFolder": "13_Reports/",
+  "commercialDataStored": false,
+  "commercialDataNote": "Zero commercial fields stored anywhere in this package. The one pricing figure found during source research (Product Chart row 22, tied to the 500ml entry) exists only as a labeled historical citation in 00_Source_Register.md. All commercial fields resolve via 10_LIVE_DATA_MAPPING.md.",
+  "canonicalName": "MUV Black Phenyl™",
+  "legacyName": "MUV Black Phenyl (no discrepancy — both sources match the official name exactly)",
+  "packSizes": ["1L"],
+  "confirmedConflict": "Pack size: Product Chart states 500ml; Production SOP states 1L. Resolved for customer-facing purposes as 1L per direct Founder Instruction; the discrepancy itself remains open in 14_FOUNDER_GAPS.md.",
+  "governanceDocuments": ["CONSTITUTION.md", "ARCHITECTURE.md", "VALIDATION_RULES.md", "FOUNDER_RULES.md"],
+  "stopRule": "Wait for explicit Founder approval before beginning the next Product Family."
+}

@@ -1,0 +1,28 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "totalGaps": 18,
+  "priority1Critical": 2,
+  "priority2Important": 6,
+  "priority3Standard": 10,
+  "note": "Two fewer gaps than Black Phenyl's 20 — no pack-size conflict here, and Black Phenyl's own identity-confirmation gap is resolved from this package's perspective.",
+  "gaps": [
+    { "id": 1, "priority": 1, "gap": "First aid instructions (eye/skin/inhalation/ingestion)", "relatedKoid": "KO-WP-SAFETY-004" },
+    { "id": 2, "priority": 1, "gap": "Consumer usage/dilution/contact-time instructions", "relatedKoid": "KO-WP-INTEL-005" },
+    { "id": 3, "priority": 2, "gap": "Storage condition — completely unsourced", "relatedKoid": "KO-WP-SAFETY-010" },
+    { "id": 4, "priority": 2, "gap": "Surface compatibility", "relatedKoid": "KO-WP-INTEL-003" },
+    { "id": 5, "priority": 2, "gap": "Shelf-life duration", "relatedKoid": "KO-WP-INTEL-010" },
+    { "id": 6, "priority": 2, "gap": "Real Safety Data Sheets referenced but not included", "relatedKoid": "KO-WP-SAFETY-001" },
+    { "id": 7, "priority": 2, "gap": "Disinfection efficacy / regulatory certification", "relatedKoid": "KO-WP-CONV-007" },
+    { "id": 8, "priority": 2, "gap": "Mixing compatibility with other cleaning products", "relatedKoid": "KO-WP-SAFETY-003" },
+    { "id": 9, "priority": 3, "gap": "Manufacturer name", "relatedKoid": "KO-WP-ARCH-001" },
+    { "id": 10, "priority": 3, "gap": "SKU code, barcode (per pack size)", "relatedKoid": "KO-WP-ARCH-002" },
+    { "id": 11, "priority": 3, "gap": "Fill weight (both pack sizes)", "relatedKoid": "KO-WP-ARCH-002" },
+    { "id": 12, "priority": 3, "gap": "Packaging dimensions, shipping weight", "relatedKoid": "KO-WP-ARCH-002" },
+    { "id": 13, "priority": 3, "gap": "Product images", "relatedKoid": "10_LIVE_DATA_MAPPING.md" },
+    { "id": 14, "priority": 3, "gap": "Spill management procedure", "relatedKoid": "KO-WP-SAFETY-011" },
+    { "id": 15, "priority": 3, "gap": "Disposal guidance", "relatedKoid": "KO-WP-SAFETY-012" },
+    { "id": 16, "priority": 3, "gap": "Child/pet-specific safety guidance", "relatedKoid": "KO-WP-SAFETY-008" },
+    { "id": 17, "priority": 3, "gap": "Institutional consumption-estimation tooling", "relatedKoid": null },
+    { "id": 18, "priority": 3, "gap": "Formal positioning/marketing statement", "relatedKoid": null }
+  ]
+}

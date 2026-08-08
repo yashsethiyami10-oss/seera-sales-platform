@@ -1,0 +1,49 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "founderRules": ["FR-003 — Knowledge Reuse First", "FR-004 — Variant Inheritance Architecture"],
+  "comparedAgainst": "No specific subset was named in this task's instruction (unlike White Phenyl's explicit list) — compared against the full set of nine prior packages, with Floor Cleaner given particular weight as the only other Variant Inheritance precedent.",
+  "totalKnowledgeObjects": 72,
+  "structuralBreakdown": {
+    "note": "Per FR-004's Parent/Variant architecture — a structural dimension, distinct from the FR-003 reuse dimension below.",
+    "parentObjects": 63,
+    "variantObjects": 9
+  },
+  "reuseBreakdown": {
+    "note": "Per FR-003's methodology-reuse dimension — cuts across the Parent/Variant structural split above.",
+    "parentObjectsReused": {
+      "count": 17,
+      "koids": ["KO-BW-INHERIT-001", "KO-BW-IDENT-001", "KO-BW-NAME-001", "KO-BW-DT-003", "KO-BW-SAFETY-010", "KO-BW-CONV-001", "KO-BW-CONV-002", "KO-BW-CONV-003", "KO-BW-CONV-004", "KO-BW-CONV-005", "KO-BW-CONV-006", "KO-BW-CONV-007", "KO-BW-CONV-008", "KO-BW-CONV-009", "KO-BW-CONV-010", "KO-BW-CONV-011", "KO-BW-CONV-012"],
+      "reusedFrom": [
+        { "pattern": "Variant Inheritance Architecture (Parent/Variant KO split, single-override-point identification)", "origin": "KO-FC-INHERIT-001 (Floor Cleaner) — the only other Variant Inheritance precedent this session", "usedBy": "KO-BW-INHERIT-001" },
+        { "pattern": "8-field Care Response/Conversation structure", "origin": "Bathroom Cleaner (originating package)", "usedBy": "all 12 KO-BW-CONV-* KOs" },
+        { "pattern": "Product-family identity table structure", "origin": "Black Phenyl / White Phenyl ARCH-001 pattern", "usedBy": "KO-BW-IDENT-001" },
+        { "pattern": "Naming-resolution/verification methodology (checked, confirmed no discrepancy)", "origin": "Bathroom Cleaner / Glass Cleaner / Pure Bleach / Floor Cleaner", "usedBy": "KO-BW-NAME-001" },
+        { "pattern": "Cross-product 'when another MUV product is more suitable' comparison methodology", "origin": "KO-BP-DT-003 (Black Phenyl), reused KO-WP-DT-003 (White Phenyl)", "usedBy": "KO-BW-DT-003" },
+        { "pattern": "Emergency-guidance behavioral rule (never diagnose, always escalate)", "origin": "KO-PB-SAFETY-013 (Pure Bleach), reused KO-BP-SAFETY-013 / KO-WP-SAFETY-013", "usedBy": "KO-BW-SAFETY-010" }
+      ]
+    },
+    "sharedObjects": {
+      "count": 2,
+      "koids": ["KO-BW-FAQ-002", "KO-BW-DT-004"],
+      "note": "Grounded in real platform code shared factory-wide (lib/intelligence/confidence-engine.ts, lib/eios/cognitive-state.ts)."
+    },
+    "variantObjectsCreatedFreshPerVariant": {
+      "count": 9,
+      "koids": ["KO-BW-CV-VAR-001", "KO-BW-CV-VAR-002", "KO-BW-VO-VAR-001", "KO-BW-VO-VAR-002", "KO-BW-MF-VAR-001", "KO-BW-MF-VAR-002", "KO-BW-DT-CV-001", "KO-BW-DT-VO-001", "KO-BW-DT-MF-001"],
+      "note": "The 8-field structure and recommendation-logic FORMAT is reused (already counted implicitly via the Variant Inheritance pattern); the actual variant-specific CONTENT (fragrance identity per variant) is genuinely new, independently sourced."
+    },
+    "newProductSpecificObjects": {
+      "count": 44,
+      "note": "Genuinely new content: formulation/mechanism/ingredient facts, the total safety-content-absence finding (unique to this product), the MUV Cleanse conflict finding, all Objection Handling content, most Product Intelligence KOs, and the FR-004 application record itself."
+    }
+  },
+  "additionalReusedTemplates": [
+    { "template": "10_LIVE_DATA_MAPPING.md 11-field table", "origin": "Black Phenyl / White Phenyl" },
+    { "template": "14_FOUNDER_GAPS.md priority-tiered register structure", "origin": "Black Phenyl / White Phenyl" },
+    { "template": "Two-track Product Quality Score methodology", "origin": "Pure Bleach" },
+    { "template": "Commercial Data Grep Check validation methodology", "origin": "Pure Bleach" }
+  ],
+  "duplicateKnowledgePrevented": "No product-specific fact was copied from any other package. The Variant Inheritance ARCHITECTURE (Parent/Variant split methodology) was reused from Floor Cleaner, but Body Wash's actual override point (fragrance, not colour) and all formulation/safety facts were independently sourced from this product's own Chart rows and SOP.",
+  "reusePercentage": 26.4,
+  "reusePercentageBasis": "(17 Parent Objects Reused + 2 Shared Objects) / 72 total Knowledge Objects = 19/72 = 26.4%. Lower than White Phenyl's 30.8% because this package's Variant-level content (9 KOs) and its uniquely severe safety-absence/seed-conflict findings (both product-specific, not reusable) make up a larger share of the total."
+}

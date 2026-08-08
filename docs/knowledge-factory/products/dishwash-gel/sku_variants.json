@@ -1,0 +1,49 @@
+{
+  "productFamily": "MUV Dishwash Gel™",
+  "skus": [
+    {
+      "koid": "KO-DW-VAR-001",
+      "packSize": "500 ml",
+      "fillWeightGrams": 508,
+      "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md." },
+      "historicalMrpCitation": { "mrpInr": 85, "source": "Product Chart row 9 (sole source)", "label": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API, never from this figure." },
+      "skuCode": null,
+      "barcode": null,
+      "colour": "Yellow",
+      "fragrance": "Lemon",
+      "packagingFormat": null,
+      "dimensions": null,
+      "shippingWeight": null
+    },
+    {
+      "koid": "KO-DW-VAR-002",
+      "packSize": "1 Litre",
+      "fillWeightGrams": 1012,
+      "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md." },
+      "historicalMrpCitation": { "mrpInr": 155, "source": "Product Chart row 10 (sole source)", "label": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API, never from this figure." },
+      "skuCode": null,
+      "barcode": null,
+      "colour": "Yellow",
+      "fragrance": "Lemon",
+      "packagingFormat": null,
+      "dimensions": null,
+      "shippingWeight": null
+    },
+    {
+      "koid": "KO-DW-VAR-003",
+      "packSize": "5 Litre",
+      "fillWeightGrams": 5020,
+      "pricing": { "status": "LIVE_LOOKUP_REQUIRED", "resolutionSource": "ProductVariant.mrp / ProductVariant.price via GET /api/products/[slug]", "note": "Never hardcoded — per FR-001/FR-002. See LIVE_DATA_MAPPING.md." },
+      "historicalMrpCitation": { "mrpInr": 699, "source": "Product Chart row 11 (sole source)", "label": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API, never from this figure." },
+      "skuCode": null,
+      "barcode": null,
+      "colour": "Yellow",
+      "fragrance": "Lemon",
+      "packagingFormat": null,
+      "dimensions": null,
+      "shippingWeight": null
+    }
+  ],
+  "nullFieldsNote": "null indicates REQUIRES FOUNDER INPUT — no source data exists, not a zero/empty value being asserted as fact.",
+  "fr001Fr002Note": "Per FR-001/FR-002, no SKU's live pricing/stock/image/URL/slug is stored in this file. Each SKU's 'pricing' field is a dynamic-lookup marker; 'historicalMrpCitation' retains the pre-FR-001 Product Chart figure solely as a labeled audit citation, never as a live fact. See LIVE_DATA_MAPPING.md."
+}

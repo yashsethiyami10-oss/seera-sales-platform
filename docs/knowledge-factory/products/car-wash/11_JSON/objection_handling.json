@@ -1,0 +1,13 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "totalObjectionKOs": 6,
+  "note": "Leaner set than most prior packages (6, not 8) — fewer real objection categories for a single-variant product.",
+  "objections": [
+    { "koid": "KO-CW-OBJ-001", "title": "\"Does this actually wax / gloss-protect my car?\"", "riskLevel": "CRITICAL" },
+    { "koid": "KO-CW-OBJ-002", "title": "\"Is it safe for [surface type]?\"", "riskLevel": "HIGH" },
+    { "koid": "KO-CW-OBJ-003", "title": "\"Why can't you give me usage/dilution instructions?\"", "fr006Referenced": true },
+    { "koid": "KO-CW-OBJ-004", "title": "Price/value objection" },
+    { "koid": "KO-CW-OBJ-005", "title": "Competitor comparison objection" },
+    { "koid": "KO-CW-OBJ-006", "title": "\"Isn't this just MUV Shield rebranded?\"" }
+  ]
+}

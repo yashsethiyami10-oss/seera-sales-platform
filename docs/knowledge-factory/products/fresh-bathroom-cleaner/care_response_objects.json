@@ -1,0 +1,78 @@
+{
+  "productFamily": "MUV Fresh Bathroom Cleaner™",
+  "sectionIntroducedThisPackage": true,
+  "totalCROs": 5,
+  "groundedIn": [
+    "lib/intelligence/eq-engine.ts",
+    "lib/intelligence/cq-engine.ts",
+    "lib/eios/cognitive-state.ts",
+    "lib/eios/verification-gate.ts",
+    "lib/support/ticket-service.ts"
+  ],
+  "careResponseObjects": [
+    {
+      "koid": "KO-BC-CRO-001",
+      "title": "Pricing Inquiry",
+      "version": "2.0 (remediated per FR-001/FR-002, 2026-07-31; supersedes v1.0 'Pricing Discrepancy Inquiry')",
+      "remediationNote": "Guidance/escalation/closing rewritten to remove hardcoded ₹ figures. Underlying care behavior (never guess, be transparent, escalate when needed) unchanged. See LIVE_DATA_MAPPING.md.",
+      "situation": "A customer or sales contact asks the price of MUV Fresh Bathroom Cleaner™.",
+      "customerGoal": "Get a firm, usable number to decide whether to buy or quote.",
+      "careGoal": "Never give a confident-sounding wrong number; be transparent that pricing is confirmed live rather than recited from memory.",
+      "opening": "Acknowledge the question directly — no delay, no deflection.",
+      "guidance": "State plainly that current pricing must be confirmed via the live Product Catalog / MUV website — this AI does not source pricing from its own knowledge content, by design. If asked why, it is acceptable to note that MUV's internal historical source records (pre-launch documents) show a past discrepancy that predates the live catalog and is not used for live, customer-facing answers today — without stating either historical figure.",
+      "whatToAvoid": "Picking a number 'to be helpful'; stating either of the two historical ₹ figures from internal source records as if it were a current price; implying the live catalog is untrustworthy because an old internal discrepancy once existed.",
+      "escalation": "If the live Product Catalog lookup cannot be completed or confirmed at the moment of asking, or the customer needs a firm number immediately, offer to connect them to a human who can confirm current pricing — do not attempt to state a number from memory or from this Knowledge Package.",
+      "closing": "Confirm the customer knows how to see the current price (product page / checkout, or a human follow-up if the live lookup wasn't available), without promising a specific number that isn't sourced live."
+    },
+    {
+      "koid": "KO-BC-CRO-002",
+      "title": "Safety / Skin Contact Concern",
+      "situation": "A customer reports the product touched their skin/eyes, or asks whether it's safe to touch.",
+      "customerGoal": "Know whether they need to take action, and get reassurance if nothing is wrong.",
+      "careGoal": "Take the report seriously without either alarming the customer unnecessarily or reassuring them with information that isn't actually sourced.",
+      "opening": "Respond immediately and directly — safety questions are never queued behind routine ones.",
+      "guidance": "State honestly that MUV doesn't yet have confirmed consumer safety guidance documented for this specific product, and recommend treating it like any acid-based cleaning product (rinse thoroughly, seek medical advice if irritation persists).",
+      "whatToAvoid": "Claiming the product is 'safe' because no data says otherwise; minimizing a real report to close the conversation faster; diagnosing a medical reaction.",
+      "escalation": "Always escalate to a human for any real contact report — a hard rule, matching the platform's real SAFETY-category logic.",
+      "closing": "Confirm the person knows a human is following up, and that the report itself is valuable regardless of severity.",
+      "alwaysEscalates": true
+    },
+    {
+      "koid": "KO-BC-CRO-003",
+      "title": "Ingredient / Formulation Curiosity",
+      "situation": "A customer asks what's in the product.",
+      "customerGoal": "Understand what they'd be using in their home.",
+      "careGoal": "Give real information at the level of detail that's actually confirmed, without stonewalling or inventing detail.",
+      "opening": "Treat the question as reasonable and welcome, not as scrutiny to deflect.",
+      "guidance": "State the real, named materials (DM Water, HCl, SLES, Acid Thickener, a colourant, a fragrance) plainly, and note honestly that full chemical names and this product's specific colour/fragrance identity aren't published yet.",
+      "whatToAvoid": "Expanding abbreviations (HCl, SLES) into invented full chemical names or percentages; implying more transparency exists than actually does.",
+      "escalation": "Not typically required unless tied to a specific allergy/medical concern — treat as a safety scenario (KO-BC-CRO-002) if so.",
+      "closing": "Offer that more detail can be provided once confirmed, without promising a timeline."
+    },
+    {
+      "koid": "KO-BC-CRO-004",
+      "title": "Product Complaint / Quality Issue",
+      "situation": "A customer reports the product doesn't look/smell/perform as expected.",
+      "customerGoal": "Get the problem acknowledged and, ideally, resolved.",
+      "careGoal": "Acknowledge the real, named QC criteria this failure touches, without diagnosing a root cause the AI has no basis to know.",
+      "opening": "Acknowledge the specific issue described, not a generic apology.",
+      "guidance": "Confirm which of the sourced QC criteria the report relates to, and create a real support ticket rather than offering a self-service fix with no sourced basis.",
+      "whatToAvoid": "Guessing a root cause; promising a specific resolution the AI isn't authorized to guarantee.",
+      "escalation": "Always routes to a real SupportTicket (category: PRODUCT_ISSUE) — always creates a real record.",
+      "closing": "Confirm the ticket exists and what happens next, factually.",
+      "alwaysCreatesTicket": true
+    },
+    {
+      "koid": "KO-BC-CRO-005",
+      "title": "Availability / Where to Buy",
+      "situation": "A customer asks where/how to buy MUV Fresh Bathroom Cleaner™.",
+      "customerGoal": "Find out how to actually get the product.",
+      "careGoal": "Be straightforward that it isn't listed for sale yet, rather than implying availability that doesn't exist.",
+      "opening": "Direct, no false enthusiasm about availability that isn't real.",
+      "guidance": "State plainly this product isn't yet in the online catalogue.",
+      "whatToAvoid": "Suggesting a workaround purchase path that doesn't exist; implying 'coming soon' without a sourced timeline.",
+      "escalation": "Not required unless the customer is a bulk/institutional buyer with an active need.",
+      "closing": "Offer to note their interest if the platform has a real mechanism for that (REQUIRES FOUNDER INPUT on whether such a mechanism exists)."
+    }
+  ]
+}

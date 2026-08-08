@@ -1,0 +1,26 @@
+{
+  "chapter": "Marketplace Operations",
+  "relationships": [
+    { "from": "KO-SC-CH3-001", "type": "governs", "to": ["KO-SC-CH3-002","KO-SC-CH3-003","KO-SC-CH3-004","KO-SC-CH3-005","KO-SC-CH3-006","KO-SC-CH3-007","KO-SC-CH3-008","KO-SC-CH3-009","KO-SC-CH3-010"] },
+    { "from": "KO-SC-CH3-002", "type": "feeds", "to": ["KO-SC-CH3-003"] },
+    { "from": "KO-SC-CH3-003", "type": "feeds", "to": ["KO-SC-CH3-004"] },
+    { "from": "KO-SC-CH3-004", "type": "feeds", "to": ["KO-SC-CH3-005"] },
+    { "from": "KO-SC-CH3-005", "type": "feeds", "to": ["KO-SC-CH3-006"] },
+    { "from": "KO-SC-CH3-006", "type": "feeds", "to": ["KO-SC-CH3-007"] },
+    { "from": "KO-SC-CH3-007", "type": "feeds", "to": ["KO-SC-CH3-008"] },
+    { "from": "KO-SC-CH3-008", "type": "feeds", "to": ["KO-SC-CH3-009"] },
+    { "from": "KO-SC-CH3-009", "type": "feeds", "to": ["KO-SC-CH3-010"] },
+    { "from": "KO-SC-CH3-001", "type": "summarizedBy", "to": ["KO-SC-CH3-011"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-SC-CH3-006", "type": "extends", "to": "KO-SC-CH1-002" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-SC-CH3-007", "type": "cites", "to": "Domain 2 (Marketing — communication tone) and Domain 3 (Customer Experience — resolution)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-SC-CH3-011", "type": "transitionsTo", "to": "Chapter 4 (Marketplace Content & Conversion)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

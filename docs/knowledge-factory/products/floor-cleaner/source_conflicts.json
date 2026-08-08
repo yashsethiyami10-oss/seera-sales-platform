@@ -1,0 +1,52 @@
+{
+  "productFamily": "MUV Floor Cleaner™",
+  "commercialDataDisclaimer": "Per FR-001/FR-002 (see FOUNDER_RULES.md). Every ₹ value in this file's conflicts/cleanComparisons arrays is a historical source citation only, recorded during source audit — NOT a live commercial value. Current pricing must always be resolved from the Product Catalog API, never from these figures. See LIVE_DATA_MAPPING.md.",
+  "totalComparisons": 6,
+  "genuineUnresolvedConflicts": 2,
+  "resolvedByDirectFounderInstruction": 0,
+  "dataGaps": 1,
+  "cleanResults": 2,
+  "note": "First package with zero naming conflicts requiring Founder-instruction resolution — Velvet Mist and Cloud Walk both matched the source material exactly.",
+  "conflicts": [
+    {
+      "id": "CONFLICT-001",
+      "topic": "Pricing, Velvet Mist 5L",
+      "sourceA": { "name": "Product Chart", "location": "row 16", "value": "₹550" },
+      "sourceB": { "name": "Production SOP", "location": "Packing Standard table", "value": "₹549" },
+      "conflict": "₹1 discrepancy",
+      "activeSourceDefault": "Product Chart (₹550)",
+      "reason": "Corroborates the pre-existing lib/knowledge-factory/conflict-service.ts header comment naming Floor Cleaner among products with known pricing conflicts",
+      "founderDecisionRequired": true,
+      "status": "BLOCKED — not resolved"
+    },
+    {
+      "id": "CONFLICT-002",
+      "topic": "Pricing, Cloud Walk 5L",
+      "sourceA": { "name": "Product Chart", "location": "row 17", "value": "₹600" },
+      "sourceB": { "name": "Production SOP", "location": "Packing Standard table", "value": "₹549" },
+      "conflict": "₹51 discrepancy — the largest pricing gap of any product/variant across all six product families audited this session",
+      "activeSourceDefault": "Product Chart (₹600)",
+      "reason": "Same corroborating conflict-service.ts comment as CONFLICT-001",
+      "founderDecisionRequired": true,
+      "status": "BLOCKED — not resolved"
+    }
+  ],
+  "cleanComparisons": [
+    { "id": "Comparison-3", "topic": "Pricing, 1L (both variants)", "result": "CLEAN — Chart and SOP agree exactly at ₹150 for both Velvet Mist and Cloud Walk" },
+    { "id": "Comparison-6", "topic": "Competitor-name check", "result": "CLEAN — zero competitor names found, including Lizol, Domex, Dettol" }
+  ],
+  "namingComparison": {
+    "id": "Comparison-4",
+    "topic": "Naming (Velvet Mist, Cloud Walk)",
+    "result": "CLEAN — no naming conflict. Both official variant names match the Product Chart and SOP verbatim, unlike Bathroom Cleaner's 'Fresh' or Glass Cleaner's 'Crystal.'",
+    "founderDecisionRequired": false
+  },
+  "dataGapComparisons": [
+    {
+      "id": "Comparison-5",
+      "topic": "Rose Water existence and formulation",
+      "note": "Not a two-source conflict — a genuine absence of any corroborating source. The Founder Instruction confirms name/family-membership only; no source confirms formulation, colour, fragrance, or pricing.",
+      "founderDecisionRequired": true
+    }
+  ]
+}

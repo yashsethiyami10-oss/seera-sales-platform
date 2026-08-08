@@ -1,0 +1,16 @@
+{
+  "chapter": "Brand Origin & Naming",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part III, Chapter 11", "type": "sourceDocument", "status": "exists, verified, unmodified" },
+    { "source": "PHASE_3_BRAND_EXPERIENCE_LANGUAGE.md", "type": "sourceDocument", "usedBy": ["KO-BI-CH1-006"], "status": "exists, verified, unmodified" },
+    { "source": "docs/phase-1/PHASE_1A_KNOWLEDGE_REFERENCES.md", "type": "resolutionBasis", "usedBy": ["KO-BI-CH1-006"], "status": "exists, verified, unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 1 Chapter 2 — Logo & Mark System", "status": "not started" },
+    { "dependent": "Domain 1 Chapter 3 — Language, Pronunciation & Tagline", "status": "not started" },
+    { "dependent": "Domain 6 — Content Intelligence", "status": "not started" },
+    { "dependent": "Domain 7 — Creative Intelligence", "status": "not started" }
+  ],
+  "circularDependencyCheck": "PASS — none found",
+  "unstableDependencyCheck": "PASS — no dependency on draft/in-progress content"
+}

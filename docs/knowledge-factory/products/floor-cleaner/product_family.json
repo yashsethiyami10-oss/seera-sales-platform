@@ -1,0 +1,38 @@
+{
+  "officialParentName": "MUV Floor Cleaner™",
+  "manufacturingName": "MUV FLOOR CLEANER",
+  "category": "Home Care",
+  "categoryConfidence": "MEDIUM",
+  "variantCount": 3,
+  "sourcedVariantCount": 2,
+  "unsourcedVariantCount": 1,
+  "variants": [
+    {
+      "name": "MUV Velvet Mist Floor Cleaner™",
+      "status": "FULLY SOURCED",
+      "colour": "Lavender",
+      "packSizes": ["1L", "5L"]
+    },
+    {
+      "name": "MUV Cloud Walk Floor Cleaner™",
+      "status": "FULLY SOURCED",
+      "colour": "Blue",
+      "packSizes": ["1L", "5L"]
+    },
+    {
+      "name": "MUV Rose Water Floor Cleaner™",
+      "status": "NAMED BUT UNSOURCED",
+      "colour": null,
+      "packSizes": [],
+      "note": "Named directly by the Founder as an Official Variant. Zero corroborating source material exists anywhere in the repository (no Product Chart row, no SOP mention, no Knowledge Library mention, no seed data). REQUIRES FOUNDER INPUT for all formulation, colour, fragrance, packaging, and pricing facts."
+    }
+  ],
+  "sourceAuthorityOrder": [
+    "1. Current Product Chart",
+    "2. Founder Instructions",
+    "3. Production SOP",
+    "4. Knowledge Library",
+    "5. Seed Data",
+    "6. Historical Documents"
+  ]
+}

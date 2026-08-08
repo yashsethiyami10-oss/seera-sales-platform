@@ -1,0 +1,28 @@
+{
+  "chapter": "Marketplace Content & Conversion",
+  "relationships": [
+    { "from": "KO-SC-CH4-001", "type": "governs", "to": ["KO-SC-CH4-002","KO-SC-CH4-003","KO-SC-CH4-004","KO-SC-CH4-005","KO-SC-CH4-006","KO-SC-CH4-007","KO-SC-CH4-008","KO-SC-CH4-009","KO-SC-CH4-010"] },
+    { "from": "KO-SC-CH4-002", "type": "feeds", "to": ["KO-SC-CH4-003"] },
+    { "from": "KO-SC-CH4-003", "type": "feeds", "to": ["KO-SC-CH4-004"] },
+    { "from": "KO-SC-CH4-004", "type": "feeds", "to": ["KO-SC-CH4-005"] },
+    { "from": "KO-SC-CH4-005", "type": "feeds", "to": ["KO-SC-CH4-006"] },
+    { "from": "KO-SC-CH4-006", "type": "feeds", "to": ["KO-SC-CH4-007"] },
+    { "from": "KO-SC-CH4-007", "type": "feeds", "to": ["KO-SC-CH4-008"] },
+    { "from": "KO-SC-CH4-008", "type": "feeds", "to": ["KO-SC-CH4-009"] },
+    { "from": "KO-SC-CH4-009", "type": "feeds", "to": ["KO-SC-CH4-010"] },
+    { "from": "KO-SC-CH4-001", "type": "summarizedBy", "to": ["KO-SC-CH4-011"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-SC-CH4-003", "type": "cites", "to": "KO-SC-CH1-002" },
+    { "from": "KO-SC-CH4-003", "type": "cites", "to": "KO-SC-CH3-006, KO-SC-CH3-009" },
+    { "from": "KO-SC-CH4-010", "type": "relatesTo", "to": "KO-SC-CH2-011" }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-SC-CH4-003", "type": "cites", "to": "Domain 1 (Brand Intelligence — Volume III, identity/voice)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-SC-CH4-011", "type": "transitionsTo", "to": "Chapter 5 (Commercial Decisions & Channel Evolution)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

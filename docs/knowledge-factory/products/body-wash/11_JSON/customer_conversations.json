@@ -1,0 +1,20 @@
+{
+  "productFamily": "MUV Body Wash™",
+  "totalFlows": 12,
+  "flows": [
+    { "koid": "KO-BW-CONV-001", "scenario": "First-Time Customer" },
+    { "koid": "KO-BW-CONV-002", "scenario": "Returning Customer" },
+    { "koid": "KO-BW-CONV-003", "scenario": "Daily Shower Routine" },
+    { "koid": "KO-BW-CONV-004", "scenario": "Oily Skin" },
+    { "koid": "KO-BW-CONV-005", "scenario": "Dry Skin" },
+    { "koid": "KO-BW-CONV-006", "scenario": "Sensitive Skin", "note": "only if verified — it is not; flow documents this honestly" },
+    { "koid": "KO-BW-CONV-007", "scenario": "Gym Users" },
+    { "koid": "KO-BW-CONV-008", "scenario": "Family Use" },
+    { "koid": "KO-BW-CONV-009", "scenario": "Premium Fragrance Selection" },
+    { "koid": "KO-BW-CONV-010", "scenario": "Fragrance Comparison" },
+    { "koid": "KO-BW-CONV-011", "scenario": "Variant Recommendation" },
+    { "koid": "KO-BW-CONV-012", "scenario": "Gift Recommendation" }
+  ],
+  "structure": ["Situation", "Customer Goal", "Care Goal", "Opening", "Guidance", "What to Avoid", "Escalation", "Closing"],
+  "structureReusedFrom": "Bathroom Cleaner (originating package for the 8-field Care Response/Conversation template)"
+}

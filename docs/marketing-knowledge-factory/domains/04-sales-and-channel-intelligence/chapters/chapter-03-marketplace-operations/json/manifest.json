@@ -1,0 +1,19 @@
+{
+  "domain": "Sales & Channel Intelligence",
+  "domainNumber": 4,
+  "chapter": "Marketplace Operations",
+  "chapterNumber": 3,
+  "koidPrefix": "KO-SC-CH3-",
+  "sourceChapter": "MUV Knowledge Library, Part VIII, Chapter 38",
+  "sourceLineRange": "8986-9281",
+  "totalKnowledgeObjects": 11,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-3, all frozen)"
+  ],
+  "domainMappingNote": "Domain 4 is a clean single-Part mirror of Part VIII, Chapters 36-40 — no synthesis or Founder escalation required."
+}

@@ -1,0 +1,8 @@
+{
+  "productFamily": "MUV Hand Wash™",
+  "totalFaqKOs": 2,
+  "faqs": [
+    { "koid": "KO-HW-FAQ-001", "title": "Customer FAQ Set", "questionCount": 8, "highRiskQuestions": ["Is Life Shield antibacterial?", "Is it safe for sensitive skin?", "Why isn't [variant] available in [size]?", "How long does it last / how should I store it?"] },
+    { "koid": "KO-HW-FAQ-002", "title": "AI Response Guidance" }
+  ]
+}

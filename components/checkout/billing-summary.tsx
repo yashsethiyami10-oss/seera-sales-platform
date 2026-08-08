@@ -1,0 +1,75 @@
+"use client";
+
+import { useState } from "react";
+import { Tag } from "lucide-react";
+import { Button } from "@/components/ui/primitives";
+import { validateCoupon } from "@/actions/coupons";
+import { useCart } from "@/lib/cart-context";
+
+/**
+ * Reuses the exact same `validateCoupon` server action Cart already calls
+ * (components/cart/cart-client.tsx) — same real business logic, not
+ * reimplemented. Phase 1D correction pass — the applied coupon is now read
+ * from the shared CartProvider (`useCart()`), the same persisted state Cart
+ * writes to, instead of separate local state plus a callback prop. That
+ * separation was the confirmed cause of the discount disappearing between
+ * Cart and Checkout; `createOrder` (actions/orders.ts) still re-validates
+ * the coupon authoritatively again at order-creation time regardless — this
+ * preview is honest, not the final word.
+ */
+export function BillingSummary({
+  subtotal,
+  shippingFee,
+}: {
+  subtotal: number;
+  shippingFee: number;
+}) {
+  const { coupon, applyCoupon: applyCouponToCart, removeCoupon } = useCart();
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  async function applyCoupon() {
+    setError(null);
+    setChecking(true);
+    const result = await validateCoupon({ code: input, subtotal });
+    setChecking(false);
+    if (result.success) {
+      applyCouponToCart({ code: result.data.code, discount: result.data.discount });
+      setInput("");
+    } else {
+      setError(result.error.message);
+    }
+  }
+
+  const discount = coupon?.discount ?? 0;
+  const total = subtotal - discount + shippingFee;
+
+  return (
+    <div className="muv-card lg:sticky" style={{ top: 100 }}>
+      <h3 className="font-display muv-text-solid text-base mb-4" style={{ fontWeight: 500 }}>Order Summary</h3>
+
+      {coupon ? (
+        <div className="flex items-center justify-between mb-4 text-sm">
+          <span className="flex items-center gap-2 muv-text-solid"><Tag size={14} style={{ color: "var(--lavender)" }} /> {coupon.code} applied</span>
+          <button type="button" onClick={removeCoupon} className="muv-text-meta text-xs">Remove</button>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <div className="flex gap-2">
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Coupon code" aria-label="Coupon code" className="muv-input flex-1" style={{ minHeight: 40, fontSize: 13 }} />
+            <Button variant="ghost" onClick={applyCoupon} disabled={checking || !input}>{checking ? "…" : "Apply"}</Button>
+          </div>
+          {error && <p className="muv-text-meta text-xs mt-2">{error}</p>}
+        </div>
+      )}
+
+      <div className="flex justify-between muv-text-body text-sm py-1"><span>Subtotal</span><span>₹{subtotal}</span></div>
+      {discount > 0 && <div className="flex justify-between text-sm py-1" style={{ color: "var(--lavender)" }}><span>Coupon Discount</span><span>−₹{discount}</span></div>}
+      <div className="flex justify-between muv-text-body text-sm py-1"><span>Shipping</span><span>{shippingFee === 0 ? "FREE" : `₹${shippingFee}`}</span></div>
+      <div className="flex justify-between muv-text-meta text-sm py-1"><span>Tax</span><span>Included in item price</span></div>
+      <div className="my-3 h-px" style={{ background: "var(--hairline)" }} />
+      <div className="flex justify-between font-display muv-text-solid text-lg"><span>Grand Total</span><span>₹{total}</span></div>
+    </div>
+  );
+}

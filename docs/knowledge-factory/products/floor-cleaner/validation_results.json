@@ -1,0 +1,33 @@
+{
+  "productFamily": "MUV Floor Cleaner™",
+  "validationDate": "2026-07-31",
+  "remediationNote": "Package remediated 2026-07-31 for FR-001/FR-002 (Commercial/Knowledge Separation, Full Remediation Pass) — see FOUNDER_RULES.md and LIVE_DATA_MAPPING.md.",
+  "checks": [
+    { "check": "One Parent Product confirmed (MUV Floor Cleaner™)", "result": "PASS" },
+    { "check": "Three Variants documented (Velvet Mist, Cloud Walk, Rose Water)", "result": "PASS" },
+    { "check": "Variant Inheritance Map documents full Parent-to-Variant structure", "result": "PASS" },
+    { "check": "No Duplicate Parent Knowledge — shared formula/process/QC/safety recorded exactly once", "result": "PASS" },
+    { "check": "No hallucinated chemistry/formulation/QC/safety data", "result": "PASS" },
+    { "check": "Rose Water never presented as equally sourced as Velvet Mist/Cloud Walk", "result": "PASS" },
+    { "check": "Pricing (1L and 5L, all variants) never answered from package content — always deferred to a live Product Catalog lookup; historical Chart-vs-SOP 5L conflicts remain only as labeled source-audit citations", "result": "PASS" },
+    { "check": "Commercial Data Exclusion (FR-001/FR-002) — no Knowledge Object states a live MRP, price, discount, stock, image, URL, or slug value; all such fields deferred to LIVE_DATA_MAPPING.md", "result": "PASS" },
+    { "check": "No naming conflict incorrectly invented for Velvet Mist/Cloud Walk", "result": "PASS" },
+    { "check": "Zero manufacturing safety/QC criteria correctly reported as absent, not invented", "result": "PASS" },
+    { "check": "Competitor brand scan performed with word-boundary matching, Lizol/Domex/Dettol explicitly checked", "result": "PASS" },
+    { "check": "Canonical names used consistently across all markdown/JSON files", "result": "PASS" },
+    { "check": "Knowledge Visibility Matrix maps to real KnowledgeLayer/RBAC code, addresses Rose Water visibility discipline", "result": "PASS" },
+    { "check": "9 CROs grounded in real EQ/CQ engine code; 6 Parent scenarios + 3 Variant scenarios present", "result": "PASS" },
+    { "check": "Knowledge Reuse Report confirms zero modification to 5 frozen prior packages; Parent/Variant split reported per requested structure", "result": "PASS" },
+    { "check": "All 26 markdown files present, in the file order specified by this task, plus LIVE_DATA_MAPPING.md added 2026-07-31 per FR-002 (27 total)", "result": "PASS" },
+    { "check": "All 11 JSON files present and parse as valid JSON", "result": "PASS" },
+    { "check": "Knowledge Object count consistent across knowledge_objects.json (54) and markdown KOID grep (54)", "result": "PASS" },
+    { "check": "Parent/Variant split consistent (46/8) across knowledge_objects.json, variant_inheritance.json, and 24_Knowledge_Reuse_Report.md", "result": "PASS" },
+    { "check": "Relationship edge count consistent between summary field and array length (62)", "result": "PASS" },
+    { "check": "Founder Input gap-category count consistent (39) between register markdown and JSON", "result": "PASS" },
+    { "check": "Confidence tier breakdown recount matches actual per-KO tiers (54 total)", "result": "PASS" }
+  ],
+  "totalChecks": 22,
+  "passed": 22,
+  "failed": 0,
+  "overallResult": "PASS — package internally consistent, no hallucination detected, all gaps explicitly marked, Variant Inheritance architecture correctly implemented, FR-001/FR-002 Commercial Data Exclusion remediation complete"
+}

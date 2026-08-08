@@ -1,0 +1,1142 @@
+{
+  "generatedAt": "2026-08-05T14:50:50.210Z",
+  "before": {
+    "productCount": 26,
+    "variantCount": 44
+  },
+  "after": {
+    "productCount": 20,
+    "variantCount": 37
+  },
+  "mutations": {
+    "renames": [
+      {
+        "id": "cmsb3tv9g0018ofv3rm3mflr8",
+        "slug": "muv-toilet-cleaner",
+        "oldName": "Muv Toilet Cleaner",
+        "newName": "Muv Floral Toilet Cleaner"
+      },
+      {
+        "id": "cmsb3tyo5001mofv3xcazw8mb",
+        "slug": "muv-dishwash-gel",
+        "oldName": "Muv Dishwash Gel",
+        "newName": "Muv Spark Dishwash Gel"
+      },
+      {
+        "id": "cmsb3u6bh0027ofv3feefe47n",
+        "slug": "muv-bathroom-cleaner",
+        "oldName": "Muv Bathroom Cleaner",
+        "newName": "Muv Fresh Bathroom Cleaner"
+      },
+      {
+        "id": "cmsb3u864002eofv3ytkx48hn",
+        "slug": "muv-glass-cleaner",
+        "oldName": "Muv Glass Cleaner",
+        "newName": "Muv Crystal Glass Cleaner"
+      },
+      {
+        "id": "cmsb3uldy0045ofv32vk1a180",
+        "slug": "muv-bleach",
+        "oldName": "Muv Bleach",
+        "newName": "Muv Pure Bleach"
+      },
+      {
+        "id": "cmsb3ufyp003dofv3welv2gay",
+        "slug": "muv-car-wash",
+        "oldName": "Muv Car Wash",
+        "newName": "Muv Radiance Car Wash"
+      }
+    ],
+    "categoryMove": {
+      "id": "cmsb3uldy0045ofv32vk1a180",
+      "from": "cmsb2gv500001vw1p30qw4g5z",
+      "to": "cmsb2guap0000vw1py7gp9r28"
+    },
+    "blackPhenylVariantCreated": {
+      "productId": "cmsb49tth0001piimpj61tfkv",
+      "variantId": "cmsg7f7mk0002132dbec6diw6",
+      "sku": "MUV-BP-STD-1000",
+      "size": "1L",
+      "price": 80,
+      "mrp": 80,
+      "inventoryId": "cmsg7f7t00004132dok479avv",
+      "productStatusLeftAs": "DRAFT"
+    },
+    "mockProductsDeleted": [
+      {
+        "id": "cmsfq8kft000daupu4wysqyhy",
+        "slug": "muv-bloom",
+        "name": "MUV Bloom",
+        "variantIds": [
+          "cmsfq8ky5000faupue6jn756a"
+        ]
+      },
+      {
+        "id": "cmsfq8ix70007aupu0fh7it2e",
+        "slug": "muv-noir",
+        "name": "MUV Noir",
+        "variantIds": [
+          "cmsfq8jkl0009aupuaftnoy1o"
+        ]
+      },
+      {
+        "id": "cmsfq8lgq000jaupuzb9ouaaj",
+        "slug": "muv-renew",
+        "name": "MUV Renew",
+        "variantIds": [
+          "cmsfq8lv1000lauputf8886rx",
+          "cmsfq8mea000paupu4pqng4k1"
+        ]
+      },
+      {
+        "id": "cmsfq8mw8000taupu2ojdp7km",
+        "slug": "muv-cleanse",
+        "name": "MUV Cleanse",
+        "variantIds": [
+          "cmsfq8nbf000vaupuh6b44pks",
+          "cmsfq8nu2000zaupuksp0il9i"
+        ]
+      },
+      {
+        "id": "cmsfq8oc50013aupumkxt5tf1",
+        "slug": "muv-silk-hair-wash",
+        "name": "MUV Silk Hair Wash",
+        "variantIds": [
+          "cmsfq8os10015aupupj8zbhhf"
+        ]
+      },
+      {
+        "id": "cmsfq8p9z0019aupu6nuv2ycy",
+        "slug": "muv-shield",
+        "name": "MUV Shield",
+        "variantIds": [
+          "cmsfq8pop001bauputd41wvmv"
+        ]
+      }
+    ]
+  },
+  "beforeFullState": [
+    {
+      "id": "cmsfq8kft000daupu4wysqyhy",
+      "name": "MUV Bloom",
+      "slug": "muv-bloom",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsfq8ky5000faupue6jn756a",
+          "sku": "MUV-HC-BLM-250",
+          "size": "250ml",
+          "price": 449,
+          "mrp": 549
+        }
+      ]
+    },
+    {
+      "id": "cmsfq8mw8000taupu2ojdp7km",
+      "name": "MUV Cleanse",
+      "slug": "muv-cleanse",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gvpb0002vw1p6n0r1gv8",
+      "variants": [
+        {
+          "id": "cmsfq8nbf000vaupuh6b44pks",
+          "sku": "MUV-BC-CLN-250",
+          "size": "250ml",
+          "price": 299,
+          "mrp": 349
+        },
+        {
+          "id": "cmsfq8nu2000zaupuksp0il9i",
+          "sku": "MUV-BC-CLN-500",
+          "size": "500ml",
+          "price": 499,
+          "mrp": 599
+        }
+      ]
+    },
+    {
+      "id": "cmsfq8ix70007aupu0fh7it2e",
+      "name": "MUV Noir",
+      "slug": "muv-noir",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsfq8jkl0009aupuaftnoy1o",
+          "sku": "MUV-HC-NOR-250",
+          "size": "250ml",
+          "price": 499,
+          "mrp": 599
+        }
+      ]
+    },
+    {
+      "id": "cmsfq8lgq000jaupuzb9ouaaj",
+      "name": "MUV Renew",
+      "slug": "muv-renew",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsfq8lv1000lauputf8886rx",
+          "sku": "MUV-FC-REN-500",
+          "size": "500ml",
+          "price": 349,
+          "mrp": 429
+        },
+        {
+          "id": "cmsfq8mea000paupu4pqng4k1",
+          "sku": "MUV-FC-REN-1L",
+          "size": "1L",
+          "price": 599,
+          "mrp": 749
+        }
+      ]
+    },
+    {
+      "id": "cmsfq8p9z0019aupu6nuv2ycy",
+      "name": "MUV Shield",
+      "slug": "muv-shield",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gwrx0004vw1pwzlhalm5",
+      "variants": [
+        {
+          "id": "cmsfq8pop001bauputd41wvmv",
+          "sku": "MUV-CC-SHD-500",
+          "size": "500ml",
+          "price": 599,
+          "mrp": 749
+        }
+      ]
+    },
+    {
+      "id": "cmsfq8oc50013aupumkxt5tf1",
+      "name": "MUV Silk Hair Wash",
+      "slug": "muv-silk-hair-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsfq8os10015aupupj8zbhhf",
+          "sku": "MUV-PC-SLK-250",
+          "size": "250ml",
+          "price": 379,
+          "mrp": 449
+        }
+      ]
+    },
+    {
+      "id": "cmsb3u6bh0027ofv3feefe47n",
+      "name": "Muv Bathroom Cleaner",
+      "slug": "muv-bathroom-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3u6zs0029ofv3cjlpnuy9",
+          "sku": "MUV-BC-STD-500",
+          "size": "500ml",
+          "price": 70,
+          "mrp": 70
+        }
+      ]
+    },
+    {
+      "id": "cmsb49tth0001piimpj61tfkv",
+      "name": "Muv Black Phenyl",
+      "slug": "muv-black-phenyl",
+      "status": "DRAFT",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": []
+    },
+    {
+      "id": "cmsb3uldy0045ofv32vk1a180",
+      "name": "Muv Bleach",
+      "slug": "muv-bleach",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsb3ulnx0047ofv3zw3ea6rg",
+          "sku": "MUV-BL-STD-500",
+          "size": "500ml",
+          "price": 60,
+          "mrp": 60
+        }
+      ]
+    },
+    {
+      "id": "cmsb3ufyp003dofv3welv2gay",
+      "name": "Muv Car Wash",
+      "slug": "muv-car-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gwrx0004vw1pwzlhalm5",
+      "variants": [
+        {
+          "id": "cmsb3ugme003fofv3u2yqremx",
+          "sku": "MUV-CW-STD-500",
+          "size": "500ml",
+          "price": 70,
+          "mrp": 70
+        },
+        {
+          "id": "cmsb3ui4i003mofv3hgv9ue89",
+          "sku": "MUV-CW-STD-5000",
+          "size": "5L",
+          "price": 550,
+          "mrp": 550
+        }
+      ]
+    },
+    {
+      "id": "cmsb3uwhz005bofv3s48xxtkn",
+      "name": "Muv Citrus Blast Hand Wash",
+      "slug": "muv-citrus-blast-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3uyyu005kofv3htsn440l",
+          "sku": "MUV-HW-CB-500",
+          "size": "500ml",
+          "price": 85,
+          "mrp": 85
+        },
+        {
+          "id": "cmsb3ux1l005dofv3jwa2zycc",
+          "sku": "MUV-HW-CB-250",
+          "size": "250ml",
+          "price": 70,
+          "mrp": 70
+        },
+        {
+          "id": "cmsb3v0sa005rofv3gm5au4j9",
+          "sku": "MUV-HW-CB-5000",
+          "size": "5L",
+          "price": 650,
+          "mrp": 650
+        }
+      ]
+    },
+    {
+      "id": "cmsb3ubd3002sofv3gv5w664c",
+      "name": "Muv Cloud Walk Floor Cleaner",
+      "slug": "muv-cloud-walk-floor-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3ueup0038ofv376tysk3a",
+          "sku": "MUV-FC-CWK-5000",
+          "size": "5L",
+          "price": 600,
+          "mrp": 600
+        },
+        {
+          "id": "cmsb3ubml002uofv3yah3dk32",
+          "sku": "MUV-FC-CWK-1000",
+          "size": "1L",
+          "price": 150,
+          "mrp": 150
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tlg8000gofv3isius90n",
+      "name": "Muv Cool Water Liquid Detergent",
+      "slug": "muv-cool-water-liquid-detergent",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsb3tm52000iofv3lr2s4631",
+          "sku": "MUV-LD-CW-1000",
+          "size": "1L",
+          "price": 165,
+          "mrp": 165
+        },
+        {
+          "id": "cmsb3tp94000pofv3l3plphj6",
+          "sku": "MUV-LD-CW-5000",
+          "size": "5L",
+          "price": 725,
+          "mrp": 725
+        }
+      ]
+    },
+    {
+      "id": "cmsb3v1w5005wofv3ya9kjniq",
+      "name": "Muv Crimson Veil Body Wash",
+      "slug": "muv-crimson-veil-body-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gvpb0002vw1p6n0r1gv8",
+      "variants": [
+        {
+          "id": "cmsb3v25v005yofv3crxrumh9",
+          "sku": "MUV-BW-CV-250",
+          "size": "250ml",
+          "price": 149,
+          "mrp": 149
+        },
+        {
+          "id": "cmsb3v48q0065ofv3d1cirf7v",
+          "sku": "MUV-BW-CV-950",
+          "size": "950ml",
+          "price": 480,
+          "mrp": 480
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tyo5001mofv3xcazw8mb",
+      "name": "Muv Dishwash Gel",
+      "slug": "muv-dishwash-gel",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3tzcn001oofv3iw0dxj18",
+          "sku": "MUV-DG-STD-500",
+          "size": "500ml",
+          "price": 85,
+          "mrp": 85
+        },
+        {
+          "id": "cmsb3u2xn001vofv3z3jp58qw",
+          "sku": "MUV-DG-STD-1000",
+          "size": "1L",
+          "price": 155,
+          "mrp": 155
+        },
+        {
+          "id": "cmsb3u5g00022ofv3idttwfnv",
+          "sku": "MUV-DG-STD-5000",
+          "size": "5L",
+          "price": 699,
+          "mrp": 699
+        }
+      ]
+    },
+    {
+      "id": "cmsb3u864002eofv3ytkx48hn",
+      "name": "Muv Glass Cleaner",
+      "slug": "muv-glass-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3u8fq002gofv3dhjq8ekl",
+          "sku": "MUV-GC-STD-500",
+          "size": "500ml",
+          "price": 90,
+          "mrp": 90
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tfug0002ofv3t02os3ba",
+      "name": "Muv Indian Rose Liquid Detergent",
+      "slug": "muv-indian-rose-liquid-detergent",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsb3tgex0004ofv37cr8dvf4",
+          "sku": "MUV-LD-IR-1000",
+          "size": "1L",
+          "price": 155,
+          "mrp": 155
+        },
+        {
+          "id": "cmsb3tj7w000bofv3xen5sws4",
+          "sku": "MUV-LD-IR-5000",
+          "size": "5L",
+          "price": 699,
+          "mrp": 699
+        }
+      ]
+    },
+    {
+      "id": "cmsb3trfk000uofv3vzpagjut",
+      "name": "Muv Lavender Garden Liquid Detergent",
+      "slug": "muv-lavender-garden-liquid-detergent",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsb3tsca000wofv3oo5um6av",
+          "sku": "MUV-LD-LG-1000",
+          "size": "1L",
+          "price": 155,
+          "mrp": 155
+        },
+        {
+          "id": "cmsb3ttiy0013ofv33hbees4d",
+          "sku": "MUV-LD-LG-5000",
+          "size": "5L",
+          "price": 699,
+          "mrp": 699
+        }
+      ]
+    },
+    {
+      "id": "cmsb3unmq004cofv3lhb6xhvd",
+      "name": "Muv Life Shield Hand Wash",
+      "slug": "muv-life-shield-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3unwm004eofv3zor2sjln",
+          "sku": "MUV-HW-LS-250",
+          "size": "250ml",
+          "price": 70,
+          "mrp": 70
+        },
+        {
+          "id": "cmsb3up3a004lofv34l70wnkj",
+          "sku": "MUV-HW-LS-500",
+          "size": "500ml",
+          "price": 85,
+          "mrp": 85
+        }
+      ]
+    },
+    {
+      "id": "cmsb3vf9k006oofv3mqyy9bqa",
+      "name": "Muv Midnight Frost Body Wash",
+      "slug": "muv-midnight-frost-body-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gvpb0002vw1p6n0r1gv8",
+      "variants": [
+        {
+          "id": "cmsb3vfj1006qofv3k0ab1l7m",
+          "sku": "MUV-BW-MF-250",
+          "size": "250ml",
+          "price": 135,
+          "mrp": 135
+        },
+        {
+          "id": "cmsb3vgna006xofv3hiqd2qou",
+          "sku": "MUV-BW-MF-950",
+          "size": "950ml",
+          "price": 420,
+          "mrp": 420
+        }
+      ]
+    },
+    {
+      "id": "cmsb3usjk004xofv37rtru6ns",
+      "name": "Muv Ocean Fresh Hand Wash",
+      "slug": "muv-ocean-fresh-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3utfi004zofv388pdc3qd",
+          "sku": "MUV-HW-OF-500",
+          "size": "500ml",
+          "price": 95,
+          "mrp": 95
+        },
+        {
+          "id": "cmsb3uvlh0056ofv3ghojvhem",
+          "sku": "MUV-HW-OF-5000",
+          "size": "5L",
+          "price": 700,
+          "mrp": 700
+        }
+      ]
+    },
+    {
+      "id": "cmsb3uq02004qofv3qn19jgjf",
+      "name": "Muv Silk Blossom Hand Wash",
+      "slug": "muv-silk-blossom-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3uqa1004sofv304cwsqv1",
+          "sku": "MUV-HW-SB-500",
+          "size": "500ml",
+          "price": 90,
+          "mrp": 90
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tv9g0018ofv3rm3mflr8",
+      "name": "Muv Toilet Cleaner",
+      "slug": "muv-toilet-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3twr8001hofv313775orj",
+          "sku": "MUV-TC-STD-5000",
+          "size": "5L",
+          "price": 400,
+          "mrp": 400
+        },
+        {
+          "id": "cmsb3tvlm001aofv3e4yxr0yg",
+          "sku": "MUV-TC-STD-500",
+          "size": "500ml",
+          "price": 80,
+          "mrp": 80
+        }
+      ]
+    },
+    {
+      "id": "cmsb3u9c3002lofv3xyi2iwnt",
+      "name": "Muv Velvet Mist Floor Cleaner",
+      "slug": "muv-velvet-mist-floor-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3u9uu002nofv37rzlhr2g",
+          "sku": "MUV-FC-VM-1000",
+          "size": "1L",
+          "price": 150,
+          "mrp": 150
+        },
+        {
+          "id": "cmsb3ud860031ofv3xz1kc4yd",
+          "sku": "MUV-FC-VM-5000",
+          "size": "5L",
+          "price": 550,
+          "mrp": 550
+        }
+      ]
+    },
+    {
+      "id": "cmsb3v7do006aofv3lvb0xms9",
+      "name": "Muv Velvet Oak Body Wash",
+      "slug": "muv-velvet-oak-body-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gvpb0002vw1p6n0r1gv8",
+      "variants": [
+        {
+          "id": "cmsb3v8db006cofv3o3gcuv9q",
+          "sku": "MUV-BW-VO-250",
+          "size": "250ml",
+          "price": 135,
+          "mrp": 135
+        },
+        {
+          "id": "cmsb3vcsw006jofv3nwu7zn69",
+          "sku": "MUV-BW-VO-950",
+          "size": "950ml",
+          "price": 420,
+          "mrp": 420
+        }
+      ]
+    },
+    {
+      "id": "cmsb3uj0p003rofv35hslkolv",
+      "name": "Muv White Phenyl",
+      "slug": "muv-white-phenyl",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3uja1003tofv3n7iqs5uy",
+          "sku": "MUV-WP-STD-1000",
+          "size": "1L",
+          "price": 65,
+          "mrp": 65
+        },
+        {
+          "id": "cmsb3ukgv0040ofv3g9t2k87u",
+          "sku": "MUV-WP-STD-5000",
+          "size": "5L",
+          "price": 275,
+          "mrp": 275
+        }
+      ]
+    }
+  ],
+  "afterFullState": [
+    {
+      "id": "cmsb49tth0001piimpj61tfkv",
+      "name": "Muv Black Phenyl",
+      "slug": "muv-black-phenyl",
+      "status": "DRAFT",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsg7f7mk0002132dbec6diw6",
+          "sku": "MUV-BP-STD-1000",
+          "size": "1L",
+          "price": 80,
+          "mrp": 80
+        }
+      ]
+    },
+    {
+      "id": "cmsb3uwhz005bofv3s48xxtkn",
+      "name": "Muv Citrus Blast Hand Wash",
+      "slug": "muv-citrus-blast-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3uyyu005kofv3htsn440l",
+          "sku": "MUV-HW-CB-500",
+          "size": "500ml",
+          "price": 85,
+          "mrp": 85
+        },
+        {
+          "id": "cmsb3ux1l005dofv3jwa2zycc",
+          "sku": "MUV-HW-CB-250",
+          "size": "250ml",
+          "price": 70,
+          "mrp": 70
+        },
+        {
+          "id": "cmsb3v0sa005rofv3gm5au4j9",
+          "sku": "MUV-HW-CB-5000",
+          "size": "5L",
+          "price": 650,
+          "mrp": 650
+        }
+      ]
+    },
+    {
+      "id": "cmsb3ubd3002sofv3gv5w664c",
+      "name": "Muv Cloud Walk Floor Cleaner",
+      "slug": "muv-cloud-walk-floor-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3ueup0038ofv376tysk3a",
+          "sku": "MUV-FC-CWK-5000",
+          "size": "5L",
+          "price": 600,
+          "mrp": 600
+        },
+        {
+          "id": "cmsb3ubml002uofv3yah3dk32",
+          "sku": "MUV-FC-CWK-1000",
+          "size": "1L",
+          "price": 150,
+          "mrp": 150
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tlg8000gofv3isius90n",
+      "name": "Muv Cool Water Liquid Detergent",
+      "slug": "muv-cool-water-liquid-detergent",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsb3tm52000iofv3lr2s4631",
+          "sku": "MUV-LD-CW-1000",
+          "size": "1L",
+          "price": 165,
+          "mrp": 165
+        },
+        {
+          "id": "cmsb3tp94000pofv3l3plphj6",
+          "sku": "MUV-LD-CW-5000",
+          "size": "5L",
+          "price": 725,
+          "mrp": 725
+        }
+      ]
+    },
+    {
+      "id": "cmsb3v1w5005wofv3ya9kjniq",
+      "name": "Muv Crimson Veil Body Wash",
+      "slug": "muv-crimson-veil-body-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gvpb0002vw1p6n0r1gv8",
+      "variants": [
+        {
+          "id": "cmsb3v25v005yofv3crxrumh9",
+          "sku": "MUV-BW-CV-250",
+          "size": "250ml",
+          "price": 149,
+          "mrp": 149
+        },
+        {
+          "id": "cmsb3v48q0065ofv3d1cirf7v",
+          "sku": "MUV-BW-CV-950",
+          "size": "950ml",
+          "price": 480,
+          "mrp": 480
+        }
+      ]
+    },
+    {
+      "id": "cmsb3u864002eofv3ytkx48hn",
+      "name": "Muv Crystal Glass Cleaner",
+      "slug": "muv-glass-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3u8fq002gofv3dhjq8ekl",
+          "sku": "MUV-GC-STD-500",
+          "size": "500ml",
+          "price": 90,
+          "mrp": 90
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tv9g0018ofv3rm3mflr8",
+      "name": "Muv Floral Toilet Cleaner",
+      "slug": "muv-toilet-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3twr8001hofv313775orj",
+          "sku": "MUV-TC-STD-5000",
+          "size": "5L",
+          "price": 400,
+          "mrp": 400
+        },
+        {
+          "id": "cmsb3tvlm001aofv3e4yxr0yg",
+          "sku": "MUV-TC-STD-500",
+          "size": "500ml",
+          "price": 80,
+          "mrp": 80
+        }
+      ]
+    },
+    {
+      "id": "cmsb3u6bh0027ofv3feefe47n",
+      "name": "Muv Fresh Bathroom Cleaner",
+      "slug": "muv-bathroom-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3u6zs0029ofv3cjlpnuy9",
+          "sku": "MUV-BC-STD-500",
+          "size": "500ml",
+          "price": 70,
+          "mrp": 70
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tfug0002ofv3t02os3ba",
+      "name": "Muv Indian Rose Liquid Detergent",
+      "slug": "muv-indian-rose-liquid-detergent",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsb3tgex0004ofv37cr8dvf4",
+          "sku": "MUV-LD-IR-1000",
+          "size": "1L",
+          "price": 155,
+          "mrp": 155
+        },
+        {
+          "id": "cmsb3tj7w000bofv3xen5sws4",
+          "sku": "MUV-LD-IR-5000",
+          "size": "5L",
+          "price": 699,
+          "mrp": 699
+        }
+      ]
+    },
+    {
+      "id": "cmsb3trfk000uofv3vzpagjut",
+      "name": "Muv Lavender Garden Liquid Detergent",
+      "slug": "muv-lavender-garden-liquid-detergent",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gv500001vw1p30qw4g5z",
+      "variants": [
+        {
+          "id": "cmsb3tsca000wofv3oo5um6av",
+          "sku": "MUV-LD-LG-1000",
+          "size": "1L",
+          "price": 155,
+          "mrp": 155
+        },
+        {
+          "id": "cmsb3ttiy0013ofv33hbees4d",
+          "sku": "MUV-LD-LG-5000",
+          "size": "5L",
+          "price": 699,
+          "mrp": 699
+        }
+      ]
+    },
+    {
+      "id": "cmsb3unmq004cofv3lhb6xhvd",
+      "name": "Muv Life Shield Hand Wash",
+      "slug": "muv-life-shield-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3unwm004eofv3zor2sjln",
+          "sku": "MUV-HW-LS-250",
+          "size": "250ml",
+          "price": 70,
+          "mrp": 70
+        },
+        {
+          "id": "cmsb3up3a004lofv34l70wnkj",
+          "sku": "MUV-HW-LS-500",
+          "size": "500ml",
+          "price": 85,
+          "mrp": 85
+        }
+      ]
+    },
+    {
+      "id": "cmsb3vf9k006oofv3mqyy9bqa",
+      "name": "Muv Midnight Frost Body Wash",
+      "slug": "muv-midnight-frost-body-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gvpb0002vw1p6n0r1gv8",
+      "variants": [
+        {
+          "id": "cmsb3vfj1006qofv3k0ab1l7m",
+          "sku": "MUV-BW-MF-250",
+          "size": "250ml",
+          "price": 135,
+          "mrp": 135
+        },
+        {
+          "id": "cmsb3vgna006xofv3hiqd2qou",
+          "sku": "MUV-BW-MF-950",
+          "size": "950ml",
+          "price": 420,
+          "mrp": 420
+        }
+      ]
+    },
+    {
+      "id": "cmsb3usjk004xofv37rtru6ns",
+      "name": "Muv Ocean Fresh Hand Wash",
+      "slug": "muv-ocean-fresh-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3utfi004zofv388pdc3qd",
+          "sku": "MUV-HW-OF-500",
+          "size": "500ml",
+          "price": 95,
+          "mrp": 95
+        },
+        {
+          "id": "cmsb3uvlh0056ofv3ghojvhem",
+          "sku": "MUV-HW-OF-5000",
+          "size": "5L",
+          "price": 700,
+          "mrp": 700
+        }
+      ]
+    },
+    {
+      "id": "cmsb3uldy0045ofv32vk1a180",
+      "name": "Muv Pure Bleach",
+      "slug": "muv-bleach",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3ulnx0047ofv3zw3ea6rg",
+          "sku": "MUV-BL-STD-500",
+          "size": "500ml",
+          "price": 60,
+          "mrp": 60
+        }
+      ]
+    },
+    {
+      "id": "cmsb3ufyp003dofv3welv2gay",
+      "name": "Muv Radiance Car Wash",
+      "slug": "muv-car-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gwrx0004vw1pwzlhalm5",
+      "variants": [
+        {
+          "id": "cmsb3ugme003fofv3u2yqremx",
+          "sku": "MUV-CW-STD-500",
+          "size": "500ml",
+          "price": 70,
+          "mrp": 70
+        },
+        {
+          "id": "cmsb3ui4i003mofv3hgv9ue89",
+          "sku": "MUV-CW-STD-5000",
+          "size": "5L",
+          "price": 550,
+          "mrp": 550
+        }
+      ]
+    },
+    {
+      "id": "cmsb3uq02004qofv3qn19jgjf",
+      "name": "Muv Silk Blossom Hand Wash",
+      "slug": "muv-silk-blossom-hand-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gw8s0003vw1pq2rxyem8",
+      "variants": [
+        {
+          "id": "cmsb3uqa1004sofv304cwsqv1",
+          "sku": "MUV-HW-SB-500",
+          "size": "500ml",
+          "price": 90,
+          "mrp": 90
+        }
+      ]
+    },
+    {
+      "id": "cmsb3tyo5001mofv3xcazw8mb",
+      "name": "Muv Spark Dishwash Gel",
+      "slug": "muv-dishwash-gel",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3tzcn001oofv3iw0dxj18",
+          "sku": "MUV-DG-STD-500",
+          "size": "500ml",
+          "price": 85,
+          "mrp": 85
+        },
+        {
+          "id": "cmsb3u2xn001vofv3z3jp58qw",
+          "sku": "MUV-DG-STD-1000",
+          "size": "1L",
+          "price": 155,
+          "mrp": 155
+        },
+        {
+          "id": "cmsb3u5g00022ofv3idttwfnv",
+          "sku": "MUV-DG-STD-5000",
+          "size": "5L",
+          "price": 699,
+          "mrp": 699
+        }
+      ]
+    },
+    {
+      "id": "cmsb3u9c3002lofv3xyi2iwnt",
+      "name": "Muv Velvet Mist Floor Cleaner",
+      "slug": "muv-velvet-mist-floor-cleaner",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3u9uu002nofv37rzlhr2g",
+          "sku": "MUV-FC-VM-1000",
+          "size": "1L",
+          "price": 150,
+          "mrp": 150
+        },
+        {
+          "id": "cmsb3ud860031ofv3xz1kc4yd",
+          "sku": "MUV-FC-VM-5000",
+          "size": "5L",
+          "price": 550,
+          "mrp": 550
+        }
+      ]
+    },
+    {
+      "id": "cmsb3v7do006aofv3lvb0xms9",
+      "name": "Muv Velvet Oak Body Wash",
+      "slug": "muv-velvet-oak-body-wash",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2gvpb0002vw1p6n0r1gv8",
+      "variants": [
+        {
+          "id": "cmsb3v8db006cofv3o3gcuv9q",
+          "sku": "MUV-BW-VO-250",
+          "size": "250ml",
+          "price": 135,
+          "mrp": 135
+        },
+        {
+          "id": "cmsb3vcsw006jofv3nwu7zn69",
+          "sku": "MUV-BW-VO-950",
+          "size": "950ml",
+          "price": 420,
+          "mrp": 420
+        }
+      ]
+    },
+    {
+      "id": "cmsb3uj0p003rofv35hslkolv",
+      "name": "Muv White Phenyl",
+      "slug": "muv-white-phenyl",
+      "status": "ACTIVE",
+      "categoryId": "cmsb2guap0000vw1py7gp9r28",
+      "variants": [
+        {
+          "id": "cmsb3uja1003tofv3n7iqs5uy",
+          "sku": "MUV-WP-STD-1000",
+          "size": "1L",
+          "price": 65,
+          "mrp": 65
+        },
+        {
+          "id": "cmsb3ukgv0040ofv3g9t2k87u",
+          "sku": "MUV-WP-STD-5000",
+          "size": "5L",
+          "price": 275,
+          "mrp": 275
+        }
+      ]
+    }
+  ],
+  "seoTitleDescriptionNameReconciliation": {
+    "generatedAt": "2026-08-05T15:10:45.848Z",
+    "changes": [
+      {
+        "slug": "muv-toilet-cleaner",
+        "beforeSeoTitle": "Muv Toilet Cleaner",
+        "afterSeoTitle": "Muv Floral Toilet Cleaner",
+        "beforeSeoDescription": "Muv Toilet Cleaner is a Home Care acid-based toilet bowl cleaner, sold as a single formulation in two pack sizes — 500 ml and 5 Litre.",
+        "afterSeoDescription": "Muv Floral Toilet Cleaner is a Home Care acid-based toilet bowl cleaner, sold as a single formulation in two pack sizes — 500 ml and 5 Litre."
+      },
+      {
+        "slug": "muv-dishwash-gel",
+        "beforeSeoTitle": "Muv Dishwash Gel",
+        "afterSeoTitle": "Muv Spark Dishwash Gel",
+        "beforeSeoDescription": "Muv Dishwash Gel is a Home Care liquid dishwashing gel, sold as a single lemon-fragranced, yellow-coloured formulation in three pack sizes — 500 ml, 1 Litre, and 5 Litre.",
+        "afterSeoDescription": "Muv Spark Dishwash Gel is a Home Care liquid dishwashing gel, sold as a single lemon-fragranced, yellow-coloured formulation in three pack sizes — 500 ml, 1 Litre, and 5 Litre."
+      },
+      {
+        "slug": "muv-bleach",
+        "beforeSeoTitle": "Muv Bleach",
+        "afterSeoTitle": "Muv Pure Bleach",
+        "beforeSeoDescription": "Muv Bleach is a sodium hypochlorite based bleach for household cleaning and whitening applications, sold in a 500 ml pack size.",
+        "afterSeoDescription": "Muv Pure Bleach is a sodium hypochlorite based bleach for household cleaning and whitening applications, sold in a 500 ml pack size."
+      },
+      {
+        "slug": "muv-glass-cleaner",
+        "beforeSeoTitle": "Muv Glass Cleaner",
+        "afterSeoTitle": "Muv Crystal Glass Cleaner",
+        "beforeSeoDescription": "Muv Glass Cleaner is a liquid glass and mirror surface cleaner, sold in a single 500 ml pack size.",
+        "afterSeoDescription": "Muv Crystal Glass Cleaner is a liquid glass and mirror surface cleaner, sold in a single 500 ml pack size."
+      },
+      {
+        "slug": "muv-car-wash",
+        "beforeSeoTitle": "Muv Car Wash",
+        "afterSeoTitle": "Muv Radiance Car Wash",
+        "beforeSeoDescription": "Muv Car Wash is a liquid exterior vehicle wash, sold in 500 ml and 5 Litre pack sizes.",
+        "afterSeoDescription": "Muv Radiance Car Wash is a liquid exterior vehicle wash, sold in 500 ml and 5 Litre pack sizes."
+      }
+    ]
+  }
+}

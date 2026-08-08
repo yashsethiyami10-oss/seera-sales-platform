@@ -1,0 +1,14 @@
+{
+  "productFamily": "MUV Hand Wash™",
+  "totalObjectionKOs": 8,
+  "objections": [
+    { "koid": "KO-HW-OBJ-001", "title": "\"Why doesn't [variant] come in [size]?\"" },
+    { "koid": "KO-HW-OBJ-002", "title": "\"Is this actually antibacterial / does Life Shield kill germs?\"", "riskLevel": "CRITICAL" },
+    { "koid": "KO-HW-OBJ-003", "title": "\"Is it dermatologically tested / safe for skin?\"", "riskLevel": "HIGH" },
+    { "koid": "KO-HW-OBJ-004", "title": "\"Why can't you tell me the ingredients properly?\"" },
+    { "koid": "KO-HW-OBJ-005", "title": "Price/value objection" },
+    { "koid": "KO-HW-OBJ-006", "title": "Competitor comparison objection" },
+    { "koid": "KO-HW-OBJ-007", "title": "\"The SOP says 'GLOW' — is this a different product?\"" },
+    { "koid": "KO-HW-OBJ-008", "title": "General trust objection" }
+  ]
+}

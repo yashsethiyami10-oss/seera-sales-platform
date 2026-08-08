@@ -1,0 +1,53 @@
+{
+  "productFamily": "MUV Dishwash Gel™",
+  "comparisonsPerformed": 4,
+  "genuineConflicts": 0,
+  "genuineDiscrepancies": 1,
+  "dataGaps": 1,
+  "cleanMatches": 2,
+  "comparisons": [
+    {
+      "id": "COMPARISON-1",
+      "subject": "Pricing: Product Chart vs. Production SOP",
+      "sourceA": { "name": "Product Chart", "values": { "500ml": 85, "1L": 155, "5L": 699 } },
+      "sourceB": { "name": "Production SOP", "values": "Not stated — no pricing section exists in the SOP" },
+      "classification": "DATA_GAP",
+      "activeSource": "Product Chart (sole source)",
+      "reason": "SOP contains fill weights only, no MRP figures for any pack size",
+      "founderDecisionRequired": false,
+      "fr001Fr002Label": "Historical source citation only (recorded during source audit) — NOT a live commercial value. Per FR-001/FR-002, current pricing must always be resolved from the Product Catalog API (see LIVE_DATA_MAPPING.md), never from sourceA.values above."
+    },
+    {
+      "id": "COMPARISON-2",
+      "subject": "Product naming: Product Chart vs. SOP title",
+      "sourceA": { "name": "Product Chart", "value": "MUV Dishwash Gel" },
+      "sourceB": { "name": "Production SOP title", "value": "MUV DISHWASH LIQUID GEL" },
+      "classification": "CONFLICT",
+      "activeSource": "Product Chart (per source authority order #1 = Product Chart for product naming)",
+      "reason": "Two authoritative sources state two different names for the same product",
+      "founderDecisionRequired": true
+    },
+    {
+      "id": "COMPARISON-3",
+      "subject": "Fragrance/colour consistency across SKUs",
+      "sourceA": { "name": "SOP Step 4 (colour)", "value": "Yellow, all 3 SKUs" },
+      "sourceB": { "name": "SOP Step 12 (fragrance)", "value": "Lemon, all 3 SKUs" },
+      "classification": "CLEAN_MATCH",
+      "activeSource": "n/a — no conflict",
+      "reason": "Single formulation confirmed across all three pack sizes",
+      "founderDecisionRequired": false
+    },
+    {
+      "id": "COMPARISON-4",
+      "subject": "Competitor-name check",
+      "sourceA": { "name": "Full Dishwash Gel source material scan", "value": "0 matches against 16-brand watch-list" },
+      "classification": "CLEAN_MATCH",
+      "activeSource": "n/a — no conflict",
+      "reason": "See source_conflicts detail in 20_Competitor_Reference_Register.md / KO-DW-COMPETITOR-001",
+      "founderDecisionRequired": false
+    }
+  ],
+  "openFounderDecisions": [
+    { "comparisonId": "COMPARISON-2", "description": "Canonical product name decision", "koid": "KO-DW-NAME-001" }
+  ]
+}

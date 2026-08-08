@@ -1,0 +1,35 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "founderRule": "FR-003 — Knowledge Reuse First",
+  "comparedAgainst": ["Floor Cleaner", "Black Phenyl", "Pure Bleach", "Bathroom Cleaner", "Glass Cleaner"],
+  "totalKnowledgeObjects": 65,
+  "parentObjectsReused": {
+    "count": 17,
+    "koids": ["KO-WP-ARCH-001", "KO-WP-ARCH-003", "KO-WP-DT-003", "KO-WP-SAFETY-013", "KO-WP-CONV-001", "KO-WP-CONV-002", "KO-WP-CONV-003", "KO-WP-CONV-004", "KO-WP-CONV-005", "KO-WP-CONV-006", "KO-WP-CONV-007", "KO-WP-CONV-008", "KO-WP-CONV-009", "KO-WP-CONV-010", "KO-WP-CONV-011", "KO-WP-CONV-012", "KO-WP-FR-003"],
+    "reusedFrom": [
+      { "pattern": "8-field Care Response/Conversation structure", "origin": "Bathroom Cleaner", "usedBy": "all 12 KO-WP-CONV-* KOs" },
+      { "pattern": "Product-family structural template (identity table shape)", "origin": "KO-BP-ARCH-001 (Black Phenyl)", "usedBy": "KO-WP-ARCH-001" },
+      { "pattern": "Naming-resolution mechanism (official name via Founder Instruction, legacy preserved)", "origin": "Bathroom Cleaner / Glass Cleaner / Pure Bleach", "usedBy": "KO-WP-ARCH-003" },
+      { "pattern": "Cross-product 'when another MUV product is more suitable' comparison table", "origin": "KO-BP-DT-003 (Black Phenyl)", "usedBy": "KO-WP-DT-003" },
+      { "pattern": "Emergency-guidance behavioral rule (never diagnose, always escalate)", "origin": "KO-PB-SAFETY-013 (Pure Bleach), reused by KO-BP-SAFETY-013 (Black Phenyl)", "usedBy": "KO-WP-SAFETY-013" }
+    ]
+  },
+  "sharedObjects": {
+    "count": 3,
+    "koids": ["KO-WP-FAQ-002", "KO-WP-DT-004", "KO-WP-INTEL-016"],
+    "note": "Grounded in real platform code shared factory-wide (lib/intelligence/confidence-engine.ts, lib/eios/cognitive-state.ts) — not tied to one specific prior package, independently re-grounded in each package to the same underlying code."
+  },
+  "newProductSpecificObjects": {
+    "count": 45,
+    "note": "Genuinely new content sourced independently for White Phenyl, per Never-Invent — formulation, safety text (independently extracted, not copied), pack-size facts, FAQs, objections, gap register, all product-specific decision-tree/architecture detail."
+  },
+  "additionalReusedTemplates": [
+    { "template": "10_LIVE_DATA_MAPPING.md 11-field table", "origin": "Black Phenyl (itself established during FR-002 remediation)" },
+    { "template": "14_FOUNDER_GAPS.md priority-tiered register structure", "origin": "Black Phenyl" },
+    { "template": "Two-track Product Quality Score methodology (Process Quality vs. Content Completeness)", "origin": "Pure Bleach" },
+    { "template": "Commercial Data Grep Check validation methodology", "origin": "Pure Bleach" }
+  ],
+  "duplicateKnowledgePrevented": "No product-specific fact (formulation, ingredient, safety text, pack size) was copied from any other package — each was independently sourced from White Phenyl's own Product Chart rows and SOP, verified by direct textual comparison against Black Phenyl's safety text showing similar structure but different wording.",
+  "reusePercentage": 30.8,
+  "reusePercentageBasis": "(17 Parent Objects Reused + 3 Shared Objects) / 65 total Knowledge Objects = 20/65 = 30.8%. The remaining 69.2% is genuinely new, product-specific content — expected under strict Never-Invent, since facts (as opposed to methodology/structure) cannot be reused across products."
+}

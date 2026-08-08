@@ -1,0 +1,27 @@
+{
+  "productFamily": "MUV Dishwash Gel™",
+  "totalGapCategories": 36,
+  "priorityItems": [
+    { "item": "Manufacturing safety/PPE section", "reason": "SOP has none at all despite handling Caustic Soda directly", "koid": "KO-DW-SAFETY-001" },
+    { "item": "Consumer/finished-product safety data", "reason": "More practically relevant given direct hand contact during normal use", "koid": "KO-DW-SAFETY-002" },
+    { "item": "Pricing corroboration", "reason": "Only one source prices this product at all, unlike both prior product families", "koid": "KO-DW-SALES-001" },
+    { "item": "Canonical name decision", "reason": "Product Chart vs. SOP title disagree", "koid": "KO-DW-NAME-001" },
+    { "item": "Manufacturer name confirmation", "reason": "This SOP never restates 'MUV Care Co.', unlike sibling SOPs", "koid": "KO-DW-IDENT-001" }
+  ],
+  "allGaps": [
+    "Manufacturer name confirmation", "Formal brand positioning statement", "Customer problems solved",
+    "Target customer segment", "Usage scenarios / dosage per wash", "Dishwashing-machine suitability",
+    "Marketing/brand-voice copy, USP text", "SKU codes (all 3 SKUs)", "Barcodes (all 3 SKUs)",
+    "Packaging dimensions (all 3 SKUs)", "Shipping weight (all 3 SKUs)", "Marketplace metadata (all 3 SKUs)",
+    "Variant images (all 3 SKUs)", "HSN code / GST rate", "Packaging container material/format",
+    "Full INCI/chemical names for LABSA/SLES/CAPB/CDEA/EDTA", "Ingredient concentrations, grades, suppliers",
+    "Confirmed ingredient functional roles", "Equipment specification, stirrer speed/type",
+    "Real measured batch yield", "Actual quantities for 'As Required'/'if required' ingredients",
+    "Numeric viscosity target and test method", "Foam-height/grease-cleaning test method and threshold",
+    "Colour-match tolerance/reference standard", "Sampling plan, OOS handling, retention samples",
+    "Manufacturing PPE requirements", "Consumer safety data sheet, first-aid procedure",
+    "Surface/material compatibility guidance", "Shelf life", "Storage temperature range",
+    "Transportation/hazard classification", "Wholesale/institutional pricing", "Cost of goods / margin data",
+    "Marketing campaign history", "Product-specific troubleshooting guide", "Batch/lot numbering scheme"
+  ]
+}

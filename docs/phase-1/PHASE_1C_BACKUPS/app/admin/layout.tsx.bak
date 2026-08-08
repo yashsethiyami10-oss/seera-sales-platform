@@ -1,0 +1,47 @@
+import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { LayoutDashboard, Package, ShoppingCart, LayoutGrid, Tag, Layers, Users, Boxes, Image as ImageIcon, Settings, TrendingUp } from "lucide-react";
+import { auth } from "@/lib/auth";
+
+const NAV = [
+  { href: "/admin", label: "Overview", icon: LayoutDashboard },
+  { href: "/admin/analytics", label: "Analytics", icon: TrendingUp },
+  { href: "/admin/products", label: "Products", icon: Package },
+  { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
+  { href: "/admin/customers", label: "Customers", icon: Users },
+  { href: "/admin/inventory", label: "Inventory", icon: Boxes },
+  { href: "/admin/media", label: "Media Library", icon: ImageIcon },
+  { href: "/admin/cms/categories", label: "Categories", icon: LayoutGrid },
+  { href: "/admin/cms/homepage", label: "Homepage CMS", icon: Layers },
+  { href: "/admin/marketing", label: "Marketing", icon: Tag },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
+];
+
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
+  if (!session?.user) redirect("/login?callbackUrl=/admin");
+  if (session.user.role !== "ADMIN" && session.user.role !== "STAFF") redirect("/");
+
+  return (
+    <div style={{ background: "var(--ink)", minHeight: "100vh" }} className="flex">
+      <aside className="hidden lg:flex flex-col w-56 flex-shrink-0" style={{ background: "var(--surface)", borderRight: "1px solid var(--card-border)" }}>
+        <div className="flex items-center gap-2 px-5 py-6" style={{ borderBottom: "1px solid var(--card-border)" }}>
+          <Image src="/logo.png" alt="MUV" width={100} height={38} style={{ height: 24, width: "auto" }} />
+          <span className="muv-text-faint text-[10px] uppercase tracking-widest">Admin</span>
+        </div>
+        <nav className="flex flex-col gap-1 p-2">
+          {NAV.map((n) => {
+            const Icon = n.icon;
+            return (
+              <Link key={n.href} href={n.href} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl muv-text-body hover:text-white text-sm transition-colors">
+                <Icon size={17} /> {n.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+      <main className="flex-1 min-w-0 p-6">{children}</main>
+    </div>
+  );
+}

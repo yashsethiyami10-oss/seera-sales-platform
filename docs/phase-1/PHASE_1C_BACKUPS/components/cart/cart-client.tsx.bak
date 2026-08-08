@@ -1,0 +1,256 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { X, Tag, ChevronRight, Heart, ArrowRight } from "lucide-react";
+import { useCart, type CartItem } from "@/lib/cart-context";
+import { useSavedForLater } from "@/lib/saved-for-later";
+import { useToast } from "@/components/ui/toast";
+import { Button } from "@/components/ui/primitives";
+import { validateCoupon } from "@/actions/coupons";
+import { checkCartStock, getCartItemFragrances } from "@/actions/cart";
+import { ProductImage } from "@/components/storefront/product-image";
+import { IMAGE_PRESETS } from "@/lib/utils/cloudinary-image";
+import { TrustIndicators, CART_TRUST_ITEMS } from "@/components/storefront/trust-indicators";
+import { FeaturedProducts, type FeaturedProduct } from "@/components/storefront/featured-products";
+import { EmptyCart } from "@/components/cart/empty-cart";
+import { StickyCartSummary } from "@/components/cart/sticky-cart-summary";
+import { Reveal } from "@/components/ui/reveal";
+
+const FREE_SHIP_THRESHOLD = 999;
+const SHIPPING_OPTIONS = [
+  { id: "standard", label: "Standard Delivery", eta: "4–6 business days", price: "Free" },
+  { id: "express", label: "Express Delivery", eta: "1–2 business days", price: "₹99" },
+];
+
+type StockInfo = { status: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK"; quantity: number };
+
+export function CartClient({ recommendedProducts, wishlistedIds }: { recommendedProducts: FeaturedProduct[]; wishlistedIds: string[] }) {
+  const { items, updateQuantity, removeItem, subtotal, addItem } = useCart();
+  const { saved, saveItem, removeSaved } = useSavedForLater();
+  const { showToast } = useToast();
+  const [couponCode, setCouponCode] = useState("");
+  const [applied, setApplied] = useState<{ code: string; discount: number } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [stockByVariant, setStockByVariant] = useState<Record<string, StockInfo>>({});
+  const [fragranceByProduct, setFragranceByProduct] = useState<Record<string, string | null>>({});
+
+  // Real, live re-check of stock and fragrance — see actions/cart.ts for why
+  // this is a separate lookup rather than fields on CartItem itself.
+  useEffect(() => {
+    if (items.length === 0) return;
+    checkCartStock({ variantIds: items.map((i) => i.variantId) }).then((res) => {
+      if (res.success) setStockByVariant(res.data as Record<string, StockInfo>);
+    });
+    getCartItemFragrances({ productIds: [...new Set(items.map((i) => i.productId))] }).then((res) => {
+      if (res.success) setFragranceByProduct(res.data as Record<string, string | null>);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.map((i) => i.variantId).join(",")]);
+
+  async function applyCoupon() {
+    setCouponError(null);
+    const result = await validateCoupon({ code: couponCode, subtotal });
+    if (result.success) {
+      setApplied({ code: result.data.code, discount: result.data.discount });
+      showToast("Coupon applied");
+    } else {
+      setCouponError(result.error.message);
+    }
+  }
+
+  function handleSaveForLater(item: CartItem) {
+    saveItem(item);
+    removeItem(item.variantId);
+    showToast(`${item.name} saved for later`);
+  }
+
+  function handleMoveToCart(item: CartItem) {
+    addItem({ variantId: item.variantId, productId: item.productId, name: item.name, size: item.size, price: item.price, mrp: item.mrp, image: item.image }, item.quantity);
+    removeSaved(item.variantId);
+    showToast(`${item.name} moved to cart`);
+  }
+
+  const discount = applied?.discount ?? 0;
+  const estimatedSavings = items.reduce((sum, i) => sum + Math.max(0, i.mrp - i.price) * i.quantity, 0);
+  const shipping = subtotal - discount >= FREE_SHIP_THRESHOLD || subtotal === 0 ? 0 : 49;
+  const total = subtotal - discount + shipping;
+  const remaining = Math.max(0, FREE_SHIP_THRESHOLD - subtotal);
+  const recommendedFiltered = recommendedProducts.filter((p) => !items.some((i) => i.productId === p.id));
+
+  return (
+    <div className="max-w-7xl mx-auto px-6 py-12 pb-24 lg:pb-12">
+      {/* ---- 1. Cart Hero ---- */}
+      <Reveal>
+        <p className="muv-text-meta text-xs uppercase tracking-widest mb-3">
+          <Link href="/shop" className="muv-footer-link hover:text-white">Shop</Link> / Cart
+        </p>
+      </Reveal>
+      <Reveal delay={0.05}>
+        <h1 className="font-display text-white mb-2" style={{ fontWeight: 400, fontSize: "clamp(1.8rem,4vw,2.6rem)" }}>
+          Your Cart <span className="muv-text-meta" style={{ fontSize: "0.5em" }}>({items.length} item{items.length === 1 ? "" : "s"})</span>
+        </h1>
+      </Reveal>
+      {items.length > 0 && <p className="muv-text-body text-sm mb-10" style={{ maxWidth: "56ch" }}>Held here, exactly as you left it — nothing added, nothing hidden until checkout.</p>}
+
+      {items.length === 0 ? (
+        <EmptyCart />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* ---- 2. Cart Items ---- */}
+            <div className="lg:col-span-2">
+              <div className="muv-card mb-5">
+                <div className="mb-4">
+                  <p className="muv-text-body text-sm mb-2">
+                    {remaining > 0 ? <>Add <strong className="muv-text-solid">₹{remaining}</strong> more for FREE delivery</> : <><strong style={{ color: "var(--lavender)" }}>FREE delivery</strong> unlocked</>}
+                  </p>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(var(--text-rgb),0.08)" }}>
+                    <div className="h-full transition-all" style={{ width: `${Math.min(100, (subtotal / FREE_SHIP_THRESHOLD) * 100)}%`, background: "var(--lavender)" }} />
+                  </div>
+                </div>
+                {items.map((item) => {
+                  const stock = stockByVariant[item.variantId];
+                  const fragrance = fragranceByProduct[item.productId];
+                  const overStock = stock && stock.status !== "OUT_OF_STOCK" && item.quantity > stock.quantity;
+                  return (
+                    <div key={item.variantId} className="flex gap-4 py-4" style={{ borderTop: "1px solid var(--hairline)" }}>
+                      <div className="muv-product-visual" style={{ width: 68, height: 68, flexShrink: 0 }}>
+                        <ProductImage src={item.image} alt={item.name} transform={IMAGE_PRESETS.micro} sizes="68px" rounded={12} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="muv-text-meta text-[11px] uppercase tracking-wide">{item.size}{fragrance ? ` · ${fragrance}` : ""}</p>
+                            <Link href={`/products`} className="font-display muv-text-solid text-base hover:underline" style={{ fontWeight: 500 }}>{item.name}</Link>
+                            {stock?.status === "OUT_OF_STOCK" && <p className="text-xs mt-1" style={{ color: "rgba(var(--text-rgb),0.5)" }}>Currently out of stock</p>}
+                            {stock?.status === "LOW_STOCK" && !overStock && <p className="text-xs mt-1" style={{ color: "var(--lavender)" }}>Only {stock.quantity} left</p>}
+                            {overStock && <p className="text-xs mt-1" style={{ color: "var(--danger)" }}>Only {stock!.quantity} available — reduce quantity</p>}
+                          </div>
+                          <button onClick={() => removeItem(item.variantId)} className="muv-text-meta flex-shrink-0" aria-label={`Remove ${item.name} from cart`}><X size={15} /></button>
+                        </div>
+                        <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+                          <div className="flex items-center border rounded-full px-1 py-1" style={{ borderColor: "var(--card-border)" }}>
+                            <button onClick={() => updateQuantity(item.variantId, item.quantity - 1)} className="muv-text-solid muv-tap-target" aria-label={`Decrease quantity of ${item.name}`}>−</button>
+                            <span className="muv-text-solid text-sm px-1">{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.variantId, item.quantity + 1)} className="muv-text-solid muv-tap-target" aria-label={`Increase quantity of ${item.name}`}>+</button>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => handleSaveForLater(item)} className="muv-footer-link muv-text-meta hover:text-white text-xs flex items-center gap-1">
+                              <Heart size={12} /> Save for later
+                            </button>
+                            <div className="text-right">
+                              <span className="muv-text-solid text-sm">₹{item.price * item.quantity}</span>
+                              {item.mrp > item.price && <span className="muv-text-faint text-xs line-through ml-1.5">₹{item.mrp * item.quantity}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Save for later list */}
+              {saved.length > 0 && (
+                <div className="muv-card mb-5">
+                  <h3 className="font-display muv-text-solid text-base mb-4" style={{ fontWeight: 500 }}>Saved for Later ({saved.length})</h3>
+                  <div className="space-y-3">
+                    {saved.map((item) => (
+                      <div key={item.variantId} className="flex items-center gap-4">
+                        <div className="muv-product-visual" style={{ width: 52, height: 52, flexShrink: 0 }}>
+                          <ProductImage src={item.image} alt={item.name} transform={IMAGE_PRESETS.micro} sizes="52px" rounded={10} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="muv-text-solid text-sm truncate">{item.name}</p>
+                          <p className="muv-text-meta text-xs">{item.size} · ₹{item.price}</p>
+                        </div>
+                        <button onClick={() => handleMoveToCart(item)} className="muv-footer-link muv-text-meta hover:text-white text-xs flex-shrink-0">Move to cart</button>
+                        <button onClick={() => removeSaved(item.variantId)} className="muv-text-meta flex-shrink-0" aria-label={`Remove ${item.name} from saved items`}><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="muv-card">
+                <h3 className="font-display muv-text-solid text-base mb-4" style={{ fontWeight: 500 }}>Have a coupon?</h3>
+                {applied ? (
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 muv-text-solid text-sm"><Tag size={15} style={{ color: "var(--lavender)" }} /> {applied.code} applied</span>
+                    <button onClick={() => setApplied(null)} className="muv-text-meta text-xs">Remove</button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex gap-2">
+                      <input value={couponCode} onChange={(e) => setCouponCode(e.target.value)} placeholder="Enter coupon code" aria-label="Coupon code" className="muv-input flex-1" />
+                      <Button variant="ghost" onClick={applyCoupon}>Apply</Button>
+                    </div>
+                    {couponError && <p className="muv-text-meta text-xs mt-2">{couponError}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ---- 3. Order Summary ---- */}
+            <div>
+              <div className="muv-card" style={{ position: "sticky", top: 100 }}>
+                <h3 className="font-display muv-text-solid text-base mb-4" style={{ fontWeight: 500 }}>Order Summary</h3>
+                <div className="flex justify-between muv-text-body text-sm py-1"><span>Subtotal</span><span>₹{subtotal}</span></div>
+                {estimatedSavings > 0 && <div className="flex justify-between text-sm py-1" style={{ color: "var(--lavender)" }}><span>You're saving</span><span>₹{estimatedSavings}</span></div>}
+                {discount > 0 && <div className="flex justify-between text-sm py-1" style={{ color: "var(--lavender)" }}><span>Coupon discount</span><span>−₹{discount}</span></div>}
+                <div className="flex justify-between muv-text-body text-sm py-1"><span>Delivery</span><span>{shipping === 0 ? "FREE" : `₹${shipping}`}</span></div>
+                <div className="flex justify-between muv-text-meta text-sm py-1"><span>Tax</span><span>Calculated at checkout</span></div>
+                <div className="my-3 h-px" style={{ background: "var(--hairline)" }} />
+                <div className="flex justify-between font-display muv-text-solid text-lg"><span>Total</span><span>₹{total}</span></div>
+                <Link href="/checkout" className="block mt-5">
+                  <Button variant="primary" className="w-full">Proceed to Checkout <ChevronRight size={15} /></Button>
+                </Link>
+              </div>
+
+              {/* ---- 9. Delivery Estimate ---- */}
+              <div className="muv-card mt-5">
+                <h3 className="font-display muv-text-solid text-sm mb-3" style={{ fontWeight: 500 }}>Delivery Estimate</h3>
+                {SHIPPING_OPTIONS.map((opt) => (
+                  <div key={opt.id} className="flex justify-between text-xs py-1">
+                    <span className="muv-text-meta">{opt.label}</span>
+                    <span className="muv-text-body">{opt.eta} · {opt.price}</span>
+                  </div>
+                ))}
+                <p className="muv-text-faint text-xs mt-3">
+                  <Link href="/shipping" className="muv-footer-link hover:text-white">Shipping policy</Link>
+                  {" · "}
+                  <Link href="/returns" className="muv-footer-link hover:text-white">Return policy</Link>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ---- 4. Trust Section ---- */}
+          <TrustIndicators items={CART_TRUST_ITEMS} />
+
+          {/* ---- 5. Recommended Products ---- */}
+          {recommendedFiltered.length > 0 && (
+            <section className="mt-20">
+              <Reveal><p className="muv-eyebrow mb-3">You Might Also Like</p></Reveal>
+              <Reveal delay={0.06}>
+                <h2 className="font-display text-white mb-8" style={{ fontWeight: 400, fontSize: "1.6rem" }}>Complete the range</h2>
+              </Reveal>
+              <FeaturedProducts products={recommendedFiltered.slice(0, 4)} wishlistedIds={wishlistedIds} />
+            </section>
+          )}
+
+          {/* ---- 6. Continue Shopping ---- */}
+          <div className="text-center mt-16">
+            <Link href="/shop" className="muv-footer-link muv-text-meta hover:text-white text-xs uppercase tracking-widest inline-flex items-center gap-2">
+              Continue Shopping <ArrowRight size={13} />
+            </Link>
+          </div>
+        </>
+      )}
+
+      {/* ---- 8. Sticky Mobile Summary ---- */}
+      {items.length > 0 && <StickyCartSummary total={total} />}
+    </div>
+  );
+}

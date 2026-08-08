@@ -1,0 +1,23 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "MUV Digital Ecosystem Architecture",
+  "chapterNumber": 7,
+  "koidPrefix": "KO-DM-CH7-",
+  "sourceChapter": "MUV Knowledge Library, Part XII, Chapter 59",
+  "sourceLineRange": "15691-15878",
+  "totalKnowledgeObjects": 11,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer).",
+  "crossDomainComplementaryNote": {
+    "topic": "D2C and Marketplace Relationship (this chapter, KO-DM-CH7-004) vs. Domain 4's commercial/operational channel content",
+    "note": "Recorded as complementary, not duplicate — this KO is digital-experience framing; Domain 4's is commercial/operational framing"
+  }
+}

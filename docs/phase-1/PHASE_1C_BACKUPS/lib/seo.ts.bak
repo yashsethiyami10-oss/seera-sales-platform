@@ -1,0 +1,142 @@
+import type { Metadata } from "next";
+
+/**
+ * One function to build a page's `Metadata` export — title/description/OG/
+ * Twitter Card all from one input, so every page follows the same shape
+ * instead of hand-writing OG/Twitter tags per route and letting them drift.
+ * Usage once a real page exists:
+ *
+ *   export const metadata = buildMetadata({
+ *     title: product.name,
+ *     description: product.shortDescription,
+ *     path: `/products/${product.slug}`,
+ *     image: product.images[0]?.url,
+ *   });
+ */
+const SITE_NAME = "MUV";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.muv.co.in";
+const DEFAULT_DESCRIPTION = "MUV — premium home, fabric, body, personal, and car care. Keep Muving.";
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-default.png`;
+
+export function buildMetadata(input: {
+  title: string;
+  description?: string;
+  path: string; // e.g. "/products/muv-noir" — used for canonical + OG url
+  image?: string;
+  noIndex?: boolean;
+}): Metadata {
+  const url = `${SITE_URL}${input.path}`;
+  const description = input.description ?? DEFAULT_DESCRIPTION;
+  const image = input.image ?? DEFAULT_OG_IMAGE;
+
+  return {
+    title: `${input.title} | ${SITE_NAME}`,
+    description,
+    alternates: { canonical: url },
+    robots: input.noIndex ? { index: false, follow: false } : { index: true, follow: true },
+    openGraph: {
+      title: input.title,
+      description,
+      url,
+      siteName: SITE_NAME,
+      images: [{ url: image, width: 1200, height: 630 }],
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: input.title,
+      description,
+      images: [image],
+    },
+  };
+}
+
+/**
+ * JSON-LD builders — each returns a plain object meant to be serialized and
+ * injected via a <script type="application/ld+json"> tag in the page that
+ * uses it, e.g.:
+ *
+ *   <script type="application/ld+json"
+ *     dangerouslySetInnerHTML={{ __html: JSON.stringify(buildProductSchema(product)) }} />
+ */
+
+export function buildOrganizationSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+    logo: `${SITE_URL}/logo.png`,
+    sameAs: [
+      // Populate from Website Settings (Social Media Links) once that
+      // singleton table exists — see WIRING.md's SiteSettings note.
+    ],
+  };
+}
+
+export function buildProductSchema(product: {
+  name: string;
+  slug: string;
+  shortDescription: string;
+  imageUrl?: string;
+  rating?: number | null;
+  reviewCount?: number;
+  variants: { price: number; inStock: boolean }[];
+}) {
+  const prices = product.variants.map((v) => v.price);
+  const inStock = product.variants.some((v) => v.inStock);
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.shortDescription,
+    image: product.imageUrl ? [product.imageUrl] : undefined,
+    offers: {
+      "@type": "AggregateOffer",
+      priceCurrency: "INR",
+      lowPrice: Math.min(...prices),
+      highPrice: Math.max(...prices),
+      availability: inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: `${SITE_URL}/products/${product.slug}`,
+    },
+    ...(product.rating != null && product.reviewCount
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: product.rating,
+            reviewCount: product.reviewCount,
+          },
+        }
+      : {}),
+  };
+}
+
+/** Phase 16 — the FAQ page's existing Q&A content had no FAQPage JSON-LD,
+ * despite being an exact fit for it (real, static question/answer pairs,
+ * no fabrication risk since it's just structuring content already shown
+ * on-page). */
+export function buildFAQSchema(items: { q: string; a: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((item) => ({
+      "@type": "Question",
+      name: item.q,
+      acceptedAnswer: { "@type": "Answer", text: item.a },
+    })),
+  };
+}
+
+export function buildBreadcrumbSchema(items: { name: string; path: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: item.name,
+      item: `${SITE_URL}${item.path}`,
+    })),
+  };
+}

@@ -1,0 +1,28 @@
+{
+  "parentProduct": {
+    "chartedName": "MUV Dishwash Gel",
+    "sopTitleName": "MUV DISHWASH LIQUID GEL",
+    "canonicalNameStatus": "OPEN — see 19_Canonical_Naming_Register.md, KO-DW-NAME-001",
+    "category": "Home Care",
+    "categorySlug": "home-care",
+    "categoryConfirmed": false,
+    "productType": "Hand dishwashing liquid gel",
+    "manufacturer": "MUV Care Co. (inferred — not restated in this SOP, unlike sibling products)",
+    "manufacturerConfirmed": false,
+    "batchSize": "10 Litres",
+    "variantCount": 1,
+    "skuCount": 3,
+    "koid": "KO-DW-IDENT-001"
+  },
+  "formulation": {
+    "colour": "Yellow",
+    "colourQuantity": "As Required (not a fixed gram weight)",
+    "fragrance": "Lemon",
+    "fragranceQuantity": "15 ml per 10 L batch",
+    "koid": "KO-DW-MFG-001"
+  },
+  "catalogueStatus": {
+    "existsInProductDatabase": false,
+    "note": "No Product/ProductVariant row exists in prisma/seed.ts for this product."
+  }
+}

@@ -1,0 +1,195 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { createCategory, updateCategory, deleteCategory } from "@/actions/cms";
+import { useToast } from "@/components/ui/toast";
+import { Badge, Button } from "@/components/ui/primitives";
+import { ToggleSwitch } from "@/components/ui/toggle-switch";
+import { Modal } from "@/components/ui/modal";
+import { ImageUploader } from "@/components/admin/image-uploader";
+import { slugify } from "@/lib/utils/slugify";
+
+type Category = { id: string; name: string; slug: string; description?: string | null; imageUrl?: string | null; comingSoon: boolean; sortOrder: number; productCount: number };
+
+const EMPTY_FORM = { name: "", slug: "", description: "", imageUrl: "", comingSoon: false };
+
+/**
+ * Reuses createCategory/updateCategory/deleteCategory (actions/cms.ts —
+ * already real, already had full CRUD logic, just no admin page calling
+ * them) and the same Modal/ImageUploader/Badge/Button primitives already
+ * established by ProductFormModal — no new upload logic, no new modal
+ * component. Reordering calls updateCategory twice (swaps sortOrder between
+ * neighbors) since no dedicated reorderCategories action exists — the same
+ * generic update action already used for every other field, not new
+ * business logic.
+ */
+export function CategoriesTableClient({ categories }: { categories: Category[] }) {
+  const [editing, setEditing] = useState<Category | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const { showToast } = useToast();
+  const router = useRouter();
+
+  const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  function startEdit(c: Category) {
+    setEditing(c);
+    setAdding(false);
+    setSlugTouched(true);
+    setForm({ name: c.name, slug: c.slug, description: c.description ?? "", imageUrl: c.imageUrl ?? "", comingSoon: c.comingSoon });
+  }
+
+  function startAdd() {
+    setAdding(true);
+    setEditing(null);
+    setSlugTouched(false);
+    setForm(EMPTY_FORM);
+  }
+
+  function close() {
+    setAdding(false);
+    setEditing(null);
+    setForm(EMPTY_FORM);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const payload = { name: form.name, slug: form.slug, description: form.description || undefined, imageUrl: form.imageUrl || undefined, comingSoon: form.comingSoon };
+    const result = editing ? await updateCategory({ id: editing.id, ...payload }) : await createCategory(payload);
+    setSaving(false);
+    if (result.success) {
+      showToast(editing ? "Category updated" : "Category created");
+      close();
+      router.refresh();
+    } else {
+      showToast(result.error.message);
+    }
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    startTransition(async () => {
+      const result = await deleteCategory(deleteTarget.id);
+      if (result.success) {
+        showToast("Category deleted");
+        router.refresh();
+      } else {
+        showToast(result.error.message);
+      }
+      setDeleteTarget(null);
+    });
+  }
+
+  function move(cat: Category, direction: -1 | 1) {
+    const idx = sorted.findIndex((c) => c.id === cat.id);
+    const swapWith = sorted[idx + direction];
+    if (!swapWith) return;
+    startTransition(async () => {
+      await Promise.all([
+        updateCategory({ id: cat.id, sortOrder: swapWith.sortOrder }),
+        updateCategory({ id: swapWith.id, sortOrder: cat.sortOrder }),
+      ]);
+      router.refresh();
+    });
+  }
+
+  const showForm = adding || editing;
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <Button variant="primary" onClick={startAdd}><Plus size={14} /> Add Category</Button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>{["Order", "Category", "Slug", "Products", "Visibility", ""].map((h) => <th key={h} className="text-left py-2.5 px-3 muv-text-meta text-xs uppercase" style={{ borderBottom: "1px solid var(--card-border)" }}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {sorted.map((c, i) => (
+              <tr key={c.id}>
+                <td className="py-3 px-3" style={{ borderBottom: "1px solid var(--card-border)" }}>
+                  <div className="flex gap-1">
+                    <button onClick={() => move(c, -1)} disabled={i === 0 || isPending} aria-label={`Move ${c.name} up`} className="muv-icon-circle" style={{ width: 24, height: 24 }}><ArrowUp size={11} /></button>
+                    <button onClick={() => move(c, 1)} disabled={i === sorted.length - 1 || isPending} aria-label={`Move ${c.name} down`} className="muv-icon-circle" style={{ width: 24, height: 24 }}><ArrowDown size={11} /></button>
+                  </div>
+                </td>
+                <td className="py-3 px-3 muv-text-solid" style={{ borderBottom: "1px solid var(--card-border)" }}>{c.name}</td>
+                <td className="py-3 px-3 muv-text-meta" style={{ borderBottom: "1px solid var(--card-border)" }}>/{c.slug}</td>
+                <td className="py-3 px-3 muv-text-body" style={{ borderBottom: "1px solid var(--card-border)" }}>{c.productCount}</td>
+                <td className="py-3 px-3" style={{ borderBottom: "1px solid var(--card-border)" }}>
+                  <Badge tone={c.comingSoon ? "neutral" : "positive"}>{c.comingSoon ? "Coming Soon" : "Live"}</Badge>
+                </td>
+                <td className="py-3 px-3" style={{ borderBottom: "1px solid var(--card-border)" }}>
+                  <div className="flex gap-1.5">
+                    <button className="muv-icon-circle" style={{ width: 30, height: 30 }} onClick={() => startEdit(c)} aria-label={`Edit ${c.name}`}><Pencil size={13} /></button>
+                    <button className="muv-icon-circle" style={{ width: 30, height: 30 }} onClick={() => setDeleteTarget(c)} aria-label={`Delete ${c.name}`}><Trash2 size={13} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <Modal title={editing ? "Edit Category" : "Add Category"} onClose={close}>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="cat-name" className="muv-text-meta text-xs uppercase tracking-wide mb-1.5 block">Name</label>
+              <input
+                id="cat-name"
+                className="muv-input"
+                value={form.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setForm((f) => ({ ...f, name, slug: slugTouched ? f.slug : slugify(name) }));
+                }}
+              />
+            </div>
+            <div>
+              <label htmlFor="cat-slug" className="muv-text-meta text-xs uppercase tracking-wide mb-1.5 block">Slug</label>
+              <input id="cat-slug" className="muv-input" value={form.slug} onChange={(e) => { setSlugTouched(true); setForm({ ...form, slug: e.target.value }); }} />
+            </div>
+            <div>
+              <label htmlFor="cat-desc" className="muv-text-meta text-xs uppercase tracking-wide mb-1.5 block">Description</label>
+              <textarea id="cat-desc" className="muv-input muv-textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </div>
+            <div>
+              <p className="muv-text-meta text-xs uppercase tracking-wide mb-1.5">Image</p>
+              <ImageUploader value={form.imageUrl ? [form.imageUrl] : []} onChange={(urls) => setForm({ ...form, imageUrl: urls[0] ?? "" })} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="muv-text-body text-sm">Coming Soon</span>
+              <ToggleSwitch checked={form.comingSoon} onChange={(v) => setForm({ ...form, comingSoon: v })} label="Coming soon" />
+            </div>
+            <Button variant="primary" onClick={handleSave} disabled={saving || !form.name || !form.slug} className="w-full">
+              {saving ? "Saving…" : editing ? "Save Changes" : "Create Category"}
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <Modal title={`Delete ${deleteTarget.name}?`} onClose={() => setDeleteTarget(null)}>
+          <p className="muv-text-body text-sm mb-5">
+            {deleteTarget.productCount > 0
+              ? `This category has ${deleteTarget.productCount} product${deleteTarget.productCount === 1 ? "" : "s"} — deletion will be rejected until they're reassigned.`
+              : "This can't be undone."}
+          </p>
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="primary" onClick={confirmDelete} disabled={isPending}>{isPending ? "Deleting…" : "Delete"}</Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}

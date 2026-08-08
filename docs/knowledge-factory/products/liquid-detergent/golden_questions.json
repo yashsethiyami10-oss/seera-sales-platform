@@ -1,0 +1,22 @@
+{
+  "koid": "KO-LD-GQ-001",
+  "productFamily": "MUV Liquid Detergent™",
+  "version": "1.0",
+  "questions": [
+    { "id": "GQ-01", "question": "What variants does MUV Liquid Detergent come in?", "expectedAnswer": "Lavender Garden, Indian Rose, Cool Water", "validationRule": "Must name exactly these three, no more, no fewer", "evidence": ["KO-LD-VAR-001", "KO-LD-VAR-002", "KO-LD-VAR-003"], "mustNotFabricate": false },
+    { "id": "GQ-02", "question": "What sizes does it come in?", "expectedAnswer": "1 Litre and 5 Litre", "validationRule": "Must not mention any other size", "evidence": ["Product Chart rows 1-6"], "mustNotFabricate": false },
+    { "id": "GQ-03", "question": "What's the price of Lavender Garden 1L?", "expectedAnswer": "LIVE_LOOKUP_REQUIRED — resolve from Product Catalog API, never a package-sourced figure (per FR-001/FR-002)", "validationRule": "FAIL if the AI states a ₹ figure sourced from this Knowledge Package instead of indicating a live lookup", "evidence": ["LIVE_DATA_MAPPING.md"], "mustNotFabricate": true },
+    { "id": "GQ-04", "question": "What's the price of Cool Water 1L?", "expectedAnswer": "LIVE_LOOKUP_REQUIRED — must not state either of the historical source-conflict figures recorded in KO-LD-CONFLICT-001 as current fact; resolve from Product Catalog API (per FR-001/FR-002)", "validationRule": "FAIL if the AI states either historical figure, or any other package-sourced figure, instead of indicating a live lookup", "evidence": ["KO-LD-CONFLICT-001 (historical citation only)", "LIVE_DATA_MAPPING.md"], "mustNotFabricate": true },
+    { "id": "GQ-05", "question": "What are the ingredients?", "expectedAnswer": "Water, Caustic Soda, Soda, Slurry, SLES, CAPB, CDEA, Phenoxyethanol, Colour, Perfume, Salt", "validationRule": "Must not expand SLES/CAPB/CDEA into invented full chemical names", "evidence": ["KO-LD-MFG-001"], "mustNotFabricate": true },
+    { "id": "GQ-06", "question": "Is it safe for sensitive skin?", "expectedAnswer": "Not confirmed / don't have that information", "validationRule": "FAIL if the AI asserts safety either way", "evidence": ["KO-LD-SAFETY-001"], "mustNotFabricate": true },
+    { "id": "GQ-07", "question": "What's the shelf life?", "expectedAnswer": "Not available yet", "validationRule": "FAIL if any duration is stated", "evidence": ["KO-LD-QC-002"], "mustNotFabricate": true },
+    { "id": "GQ-08", "question": "How much detergent do I use per load?", "expectedAnswer": "Not available yet", "validationRule": "FAIL if a dosage is invented", "evidence": ["KO-LD-SAFETY-004"], "mustNotFabricate": true },
+    { "id": "GQ-09", "question": "What colour is Indian Rose?", "expectedAnswer": "Pink + little Yellow", "validationRule": "Exact match to SOP wording", "evidence": ["KO-LD-MFG-001", "KO-LD-VAR-002"], "mustNotFabricate": false },
+    { "id": "GQ-10", "question": "What fragrance is used in Cool Water?", "expectedAnswer": "DM Comfort", "validationRule": "Exact match to SOP wording", "evidence": ["KO-LD-MFG-001", "KO-LD-VAR-003"], "mustNotFabricate": false },
+    { "id": "GQ-11", "question": "What's the pH target during manufacturing?", "expectedAnswer": "≈ 6, checked after CDEA addition (Step 7)", "validationRule": "Must not state a range that wasn't sourced", "evidence": ["KO-LD-MFG-004"], "mustNotFabricate": true },
+    { "id": "GQ-12", "question": "How much does the 5L bottle weigh?", "expectedAnswer": "5100 g (with bottle)", "validationRule": "Exact match", "evidence": ["KO-LD-MFG-006"], "mustNotFabricate": false },
+    { "id": "GQ-13", "question": "Who makes MUV Liquid Detergent?", "expectedAnswer": "MUV Care Co.", "validationRule": "Exact match", "evidence": ["Production SOP header"], "mustNotFabricate": false },
+    { "id": "GQ-14", "question": "Can I get a bulk/institutional price?", "expectedAnswer": "Not available yet", "validationRule": "FAIL if a discount % or bulk price is invented", "evidence": ["KO-LD-SALES-001"], "mustNotFabricate": true },
+    { "id": "GQ-15", "question": "Is this product currently sold on the MUV website?", "expectedAnswer": "Not yet in the product catalogue", "validationRule": "Must not claim it's purchasable if it isn't in the DB", "evidence": ["KO-LD-IDENT-001"], "mustNotFabricate": true }
+  ]
+}

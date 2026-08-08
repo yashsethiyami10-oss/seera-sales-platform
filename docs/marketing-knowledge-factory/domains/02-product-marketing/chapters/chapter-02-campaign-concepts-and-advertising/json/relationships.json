@@ -1,0 +1,26 @@
+{
+  "chapter": "Campaign Concepts & Advertising",
+  "relationships": [
+    { "from": "KO-PM-CH2-001", "type": "governs", "to": ["KO-PM-CH2-002","KO-PM-CH2-003","KO-PM-CH2-004","KO-PM-CH2-005","KO-PM-CH2-006","KO-PM-CH2-007","KO-PM-CH2-008","KO-PM-CH2-009","KO-PM-CH2-010","KO-PM-CH2-011","KO-PM-CH2-012","KO-PM-CH2-013"] },
+    { "from": "KO-PM-CH2-002", "type": "feeds", "to": ["KO-PM-CH2-003"] },
+    { "from": "KO-PM-CH2-007", "type": "feeds", "to": ["KO-PM-CH2-008"] },
+    { "from": "KO-PM-CH2-001", "type": "feeds", "to": ["KO-PM-CH2-009"] },
+    { "from": "KO-PM-CH2-008", "type": "feeds", "to": ["KO-PM-CH2-009"] },
+    { "from": "KO-PM-CH2-003", "type": "feeds", "to": ["KO-PM-CH2-013"] },
+    { "from": "KO-PM-CH2-010", "type": "feeds", "to": ["KO-PM-CH2-011","KO-PM-CH2-012","KO-PM-CH2-013"] },
+    { "from": "KO-PM-CH2-001", "type": "summarizedBy", "to": ["KO-PM-CH2-014"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-PM-CH2-003", "type": "citesVerbatim", "to": ["KO-BI-CH3-003", "KO-BI-CH1-001"] },
+    { "from": "KO-PM-CH2-004", "type": "extends", "to": "KO-BI-CH5-004" }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-PM-CH1-005", "type": "isImplementedBy", "to": "KO-PM-CH2-008", "note": "Forward relationship predicted in Chapter 1, fulfilled here" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-PM-CH2-010", "type": "willBeExtendedBy", "to": "Domain 5 — Channel Intelligence" },
+    { "from": "KO-PM-CH2-009", "type": "willGovern", "to": "Domain 7 — Creative Intelligence" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

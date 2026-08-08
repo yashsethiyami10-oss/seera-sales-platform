@@ -1,0 +1,20 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "Data Architecture & Intelligence System (Excerpt)",
+  "chapterNumber": 9,
+  "koidPrefix": "KO-DM-CH9-",
+  "sourceChapter": "MUV Knowledge Library, Part XII, Chapter 61 (excluding sections 4.6-4.7)",
+  "sourceLineRange": "16073-16270 (excl. 16153-16183)",
+  "totalKnowledgeObjects": 10,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer).",
+  "crmCitationNote": "KO-DM-CH9-005 is a citation-only Knowledge Object. Sections 4.6-4.7 of this chapter were already fully imported by Domain 3 (frozen) as KO-CI-CH7-001 and KO-CI-CH7-002. Per Zero Duplicate Knowledge, this chapter cites those frozen KOs rather than re-transcribing their content."
+}

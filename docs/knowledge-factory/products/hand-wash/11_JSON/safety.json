@@ -1,0 +1,31 @@
+{
+  "productFamily": "MUV Hand Wash™",
+  "totalSafetyKOs": 11,
+  "fr005MandatoryFields": {
+    "usage": { "koid": "KO-HW-INTEL-003", "location": "03_Product_Intelligence.md", "status": "Unknown — Founder Decision Required" },
+    "safety": { "koid": "KO-HW-SAFETY-002", "status": "Unknown — Founder Decision Required" },
+    "contraindications": { "koid": "KO-HW-SAFETY-003", "status": "Unknown — Founder Decision Required" },
+    "firstAid": {
+      "eyeContact": { "koid": "KO-HW-SAFETY-004", "status": "Unknown — Founder Decision Required" },
+      "skinIrritation": { "koid": "KO-HW-SAFETY-005", "status": "Unknown — Founder Decision Required" },
+      "accidentalIngestion": { "koid": "KO-HW-SAFETY-006", "status": "Unknown — Founder Decision Required" }
+    },
+    "storage": { "koid": "KO-HW-SAFETY-007", "status": "Unknown — Founder Decision Required" },
+    "shelfLife": { "koid": "KO-HW-SAFETY-008", "status": "Unknown — Founder Decision Required" }
+  },
+  "allFieldsSourced": false,
+  "safetyKOs": [
+    { "koid": "KO-HW-SAFETY-001", "title": "Source Safety Content Overview", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-002", "title": "Safety (FR-005 field 2/6)", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-003", "title": "Contraindications (FR-005 field 3/6)", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-004", "title": "First Aid: Eye Contact (FR-005 field 4/6a)", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-005", "title": "First Aid: Skin Irritation (FR-005 field 4/6b)", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-006", "title": "First Aid: Accidental Ingestion (FR-005 field 4/6c)", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-007", "title": "Storage (FR-005 field 5/6)", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-008", "title": "Shelf Life (FR-005 field 6/6)", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-009", "title": "Child Safety", "confidence": "N/A" },
+    { "koid": "KO-HW-SAFETY-010", "title": "Antibacterial / Protective Claim Status (Life Shield)", "confidence": "N/A", "critical": true, "finding": "No source assigns any antibacterial, protective, or germ-killing property to Life Shield or any other variant" },
+    { "koid": "KO-HW-SAFETY-011", "title": "Emergency Guidance Behavioral Rule", "confidence": "HIGH", "reusedFrom": ["KO-PB-SAFETY-013", "KO-BP-SAFETY-013", "KO-WP-SAFETY-013", "KO-BW-SAFETY-010"] }
+  ],
+  "severityComparison": "Matches Body Wash's zero-safety-content finding in absolute terms; more severely documented here because FR-005 (triggered by that Body Wash finding) requires each of the six mandatory fields to be individually accounted for rather than summarized as one general gap."
+}

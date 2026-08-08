@@ -1,0 +1,19 @@
+{
+  "domain": "Digital & Marketplace Intelligence",
+  "domainNumber": 5,
+  "chapter": "Backend, Integration & Automation",
+  "chapterNumber": 3,
+  "koidPrefix": "KO-DM-CH3-",
+  "sourceChapter": "MUV Knowledge Library, Part II, Chapter 8",
+  "sourceLineRange": "1209-1349",
+  "totalKnowledgeObjects": 8,
+  "status": "Founder Review Ready",
+  "authorityOrder": [
+    "Founder Decisions",
+    "Master Claude Execution Prompt v3.0",
+    "Product Knowledge Factory (docs/knowledge-factory/, frozen FR-007)",
+    "MUV Knowledge Library",
+    "Existing Frozen Repository (Domains 1-4, all frozen)"
+  ],
+  "domainSynthesisNote": "Domain 5 is a Founder-approved two-Part synthesized domain (Part II implementation layer + Part XII strategic layer)."
+}

@@ -1,0 +1,1766 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   MUV Design System — single source of truth.
+   Previously this exact block was copy-pasted into 10 separate standalone
+   files (see AUDIT.md Section 1/5). Every class below is used identically
+   across storefront, account, admin, and CMS — changing a radius or a
+   color here now changes it everywhere, which was the entire point of
+   consolidating.
+   ========================================================================== */
+
+:root {
+  /* MUV OS™ refinement pass — real root cause of the remaining "white
+     background" reports: `.muv-os-shell { color-scheme: dark }` (scoped
+     to a nested element) sets the *computed* color-scheme correctly on
+     every element inside it — confirmed via getComputedStyle in a real
+     browser — but a native `<select>`'s actual dropdown POPUP is a
+     separate rendering surface that, empirically (verified with a real
+     headless-Chromium screenshot, not just computed-style assertions),
+     does not reliably consult a scoped ancestor's color-scheme the way
+     ordinary CSS inheritance would suggest — it renders in light chrome
+     regardless. Setting it here, at the document root, is what actually
+     reaches that rendering surface. This is consistent with, not a
+     replacement for, the pre-existing `.muv-admin-shell { color-scheme:
+     dark }` rule below (that one predates this and is left exactly as it
+     was) — every part of this app is dark by default, so a root-level
+     default is the correct top-level fix, with the `[data-theme="light"]`
+     override two blocks down handling the one real light sub-context
+     (MUV OS's own theme toggle). */
+  color-scheme: dark;
+  --ink: #0b0b0f;
+  --surface: #111117;
+  --lavender: #B7ABF0;
+  --card-fill: rgba(255, 255, 255, 0.03);
+  --card-fill-hover: rgba(255, 255, 255, 0.045);
+  --card-border: rgba(255, 255, 255, 0.07);
+  --card-border-hover: rgba(183, 171, 240, 0.35);
+  --hairline: rgba(255, 255, 255, 0.06);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --text-rgb: 255, 255, 255;
+  --danger: #f2555c;
+  --danger-rgb: 242, 85, 92;
+  --lavender-rgb: 183, 171, 240;
+
+  /* One shadow scale, reused everywhere an element lifts off the page —
+     cards, modals, buttons, icon circles — so elevation reads the same
+     across storefront, account, and admin instead of every component
+     inventing its own blur/spread. */
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.16);
+  --shadow-md: 0 16px 36px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 0 1px rgba(var(--lavender-rgb), 0.28), 0 14px 34px rgba(var(--lavender-rgb), 0.3);
+}
+
+/* Admin/CMS only — the rest of the app (storefront/account) is always dark,
+   per AUDIT.md's note that this was a deliberate choice (internal ops tool
+   vs. customer-facing brand experience), not an oversight. */
+[data-theme="light"] {
+  color-scheme: light;
+  --ink: #f6f5f8;
+  --surface: #ffffff;
+  --card-fill: #ffffff;
+  --card-fill-hover: #fafafa;
+  --card-border: rgba(11, 11, 15, 0.08);
+  --card-border-hover: rgba(183, 171, 240, 0.4);
+  --hairline: rgba(11, 11, 15, 0.08);
+  --text-rgb: 11, 11, 15;
+  --danger: #d92d2d;
+  --danger-rgb: 217, 45, 45;
+}
+
+/* Premium graphite background — a faint depth gradient plus three very
+   soft, fixed lavender glows (never full-strength color, just enough to
+   read as "lit from somewhere") instead of a flat black fill. `fixed`
+   attachment means it's one composited layer the whole page scrolls over —
+   no repaint cost per section, cheaper than per-section background images. */
+body {
+  background-color: var(--ink);
+  background-image:
+    radial-gradient(ellipse 900px 640px at 12% -8%, rgba(183, 171, 240, 0.10), transparent 62%),
+    radial-gradient(ellipse 640px 520px at 100% 16%, rgba(183, 171, 240, 0.07), transparent 60%),
+    radial-gradient(ellipse 760px 560px at 46% 100%, rgba(150, 138, 220, 0.07), transparent 62%),
+    linear-gradient(180deg, #0c0c11 0%, #0a0a0e 45%, #0d0d13 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  font-family: var(--font-inter), -apple-system, sans-serif;
+}
+
+/* Soft blend where a solid-panel section (e.g. --surface) meets the ambient
+   background above it, instead of a hard color cut. */
+.muv-section-fade-top { position: relative; }
+.muv-section-fade-top::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 108px;
+  background: linear-gradient(180deg, rgba(10, 10, 14, 0.96), transparent);
+  pointer-events: none;
+}
+
+/* ---- Hero background system (Sprint 1 — scoped to `.muv-hero` only, never
+   the shared `body` rule, so no other section is affected). Three layers:
+   1) soft lavender ambient light + graphite radial depth (the base),
+   2) a vignette that gently darkens the edges,
+   3) a barely-there noise texture (inline SVG feTurbulence — zero extra
+      HTTP request) so large dark gradient areas never band or read as flat. */
+.muv-hero {
+  background:
+    radial-gradient(ellipse 64% 68% at 18% 20%, rgba(183, 171, 240, 0.15), transparent 64%),
+    radial-gradient(ellipse 58% 56% at 86% 78%, rgba(183, 171, 240, 0.09), transparent 60%),
+    linear-gradient(140deg, rgba(15, 15, 21, 0.96) 0%, rgba(8, 8, 12, 0.94) 42%, rgba(10, 10, 14, 1) 100%);
+}
+.muv-hero::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 72% 70% at 50% 48%, transparent 44%, rgba(0, 0, 0, 0.36) 100%),
+    radial-gradient(ellipse 56% 54% at 50% 44%, rgba(255, 255, 255, 0.025), transparent 70%);
+}
+.muv-hero::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  opacity: 0.03; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.muv-hero-claim {
+  font-size: 0.92rem; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(var(--text-rgb), 0.72);
+}
+/* Hero Final Polish, Phase 5 — rendering-only refinements to the locked
+   Cormorant Garamond headline: real kerning pairs + ligatures switched on
+   (browsers don't always enable these by default for display serifs),
+   smoother anti-aliasing for light text on this hero's dark background,
+   and optical-sizing support for any future variable-font swap (a no-op
+   today, since Cormorant Garamond ships as static per-weight files, not a
+   variable font with an opsz axis). No size, color, or copy change. */
+.muv-hero-headline {
+  font-kerning: normal;
+  font-feature-settings: "kern" 1, "liga" 1;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+/* Founder Final Hero Polish, Phase 3 — "Our Story" reads as a finished,
+   premium secondary action without needing hover (this is primarily a
+   mobile experience): soft lavender by default, a subtle persistent
+   underline, gentle opacity. Hover (desktop only, via pointer:fine) brings
+   both to full strength — a genuine enhancement, not the only state that
+   looks finished. */
+.muv-hero-our-story {
+  display: inline-block;
+  color: rgba(183, 171, 240, 0.78);
+  opacity: 0.92;
+  padding-bottom: 3px;
+  border-bottom: 1px solid rgba(183, 171, 240, 0.32);
+  transition: color 0.3s var(--ease), opacity 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .muv-hero-our-story:hover {
+    color: var(--lavender);
+    opacity: 1;
+    border-bottom-color: rgba(183, 171, 240, 0.75);
+  }
+}
+.muv-section-strapline {
+  max-width: 42rem; margin: 0 auto;
+  font-size: 0.95rem; line-height: 1.8;
+  color: rgba(var(--text-rgb), 0.7);
+}
+
+/* ---- Hero product — a real, uploaded (and background-removed) product
+   photo given a "studio spotlight": a soft lavender glow behind it, a
+   grounding drop-shadow, and a faint reflection (WebKit-only progressive
+   enhancement — Chrome/Safari show it, Firefox just shows no reflection,
+   never a broken layout). ---- */
+.muv-hero-spotlight {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 470px; height: 470px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(183, 171, 240, 0.18), rgba(183, 171, 240, 0.04) 58%, transparent 76%);
+  pointer-events: none;
+}
+.muv-hero-product-img {
+  filter: drop-shadow(0 24px 34px rgba(0, 0, 0, 0.38)) drop-shadow(0 0 36px rgba(183, 171, 240, 0.12));
+  -webkit-box-reflect: below 6px linear-gradient(to bottom, transparent, transparent 56%, rgba(255, 255, 255, 0.05));
+}
+
+/* Very subtle motion only, per Sprint 1's "no flashy animations" — a slow
+   drift and a gentle glow breathe, both easily reduced-motion-safe. */
+@keyframes muv-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+.muv-hero-product-float { animation: muv-float 7.2s ease-in-out infinite; }
+
+@keyframes muv-glow-pulse {
+  0%, 100% { opacity: 0.78; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.96; transform: translate(-50%, -50%) scale(1.04); }
+}
+.muv-hero-glow-pulse { animation: muv-glow-pulse 8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .muv-hero-product-float, .muv-hero-glow-pulse { animation: none; }
+}
+
+/* ============================================================
+   MUV Living Hero™ — recreated from the founder-approved, frozen Master
+   Hero (public/hero/MUV-HERO-MASTER.png) using the real transparent
+   Family + product PNGs already in the project. Warm "Light Sanctuary"
+   background (no photographic environment). Every timing/amplitude value
+   below is a named custom property or a config value passed from
+   page.tsx (HERO_CONSTELLATION/HERO_SKIN_CARE) — nothing here is a bare
+   magic number tuned by feel.
+   ============================================================ */
+.muv-hero-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 460px;
+  overflow: visible;
+}
+@media (min-width: 768px) and (max-width: 1023px) { .muv-hero-stage { min-height: 560px; } }
+
+/* Warm cream/stone "Light Sanctuary" — matches the Master Hero's warm
+   studio backdrop (replacing the previous dark version, which predates
+   the Master Hero reference). Still no photographed walls/architecture —
+   pure soft gradient light, per the founder's explicit "no photographic
+   environment" direction. */
+.muv-hero-sanctuary {
+  position: absolute; inset: -6% -4%; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 60% at 14% 10%, rgba(255, 252, 244, 0.9), transparent 62%),
+    radial-gradient(ellipse 90% 85% at 50% 55%, rgba(232, 220, 200, 0.85), transparent 78%),
+    linear-gradient(155deg, #f2ebde 0%, #e6dbc8 55%, #d8c9ae 100%);
+}
+/* Background "alive" pulse — an almost-imperceptible ~1% brightness
+   breathing cycle (18s), implemented as a near-invisible white wash's
+   opacity oscillating rather than filter:brightness() on the whole stage
+   (opacity is GPU-cheap; filter recalculation over a large area is not). */
+.muv-hero-ambient-pulse {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: rgba(255, 255, 255, 0.05);
+  opacity: 0;
+  animation: muv-ambient-pulse 18s ease-in-out infinite;
+}
+@keyframes muv-ambient-pulse { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+/* One extremely soft champagne light sweep every 20s — invisible for
+   ~85% of the cycle, one slow soft pass, no bloom/glow/flare. */
+.muv-hero-light-sweep {
+  position: absolute; inset: -20% -30%; z-index: 1; pointer-events: none;
+  background: linear-gradient(100deg, transparent 44%, rgba(255, 244, 219, 0.05) 50%, transparent 56%);
+  animation: muv-light-sweep 20s linear infinite;
+}
+@keyframes muv-light-sweep {
+  0%, 82% { transform: translateX(-55%); opacity: 0; }
+  90%     { opacity: 1; }
+  100%    { transform: translateX(55%); opacity: 0; }
+}
+/* Implied floor — a soft grounding glow, not a literal floor plane. */
+.muv-hero-groundglow {
+  position: absolute; left: 50%; bottom: 2%; width: 56%; height: 8%;
+  transform: translateX(-50%);
+  z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse 100% 100% at 50% 50%, rgba(60, 48, 32, 0.28), transparent 74%);
+  filter: blur(10px);
+}
+
+/* Vertically centred, height-capped so the family/products cluster sits
+   level with the left column's vertically-centred text regardless of how
+   tall the stretched stage itself is (100svh-tall on desktop) — sizing
+   the family relative to the *full* stage pushed it below the fold on a
+   normal browser window, the same issue found and fixed in the previous
+   Living Hero pass. */
+.muv-constellation {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: min(88%, 720px);
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+/* ---- Family — the emotional anchor. Sized/positioned to fill most of
+   the stage's height (matching the Master Hero's own proportions), fully
+   bottom-anchored. ---- */
+.muv-parallax-family {
+  position: absolute; left: 50%; bottom: 0; width: 46%; height: 96%;
+  transform: translate3d(calc(var(--mx, 0) * 2px), calc(var(--my, 0) * 2px), 0) translateX(-50%);
+  z-index: 3;
+}
+.muv-family-enter {
+  width: 100%; height: 100%;
+  opacity: 0; transform: translateY(14px);
+  animation: muv-hero-family-enter 0.9s var(--ease) 0.1s forwards;
+}
+@keyframes muv-hero-family-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Breathing — 1.5px amplitude, 8s cycle: deliberately small enough that
+   a visitor should never consciously clock it as "an animation." Lives on
+   its own element so it never fights the entrance animation above (same
+   fill-mode-forwards cascade conflict documented on .muv-constellation-
+   enter below). */
+.muv-family-breathe {
+  width: 100%; height: 100%;
+  animation: muv-family-breathe 8s ease-in-out infinite;
+}
+@keyframes muv-family-breathe {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1.5px); }
+}
+.muv-family-img {
+  object-fit: contain; object-position: bottom center;
+  filter: drop-shadow(0 26px 22px rgba(30, 20, 10, 0.22)) drop-shadow(0 4px 6px rgba(30, 20, 10, 0.16));
+}
+@media (max-width: 767px) { .muv-parallax-family { width: 60%; height: 92%; } }
+@media (min-width: 768px) and (max-width: 1023px) { .muv-parallax-family { width: 52%; height: 94%; } }
+
+/* ---- Products — positioned per HERO_CONSTELLATION (page.tsx), matching
+   the Master Hero's left/right arrangement: Home + Fabric Care on the
+   left, Body + Personal + Car Care on the right. left/top/width come in
+   as inline styles per item; only shared behaviour lives here. ---- */
+.muv-constellation-item { position: absolute; z-index: 4; }
+.muv-constellation-item--soon { z-index: 4; }
+@media (max-width: 767px) {
+  .muv-constellation-item { transform: scale(0.86); }
+  /* Nudged in from the right edge so it never sits under the fixed Muv AI
+     launcher button (bottom-right, all breakpoints) regardless of scroll
+     position. */
+  .muv-constellation-item--soon { left: 78% !important; }
+}
+
+/* Parallax layers — read the shared --mx/--my (set once by <HeroParallax>
+   on the ancestor, normalized -1..1) and apply their own fixed px budget:
+   family barely moves (2px, above), products more (8px), capsules least
+   (3px) — the founder's explicit depth ordering. Plain calc()-driven
+   transforms, not animations, so they never fight the entrance/hover/
+   float animations declared on descendants. */
+.muv-parallax-product {
+  transform: translate3d(calc(var(--mx, 0) * 8px), calc(var(--my, 0) * 8px), 0);
+  will-change: transform;
+}
+.muv-parallax-capsule {
+  transform: translate3d(calc(var(--mx, 0) * 3px), calc(var(--my, 0) * 3px), 0);
+  will-change: transform;
+}
+
+.muv-constellation-enter {
+  display: flex; flex-direction: column; align-items: center;
+  opacity: 0; transform: translateY(14px);
+  animation: muv-hero-item-enter 0.7s var(--ease) forwards;
+}
+@keyframes muv-hero-item-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.muv-constellation-lift { width: 100%; transition: transform 0.22s var(--ease); }
+.muv-constellation-dim {
+  position: absolute; inset: -10%; z-index: 5; pointer-events: none;
+  border-radius: 16px;
+  background: rgba(60, 48, 32, 0);
+  transition: background 0.35s var(--ease);
+}
+
+/* Idle float — per-product amplitude/duration (--float-amp/--float-dur,
+   set inline from HERO_CONSTELLATION/HERO_SKIN_CARE) so every product
+   drifts on its own independent cycle; none are ever synchronized. */
+.muv-constellation-float {
+  width: 100%;
+  animation: muv-hero-float var(--float-dur, 8s) ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes muv-hero-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(calc(-1 * var(--float-amp, 4px))); }
+}
+.muv-constellation-visual { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+.muv-constellation-product-img {
+  object-fit: contain;
+  filter: drop-shadow(0 10px 12px rgba(30, 20, 10, 0.28)) drop-shadow(0 0 14px rgba(var(--accent-rgb), 0.14));
+  transition: filter 0.22s var(--ease), transform 0.22s var(--ease);
+}
+
+/* Premium floating category capsule — white pill, tiny monochrome icon,
+   soft shadow, weightless. Matches the Master Hero's icon-in-pill style. */
+.muv-constellation-label {
+  margin-top: 9px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 13px 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 22px rgba(30, 20, 10, 0.16), 0 2px 6px rgba(30, 20, 10, 0.08);
+  font-size: 9.5px; letter-spacing: 0.13em; text-transform: uppercase; font-weight: 600;
+  color: rgba(20, 16, 12, 0.9);
+  white-space: nowrap;
+  opacity: 0;
+  animation: muv-hero-label-fade 0.5s ease forwards;
+  transition: opacity 0.22s var(--ease), transform 0.22s var(--ease), box-shadow 0.22s var(--ease), filter 0.22s var(--ease);
+}
+.muv-constellation-label-icon { color: rgba(20, 16, 12, 0.6); flex-shrink: 0; }
+.muv-constellation-label--soon { flex-direction: column; text-align: center; gap: 1px; padding: 7px 14px; }
+.muv-constellation-label--soon em { display: block; font-style: normal; font-weight: 400; opacity: 0.62; font-size: 0.9em; }
+@keyframes muv-hero-label-fade { to { opacity: 1; } }
+@media (max-width: 767px) {
+  .muv-constellation-label { font-size: 8.5px; padding: 5px 11px 5px 8px; white-space: normal; text-align: center; }
+}
+
+/* Desktop-only hover. Two independent interactions, tuned to the
+   founder's exact numbers:
+   - Capsule hover: lift 4px, +8% brightness, scale 1.02, 220ms.
+   - Product hover: bottle lifts 10px, scales 1.03, shadow deepens,
+     ITS OWN capsule highlights, and only that item's siblings dim
+     slightly (:has(), scoped to .muv-constellation-item so the family
+     never participates — it has no hover rule at all). */
+@media (hover: hover) and (pointer: fine) {
+  .muv-constellation-item:hover .muv-constellation-lift { transform: translateY(-10px) scale(1.03); }
+  .muv-constellation-item:hover .muv-constellation-product-img {
+    filter: drop-shadow(0 18px 20px rgba(30, 20, 10, 0.34)) drop-shadow(0 0 18px rgba(var(--accent-rgb), 0.22));
+  }
+  .muv-constellation-item:hover .muv-constellation-label {
+    box-shadow: 0 14px 28px rgba(30, 20, 10, 0.22), 0 3px 8px rgba(30, 20, 10, 0.1);
+    transform: translateY(-1px);
+  }
+  .muv-constellation:has(.muv-constellation-item:hover) .muv-constellation-item:not(:hover) .muv-constellation-dim {
+    background: rgba(60, 48, 32, 0.14);
+  }
+  /* Capsule-only hover (e.g. hovering the pill itself, not the bottle) —
+     lift 4px, +8% brightness, scale 1.02, glass reads slightly clearer. */
+  .muv-constellation-label:hover {
+    transform: translateY(-4px) scale(1.02);
+    filter: brightness(1.08);
+    background: rgba(255, 255, 255, 0.99);
+    box-shadow: 0 12px 24px rgba(30, 20, 10, 0.2), 0 3px 8px rgba(30, 20, 10, 0.1);
+  }
+}
+/* Touch: tap states replace hover 1:1 (same transforms/timing), gated so
+   they never leak onto devices that do have real hover. */
+@media (hover: none) {
+  .muv-constellation-item:active .muv-constellation-lift { transform: translateY(-10px) scale(1.03); }
+  .muv-constellation-label:active { transform: translateY(-4px) scale(1.02); filter: brightness(1.08); }
+}
+
+/* Tablet — full idle motion, but no mouse parallax (desktop-only per the
+   brief) and a calmer float (smaller amplitude) since less screen space
+   makes the same px amplitude read as relatively larger. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .muv-parallax-family, .muv-parallax-product, .muv-parallax-capsule { transform: none !important; }
+  .muv-constellation-float { animation-duration: calc(var(--float-dur, 8s) * 1.15); }
+}
+/* Mobile — no parallax (JS never attaches the listener outside
+   hover:hover/pointer:fine, this is just belt-and-suspenders), float and
+   breathing both stay per the brief's explicit "keep floating, keep
+   breathing." */
+@media (max-width: 767px) {
+  .muv-parallax-family, .muv-parallax-product, .muv-parallax-capsule { transform: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .muv-family-enter, .muv-constellation-enter, .muv-constellation-label {
+    animation-duration: 0.01ms !important; animation-delay: 0s !important;
+  }
+  .muv-family-breathe, .muv-constellation-float, .muv-hero-ambient-pulse, .muv-hero-light-sweep { animation: none; }
+  .muv-parallax-family, .muv-parallax-product, .muv-parallax-capsule { transform: none !important; }
+}
+
+/* ---- Category tiles ("Shop by Category" / Care Worlds) — Founder Phase 2
+   Flagship Upgrade, then Founder Phase 2 Rendering System refinement: the
+   Founder's follow-up direction was explicit that this is a *rendering*
+   upgrade, not a photography upgrade — the real product photos stay
+   exactly as they are (never regenerated, never composited into fake
+   environments); everything below is CSS light/material/depth treatment
+   layered around and over those same real photos, so it reads as
+   "photographed inside a premium environment" without pretending it was.
+   The original 5:6 shell, radius, border, and shadow are untouched — only
+   the interior treatment changed. Hover/focus are equivalent throughout
+   (arrow, elevation, product scale, sheen) so the affordance isn't
+   hover-only on touch; the arrow itself is visible by default at reduced
+   opacity (same "premium by default, not hover-dependent" pattern as
+   .muv-hero-our-story) rather than hidden until hover, since hover doesn't
+   exist on touch. ---- */
+.muv-category-eyebrow {
+  color: var(--lavender); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.32em; font-weight: 600;
+}
+.muv-category-card {
+  position: relative; display: block; width: 100%; aspect-ratio: 5 / 6;
+  border-radius: 24px; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 0 rgba(var(--accent-rgb, var(--lavender-rgb)), 0.06),
+    0 16px 30px rgba(0, 0, 0, 0.2),
+    0 30px 60px rgba(0, 0, 0, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.012));
+  backdrop-filter: saturate(1.08);
+  transition: transform 0.45s var(--ease), box-shadow 0.45s var(--ease), border-color 0.45s var(--ease), background 0.45s var(--ease);
+}
+.muv-category-card:hover,
+.muv-category-card:focus-visible {
+  transform: translateY(-6px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 0 rgba(var(--accent-rgb, var(--lavender-rgb)), 0.12),
+    0 26px 44px rgba(0, 0, 0, 0.3),
+    0 0 46px rgba(var(--accent-rgb, var(--lavender-rgb)), 0.16);
+  border-color: rgba(var(--accent-rgb, var(--lavender-rgb)), 0.34);
+  background: rgba(255, 255, 255, 0.03);
+}
+.muv-category-card:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb, var(--lavender-rgb)), 0.85);
+  outline-offset: 3px;
+}
+/* Muving Soon™ tiles aren't interactive — no lift, no outline, no cursor. */
+.muv-category-card--soon { cursor: default; }
+.muv-category-card--soon:hover, .muv-category-card--soon:focus-visible {
+  transform: none; border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 0 rgba(var(--accent-rgb, var(--lavender-rgb)), 0.06),
+    0 16px 30px rgba(0, 0, 0, 0.2),
+    0 30px 60px rgba(0, 0, 0, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.012));
+  outline: none;
+}
+
+/* ============================================================
+   FOUNDER "REAL PHOTOGRAPHIC ENVIRONMENTS" PASS — supersedes Project
+   Aurora's CSS-only atmosphere system.
+   ============================================================
+   Explicit new rule: the environment is no longer simulated with CSS
+   gradients/particles/glow — it's a real photographic background plate
+   (`public/transparent.png/careworld/background/backgrounds/`, one per
+   category, Founder-supplied). CSS's job now is compositing only: crop/
+   position the real photo so its open space lines up with where the
+   product sits (object-position, per data-mood), keep it visibly *behind*
+   the product (a modest blur + exposure/contrast tune per photo — "must
+   remain softly blurred… never compete, create depth not distraction"),
+   and one restrained colour-temperature wash to help the product's own
+   lighting feel like it belongs to the same scene. No particles, no
+   procedural glow layers, no fabricated lighting shapes remain. */
+.muv-category-card-bgphoto { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.muv-category-card-bgphoto-img {
+  object-fit: cover;
+  /* Base tuning: modest blur so the photo reads as background depth, not
+     a competing foreground layer, plus a brightness pull-down so a bright
+     daylight/marble photo still sits inside the site's dark surface
+     system rather than blowing out as a stray white card. Every category
+     below overrides object-position (composition) and the exact
+     blur/exposure numbers (each source photo has different lighting). */
+  filter: blur(2px) brightness(0.62) saturate(1.05) contrast(1.06);
+}
+/* Body Care — dark spa/shower plate is already moody; barely needs
+   darkening, kept close to its native exposure. Open floor/mist area is
+   center-low, matching the product's own lower stage position. */
+[data-mood="body-care"] .muv-category-card-bgphoto-img { object-position: 50% 38%; filter: blur(2px) brightness(0.8) saturate(1.05) contrast(1.08); }
+/* Home Care — the bright luxury-home plate needs the most pull-down to
+   stay part of the dark card system; open marble floor is centre-right. */
+[data-mood="home-care"] .muv-category-card-bgphoto-img { object-position: 70% 55%; filter: blur(1.5px) brightness(0.62) saturate(1.05) contrast(1.05); }
+/* Fabric Care — warm vanity/fragrance plate; open marble counter area is
+   lower-centre, matching the product's lower stage position. */
+[data-mood="fabric-care"] .muv-category-card-bgphoto-img { object-position: 52% 64%; filter: blur(2px) brightness(0.72) saturate(1.08) contrast(1.05); }
+/* Car Care — already a dark garage plate; wet floor reflections are the
+   whole point, so this gets the least darkening of any category. */
+[data-mood="car-care"] .muv-category-card-bgphoto-img { object-position: 62% 46%; filter: blur(1.5px) brightness(0.85) saturate(1.05) contrast(1.1); }
+/* Personal Care — warm bathroom counter plate; open counter area lower. */
+[data-mood="personal-care"] .muv-category-card-bgphoto-img { object-position: 46% 70%; filter: blur(2px) brightness(0.58) saturate(1.06) contrast(1.05); }
+/* Skin Care — soft pearl/glass plate carries the whole card (no product);
+   kept brighter than the others since its own mood is "soft reveal light". */
+[data-mood="skin-care"] .muv-category-card-bgphoto-img { object-position: 60% 78%; filter: blur(1.2px) brightness(0.82) saturate(1.2) contrast(1.06); }
+
+/* Colour-temperature / ambient-light wash — the one CSS "adjustment" the
+   brief explicitly still allows on top of the real photo. Soft-light
+   blend, low opacity, no blur/animation of its own. */
+/* Bottom-weighted (not flat) so it reads as light bouncing up off the
+   environment's own ground/counter onto the product's lower half, rather
+   than a uniform colour cast over the whole card — the "natural colour
+   bounce from the background onto the product" compositing pass. */
+.muv-category-card-ambient {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.05) 0%, rgba(var(--accent-rgb), 0.09) 55%, rgba(var(--accent-rgb), 0.24) 100%);
+  mix-blend-mode: soft-light;
+}
+
+/* ---- Product PNG, Ground Contact Shadow, Ground Reflection — every
+   image is the same real, verified-transparent cutout, unframed,
+   un-cropped, un-distorted; only position/scale (stageTop/stageSize,
+   set inline per category from CATEGORY_VISUALS — "stop using one
+   positioning system") and lighting/grounding changed. ---- */
+.muv-category-card-stage {
+  position: absolute; left: 50%; top: 5%; transform: translateX(-50%);
+  width: 76%; height: 76%;
+  z-index: 4;
+}
+.muv-category-card-visual {
+  position: relative; width: 100%; height: 82%;
+}
+.muv-category-card-product {
+  object-fit: contain;
+  /* Compositing pass: a tight, dark "true contact" shadow (first entry)
+     right at the base — that's what actually reads as weight/grounding,
+     distinct from the softer ambient shadows below it. The colour-tinted
+     shadows are pulled back from their previous opacity (0.34/0.22 ->
+     0.16/0.1) — at the old strength they read as a glow around the
+     product rather than colour bounce, which is what made it feel
+     pasted on rather than sitting in the scene. */
+  filter:
+    drop-shadow(0 3px 3px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 10px 8px rgba(0, 0, 0, 0.38))
+    drop-shadow(0 28px 24px rgba(0, 0, 0, 0.44))
+    drop-shadow(0 0 22px rgba(var(--accent-rgb), 0.16))
+    drop-shadow(5px 3px 8px rgba(var(--accent-rgb), 0.1));
+  transition: transform 0.6s var(--ease), filter 0.6s var(--ease);
+}
+.muv-category-card:hover .muv-category-card-product,
+.muv-category-card:focus-visible .muv-category-card-product {
+  transform: scale(1.06) translateY(-3px);
+}
+.muv-category-card-groundshadow {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  z-index: 5; pointer-events: none;
+  width: 40%; height: 6.5%;
+  /* Tighter and slightly darker at the core, faster falloff (was 44%/8%,
+     0.55 opacity, transparent at 72%) — a real contact shadow is a small,
+     fairly defined dark patch right at the base, not a broad soft smudge;
+     the broad softness was part of what read as "floating" rather than
+     resting on the surface. */
+  background: radial-gradient(ellipse 100% 100% at 50% 50%, rgba(2, 2, 4, 0.64), transparent 66%);
+  filter: blur(3px);
+}
+.muv-category-card-reflection {
+  position: absolute; left: 0; right: 0; top: 82%; height: 18%;
+  z-index: 6; pointer-events: none;
+  transform: scaleY(-1);
+  /* Slightly stronger right at the contact point (was 0.4) for a bit more
+     "wet/glossy surface" definition immediately under the product. */
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.46), transparent 80%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.46), transparent 80%);
+  opacity: 0.48;
+}
+/* Colour-bounce tint on the reflection — a uniform accent wash (direction-
+   agnostic, so the parent's scaleY(-1) flip doesn't matter) suggesting the
+   implied surface picking up the product's own light, rather than a
+   neutral grey mirror. */
+.muv-category-card-reflection-tint {
+  position: absolute; inset: 0;
+  background: rgba(var(--accent-rgb), 0.3);
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+/* Home Care's reflection reads as clean marble — brighter, less tinted. */
+[data-mood="home-care"] .muv-category-card-reflection { opacity: 0.58; }
+[data-mood="home-care"] .muv-category-card-reflection-tint { background: rgba(255, 255, 255, 0.16); }
+[data-mood="home-care"] .muv-category-card-groundshadow {
+  background: radial-gradient(ellipse 100% 100% at 50% 50%, rgba(20, 24, 30, 0.4), transparent 74%);
+}
+
+/* Skin Care's status line becomes the card's hero (no product to carry
+   it) — a soft pearl glow and a slow shimmer, same font/size/weight as
+   every other card's status line, only its lighting differs. */
+.muv-category-card-status--hero {
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 0 14px rgba(var(--accent-rgb), 0.55), 0 0 28px rgba(var(--accent-rgb), 0.3);
+  animation: muv-status-hero-shimmer 5s ease-in-out infinite;
+}
+@keyframes muv-status-hero-shimmer {
+  0%, 100% { opacity: 0.86; }
+  50% { opacity: 1; }
+}
+
+/* Bottom scrim — guarantees title/status legibility over the photo
+   regardless of the product's own colours. */
+.muv-category-card-scrim {
+  position: absolute; inset: 0; z-index: 9; pointer-events: none;
+  background: linear-gradient(180deg, transparent 36%, rgba(9, 9, 13, 0.55) 66%, rgba(9, 9, 13, 0.9) 100%);
+}
+
+.muv-category-card-index {
+  font-size: 11px; letter-spacing: 0.18em; color: rgba(var(--text-rgb), 0.5);
+  font-variant-numeric: tabular-nums;
+}
+.muv-category-card-content {
+  display: flex; flex-direction: column; gap: 0.45rem;
+}
+.muv-category-card-title {
+  font-family: var(--font-display), serif; font-size: 1.02rem; line-height: 1.32; font-weight: 500; color: #fff;
+}
+.muv-category-card-status {
+  font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase;
+  color: rgba(var(--text-rgb), 0.66);
+}
+/* Category icon — retained only as a small secondary accent next to the
+   index number now that the product photo carries the card, per PHASE_2
+   ("icon retained as a secondary accent, not the main visual"). */
+.muv-category-card-glyph-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 999px; flex-shrink: 0;
+  color: rgba(var(--accent-rgb), 1); opacity: 0.9;
+  background: rgba(var(--accent-rgb), 0.14);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+}
+.muv-category-card-arrow {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(var(--accent-rgb), 1);
+  border: 1px solid rgba(var(--accent-rgb), 0.34);
+  opacity: 0.6;
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), background 0.35s var(--ease);
+}
+.muv-category-card:hover .muv-category-card-arrow,
+.muv-category-card:focus-visible .muv-category-card-arrow {
+  opacity: 1;
+  background: rgba(var(--accent-rgb), 0.14);
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-category-card, .muv-category-card-arrow, .muv-category-card-product { transition: none; }
+  .muv-category-card-status--hero { animation: none; }
+}
+
+/* ---- Featured product cards (Sprint 3 — "Featured Products" only) —
+   premium, uncluttered: rounded corners, a soft shadow that deepens on
+   hover, a subtle lift, and a very restrained image zoom. Wishlist/quick
+   view are always-visible glass circles (not hover-only) so mobile thumbs
+   can reach them without a hover state that doesn't exist on touch. ---- */
+.muv-featured-eyebrow {
+  color: var(--lavender); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.32em; font-weight: 600;
+}
+.muv-featured-card {
+  display: flex; flex-direction: column; height: 100%;
+  border-radius: 22px; box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: transform 0.45s var(--ease), box-shadow 0.45s var(--ease), border-color 0.45s var(--ease), background 0.45s var(--ease);
+}
+.muv-featured-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 40px rgba(0, 0, 0, 0.26);
+  border-color: rgba(var(--lavender-rgb), 0.26);
+}
+.muv-featured-card-media {
+  transition: transform 0.55s var(--ease);
+}
+.muv-featured-card:hover .muv-featured-card-media {
+  transform: scale(1.02);
+}
+
+.muv-featured-card-body {
+  display: flex; flex-direction: column; gap: 0.9rem; flex: 1;
+}
+.muv-featured-card-meta {
+  display: flex; flex-direction: column; gap: 0.3rem;
+}
+.muv-featured-badge {
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 5px 10px; border-radius: 999px;
+  color: #0b0b0f; background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+}
+.muv-featured-badge[data-tone="limited"] {
+  color: var(--lavender); background: rgba(var(--lavender-rgb), 0.16);
+  border: 1px solid rgba(var(--lavender-rgb), 0.34);
+}
+
+.muv-wishlist-btn svg { transition: transform 0.2s var(--ease); }
+@keyframes muv-heart-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.38); }
+  100% { transform: scale(1); }
+}
+.muv-wishlist-btn[data-active="true"] svg { animation: muv-heart-pop 0.45s var(--ease); }
+
+.muv-featured-add-btn {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; padding: 11px 12px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95); color: #0b0b0f; border: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 500; letter-spacing: 0.02em;
+  transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), opacity 0.3s;
+}
+.muv-featured-add-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.14); }
+.muv-featured-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .muv-featured-card, .muv-featured-card-media, .muv-featured-add-btn, .muv-wishlist-btn svg { transition: none; animation: none; }
+}
+
+/* ---- Trust cards (Sprint 4 — "Why Choose MUV" only) — same eyebrow/shadow/
+   radius/hover language as the Category and Featured sections (shared
+   tokens: --shadow-sm/md, --card-fill, --card-border, --lavender-rgb) so a
+   new section slots in without inventing a parallel design system. ---- */
+.muv-trust-card {
+  height: 100%; border-radius: 22px; padding: 30px 28px;
+  background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2);
+  transition: transform 0.4s var(--ease), box-shadow 0.4s var(--ease), border-color 0.4s var(--ease), background 0.4s var(--ease);
+}
+.muv-trust-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.24);
+  border-color: rgba(var(--lavender-rgb), 0.24);
+  background: rgba(255, 255, 255, 0.03);
+}
+.muv-trust-card-icon {
+  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; margin-bottom: 18px;
+  color: var(--lavender);
+  background: rgba(var(--lavender-rgb), 0.12);
+  border: 1px solid rgba(var(--lavender-rgb), 0.24);
+  transition: transform 0.35s var(--ease), background 0.35s var(--ease);
+}
+.muv-trust-card:hover .muv-trust-card-icon {
+  transform: scale(1.04);
+  background: rgba(var(--lavender-rgb), 0.16);
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-trust-card, .muv-trust-card-icon { transition: none; }
+}
+
+/* ---- Footer links / social icons — same underline-on-hover language as
+   the nav, so the whole chrome (header + footer) reads as one system. ---- */
+.muv-footer-link {
+  position: relative; padding-bottom: 2px; transition: color 0.3s var(--ease), opacity 0.3s var(--ease);
+}
+.muv-footer-link::after {
+  content: ""; position: absolute; left: 0; bottom: 0; width: 0; height: 1px;
+  background: var(--lavender); transition: width 0.4s var(--ease);
+}
+.muv-footer-link:hover::after { width: 100%; }
+.muv-footer-link:active:not(:disabled) { opacity: 0.6; }
+
+.muv-social-icon {
+  width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--card-border);
+  background: rgba(var(--text-rgb), 0.03); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center; color: rgba(var(--text-rgb), 0.7);
+  transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease), transform 0.3s var(--ease), color 0.3s var(--ease);
+}
+.muv-social-icon:hover {
+  border-color: rgba(var(--lavender-rgb), 0.5);
+  box-shadow: 0 8px 20px rgba(var(--lavender-rgb), 0.22);
+  transform: translateY(-2px);
+  color: var(--lavender);
+}
+
+/* ---- Typography — Fraunces for every heading (via the `font-display`
+   Tailwind utility, mapped to --font-fraunces in tailwind.config.ts), Inter
+   for body copy (the `body` rule above). This just adds the refined
+   tracking/leading a premium editorial display face wants; components that
+   already set their own inline line-height/weight are untouched since an
+   inline style always wins over this. ---- */
+.font-display {
+  letter-spacing: -0.01em;
+  line-height: 1.08;
+}
+
+/* ---- Text opacity scale — see AUDIT.md: 0.4 fails WCAG AA for normal
+   text (3.78:1); 0.45+ passes. Kept at the audited values here rather than
+   silently changed, per the audit's own note that raising it is a visual
+   decision worth making deliberately. Use `.muv-text-meta` (0.45, AA-safe)
+   for anything a user actually needs to read; reserve `.muv-text-faint`
+   (0.3) for purely decorative elements only. */
+.muv-text-solid { color: rgba(var(--text-rgb), 1); }
+.muv-text-strong { color: rgba(var(--text-rgb), 0.85); }
+.muv-text-body { color: rgba(var(--text-rgb), 0.7); }
+.muv-text-meta { color: rgba(var(--text-rgb), 0.45); }
+.muv-text-faint { color: rgba(var(--text-rgb), 0.3); }
+
+/* ---- Aura — the signature "Keep Muving" motif ---- */
+@keyframes muv-drift {
+  0%   { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; transform: translateX(-50%) rotate(0deg) scale(1); }
+  33%  { border-radius: 58% 42% 39% 61% / 55% 48% 52% 45%; transform: translateX(-50%) rotate(8deg) scale(1.04); }
+  66%  { border-radius: 48% 52% 57% 43% / 35% 62% 38% 65%; transform: translateX(-50%) rotate(-6deg) scale(0.98); }
+  100% { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; transform: translateX(-50%) rotate(0deg) scale(1); }
+}
+.muv-aura {
+  position: absolute;
+  background: radial-gradient(circle at 35% 30%, rgba(183, 171, 240, 0.55), rgba(110, 98, 182, 0.25) 45%, rgba(11, 11, 15, 0) 72%);
+  filter: blur(10px);
+  animation: muv-drift 16s ease-in-out infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-aura { animation: none; }
+}
+
+/* ---- Buttons ----
+   Primary: solid white, the brightest thing on a dark page — hover lifts it
+   into a soft lavender glow (--shadow-glow).
+   Secondary/ghost: frosted glass — translucent fill + backdrop-blur instead
+   of a flat transparent box — with the same lavender-glow hover language as
+   primary, so the two read as one family instead of two different systems. */
+.muv-btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: #fff; color: #0b0b0f; border-radius: 999px;
+  padding: 14px 28px; font-size: 13px; letter-spacing: 0.04em;
+  font-weight: 500; border: none; cursor: pointer; min-height: 46px;
+  transition: transform 0.4s var(--ease), box-shadow 0.4s var(--ease);
+}
+.muv-btn-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow-glow); }
+.muv-btn-primary:active { transform: translateY(0) scale(0.97); }
+.muv-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.muv-btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 13px 24px; font-size: 13px; color: rgba(var(--text-rgb), 0.85);
+  border: 1px solid var(--card-border); border-radius: 999px;
+  background: rgba(var(--text-rgb), 0.05);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  cursor: pointer; min-height: 44px;
+  transition: border-color 0.35s, box-shadow 0.4s var(--ease), transform 0.4s var(--ease), background 0.35s;
+}
+.muv-btn-ghost:hover {
+  border-color: rgba(var(--lavender-rgb), 0.55);
+  background: rgba(var(--text-rgb), 0.08);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-2px);
+}
+.muv-btn-ghost:active { transform: translateY(0) scale(0.97); }
+.muv-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.muv-icon-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--card-border);
+  background: rgba(var(--text-rgb), 0.03); backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: rgba(var(--text-rgb), 0.7);
+  /* No `position` set here on purpose — every call site that needs this to
+     sit absolutely (product-card wishlist/quick-view buttons, gallery
+     arrows, modal-close-style overlays) applies Tailwind's `absolute`
+     utility directly. A `position: relative` used to live here and,
+     because this stylesheet's custom rules are written after
+     `@tailwind utilities`, silently outranked `.absolute` at equal
+     specificity — every icon button combined with `absolute` rendered at
+     its normal in-flow position instead of pinned to its parent's corner. */
+  transition: border-color 0.3s, box-shadow 0.3s var(--ease), transform 0.3s var(--ease); flex-shrink: 0;
+}
+.muv-icon-circle:hover {
+  border-color: rgba(var(--lavender-rgb), 0.5);
+  box-shadow: 0 8px 20px rgba(var(--lavender-rgb), 0.22);
+  transform: translateY(-1px);
+}
+.muv-icon-circle:active { transform: translateY(0) scale(0.92); }
+
+/* ---- Cards ---- */
+.muv-card {
+  background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px; padding: 24px; box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+  transition: border-color 0.35s, transform 0.35s var(--ease), background 0.35s, box-shadow 0.35s var(--ease);
+}
+.muv-card-hover:hover { border-color: rgba(var(--lavender-rgb), 0.24); transform: translateY(-2px); background: rgba(255, 255, 255, 0.03); box-shadow: 0 18px 32px rgba(0, 0, 0, 0.22); }
+.muv-card-hover:active { transform: translateY(-1px) scale(0.995); }
+
+/* ---- Inputs ---- */
+.muv-input {
+  width: 100%; background: rgba(var(--text-rgb), 0.05); border: 1px solid var(--card-border);
+  border-radius: 12px; padding: 13px 16px; font-size: 14px; color: rgba(var(--text-rgb), 0.9);
+  outline: none; min-height: 46px;
+}
+.muv-input::placeholder { color: rgba(var(--text-rgb), 0.3); }
+.muv-input:focus { border-color: rgba(183, 171, 240, 0.6); }
+.muv-textarea { min-height: 90px; resize: vertical; }
+
+/* ---- Password visibility toggle (Phase 1D) — wraps a .muv-input, so all
+   existing input styling is inherited unchanged; only adds right padding
+   for the icon button so typed text never sits under it. ---- */
+.muv-password-field { position: relative; }
+.muv-password-field .muv-input { padding-right: 44px; }
+.muv-password-toggle {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  color: rgba(var(--text-rgb), 0.5);
+}
+.muv-password-toggle:hover { color: rgba(var(--text-rgb), 0.85); background: rgba(var(--text-rgb), 0.06); }
+.muv-password-toggle:focus-visible { outline: 2px solid var(--lavender); outline-offset: 2px; }
+
+/* ---- Form validation ---- */
+.muv-input-error { border-color: var(--danger) !important; }
+.muv-input-error:focus { border-color: var(--danger) !important; }
+.muv-field-error { color: var(--danger); }
+.muv-error-banner {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(var(--danger-rgb), 0.1); border: 1px solid rgba(var(--danger-rgb), 0.35);
+  color: var(--danger); border-radius: 12px; padding: 12px 16px; font-size: 13px; margin-bottom: 16px;
+}
+
+/* ---- Product gallery ---- */
+@keyframes muv-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.muv-gallery-fade { animation: muv-fade-in 0.25s var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  .muv-gallery-fade { animation: none; }
+}
+
+/* ---- Badges / pills ---- */
+.muv-badge-pill {
+  display: inline-block; padding: 4px 12px; border-radius: 999px; border: 1px solid;
+  font-size: 11px; font-weight: 500; white-space: nowrap;
+}
+.muv-tag-pill {
+  background: rgba(183, 171, 240, 0.15); color: var(--lavender); font-size: 10px;
+  padding: 3px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+/* ---- Navigation ---- */
+.muv-nav-link {
+  position: relative;
+  padding-bottom: 3px;
+  transition: color 0.35s var(--ease);
+}
+.muv-nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 0; height: 1px;
+  background: var(--lavender);
+  transition: width 0.4s var(--ease);
+}
+.muv-nav-link:hover::after { width: 100%; }
+
+/* ---- Mobile nav drawer — previously a plain {open && <nav>} conditional
+   render with zero transition (snapped open/closed). Always mounted now;
+   visibility/interactivity toggled via [data-open] so it can animate both
+   ways, matching every other overlay's fade+move entrance. ---- */
+.muv-mobile-nav {
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease), visibility 0.3s;
+}
+.muv-mobile-nav[data-open="false"] {
+  opacity: 0;
+  transform: translateY(-8px);
+  visibility: hidden;
+  pointer-events: none;
+}
+.muv-mobile-nav[data-open="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-mobile-nav { transition: opacity 0.15s linear, visibility 0.15s; transform: none !important; }
+}
+
+/* ---- Minimum touch target for icon-glyph-only controls (quantity
+   steppers) — the visible glyph was smaller than a comfortable tap area;
+   this pads the hit area without changing the glyph's visual size. ---- */
+.muv-tap-target {
+  min-width: 40px; min-height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---- Filter chip (ProductGrid's size/category/price/fragrance/rating/
+   discount toggles) — previously each of the 12 chip buttons used
+   Tailwind's bare `transition-colors` (150ms, default linear-ish ease),
+   a visibly snappier/flatter timing than the --ease cubic-bezier vocabulary
+   every other hover/active state in this file uses. Same colors, same
+   layout — only the transition curve changes. ---- */
+.muv-chip {
+  transition: border-color 0.3s var(--ease), background 0.3s var(--ease), color 0.3s var(--ease), transform 0.2s var(--ease);
+}
+.muv-chip:active { transform: scale(0.96); }
+@media (prefers-reduced-motion: reduce) {
+  .muv-chip:active { transform: none; }
+}
+
+/* ---- Toggle switch ---- */
+.muv-toggle {
+  width: 40px; height: 22px; border-radius: 999px; border: none; cursor: pointer;
+  position: relative; transition: background 0.3s; padding: 0; flex-shrink: 0;
+}
+.muv-toggle-knob {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  transition: transform 0.3s var(--ease), background 0.3s;
+}
+
+/* ---- Product visual (bottle placeholder — swap for next/image once real
+   product photography exists, per AUDIT.md's Performance section) ---- */
+.muv-product-visual {
+  border-radius: 14px;
+  background: radial-gradient(circle at 50% 20%, rgba(183, 171, 240, 0.18), rgba(255, 255, 255, 0.02) 70%);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.muv-bottle {
+  border-radius: 10px 10px 16px 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(183, 171, 240, 0.55));
+}
+
+/* ---- Modal ---- */
+.muv-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(5, 5, 7, 0.7); backdrop-filter: blur(4px);
+  z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px;
+  transition: opacity 0.35s var(--ease);
+}
+.muv-modal-panel {
+  background: var(--surface); border: 1px solid var(--card-border); border-radius: 20px;
+  width: 100%; max-height: 88vh; overflow-y: auto; padding: 28px;
+  box-shadow: var(--shadow-lg);
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-modal-backdrop, .muv-modal-panel { transition: none; }
+}
+
+/* ---- Toast ---- */
+.muv-toast {
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); z-index: 300;
+  background: #fff; color: #0b0b0f; padding: 14px 26px; border-radius: 999px;
+  font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg);
+  animation: muv-toast-in 0.35s var(--ease);
+}
+/* MUV OS™ refinement pass — the white pill above is deliberate, pre-existing
+   site-wide branding (storefront/admin), the same high-contrast pattern as
+   `.muv-btn-primary`. It is not appropriate for MUV OS's own explicit "no
+   white backgrounds anywhere" requirement, which fires far more often here
+   since nearly every MUV OS mutation now shows one. Additive-only: this
+   variant class changes nothing for any existing `.muv-toast` caller
+   elsewhere in the app; `useToast()`'s new optional second argument
+   (components/ui/toast.tsx) is what actually applies it, opted into only
+   by MUV OS call sites. */
+.muv-toast.muv-toast-dark {
+  background: var(--surface); color: rgba(var(--text-rgb), 0.92);
+  border: 1px solid var(--card-border);
+}
+/* Previously vanished instantly when its timer cleared — this plays the
+   reverse of muv-toast-in instead of a hard cut, matching every other
+   overlay's entrance treatment. Toggled via a `leaving` state in
+   components/ui/toast.tsx that delays the actual unmount to let this play. */
+.muv-toast.muv-toast-leaving {
+  animation: muv-toast-out 0.25s var(--ease) forwards;
+}
+@keyframes muv-toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes muv-toast-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-toast { animation: none; }
+  .muv-toast.muv-toast-leaving { animation: none; opacity: 0; }
+}
+
+/* ---- Scroll reveal (used via the useReveal hook in components/ui/reveal.tsx) ---- */
+.muv-reveal {
+  transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
+}
+.muv-reveal[data-shown="false"] { opacity: 0; transform: translateY(24px); }
+.muv-reveal[data-shown="true"] { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .muv-reveal,
+  .muv-reveal[data-shown="false"],
+  .muv-reveal[data-shown="true"] {
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ---- Focus visibility (PHASE_1 §3.4 / PHASE_5 §12) — distinct from hover,
+   required on every interactive element, site-wide. ---- */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgba(var(--lavender-rgb), 0.6);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* ---- Skip link (PHASE_6C §7) — visually hidden until keyboard-focused. ---- */
+.muv-skip-link {
+  position: fixed; top: -60px; left: 16px; z-index: 999;
+  background: #fff; color: #0b0b0f; padding: 12px 22px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; text-decoration: none;
+  transition: top 0.25s var(--ease); box-shadow: var(--shadow-lg);
+}
+.muv-skip-link:focus { top: 16px; outline: 2px solid var(--lavender); outline-offset: 3px; }
+
+/* ---- Announcement bar (AnnouncementBar CMS model) ---- */
+.muv-announcement-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--surface); border-bottom: 1px solid var(--hairline);
+  color: rgba(var(--text-rgb), 0.85); font-size: 12.5px; letter-spacing: 0.01em;
+  padding: 10px 44px; text-align: center; min-height: 38px;
+}
+.muv-announcement-bar a { color: var(--lavender); text-underline-offset: 3px; }
+/* Hero Final Polish — gift icon: lavender accent, flex-aligned with the
+   text baseline via the parent's `align-items: center`, never shrinks
+   when the message wraps to two lines on a narrow viewport. */
+.muv-announcement-bar-icon { color: var(--lavender); flex-shrink: 0; }
+.muv-announcement-bar-dismiss {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: rgba(var(--text-rgb), 0.5); background: transparent; border: none; cursor: pointer;
+  transition: color 0.25s;
+}
+.muv-announcement-bar-dismiss:hover { color: rgba(var(--text-rgb), 0.9); }
+
+/* ---- Shared eyebrow label — identical to .muv-category-eyebrow /
+   .muv-featured-eyebrow, named generically for sections that aren't
+   category- or product-specific (Brand Story, Reviews, Business). ---- */
+.muv-eyebrow {
+  color: var(--lavender); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.32em; font-weight: 600;
+}
+
+/* ---- Brand Story — a calm pause in the homepage, with a narrower
+   composition and more deliberate breathing room so the philosophy feels
+   experienced rather than simply read. ---- */
+.muv-brand-story {
+  padding-inline: 0.25rem;
+}
+.muv-brand-story-divider {
+  height: 1px; width: 4rem; margin: 1.5rem auto 0;
+  background: linear-gradient(90deg, transparent, rgba(183, 171, 240, 0.45), transparent);
+}
+
+/* ---- Business / Acknowledgment panel — contained, bordered block rather
+   than a full-bleed section, the visual signal (per PHASE_6B §8) that this
+   speaks to a different visitor without leaving the page's one design
+   system. ---- */
+.muv-business-panel {
+  border-radius: 28px; border: 1px solid var(--card-border); background: var(--card-fill);
+  box-shadow: var(--shadow-sm); padding: 44px 36px;
+}
+
+@media (max-width: 640px) {
+  .muv-business-panel { padding: 32px 24px; border-radius: 22px; }
+}
+
+/* ---- Horizontal scroll-snap rows (Category mobile, Social Proof) ---- */
+.muv-scroll-row {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+.muv-scroll-row::-webkit-scrollbar { display: none; }
+
+/* ---- Loading skeleton ---- */
+@keyframes muv-skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.95; }
+}
+.muv-skeleton {
+  background: var(--card-fill);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  animation: muv-skeleton-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-skeleton { animation: none; opacity: 0.7; }
+}
+
+/* ---- Admin dark-theme native control contrast (Phase 1D correction pass) ----
+   Root cause: the admin shell (app/admin/layout.tsx) renders dark via CSS
+   custom properties, but native browser UI — an opened <select> dropdown's
+   option list, in particular — doesn't follow custom properties. Without a
+   `color-scheme` hint, browsers render that popup with OS/browser-default
+   (light) chrome, while this page's own light `color` (meant for a dark
+   background) can still inherit into it — producing pale text on a pale
+   background. Scoped to .muv-admin-shell only, per instruction, so the
+   public storefront's own theme handling (including the separate, currently
+   unused [data-theme="light"] block above) is untouched. */
+.muv-admin-shell {
+  color-scheme: dark;
+}
+
+/* ---- MUV AI Widget (Wave 1 website integration) — reuses every existing
+   token (--lavender, --surface, --card-border, --shadow-*, --ease) rather
+   than introducing new ones, so it reads as part of the same design system
+   as the existing modal, toast, and button classes above, not a bolted-on widget. ---- */
+
+.muv-ai-launcher {
+  position: fixed; right: 24px; bottom: 24px; z-index: 240;
+  width: 60px; height: 60px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(155deg, rgba(183, 171, 240, 0.95), rgba(120, 108, 200, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(var(--lavender-rgb), 0.25);
+  color: #fff; cursor: pointer;
+  transition: transform 0.4s var(--ease), box-shadow 0.4s var(--ease);
+}
+.muv-ai-launcher:hover { transform: translateY(-3px) scale(1.03); box-shadow: var(--shadow-lg), var(--shadow-glow); }
+.muv-ai-launcher:active { transform: translateY(0) scale(0.95); }
+.muv-ai-launcher:focus-visible { outline: 2px solid var(--lavender); outline-offset: 3px; }
+.muv-ai-launcher-logo { width: 34px; height: 34px; object-fit: contain; }
+
+.muv-ai-launcher-pulse {
+  position: absolute; inset: -6px; border-radius: 50%;
+  border: 1.5px solid rgba(var(--lavender-rgb), 0.45);
+  animation: muv-ai-pulse 2.4s var(--ease) infinite;
+  pointer-events: none;
+}
+@keyframes muv-ai-pulse {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@media (max-width: 640px), (max-height: 480px) {
+  .muv-ai-launcher { right: 16px; bottom: 16px; width: 54px; height: 54px; }
+}
+
+.muv-ai-panel {
+  position: fixed; right: 24px; bottom: 96px; z-index: 240;
+  width: 388px; max-width: calc(100vw - 32px);
+  height: min(640px, calc(100vh - 140px));
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--card-border);
+  border-radius: 26px; overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  transform-origin: bottom right;
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), width 0.45s var(--ease), height 0.45s var(--ease), border-radius 0.45s var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-ai-panel, .muv-ai-launcher, .muv-ai-launcher-pulse { transition: none; animation: none; }
+}
+@media (max-width: 640px), (max-height: 480px) {
+  .muv-ai-panel {
+    right: 0; left: 0; bottom: 0; top: 0;
+    width: 100%; max-width: 100%; height: 100%;
+    border-radius: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Keyboard-safe layout: 100dvh (dynamic viewport height) shrinks with
+     the on-screen keyboard on mobile browsers that support it, so the
+     fixed input bar stays above the keyboard instead of behind it.
+     Declared after the height:100% fallback above — browsers that don't
+     recognize `dvh` drop just this one declaration and keep that
+     fallback, so this is purely additive. */
+  @supports (height: 100dvh) {
+    .muv-ai-panel { height: 100dvh; }
+  }
+}
+
+.muv-ai-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px; flex-shrink: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: linear-gradient(180deg, rgba(183, 171, 240, 0.06), transparent);
+}
+.muv-ai-panel-header-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.muv-ai-panel-logo { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.muv-ai-panel-logo img { width: 100%; height: 100%; object-fit: contain; }
+.muv-ai-panel-title { font-size: 14px; font-weight: 600; letter-spacing: 0.01em; color: rgba(var(--text-rgb), 0.95); }
+.muv-ai-panel-status { font-size: 11px; color: rgba(var(--text-rgb), 0.5); display: flex; align-items: center; gap: 5px; min-height: 6px; }
+.muv-ai-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #6ee7a0; box-shadow: 0 0 0 3px rgba(110, 231, 160, 0.18); flex-shrink: 0; }
+
+.muv-ai-panel-body {
+  flex: 1; overflow-y: auto; padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  scrollbar-width: thin;
+}
+.muv-ai-panel-body::-webkit-scrollbar { width: 5px; }
+.muv-ai-panel-body::-webkit-scrollbar-thumb { background: rgba(var(--text-rgb), 0.12); border-radius: 999px; }
+
+.muv-ai-empty-state {
+  margin: auto 0; text-align: center; color: rgba(var(--text-rgb), 0.5); font-size: 12.5px;
+  padding: 24px 20px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.muv-ai-empty-state p { max-width: 260px; line-height: 1.55; margin: 0; }
+.muv-ai-empty-state-logo-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+.muv-ai-empty-state-glow {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 220px; height: 220px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--lavender-rgb), 0.22), transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+.muv-ai-empty-state-logo { width: 132px; height: auto; position: relative; z-index: 1; }
+
+/* max-width capped in absolute terms too (not just 86% of the panel) —
+   in Expand Workspace mode the panel can reach 960px, and 86% of that
+   (~825px) is uncomfortably wide for a single line of conversational
+   text; 560px keeps a readable line length there while leaving the
+   normal floating-panel width (388px × 86% ≈ 334px) completely
+   unaffected, since 334px was already below the cap. */
+.muv-ai-turn { display: flex; flex-direction: column; gap: 9px; max-width: min(86%, 560px); }
+.muv-ai-turn-user { align-self: flex-end; align-items: flex-end; }
+.muv-ai-turn-assistant { align-self: flex-start; align-items: flex-start; }
+
+.muv-ai-bubble {
+  padding: 12px 16px; border-radius: 20px;
+  font-size: 13.5px; line-height: 1.6; letter-spacing: 0.001em;
+  white-space: pre-wrap; word-break: break-word;
+}
+.muv-ai-bubble-user { background: var(--lavender); color: #0b0b0f; border-bottom-right-radius: 6px; }
+.muv-ai-bubble-assistant { background: rgba(var(--text-rgb), 0.04); border: 1px solid rgba(var(--text-rgb), 0.06); color: rgba(var(--text-rgb), 0.92); border-bottom-left-radius: 6px; }
+.muv-ai-bubble-escalation { background: rgba(var(--lavender-rgb), 0.1); border: 1px solid rgba(var(--lavender-rgb), 0.28); color: rgba(var(--text-rgb), 0.85); }
+.muv-ai-bubble-error { background: rgba(var(--danger-rgb), 0.08); border: 1px solid rgba(var(--danger-rgb), 0.3); color: var(--danger); }
+
+/* Production Rollout v1.0, Stage 7 — controlled Markdown subset inside an
+   assistant bubble. `.muv-ai-bubble` already sets font/line-height/
+   white-space; these resets only stop the browser's default block
+   margins from adding unwanted space the plain-text bubble never had. */
+.muv-ai-bubble p { margin: 0 0 0.55em; }
+.muv-ai-bubble p:last-child { margin-bottom: 0; }
+.muv-ai-bubble ul.muv-ai-markdown-list { margin: 0.2em 0 0.55em; padding-left: 1.15em; }
+.muv-ai-bubble ul.muv-ai-markdown-list:last-child { margin-bottom: 0; }
+.muv-ai-bubble ul.muv-ai-markdown-list li { margin: 0.15em 0; }
+.muv-ai-bubble strong { font-weight: 600; }
+.muv-ai-bubble a { color: var(--lavender); text-decoration: underline; text-underline-offset: 2px; }
+
+.muv-ai-reference-card { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 14px; border: 1px solid var(--card-border); background: var(--card-fill); font-size: 12.5px; color: rgba(var(--text-rgb), 0.85); }
+.muv-ai-reference-card-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--lavender); flex-shrink: 0; }
+
+.muv-ai-retry-btn {
+  align-self: flex-start; font-size: 11.5px; font-weight: 500; color: var(--lavender);
+  background: none; border: none; cursor: pointer; padding: 2px 0;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+
+.muv-ai-typing {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 12px 15px; border-radius: 18px; border-bottom-left-radius: 6px;
+  background: rgba(var(--text-rgb), 0.05); border: 1px solid var(--card-border);
+  width: fit-content;
+}
+.muv-ai-typing-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(var(--text-rgb), 0.45); animation: muv-ai-typing-bounce 1.2s ease-in-out infinite; }
+.muv-ai-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.muv-ai-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes muv-ai-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .muv-ai-typing-dot { animation: none; opacity: 0.8; }
+}
+
+.muv-ai-panel-footer { flex-shrink: 0; padding: 14px 16px; border-top: 1px solid var(--hairline); display: flex; align-items: flex-end; gap: 10px; }
+.muv-ai-input {
+  flex: 1; background: rgba(var(--text-rgb), 0.05); border: 1px solid var(--card-border);
+  border-radius: 18px; padding: 11px 15px; font-size: 13.5px; color: rgba(var(--text-rgb), 0.92);
+  resize: none; max-height: 110px; outline: none; font-family: inherit;
+  transition: border-color 0.3s var(--ease);
+}
+.muv-ai-input::placeholder { color: rgba(var(--text-rgb), 0.32); }
+.muv-ai-input:focus { border-color: rgba(183, 171, 240, 0.6); }
+.muv-ai-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.muv-ai-send-btn {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--lavender); color: #0b0b0f;
+  transition: transform 0.3s var(--ease), opacity 0.3s;
+}
+.muv-ai-send-btn:hover:not(:disabled) { transform: translateY(-1px) scale(1.04); }
+.muv-ai-send-btn:active:not(:disabled) { transform: scale(0.92); }
+.muv-ai-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.muv-ai-send-btn:focus-visible { outline: 2px solid var(--lavender); outline-offset: 2px; }
+
+.muv-ai-input-note { font-size: 11px; color: rgba(var(--text-rgb), 0.4); padding: 0 16px 10px; text-align: center; }
+
+/* ---- MUV AI Widget Wave 2 (internal beta) — additive only, same token
+   vocabulary as Wave 1 above. No Wave 1 rule was changed. ---- */
+
+.muv-ai-panel-header-actions { display: flex; align-items: center; gap: 8px; }
+
+.muv-ai-confirm {
+  padding: 14px 20px; border-bottom: 1px solid var(--hairline);
+  background: rgba(var(--lavender-rgb), 0.06);
+  font-size: 12.5px; color: rgba(var(--text-rgb), 0.85); flex-shrink: 0;
+}
+.muv-ai-confirm-actions { display: flex; gap: 8px; margin-top: 10px; }
+.muv-ai-confirm-btn { padding: 8px 16px; font-size: 12px; min-height: 34px; }
+
+.muv-ai-handoff {
+  position: absolute; inset: 0; z-index: 5;
+  background: var(--surface);
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 18px 20px; overflow-y: auto;
+}
+.muv-ai-handoff-header { display: flex; align-items: center; justify-content: space-between; }
+.muv-ai-handoff-contacts { display: flex; flex-direction: column; gap: 8px; }
+.muv-ai-handoff-contact-link {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 13px; border-radius: 14px;
+  border: 1px solid var(--card-border); background: var(--card-fill);
+  font-size: 12.5px; color: rgba(var(--text-rgb), 0.9); text-decoration: none;
+  transition: border-color 0.3s var(--ease), background 0.3s var(--ease);
+}
+.muv-ai-handoff-contact-link:hover { border-color: rgba(var(--lavender-rgb), 0.4); background: var(--card-fill-hover); }
+.muv-ai-handoff-form { display: flex; flex-direction: column; gap: 6px; }
+.muv-ai-handoff-hint { font-size: 12px; color: rgba(var(--text-rgb), 0.5); margin-bottom: 4px; }
+.muv-ai-handoff-label { font-size: 11.5px; color: rgba(var(--text-rgb), 0.6); margin-top: 6px; }
+.muv-ai-handoff-input { min-height: 40px; padding: 9px 13px; font-size: 13px; }
+.muv-ai-handoff-submit { margin-top: 10px; padding: 11px 20px; font-size: 12.5px; min-height: 42px; align-self: flex-start; }
+.muv-ai-handoff-status { font-size: 12px; padding: 10px 13px; border-radius: 12px; }
+.muv-ai-handoff-status-success { background: rgba(110, 231, 160, 0.1); color: #6ee7a0; border: 1px solid rgba(110, 231, 160, 0.25); }
+.muv-ai-handoff-status-error { background: rgba(var(--danger-rgb), 0.08); color: var(--danger); border: 1px solid rgba(var(--danger-rgb), 0.25); }
+
+.muv-ai-suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px 2px; }
+.muv-ai-suggestion-chip {
+  padding: 9px 14px; border-radius: 999px; font-size: 12px;
+  border: 1px solid var(--card-border); background: var(--card-fill);
+  color: rgba(var(--text-rgb), 0.85); cursor: pointer;
+  transition: border-color 0.3s var(--ease), background 0.3s var(--ease), transform 0.3s var(--ease);
+}
+.muv-ai-suggestion-chip:hover { border-color: rgba(var(--lavender-rgb), 0.45); background: var(--card-fill-hover); transform: translateY(-1px); }
+
+.muv-ai-turn-footer { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+
+.muv-ai-feedback { display: inline-flex; align-items: center; gap: 4px; }
+.muv-ai-feedback-btn {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--card-border);
+  background: transparent; color: rgba(var(--text-rgb), 0.5); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.3s var(--ease), color 0.3s var(--ease), background 0.3s var(--ease);
+}
+.muv-ai-feedback-btn:hover:not(:disabled) { border-color: rgba(var(--lavender-rgb), 0.5); color: var(--lavender); background: rgba(var(--lavender-rgb), 0.08); }
+.muv-ai-feedback-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.muv-ai-feedback-done { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(var(--text-rgb), 0.45); }
+
+.muv-ai-diagnostics-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; color: rgba(var(--text-rgb), 0.35);
+  background: none; border: none; cursor: pointer; padding: 2px 0;
+  font-family: monospace;
+}
+.muv-ai-diagnostics-toggle:hover { color: rgba(var(--lavender-rgb), 0.9); }
+.muv-ai-diagnostics-panel {
+  width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25); border: 1px dashed rgba(var(--lavender-rgb), 0.3);
+  font-family: monospace; font-size: 10.5px;
+}
+.muv-ai-diagnostics-loading { color: rgba(var(--text-rgb), 0.4); }
+.muv-ai-diagnostics-row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.muv-ai-diagnostics-label { color: rgba(var(--text-rgb), 0.4); }
+.muv-ai-diagnostics-value { color: rgba(var(--lavender-rgb), 0.95); text-align: right; word-break: break-all; }
+
+@media (prefers-reduced-motion: reduce) {
+  .muv-ai-suggestion-chip, .muv-ai-feedback-btn, .muv-ai-handoff-contact-link { transition: none; }
+}
+@media (max-width: 640px), (max-height: 480px) {
+  .muv-ai-handoff { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ---- MUV AI Experience v2.0 (Founder UX Refinement) — additive only,
+   same token vocabulary as Wave 1/2 above. Expand Workspace, "My Care
+   Journey" sidebar, and rich product cards. No Wave 1/2 class was removed;
+   `.muv-ai-bubble`/`.muv-ai-turn` above were softened in place per the
+   spec's own "improve conversation presentation" instruction — everything
+   else here is new, coexisting rules. ---- */
+
+.muv-ai-panel-subtitle {
+  display: block; font-size: 10.5px; font-weight: 400; letter-spacing: 0.02em;
+  color: rgba(var(--text-rgb), 0.4); margin-top: 1px;
+}
+
+.muv-ai-panel-main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+
+.muv-ai-panel-expanded {
+  width: min(960px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 96px));
+  border-radius: 24px;
+}
+.muv-ai-panel-with-sidebar { flex-direction: row; }
+
+@media (max-width: 640px), (max-height: 480px) {
+  .muv-ai-panel-expanded { width: 100%; height: 100%; border-radius: 0; }
+  .muv-ai-panel-with-sidebar { flex-direction: column; }
+}
+
+.muv-ai-sidebar {
+  width: 216px; flex-shrink: 0; overflow-y: auto;
+  border-right: 1px solid var(--hairline);
+  background: rgba(var(--text-rgb), 0.02);
+  padding: 18px 14px; display: flex; flex-direction: column; gap: 18px;
+}
+.muv-ai-sidebar-header {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; font-weight: 600; color: rgba(var(--text-rgb), 0.85);
+}
+.muv-ai-sidebar-brand { display: flex; align-items: center; gap: 8px; }
+.muv-ai-sidebar-brand-logo { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
+.muv-ai-sidebar-section { display: flex; flex-direction: column; gap: 6px; }
+.muv-ai-sidebar-section-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: rgba(var(--text-rgb), 0.4);
+}
+.muv-ai-sidebar-section-body { font-size: 12px; line-height: 1.5; color: rgba(var(--text-rgb), 0.75); }
+.muv-ai-sidebar-muted { color: rgba(var(--text-rgb), 0.38); font-style: italic; }
+.muv-ai-sidebar-actions { display: flex; flex-direction: column; gap: 6px; }
+.muv-ai-sidebar-action {
+  display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 12px;
+  border: 1px solid var(--card-border); background: var(--card-fill);
+  color: rgba(var(--text-rgb), 0.85); font-size: 12px; cursor: pointer; text-align: left;
+  transition: border-color 0.3s var(--ease), background 0.3s var(--ease);
+}
+.muv-ai-sidebar-action:hover { border-color: rgba(var(--lavender-rgb), 0.45); background: var(--card-fill-hover); }
+
+@media (max-width: 640px), (max-height: 480px) {
+  .muv-ai-sidebar { width: 100%; max-height: 42vh; border-right: none; border-bottom: 1px solid var(--hairline); }
+}
+
+.muv-ai-product-card {
+  display: flex; gap: 12px; padding: 12px; border-radius: 18px;
+  border: 1px solid var(--card-border); background: var(--card-fill);
+  transition: border-color 0.3s var(--ease), background 0.3s var(--ease);
+}
+.muv-ai-product-card:hover { border-color: rgba(var(--lavender-rgb), 0.35); background: var(--card-fill-hover); }
+.muv-ai-product-card-loading {
+  align-items: center; justify-content: center; padding: 14px;
+  font-size: 12px; color: rgba(var(--text-rgb), 0.5);
+}
+.muv-ai-product-card-image { width: 64px; height: 64px; flex-shrink: 0; border-radius: 14px; overflow: hidden; background: rgba(var(--text-rgb), 0.04); }
+.muv-ai-product-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.muv-ai-product-card-name { font-size: 13px; font-weight: 600; color: rgba(var(--text-rgb), 0.95); }
+.muv-ai-product-card-desc {
+  font-size: 11.5px; line-height: 1.45; color: rgba(var(--text-rgb), 0.6);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.muv-ai-product-card-price { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; margin-top: 2px; }
+.muv-ai-product-card-mrp { font-size: 11.5px; font-weight: 400; color: rgba(var(--text-rgb), 0.4); text-decoration: line-through; }
+.muv-ai-product-card-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.muv-ai-product-card-view {
+  font-size: 11.5px; font-weight: 500; color: var(--lavender); text-decoration: none;
+  padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(var(--lavender-rgb), 0.35);
+  transition: background 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+.muv-ai-product-card-view:hover { background: rgba(var(--lavender-rgb), 0.1); border-color: rgba(var(--lavender-rgb), 0.5); }
+.muv-ai-product-card-add {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+  padding: 7px 12px; border-radius: 999px; border: none; cursor: pointer;
+  background: var(--lavender); color: #0b0b0f;
+  transition: transform 0.3s var(--ease), opacity 0.3s var(--ease);
+}
+.muv-ai-product-card-add:hover { transform: translateY(-1px); }
+.muv-ai-product-card-add:active { transform: scale(0.96); }
+
+@media (prefers-reduced-motion: reduce) {
+  .muv-ai-panel { transition: opacity 0.35s var(--ease); }
+  .muv-ai-product-card, .muv-ai-product-card-view, .muv-ai-product-card-add, .muv-ai-sidebar-action { transition: none; }
+}
+
+.muv-admin-shell select,
+.muv-admin-shell .muv-input {
+  color-scheme: dark;
+}
+.muv-admin-shell select option {
+  background: var(--surface);
+  color: rgba(var(--text-rgb), 0.92);
+}
+.muv-admin-shell select option:checked,
+.muv-admin-shell select option:hover {
+  background: var(--card-fill-hover);
+}
+.muv-admin-shell select:disabled,
+.muv-admin-shell .muv-input:disabled {
+  color: rgba(var(--text-rgb), 0.35);
+  background: rgba(var(--text-rgb), 0.02);
+  cursor: not-allowed;
+}
+/* Table rows, sidebar links, and any dropdown/menu surface inside admin —
+   one shared hover/active/focus language instead of relying on each
+   component to invent its own (several didn't, which is the other half of
+   the reported bug: a hover state with no rule at all falls through to
+   whatever the browser/element default is, which can be light). */
+.muv-admin-shell tbody tr:hover {
+  background: rgba(var(--text-rgb), 0.03);
+}
+.muv-admin-shell [role="menu"],
+.muv-admin-shell [role="listbox"] {
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  color: rgba(var(--text-rgb), 0.9);
+}
+.muv-admin-shell [role="menuitem"]:hover,
+.muv-admin-shell [role="option"]:hover,
+.muv-admin-shell [role="menuitem"][data-active="true"],
+.muv-admin-shell [role="option"][aria-selected="true"] {
+  background: var(--card-fill-hover);
+  color: rgba(var(--text-rgb), 1);
+}
+.muv-admin-shell aside a:hover {
+  background: var(--card-fill-hover);
+  color: rgba(var(--text-rgb), 1);
+}
+
+/* ==========================================================================
+   MUV OS™ — Milestone 2 refinement pass. Scoped to `.muv-os-shell` (applied
+   once, on OSShellProvider's root element) exactly like `.muv-admin-shell`
+   above scopes its own rules — never leaks into the storefront or
+   EnterpriseShell-based admin/sales/dashboard pages.
+
+   `color-scheme` fixes the actual "white hover background" root cause:
+   native form controls (a `<select>` dropdown's option list, a date
+   picker) follow the OS/browser color scheme, not this app's CSS custom
+   properties — exactly the same issue `.muv-admin-shell` already had to
+   fix once for exactly this reason (see that block's own comment). MUV OS
+   never set it, so every `<select>` in every form this milestone built
+   (Customer/Employee/Territory/Supplier forms, Common Masters) opened its
+   dropdown in light OS chrome regardless of the shell's own dark theme.
+
+   Everything below it is one small set of reusable hover/focus utility
+   classes — applied explicitly where needed (table rows, nav items,
+   filter chips, form inputs) rather than broad tag selectors, so a
+   deliberately-inert element never silently gains an unwanted hover
+   state. Every color is an existing design-system token
+   (--text-rgb/--lavender/--lavender-rgb) at low opacity — never a literal
+   white fill.
+   ========================================================================== */
+.muv-os-shell { color-scheme: dark; }
+.muv-os-shell[data-theme="light"] { color-scheme: light; }
+
+/* Table rows — Customers, Common Masters, Employees, Territories, Suppliers. */
+.muv-os-row { transition: background-color 120ms var(--ease); }
+.muv-os-row:hover { background: rgba(var(--text-rgb), 0.035); }
+
+/* Sidebar nav items, tabs, popover menu items, breadcrumb links — any
+   "select this" interactive element that isn't a primary button. */
+.muv-os-interactive {
+  /* Inline `style` always wins over a stylesheet :hover rule targeting the
+     same property (specificity rules don't apply across that boundary) —
+     so the resting background is read from this custom property, settable
+     inline (e.g. an active Sidebar item), instead of `style.background`
+     directly. That leaves `background` itself controlled only by this
+     class, so :hover below can actually override it. */
+  background: var(--muv-os-bg, transparent);
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+  border-radius: 10px;
+}
+.muv-os-interactive:hover { background: rgba(var(--lavender-rgb), 0.08); }
+.muv-os-interactive:focus-visible {
+  outline: 2px solid var(--lavender); outline-offset: 2px;
+}
+
+/* Ghost/icon buttons (header icons, table row actions, close buttons). */
+.muv-os-btn-ghost { transition: background-color 120ms var(--ease), color 120ms var(--ease); border-radius: 8px; }
+.muv-os-btn-ghost:hover { background: rgba(var(--text-rgb), 0.06); }
+.muv-os-btn-ghost:focus-visible { outline: 2px solid var(--lavender); outline-offset: 2px; }
+
+/* Primary (filled lavender) buttons — hover slightly deepens, never whitens. */
+.muv-os-btn-primary { transition: filter 120ms var(--ease); }
+.muv-os-btn-primary:hover { filter: brightness(0.94); }
+.muv-os-btn-primary:focus-visible { outline: 2px solid rgba(var(--text-rgb), 0.6); outline-offset: 2px; }
+
+/* One-click filter chips — Customer Dashboard summary cards, Institutional
+   quick filters. `aria-pressed="true"` is the active/selected state. */
+.muv-os-chip {
+  transition: background-color 120ms var(--ease), border-color 120ms var(--ease), color 120ms var(--ease);
+}
+.muv-os-chip:hover { border-color: rgba(var(--lavender-rgb), 0.4); }
+.muv-os-chip:focus-visible { outline: 2px solid var(--lavender); outline-offset: 2px; }
+.muv-os-chip[aria-pressed="true"] {
+  background: rgba(var(--lavender-rgb), 0.14);
+  border-color: rgba(var(--lavender-rgb), 0.45);
+  color: var(--lavender);
+}
+
+/* Text inputs, selects, textareas across every form this milestone built. */
+.muv-os-field { transition: border-color 120ms var(--ease), box-shadow 120ms var(--ease); }
+.muv-os-field:focus-visible, .muv-os-field:focus {
+  outline: none;
+  border-color: var(--lavender);
+  box-shadow: 0 0 0 3px rgba(var(--lavender-rgb), 0.15);
+}
+/* Wrapping labels (e.g. a search icon + input in one bordered box) — the
+   input itself can't show its own border/box-shadow, so the wrapper reacts
+   to :focus-within instead. Same visual treatment either way. */
+.muv-os-field-wrap:focus-within {
+  border-color: var(--lavender);
+  box-shadow: 0 0 0 3px rgba(var(--lavender-rgb), 0.15);
+}
+
+/* Cards (summary cards, empty states) — subtle lift, no color change. */
+.muv-os-card { transition: border-color 120ms var(--ease), transform 120ms var(--ease); }
+.muv-os-card:hover { border-color: rgba(var(--lavender-rgb), 0.28); }
+.muv-os-card:focus-visible { outline: 2px solid var(--lavender); outline-offset: 2px; }

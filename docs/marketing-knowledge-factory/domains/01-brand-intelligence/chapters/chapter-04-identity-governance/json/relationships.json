@@ -1,0 +1,29 @@
+{
+  "chapter": "Identity Governance",
+  "relationships": [
+    { "from": "KO-BI-CH4-004", "type": "sharesDisciplineWith", "to": ["KO-BI-CH4-005"] },
+    { "from": "KO-BI-CH4-007", "type": "extends", "to": ["KO-BI-CH4-004"] },
+    { "from": "KO-BI-CH4-001", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] },
+    { "from": "KO-BI-CH4-002", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] },
+    { "from": "KO-BI-CH4-003", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] },
+    { "from": "KO-BI-CH4-004", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] },
+    { "from": "KO-BI-CH4-005", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] },
+    { "from": "KO-BI-CH4-006", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] },
+    { "from": "KO-BI-CH4-007", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] },
+    { "from": "KO-BI-CH4-008", "type": "summarizedBy", "to": ["KO-BI-CH4-009"] }
+  ],
+  "crossChapterRelationships": [
+    { "from": "KO-BI-CH2-003", "type": "isExtendedBy", "to": ["KO-BI-CH4-004", "KO-BI-CH4-005"], "note": "Forward relationship predicted in Chapter 2, fulfilled here" },
+    { "from": "KO-BI-CH2-004", "type": "isOperationalizedBy", "to": "KO-BI-CH4-008", "note": "Forward relationship predicted in Chapter 2 (Core Logo Rule 9), fulfilled here" },
+    { "from": "KO-BI-CH1-006", "type": "referencedBy", "to": "KO-BI-CH4-001" },
+    { "from": "KO-BI-CH2-005", "type": "relatesTo", "to": ["KO-BI-CH4-006", "KO-BI-CH4-007"] }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-BI-CH4-002", "type": "willGovern", "to": "Domain 7 — Creative Intelligence" },
+    { "from": "KO-BI-CH4-006", "type": "willBeExtendedBy", "to": "Domain 5 — Channel Intelligence" },
+    { "from": "KO-BI-CH4-007", "type": "willBeExtendedBy", "to": "Domain 5 — Channel Intelligence" },
+    { "from": "KO-BI-CH4-007", "type": "mustStayConsistentWith", "to": "Product Knowledge Factory" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}

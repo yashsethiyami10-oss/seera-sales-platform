@@ -1,0 +1,11 @@
+{
+  "chapter": "Digital Operating Foundation",
+  "upstreamDependencies": [
+    { "source": "MUV Knowledge Library, Part II, Chapter 6", "type": "sourceDocument", "status": "exists, verified (re-extracted verbatim), unmodified" }
+  ],
+  "downstreamDependents": [
+    { "dependent": "Domain 5 Chapters 2-12", "status": "in progress this batch" }
+  ],
+  "circularDependencyCheck": "PASS",
+  "unstableDependencyCheck": "PASS"
+}

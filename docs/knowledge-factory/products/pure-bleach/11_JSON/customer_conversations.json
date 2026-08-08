@@ -1,0 +1,18 @@
+{
+  "productFamily": "MUV Pure Bleach™",
+  "totalFlows": 11,
+  "flows": [
+    { "koid": "KO-PB-CONV-001", "scenario": "First-Time Customer" },
+    { "koid": "KO-PB-CONV-002", "scenario": "Regular Customer" },
+    { "koid": "KO-PB-CONV-003", "scenario": "Household Use" },
+    { "koid": "KO-PB-CONV-004", "scenario": "Bathroom Cleaning", "safetyNote": "proactively surface mixing restriction vs MUV Fresh Bathroom Cleaner™" },
+    { "koid": "KO-PB-CONV-005", "scenario": "Toilet Stain Removal", "safetyNote": "proactively surface mixing restriction vs MUV Floral Toilet Cleaner™" },
+    { "koid": "KO-PB-CONV-006", "scenario": "White Fabric Stain Queries", "applicabilityNote": "Applicable — 'whitening' is a sourced purpose; fabric-specific instructions are not sourced" },
+    { "koid": "KO-PB-CONV-007", "scenario": "Institutional Customer (general)" },
+    { "koid": "KO-PB-CONV-008", "scenario": "Hotel" },
+    { "koid": "KO-PB-CONV-009", "scenario": "Hospital", "note": "highest-stakes scenario — never assert clinical/medical-grade disinfection claim, always escalate" },
+    { "koid": "KO-PB-CONV-010", "scenario": "School", "note": "child-safety emphasis" },
+    { "koid": "KO-PB-CONV-011", "scenario": "Office" }
+  ],
+  "structure": ["Situation", "Customer Goal", "Care Goal", "Opening", "Guidance", "What to Avoid", "Escalation", "Closing"]
+}

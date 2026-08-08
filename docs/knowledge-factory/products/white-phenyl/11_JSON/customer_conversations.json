@@ -1,0 +1,20 @@
+{
+  "productFamily": "MUV White Phenyl™",
+  "totalFlows": 12,
+  "flows": [
+    { "koid": "KO-WP-CONV-001", "scenario": "First-Time Customer" },
+    { "koid": "KO-WP-CONV-002", "scenario": "Returning Customer" },
+    { "koid": "KO-WP-CONV-003", "scenario": "Household Cleaning" },
+    { "koid": "KO-WP-CONV-004", "scenario": "Daily Floor Cleaning" },
+    { "koid": "KO-WP-CONV-005", "scenario": "Commercial Cleaning" },
+    { "koid": "KO-WP-CONV-006", "scenario": "Hotel" },
+    { "koid": "KO-WP-CONV-007", "scenario": "Hospital", "note": "highest-stakes — never assert disinfection efficacy claim, always escalate" },
+    { "koid": "KO-WP-CONV-008", "scenario": "School", "note": "child-safety emphasis" },
+    { "koid": "KO-WP-CONV-009", "scenario": "Office" },
+    { "koid": "KO-WP-CONV-010", "scenario": "Washroom Cleaning", "note": "mixing-compatibility honesty" },
+    { "koid": "KO-WP-CONV-011", "scenario": "Odour Control", "note": "sourced fragrance fact vs unsourced performance claim distinction" },
+    { "koid": "KO-WP-CONV-012", "scenario": "Hygiene Maintenance", "note": "sourced cleaning-role facts vs unsourced efficacy claim" }
+  ],
+  "structure": ["Situation", "Customer Goal", "Care Goal", "Opening", "Guidance", "What to Avoid", "Escalation", "Closing"],
+  "structureReusedFrom": "Bathroom Cleaner (originating package for the 8-field Care Response/Conversation template)"
+}

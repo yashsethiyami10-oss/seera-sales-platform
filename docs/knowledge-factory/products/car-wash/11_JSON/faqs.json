@@ -1,0 +1,8 @@
+{
+  "productFamily": "MUV Car Wash™",
+  "totalFaqKOs": 2,
+  "faqs": [
+    { "koid": "KO-CW-FAQ-001", "title": "Customer FAQ Set", "questionCount": 7, "highRiskQuestions": ["Is this the same as MUV Shield?", "Does it wax or gloss-protect my car's paint?", "Is it safe on matte finishes / wraps / chrome?"] },
+    { "koid": "KO-CW-FAQ-002", "title": "AI Response Guidance" }
+  ]
+}

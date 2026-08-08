@@ -1,0 +1,22 @@
+{
+  "chapter": "3D Visualization & Mockups",
+  "relationships": [
+    { "from": "KO-CC-CH4-001", "type": "governs", "to": ["KO-CC-CH4-002","KO-CC-CH4-003","KO-CC-CH4-004","KO-CC-CH4-005","KO-CC-CH4-006","KO-CC-CH4-007","KO-CC-CH4-008"] },
+    { "from": "KO-CC-CH4-002", "type": "feeds", "to": ["KO-CC-CH4-003"] },
+    { "from": "KO-CC-CH4-003", "type": "feeds", "to": ["KO-CC-CH4-004"] },
+    { "from": "KO-CC-CH4-004", "type": "feeds", "to": ["KO-CC-CH4-005"] },
+    { "from": "KO-CC-CH4-005", "type": "feeds", "to": ["KO-CC-CH4-006"] },
+    { "from": "KO-CC-CH4-006", "type": "feeds", "to": ["KO-CC-CH4-007"] },
+    { "from": "KO-CC-CH4-007", "type": "feeds", "to": ["KO-CC-CH4-008"] },
+    { "from": "KO-CC-CH4-001", "type": "summarizedBy", "to": ["KO-CC-CH4-009"] }
+  ],
+  "crossDomainRelationships": [
+    { "from": "KO-CC-CH4-008", "type": "relatesTo", "to": "KO-CC-CH3-009 (this domain), KO-PM-CH3-012 (Domain 2), KO-DM-CH10-004, KO-DM-CH10-005 (Domain 5)" }
+  ],
+  "forwardRelationships": [
+    { "from": "KO-CC-CH4-008", "type": "feeds", "to": "Chapter 6 (synthesis) and Chapter 7 (Image Analysis Rules / AI Creative Feedback System Gap Records)" },
+    { "from": "KO-CC-CH4-009", "type": "transitionsTo", "to": "Chapter 5 (Design Controls & Revision History)" }
+  ],
+  "orphanCheck": "PASS",
+  "circularCheck": "PASS"
+}
