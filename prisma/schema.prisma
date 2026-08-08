@@ -11,6 +11,7 @@ enum UserStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+  DISABLED
 }
 
 enum RoleStatus {

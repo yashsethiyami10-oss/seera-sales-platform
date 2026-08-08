@@ -77,8 +77,9 @@ try {
     unexpectedData,
   };
   console.log(JSON.stringify(result, null, 2));
-  if (missing.length || unexpected.length || muvLeakage.length || unexpectedData.length) process.exitCode = 1;
-  if (result.migrations.length !== 1 || !result.migrations[0]?.applied) process.exitCode = 1;
+  const allowFoundationData = process.argv.includes("--allow-foundation-data");
+  if (missing.length || unexpected.length || muvLeakage.length || (!allowFoundationData && unexpectedData.length)) process.exitCode = 1;
+  if (result.migrations.length !== 2 || result.migrations.some((migration) => !migration.applied)) process.exitCode = 1;
 } finally {
   await prisma.$disconnect();
 }

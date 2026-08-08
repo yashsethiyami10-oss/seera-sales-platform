@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 export type DatabaseRole = "production" | "test";
 
 export type SanitizedDatabaseIdentity = {
@@ -54,7 +52,18 @@ function projectIdentifier(host: string): string {
 }
 
 function fingerprint(host: string, database: string): string {
-  return createHash("sha256").update(`${host}/${database}`).digest("hex").slice(0, 16);
+  const value = `${host}/${database}`;
+  let first = 2166136261;
+  let second = 2246822519;
+  for (let index = 0; index < value.length; index += 1) {
+    first = Math.imul(first ^ value.charCodeAt(index), 16777619);
+    second = Math.imul(second ^ value.charCodeAt(index), 3266489917);
+  }
+  return `${(first >>> 0).toString(16).padStart(8, "0")}${(second >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function sameIdentity(left: SanitizedDatabaseIdentity, right: SanitizedDatabaseIdentity): boolean {
+  return left.host === right.host && left.database === right.database;
 }
 
 export function inspectDatabaseUrl(value: string | undefined, role: DatabaseRole): SanitizedDatabaseIdentity {
@@ -105,7 +114,7 @@ export function validateDatabaseIsolation(input: {
   }
 
   const test = inspectDatabaseUrl(input.testUrl, "test");
-  if (test.fingerprint === production.fingerprint) {
+  if (sameIdentity(test, production)) {
     throw new DatabaseIdentityError("TEST_POINTS_TO_PRODUCTION", "test database resolves to production identity");
   }
 
@@ -142,8 +151,8 @@ export function classifyDatabaseTarget(input: {
   });
   const target = inspectDatabaseUrl(input.targetUrl, "test");
 
-  if (target.fingerprint === identities.production.fingerprint) return identities.production;
-  if (target.fingerprint === identities.test.fingerprint) return identities.test;
+  if (sameIdentity(target, identities.production)) return identities.production;
+  if (sameIdentity(target, identities.test)) return identities.test;
 
   throw new DatabaseIdentityError(
     "UNKNOWN_DATABASE_TARGET",

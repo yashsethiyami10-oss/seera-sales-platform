@@ -24,6 +24,8 @@ Last reviewed: 2026-08-08
 | ADR-018 | Forward migrations only; production-significant changes require test rehearsal, backup, and rollback runbook. | Accepted | Deployed migrations are never rewritten to hide errors. |
 | ADR-019 | Copied MUV migrations are immutable reference archives outside Prisma’s active path; Seera starts a clean migration history. | Implemented in Block 1 | A fresh Seera database cannot receive copied MUV migrations through the active path. |
 | ADR-020 | Database-changing tooling runs only through exact-target fail-closed guards; Phase 1 migrations target the isolated test identity first. | Implemented in Block 2 | Production, unknown, fallback, equal and MUV targets cannot receive guarded test writes. |
+| ADR-021 | Seera uses independent hash-stored opaque sessions, authorization-version invalidation and database-derived multi-role permissions. | Implemented in Block 3 | Browser claims and middleware cannot grant authority. |
+| ADR-022 | Portal feature flags are availability controls only and cannot override RBAC. | Implemented in Block 3 | Both permission and enabled flag are required server-side. |
 | ADR-020 | Copied MUV routes and Prisma-writing scripts are preserved outside active runtime paths until selectively adapted. | Implemented in Block 1 | Clean schema transition does not require mass deletion or continued MUV model compilation. |
 | ADR-021 | Phase 1 portal shells fail closed until independent authentication and permission enforcement exist. | Implemented in Block 1 | Route ownership is prepared without granting premature access. |
 

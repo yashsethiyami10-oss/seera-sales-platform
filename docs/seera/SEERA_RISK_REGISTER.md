@@ -9,6 +9,8 @@ Last reviewed: 2026-08-08
 | R-003 | No independent Seera Git history. | High | Independent root baseline commit `0192067`. | Maintain reviewed commits/rollback evidence. | Closed |
 | R-004 | Copied MUV application is mistaken for Seera-ready code. | High | Routes/scripts/schema/migrations archived; active surface Seera-only. | Selective adaptation with dependency proof. | Mitigated |
 | R-022 | A migration command accidentally targets production or MUV. | Critical | Atomic target guard, explicit test URL injection, known-MUV rejection, production-write denial, and destructive reset confirmation. | Keep all schema writes behind the guarded wrapper. | Mitigated |
+| R-023 | Browser-forged role/session reaches protected Seera authority. | Critical | HttpOnly hash-stored sessions, state/version checks, DB-derived permissions, page/API enforcement. | Preserve centralized authorization and adversarial regression. | Mitigated |
+| R-024 | Admin escalation removes last Founder or grants system authority. | Critical | Super-admin grant restriction, self-lockout denial, last-Founder protection and audit. | Require explicit future governance for authority-policy changes. | Mitigated |
 | R-005 | Cross-party/territory authorization leakage. | Critical | Deny-by-default policy architecture. | Authorization matrix and adversarial integration tests every phase. | Planned |
 | R-006 | Booked orders counted as actual sales. | Critical | Item fulfilment events and constitutional formula. | Partial/refused/return/reversal reconciliation tests. | Planned |
 | R-007 | Payment proof treated as verified funds. | Critical | Separate proof/review/allocation states. | Duplicate UTR and maker-checker workflow tests. | Planned |

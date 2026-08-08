@@ -104,3 +104,6 @@ Architecture locations refer to `SEERA_MASTER_ARCHITECTURE.md` unless otherwise 
 - Rejected/deferred: **0**
 
 Counts must be recalculated mechanically when statuses change.
+# Phase 1 Block 3
+
+Block 3 requirements B3-01 through B3-40 are implemented and traced in `phase-1/block-3/SEERA_PHASE_1_BLOCK_3_ACCEPTANCE_CHECKLIST.md`. All are PASS; no critical identity/access requirement is deferred.

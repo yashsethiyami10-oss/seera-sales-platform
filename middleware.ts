@@ -1,22 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-/**
- * Phase 1 Block 1 fail-closed boundary.
- *
- * Portal shells exist only to establish route ownership and permission codes.
- * They are unavailable until Block 2 supplies independent Seera authentication
- * and server-side permission enforcement. There is deliberately no environment
- * switch that can bypass this boundary accidentally.
- */
-export function middleware(_request: NextRequest) {
-  return NextResponse.json(
-    { error: { code: "SEERA_PORTAL_NOT_ACTIVE", message: "Seera portal access is not active." } },
-    { status: 503, headers: { "Cache-Control": "no-store" } },
-  );
+export function middleware(request: NextRequest) {
+  if (!request.cookies.get("seera_session")?.value) {
+    if (request.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: { code: "AUTHENTICATION_REQUIRED", message: "Authentication required" } }, { status: 401 });
+    const login = new URL("/login", request.url); login.searchParams.set("next", request.nextUrl.pathname); return NextResponse.redirect(login);
+  }
+  return NextResponse.next();
 }
-
-export const config = {
-  matcher: ["/portal/:path*"],
-};
-
+export const config = { matcher: ["/portal/:path*", "/api/foundation/:path*"] };

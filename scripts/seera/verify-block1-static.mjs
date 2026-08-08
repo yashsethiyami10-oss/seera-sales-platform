@@ -90,10 +90,11 @@ check("test fallback and production identity reuse rejected", () => {
 check("active migration path is Seera-only", () => {
   const active = walk(path.join(root, "prisma/migrations")).filter((file) => path.basename(file) !== ".gitkeep");
   const sql = active.filter((file) => path.basename(file) === "migration.sql");
-  assert.equal(sql.length <= 1, true);
-  if (sql.length === 1) {
-    assert.match(sql[0], /001_seera_foundation/);
-    const content = readFileSync(sql[0], "utf8");
+  assert.equal(sql.length <= 2, true);
+  assert.equal(sql.some((file) => /001_seera_foundation/.test(file)), true);
+  assert.equal(sql.every((file) => /00[12]_(seera_foundation|user_disabled_status)/.test(file)), true);
+  for (const file of sql) {
+    const content = readFileSync(file, "utf8");
     for (const forbidden of ["Retailer", "Distributor", "SuperStockist", "CommercialOrder", "Payment", "Product"]) {
       assert.doesNotMatch(content, new RegExp(`CREATE TABLE \\"${forbidden}`, "i"));
     }
@@ -144,7 +145,9 @@ check("clean Phase 1 schema boundary", () => {
 check("MUV route archive and fail-closed portal boundary", () => {
   assert.equal(walk(path.join(root, "reference/muv-app")).length, 225);
   assert.equal(walk(path.join(root, "app")).some((file) => file.includes(`${path.sep}(storefront)${path.sep}`)), false);
-  assert.match(read("middleware.ts"), /SEERA_PORTAL_NOT_ACTIVE/);
+  assert.match(read("middleware.ts"), /AUTHENTICATION_REQUIRED/);
+  assert.match(read("app/portal/[portal]/page.tsx"), /resolveRequestIdentity/);
+  assert.match(read("app/portal/[portal]/page.tsx"), /authorize/);
 });
 
 check("no absolute runtime dependency on MUV repository", () => {

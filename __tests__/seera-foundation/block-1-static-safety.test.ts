@@ -53,9 +53,10 @@ describe("Phase 1 Block 1 static safety", () => {
   it("has only the approved Seera migration in Prisma's active migration path", () => {
     const active = walk(path.join(root, "prisma", "migrations")).filter((file) => path.basename(file) !== ".gitkeep");
     const migrationSql = active.filter((file) => path.basename(file) === "migration.sql");
-    expect(migrationSql).toHaveLength(1);
-    expect(migrationSql[0]).toContain("001_seera_foundation");
-    expect(active.every((file) => file.includes("001_seera_foundation") || path.basename(file) === "migration_lock.toml")).toBe(true);
+    expect(migrationSql).toHaveLength(2);
+    expect(migrationSql.some((file) => file.includes("001_seera_foundation"))).toBe(true);
+    expect(migrationSql.some((file) => file.includes("002_user_disabled_status"))).toBe(true);
+    expect(active.every((file) => /00[12]_(seera_foundation|user_disabled_status)/.test(file) || path.basename(file) === "migration_lock.toml")).toBe(true);
   });
 
   it("verifies every archived migration against the SHA-256 manifest", () => {
@@ -137,7 +138,9 @@ describe("Phase 1 Block 1 static safety", () => {
     expect(archivedRoutes).toHaveLength(225);
     expect(activeRoutes.length).toBeGreaterThan(0);
     expect(activeRoutes.some((file) => file.includes(`${path.sep}(storefront)${path.sep}`))).toBe(false);
-    expect(read("middleware.ts")).toContain("SEERA_PORTAL_NOT_ACTIVE");
+    expect(read("middleware.ts")).toContain("AUTHENTICATION_REQUIRED");
+    expect(read("app/portal/[portal]/page.tsx")).toContain("resolveRequestIdentity");
+    expect(read("app/portal/[portal]/page.tsx")).toContain("authorize");
   });
 
   it("contains no runtime absolute import or symlink to the MUV repository", () => {
