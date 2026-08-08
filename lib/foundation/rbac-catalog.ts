@@ -35,6 +35,10 @@ export const PHASE_1_PERMISSIONS = [
   "super_stockist_inventory:adjust", "super_stockist_inventory:reconcile", "company_replenishment:create",
   "payment_proof:create", "payment_proof:review", "partner_credit:enforce",
   "assisted_distributor:operate", "payment_promise:create", "manager_field:operate",
+  "billing_profile:manage", "document:create", "document:issue", "document:upload", "document:view_scoped", "document:share", "document:cancel",
+  "manager_team:view", "manager_instruction:manage", "manager_approval:decide", "manager_location:view_working",
+  "finance_dashboard:view", "payment:review", "payment:allocate", "ledger:view", "ledger:post", "ledger:reverse", "credit_extension:approve", "reconciliation:manage", "claim_settlement:manage", "accounting_period:lock",
+  "travel_policy:manage", "ta_claim:create", "ta_claim:verify", "ta_claim:approve", "ta_claim:view_self", "partner_lifecycle:manage", "partner_lifecycle:force_close",
 ] as const;
 
 export const PHASE_1_PERMISSION_NAMESPACES = [...new Set(PHASE_1_PERMISSIONS.map((code) => code.split(":")[0]))] as readonly string[];
@@ -46,14 +50,14 @@ const common = ["notifications:view", "files:view", "session:revoke_self"] as co
 export const ROLE_PERMISSION_MATRIX: Record<Phase1RoleCode, readonly Phase1Permission[]> = {
   FOUNDER_SUPER_ADMIN: PHASE_1_PERMISSIONS,
   COMPANY_ADMIN: ["portal:admin", "user:view", "user:create", "user:update", "user:disable", "user:suspend", "user:reactivate", "role:view", "role:assign", "role:remove", "permission:view", "audit:view", "settings:view", "settings:manage", "feature_flags:view", "feature_flags:manage", "notifications:view", "notifications:manage", "files:view", "files:manage", "session:revoke_self", "session:revoke_user", "session:revoke_all_user"],
-  ACCOUNTS_MANAGER: ["portal:accounts", "settings:view", ...common],
-  ACCOUNTS_EXECUTIVE: ["portal:accounts", ...common],
+  ACCOUNTS_MANAGER: ["portal:accounts", "settings:view", "billing_profile:manage", "document:create", "document:issue", "document:upload", "document:view_scoped", "document:share", "document:cancel", "finance_dashboard:view", "payment:review", "payment:allocate", "ledger:view", "ledger:post", "ledger:reverse", "credit_extension:approve", "reconciliation:manage", "claim_settlement:manage", "accounting_period:lock", "ta_claim:approve", ...common],
+  ACCOUNTS_EXECUTIVE: ["portal:accounts", "document:create", "document:upload", "document:view_scoped", "finance_dashboard:view", "payment:review", "payment:allocate", "ledger:view", "reconciliation:manage", ...common],
   SALES_HEAD: ["portal:sales_manager", "user:view", "master:manage", "network:manage", "credit:manage", "approval:decide", "field_reports:view_self", ...common],
-  SALES_MANAGER: ["portal:sales_manager", "network:manage", "approval:decide", "joint_work:participate", "prospect:create", "manager_field:operate", "assisted_distributor:operate", "payment_promise:create", "field_reports:view_self", ...common],
-  SALES_EXECUTIVE: ["portal:sales_executive", "field_day:manage_self", "retailer:visit", "retailer:order", "collection:create", "prospect:create", "joint_work:participate", "field_reports:view_self", ...common],
-  SUPER_STOCKIST_OWNER: ["portal:super_stockist", "super_stockist_orders:view", "super_stockist_orders:fulfil", "super_stockist_inventory:view", "super_stockist_inventory:adjust", "super_stockist_inventory:reconcile", "company_replenishment:create", "payment_proof:create", "partner_credit:enforce", "payment_promise:create", "distributor_claims:manage", ...common],
+  SALES_MANAGER: ["portal:sales_manager", "network:manage", "approval:decide", "joint_work:participate", "prospect:create", "manager_field:operate", "assisted_distributor:operate", "payment_promise:create", "field_reports:view_self", "manager_team:view", "manager_instruction:manage", "manager_approval:decide", "manager_location:view_working", "document:view_scoped", "ta_claim:create", "ta_claim:verify", "ta_claim:view_self", ...common],
+  SALES_EXECUTIVE: ["portal:sales_executive", "field_day:manage_self", "retailer:visit", "retailer:order", "collection:create", "prospect:create", "joint_work:participate", "field_reports:view_self", "ta_claim:create", "ta_claim:view_self", ...common],
+  SUPER_STOCKIST_OWNER: ["portal:super_stockist", "super_stockist_orders:view", "super_stockist_orders:fulfil", "super_stockist_inventory:view", "super_stockist_inventory:adjust", "super_stockist_inventory:reconcile", "company_replenishment:create", "payment_proof:create", "partner_credit:enforce", "payment_promise:create", "distributor_claims:manage", "document:create", "document:upload", "document:view_scoped", "document:share", "ledger:view", ...common],
   SUPER_STOCKIST_OPERATOR: ["portal:super_stockist", "super_stockist_orders:view", "super_stockist_orders:fulfil", "super_stockist_inventory:view", "company_replenishment:create", "payment_proof:create", "partner_credit:enforce", ...common],
-  DISTRIBUTOR_OWNER: ["portal:distributor", "distributor_orders:view", "distributor_orders:fulfil", "distributor_inventory:view", "distributor_inventory:adjust", "distributor_inventory:reconcile", "distributor_replenishment:create", "distributor_credit:view", "distributor_claims:manage", ...common],
+  DISTRIBUTOR_OWNER: ["portal:distributor", "distributor_orders:view", "distributor_orders:fulfil", "distributor_inventory:view", "distributor_inventory:adjust", "distributor_inventory:reconcile", "distributor_replenishment:create", "distributor_credit:view", "distributor_claims:manage", "document:create", "document:upload", "document:view_scoped", "document:share", "ledger:view", ...common],
   DISTRIBUTOR_OPERATOR: ["portal:distributor", "distributor_orders:view", "distributor_orders:fulfil", "distributor_inventory:view", "distributor_replenishment:create", "distributor_credit:view", "distributor_claims:manage", ...common],
   DISTRIBUTOR_DELIVERY_USER: ["portal:distributor", "distributor_delivery:execute", "notifications:view", "session:revoke_self"],
   RETAILER_USER: ["portal:retailer", ...common],

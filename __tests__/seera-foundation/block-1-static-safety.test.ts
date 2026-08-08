@@ -50,13 +50,13 @@ describe("Phase 1 Block 1 static safety", () => {
     expect(result.production.fingerprint).not.toBe(result.test.fingerprint);
   });
 
-  it("has only the eight explicitly approved Seera migrations in the active path", () => {
+  it("has only the nine explicitly approved Seera migrations in the active path", () => {
     const active = walk(path.join(root, "prisma", "migrations")).filter((file) => path.basename(file) !== ".gitkeep");
     const migrationSql = active.filter((file) => path.basename(file) === "migration.sql");
-    expect(migrationSql).toHaveLength(8);
+    expect(migrationSql).toHaveLength(9);
     expect(migrationSql.some((file) => file.includes("001_seera_foundation"))).toBe(true);
     expect(migrationSql.some((file) => file.includes("002_user_disabled_status"))).toBe(true);
-    const approved = [/001_seera_foundation/, /002_user_disabled_status/, /003_phase_2_5_sales_distribution/, /004_partner_user_scope/, /005_company_order_states/, /006_active_work_session_constraint/, /007_phase_2_3_operational_records/, /008_user_ui_language/];
+    const approved = [/001_seera_foundation/, /002_user_disabled_status/, /003_phase_2_5_sales_distribution/, /004_partner_user_scope/, /005_company_order_states/, /006_active_work_session_constraint/, /007_phase_2_3_operational_records/, /008_user_ui_language/, /phase_6_9_governed_operations/];
     expect(active.every((file) => approved.some((pattern) => pattern.test(file)) || path.basename(file) === "migration_lock.toml")).toBe(true);
   });
 

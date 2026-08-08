@@ -25,7 +25,7 @@ export default async function PortalShell({ params }: { params: Promise<{ portal
     const { user } = await resolveRequestIdentity(); const definition = SEERA_PORTALS[portal];
     language = normalizeLanguage(user.preferredLanguage);
     await authorize(prisma, { actorId: user.id, permission: definition.requiredPermission, ...(definition.featureFlag ? { featureFlag: definition.featureFlag } : {}) });
-    const bilingualPortals = ["founder-admin", "sales-manager", "sales-executive", "distributor", "super-stockist"] as const;
+    const bilingualPortals = ["founder-admin", "accounts", "sales-manager", "sales-executive", "distributor", "super-stockist"] as const;
     const experience = bilingualPortals.includes(portal as never) ? localizedPortal(language, portal as BilingualPortal) : undefined;
     return <main lang={language === "HI" ? "hi" : "en"} style={{ maxWidth: 900, margin: "0 auto", padding: "48px 24px", fontFamily: 'system-ui, "Noto Sans Devanagari", "Mangal", sans-serif' }} data-portal={portal} data-language={language}>
       <LanguageSelector initialLanguage={language} labels={{ language: translate(language, "language"), english: translate(language, "english"), hindi: translate(language, "hindi") }} />
