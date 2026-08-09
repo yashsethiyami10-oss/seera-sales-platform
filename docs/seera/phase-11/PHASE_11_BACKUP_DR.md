@@ -1,5 +1,7 @@
 # Phase 11 Backup and Restore Closure
 
-No production system was touched. No isolated restore target or provider backup/export capability is configured in the repository. The main TEST database was not overwritten for a drill.
+No production system was touched and the primary `seera-test` dataset was not used as a restore target.
 
-Actual backup: NOT PERFORMED. Restore: NOT PERFORMED. RPO/RTO: NOT VERIFIED. Required next step is a Founder/provider-authorized temporary Neon branch, followed by export/restore, migration-ledger and representative relationship verification, measured restore duration, and safe target cleanup.
+Actual backup: NOT PERFORMED. Restore: NOT PERFORMED. Restore duration: NOT MEASURED. RPO/RTO: NOT VERIFIED.
+
+The repository and environment expose no Neon management credential and no second isolated restore target. Creating a temporary Neon branch/resource is therefore the sole remaining external Founder action. After it is provided, the drill must restore to that target, verify schema and migration history plus representative users, retailers, orders, inventory, documents, ledger entries and foreign keys, record duration, and safely remove the temporary resource.

@@ -1006,6 +1006,8 @@ model SeeraRetailer {
 
   @@unique([normalizedMobile, businessName])
   @@index([beatId, distributorId, salespersonId, lifecycle])
+  @@index([distributorId, createdAt])
+  @@index([salespersonId, createdAt])
   @@map("seera_retailers")
 }
 
@@ -1113,6 +1115,7 @@ model SeeraVisit {
   retailer           SeeraRetailer?   @relation(fields: [retailerId], references: [id], onDelete: Restrict)
 
   @@index([workSessionId, outcome])
+  @@index([checkedInAt])
   @@map("seera_visits")
 }
 
@@ -1178,6 +1181,10 @@ model SeeraSalesOrder {
   @@index([type, status, createdAt])
   @@index([retailerId, createdAt])
   @@index([buyerPartnerId, sellerPartnerId, status])
+  @@index([createdAt])
+  @@index([salespersonId, createdAt])
+  @@index([buyerPartnerId, createdAt])
+  @@index([sellerPartnerId, createdAt])
   @@map("seera_sales_orders")
 }
 
@@ -1253,6 +1260,7 @@ model SeeraInventoryMovement {
 
   @@index([partyType, partyId, skuId, occurredAt])
   @@index([sourceType, sourceId])
+  @@index([occurredAt])
   @@map("seera_inventory_movements")
 }
 
@@ -1432,6 +1440,7 @@ model SeeraTarget {
 
   @@unique([employeeId, periodType, periodStart, metricType, skuId])
   @@index([employeeId, periodStart, periodEnd])
+  @@index([periodStart, periodEnd])
   @@map("seera_targets")
 }
 
@@ -1450,6 +1459,7 @@ model SeeraCollectionEntry {
   collectedAt    DateTime @default(now())
 
   @@index([retailerId, collectedAt])
+  @@index([collectedAt])
   @@map("seera_collection_entries")
 }
 

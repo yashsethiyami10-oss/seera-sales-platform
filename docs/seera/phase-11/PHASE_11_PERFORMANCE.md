@@ -1,5 +1,7 @@
 # Phase 11 Performance Closure
 
-The existing local performance harness and thresholds remain covered by Phase 11 tests. The authenticated dashboard's eight-read `Promise.all` fanout was replaced with semantically identical sequential reads after pooled-path blocking was observed. A regression gate now preserves bounded dashboard DB concurrency.
+Guarded direct TEST fingerprint `66ac54459d07d2c1` was used only for controlled probes. Guarded pooled TEST fingerprint `0df3ed0f625087ff` remained the application runtime path.
 
-Query-plan findings: none claimed. Index changes: none. Offline Flow 4 and Flow 6 pass when the client explicitly disconnects/reconnects at the real offline boundary. The configured pooled TEST endpoint still stalled during authenticated dashboard rendering after fanout removal, so representative EXPLAIN/load evidence and connection-pool stability remain unverified.
+Ten `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` probes covered orders, manager analytics, retailer lists, Distributor/Super Stockist stock, ledger, ageing, notifications, reports and insights. Scoped stock, ledger, ageing, notifications, reports and insights used indexes. Evidence showed missing order/retailer time-scope indexes, so additive migration `20260809043000_phase_11_query_indexes` added ten reversible indexes. It is finished and not rolled back on TEST; production was untouched. Post-migration manager analytics and ageing selected the new indexes. Empty-table company order/retailer probes retained planner-chosen sequential scans with zero rows and no shared reads.
+
+Bounded pooled runtime load used concurrency 2 then 5 across authenticated dashboard analytics, notifications and portal rendering: 14/14 responses succeeded; p50 2,792 ms; p95/max 14,423 ms; timeouts 0; P2024/P2028 0. The prior eight-read dashboard fan-out remains sequential to bound pooled connection use.

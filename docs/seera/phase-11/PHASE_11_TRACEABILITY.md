@@ -1,13 +1,18 @@
 # Phase 11 Closure Traceability
 
-| Blocker | Verification | Result |
+| Gate | Evidence | Result |
 |---|---|---|
-| Offline UAT | Guarded six-flow TEST suite plus one setup-corrected retry | BLOCKED, 0/6 |
-| Browser/mobile QA | TEST-bound local server; 360×800, 768×1024, 1440×900 public shells | PARTIAL |
-| Performance/query plans | Deferred after TEST pool failure/hang | NOT VERIFIED |
-| Connection pool | One client, one worker, serial suite; P2024 and hang remain | FAIL |
-| Backup/restore | No isolated restore target available | NOT VERIFIED |
-| Security closure | Revoked queue fail-closed behavior locally tested; DB isolation passed | PARTIAL |
-| Local compile/build | 43/43 focused, TypeScript, build | PASS |
+| Direct TEST isolation | Fingerprint `66ac54459d07d2c1`; unpooled, same TEST project/database, not production/MUV | PASS |
+| Pooled application path | Fingerprint `0df3ed0f625087ff`; 14/14 bounded requests, concurrency 2/5 | PASS |
+| Offline UAT | Six guarded flows including isolated Flow 4 and Flow 6 | PASS, 6/6 |
+| Browser/mobile QA | Seven authenticated roles; 360x800, 768x1024, 1440x900 | PASS |
+| Hindi/localization | Authenticated Devanagari rendering plus 20/20 tests | PASS |
+| Visual acceptance | Seera red/blue/white responsive portal shell and analytics | PASS |
+| Query plans | Ten direct TEST EXPLAIN ANALYZE probes; migration 013 verified on TEST | PASS |
+| Connection pool | 14/14; zero timeout/P2024/P2028 | PASS |
+| Security | 55/55 Phase 11 local gates plus offline denial/idempotency evidence | PASS |
+| Local regression | Phase 2-5 24/24; localization 20/20; Phase 6-9 43/43; Phase 10 48/48; Phase 11 55/55; Phase 1 static 29/29 | PASS |
+| TypeScript/build | TypeScript PASS; production build PASS, 29/29 pages | PASS |
+| Backup/restore | No isolated restore target or Neon management credential | BLOCKED |
 | MUV zero harm | No access or modification | PASS |
-| Production safety | No deployment, migration or database mutation | PASS |
+| Production safety | No deployment, production migration or production data change | PASS |
