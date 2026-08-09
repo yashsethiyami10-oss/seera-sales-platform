@@ -1,2 +1,4 @@
+import Image from "next/image";
 import { LoginForm } from "./login-form";
-export default function LoginPage() { return <main style={{ maxWidth: 420, margin: "0 auto", padding: 72 }}><h1>Seera sign in</h1><LoginForm /></main>; }
+import styles from "./login.module.css";
+export default function LoginPage(){return <main className={styles.page}><section className={styles.brand}><div className={styles.brandAssets}><Image className={styles.logo} src="/seera logo.png" alt="Seera" width={2560} height={1990} priority/><Image className={styles.tagline} src="/seera tagline.png" alt="Sarv Shaktiman" width={2172} height={724} priority/></div><h1 className={styles.srOnly}>Seera — Sarv Shaktiman</h1><h2>Sales &amp; Distribution OS</h2><p>One governed operating workspace for every member of the Seera sales network.</p><div className={styles.trust}><span>✓ Secure role access</span><span>✓ English + हिन्दी</span><span>✓ Built for field and office</span></div></section><section className={styles.panel}><LoginForm/></section></main>}

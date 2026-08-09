@@ -17,6 +17,7 @@ export type DatabaseGuardCode =
   | "TEST_POINTS_TO_PRODUCTION"
   | "UNKNOWN_DATABASE_TARGET"
   | "DATABASE_ROLE_MISMATCH"
+  | "TEST_DATABASE_IDENTITY_MISMATCH"
   | "PRODUCTION_WRITE_PROHIBITED";
 
 export class DatabaseIdentityError extends Error {

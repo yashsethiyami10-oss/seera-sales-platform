@@ -1,0 +1,1 @@
+export default function Loading(){return <main aria-live="polite" style={{minHeight:"60vh",display:"grid",placeItems:"center",fontFamily:"system-ui"}}><div><div style={{width:48,height:48,border:"5px solid #dbeafe",borderTopColor:"#dc2626",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><p>Loading Seera workspace…</p></div></main>}

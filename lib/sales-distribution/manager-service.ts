@@ -4,16 +4,339 @@ import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { assertJointWorkAttribution } from "./business-rules";
 
-export async function managerRetailerCheckIn(db: PrismaClient, managerId: string, input: { workSessionId: string; retailerId: string; latitude?: number; longitude?: number; idempotencyKey: string }) {
-  await authorize(db, { actorId: managerId, permission: "manager_field:operate" }); const session = await db.seeraWorkSession.findFirst({ where: { id: input.workSessionId, employeeId: managerId, employeeRole: "SALES_MANAGER", status: "ACTIVE", workingType: { in: ["RETAILING", "MARKET_WORKING"] } } }); if (!session) throw new FoundationError("MANAGER_RETAILING_SESSION_REQUIRED", "Active Manager Retailing session required", 409); const retailer = await db.seeraRetailer.findFirst({ where: { id: input.retailerId, lifecycle: "ACTIVE" } }); if (!retailer) throw new FoundationError("RETAILER_UNAVAILABLE", "Retailer unavailable", 404); return db.seeraVisit.upsert({ where: { idempotencyKey: input.idempotencyKey }, update: {}, create: { workSessionId: session.id, retailerId: retailer.id, checkedInAt: new Date(), checkInLatitude: input.latitude, checkInLongitude: input.longitude, idempotencyKey: input.idempotencyKey } });
+export async function managerRetailerCheckIn(
+  db: PrismaClient,
+  managerId: string,
+  input: {
+    workSessionId: string;
+    retailerId: string;
+    latitude?: number;
+    longitude?: number;
+    idempotencyKey: string;
+  },
+) {
+  await authorize(db, {
+    actorId: managerId,
+    permission: "manager_field:operate",
+  });
+  const session = await db.seeraWorkSession.findFirst({
+    where: {
+      id: input.workSessionId,
+      employeeId: managerId,
+      employeeRole: "SALES_MANAGER",
+      status: "ACTIVE",
+      workingType: { in: ["RETAILING", "MARKET_WORKING"] },
+    },
+  });
+  if (!session)
+    throw new FoundationError(
+      "MANAGER_RETAILING_SESSION_REQUIRED",
+      "Active Manager Retailing session required",
+      409,
+    );
+  const team = await db.seeraAssignment.findMany({
+    where: {
+      assignmentType: "MANAGER_TEAM",
+      targetId: managerId,
+      effectiveFrom: { lte: new Date() },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+    },
+    select: { subjectId: true },
+  });
+  const retailer = await db.seeraRetailer.findFirst({
+    where: {
+      id: input.retailerId,
+      lifecycle: "ACTIVE",
+      salespersonId: { in: [managerId, ...team.map((x) => x.subjectId)] },
+    },
+  });
+  if (!retailer)
+    throw new FoundationError(
+      "RETAILER_SCOPE_DENIED",
+      "Retailer unavailable in Manager scope",
+      403,
+    );
+  return db.seeraVisit.upsert({
+    where: { idempotencyKey: input.idempotencyKey },
+    update: {},
+    create: {
+      workSessionId: session.id,
+      retailerId: retailer.id,
+      checkedInAt: new Date(),
+      checkInLatitude: input.latitude,
+      checkInLongitude: input.longitude,
+      idempotencyKey: input.idempotencyKey,
+    },
+  });
 }
-export async function managerRetailerCheckOut(db: PrismaClient, managerId: string, visitId: string, input: { outcome: "ORDER_BOOKED" | "NO_ORDER" | "FOLLOW_UP" | "COLLECTION" | "MARKET_INTELLIGENCE"; noOrderReason?: string; followUpAt?: Date; notes?: string }) { await authorize(db, { actorId: managerId, permission: "manager_field:operate" }); const visit = await db.seeraVisit.findFirst({ where: { id: visitId, workSession: { employeeId: managerId, status: "ACTIVE" }, checkedOutAt: null } }); if (!visit) throw new FoundationError("VISIT_SCOPE_DENIED", "Active Manager visit unavailable", 403); if (input.outcome === "NO_ORDER" && !input.noOrderReason) throw new FoundationError("NO_ORDER_REASON_REQUIRED", "No-order reason required", 400); const outcome: VisitOutcome = input.outcome === "NO_ORDER" ? "NO_ORDER" : input.outcome === "FOLLOW_UP" ? "FOLLOW_UP" : "PRODUCTIVE"; return db.seeraVisit.update({ where: { id: visit.id }, data: { outcome, noOrderReason: input.noOrderReason, followUpAt: input.followUpAt, notes: input.notes, checkedOutAt: new Date() } }); }
-export async function managerDailyWorking(db: PrismaClient, managerId: string, sessionId: string) { await authorize(db, { actorId: managerId, permission: "field_reports:view_self" }); const session = await db.seeraWorkSession.findFirstOrThrow({ where: { id: sessionId, employeeId: managerId }, include: { visits: true } }); const orders = await db.seeraSalesOrder.findMany({ where: { actorId: managerId, sourcePortal: "sales-manager", createdAt: { gte: session.startedAt, lte: session.endedAt ?? new Date() } } }); return { session, visits: session.visits.length, bookedSales: orders.reduce((s, order) => s + Number(order.total), 0), managerAttributionOnly: true }; }
+export async function managerRetailerCheckOut(
+  db: PrismaClient,
+  managerId: string,
+  visitId: string,
+  input: {
+    outcome:
+      | "ORDER_BOOKED"
+      | "NO_ORDER"
+      | "FOLLOW_UP"
+      | "COLLECTION"
+      | "MARKET_INTELLIGENCE";
+    noOrderReason?: string;
+    followUpAt?: Date;
+    notes?: string;
+  },
+) {
+  await authorize(db, {
+    actorId: managerId,
+    permission: "manager_field:operate",
+  });
+  const visit = await db.seeraVisit.findFirst({
+    where: {
+      id: visitId,
+      workSession: { employeeId: managerId, status: "ACTIVE" },
+      checkedOutAt: null,
+    },
+  });
+  if (!visit)
+    throw new FoundationError(
+      "VISIT_SCOPE_DENIED",
+      "Active Manager visit unavailable",
+      403,
+    );
+  if (input.outcome === "NO_ORDER" && !input.noOrderReason)
+    throw new FoundationError(
+      "NO_ORDER_REASON_REQUIRED",
+      "No-order reason required",
+      400,
+    );
+  const outcome: VisitOutcome =
+    input.outcome === "NO_ORDER"
+      ? "NO_ORDER"
+      : input.outcome === "FOLLOW_UP"
+        ? "FOLLOW_UP"
+        : "PRODUCTIVE";
+  return db.seeraVisit.update({
+    where: { id: visit.id },
+    data: {
+      outcome,
+      noOrderReason: input.noOrderReason,
+      followUpAt: input.followUpAt,
+      notes: input.notes,
+      checkedOutAt: new Date(),
+    },
+  });
+}
+export async function managerDailyWorking(
+  db: PrismaClient,
+  managerId: string,
+  sessionId: string,
+) {
+  await authorize(db, {
+    actorId: managerId,
+    permission: "field_reports:view_self",
+  });
+  const session = await db.seeraWorkSession.findFirstOrThrow({
+    where: { id: sessionId, employeeId: managerId },
+    include: { visits: true },
+  });
+  const orders = await db.seeraSalesOrder.findMany({
+    where: {
+      actorId: managerId,
+      sourcePortal: "sales-manager",
+      createdAt: { gte: session.startedAt, lte: session.endedAt ?? new Date() },
+    },
+  });
+  return {
+    session,
+    visits: session.visits.length,
+    bookedSales: orders.reduce((s, order) => s + Number(order.total), 0),
+    managerAttributionOnly: true,
+  };
+}
 
-export async function startJointWorking(db: PrismaClient, managerId: string, input: { salesExecutiveId: string; territoryId?: string; beatId?: string }) { await authorize(db, { actorId: managerId, permission: "joint_work:participate" }); const assigned = await db.seeraAssignment.findFirst({ where: { assignmentType: "MANAGER_TEAM", subjectId: input.salesExecutiveId, targetId: managerId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] } }); if (!assigned) throw new FoundationError("TEAM_SCOPE_DENIED", "Sales Executive is outside Manager team scope", 403); return db.seeraJointWork.create({ data: { managerId, salesExecutiveId: input.salesExecutiveId, territoryId: input.territoryId, beatId: input.beatId, leadActorId: input.salesExecutiveId, startedAt: new Date() } }); }
-export async function closeJointWorking(db: PrismaClient, managerId: string, jointWorkId: string, input: { visitId: string; orderId?: string; observations: string; coaching: string }) { await authorize(db, { actorId: managerId, permission: "joint_work:participate" }); const joint = await db.seeraJointWork.findFirstOrThrow({ where: { id: jointWorkId, managerId, endedAt: null } }); const attribution = assertJointWorkAttribution({ visitId: input.visitId, orderId: input.orderId, primarySalesExecutiveId: joint.salesExecutiveId, participants: [joint.salesExecutiveId, managerId] }); await db.seeraJointWork.update({ where: { id: joint.id }, data: { endedAt: new Date(), observations: input.observations, coaching: input.coaching, outcome: JSON.stringify(attribution) } }); return attribution; }
+export async function startJointWorking(
+  db: PrismaClient,
+  managerId: string,
+  input: { salesExecutiveId: string; territoryId?: string; beatId?: string },
+) {
+  await authorize(db, {
+    actorId: managerId,
+    permission: "joint_work:participate",
+  });
+  const assigned = await db.seeraAssignment.findFirst({
+    where: {
+      assignmentType: "MANAGER_TEAM",
+      subjectId: input.salesExecutiveId,
+      targetId: managerId,
+      effectiveFrom: { lte: new Date() },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+    },
+  });
+  if (!assigned)
+    throw new FoundationError(
+      "TEAM_SCOPE_DENIED",
+      "Sales Executive is outside Manager team scope",
+      403,
+    );
+  return db.seeraJointWork.create({
+    data: {
+      managerId,
+      salesExecutiveId: input.salesExecutiveId,
+      territoryId: input.territoryId,
+      beatId: input.beatId,
+      leadActorId: input.salesExecutiveId,
+      startedAt: new Date(),
+    },
+  });
+}
+export async function closeJointWorking(
+  db: PrismaClient,
+  managerId: string,
+  jointWorkId: string,
+  input: {
+    visitId: string;
+    orderId?: string;
+    observations: string;
+    coaching: string;
+  },
+) {
+  await authorize(db, {
+    actorId: managerId,
+    permission: "joint_work:participate",
+  });
+  const joint = await db.seeraJointWork.findFirstOrThrow({
+    where: { id: jointWorkId, managerId, endedAt: null },
+  });
+  const attribution = assertJointWorkAttribution({
+    visitId: input.visitId,
+    orderId: input.orderId,
+    primarySalesExecutiveId: joint.salesExecutiveId,
+    participants: [joint.salesExecutiveId, managerId],
+  });
+  await db.seeraJointWork.update({
+    where: { id: joint.id },
+    data: {
+      endedAt: new Date(),
+      observations: input.observations,
+      coaching: input.coaching,
+      outcome: JSON.stringify(attribution),
+    },
+  });
+  return attribution;
+}
 
-export async function createDistributorProspect(db: PrismaClient, managerId: string, input: { businessName: string; mobile: string; areaId?: string; profile: Record<string, unknown>; followUpAt?: Date }) { await authorize(db, { actorId: managerId, permission: "prospect:create" }); const normalizedMobile = input.mobile.replace(/\D/g, ""); if (normalizedMobile.length < 10) throw new FoundationError("INVALID_MOBILE", "Valid mobile required", 400); const prospect = await db.seeraProspect.create({ data: { prospectType: "DISTRIBUTOR", businessName: input.businessName, normalizedMobile, areaId: input.areaId, profile: input.profile as Prisma.InputJsonValue, followUpAt: input.followUpAt, ownerEmployeeId: managerId, status: "PROSPECT" } }); await recordAudit(db, { actorId: managerId, action: "distributor_prospect.created", entityType: "SeeraProspect", entityId: prospect.id }); return prospect; }
-export async function updateDistributorProspect(db: PrismaClient, managerId: string, prospectId: string, input: { status: "PROSPECT" | "UNDER_REVIEW" | "SUSPENDED"; interest: string; recommendation?: string; followUpAt?: Date }) { await authorize(db, { actorId: managerId, permission: "prospect:create" }); const prospect = await db.seeraProspect.findFirst({ where: { id: prospectId, ownerEmployeeId: managerId, prospectType: "DISTRIBUTOR" } }); if (!prospect) throw new FoundationError("PROSPECT_SCOPE_DENIED", "Prospect outside Manager scope", 403); return db.seeraProspect.update({ where: { id: prospect.id }, data: { status: input.status, followUpAt: input.followUpAt, profile: { ...(prospect.profile as object), interest: input.interest, recommendation: input.recommendation } } }); }
-export async function managerTeamReadModel(db: PrismaClient, managerId: string) { await authorize(db, { actorId: managerId, permission: "manager_team:view" }); const assignments = await db.seeraAssignment.findMany({ where: { assignmentType: "MANAGER_TEAM", targetId: managerId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] } }); const employeeIds = assignments.map((item) => item.subjectId); const [sessions, visits, orders, targets, prospects, instructions] = await Promise.all([db.seeraWorkSession.findMany({ where: { employeeId: { in: employeeIds } } }), db.seeraVisit.findMany({ where: { workSession: { employeeId: { in: employeeIds } } } }), db.seeraSalesOrder.findMany({ where: { salespersonId: { in: employeeIds } } }), db.seeraTarget.findMany({ where: { employeeId: { in: employeeIds } } }), db.seeraProspect.findMany({ where: { ownerEmployeeId: { in: employeeIds } } }), db.seeraManagerInstruction.findMany({ where: { managerId } })]); return { employeeIds, attendance: sessions, dailyWorking: sessions, visits, bookedAndDeliveredSales: orders, targets, prospects, followUps: prospects.filter((p) => p.followUpAt), instructions };
+export async function createDistributorProspect(
+  db: PrismaClient,
+  managerId: string,
+  input: {
+    businessName: string;
+    mobile: string;
+    areaId?: string;
+    profile: Record<string, unknown>;
+    followUpAt?: Date;
+  },
+) {
+  await authorize(db, { actorId: managerId, permission: "prospect:create" });
+  const normalizedMobile = input.mobile.replace(/\D/g, "");
+  if (normalizedMobile.length < 10)
+    throw new FoundationError("INVALID_MOBILE", "Valid mobile required", 400);
+  const prospect = await db.seeraProspect.create({
+    data: {
+      prospectType: "DISTRIBUTOR",
+      businessName: input.businessName,
+      normalizedMobile,
+      areaId: input.areaId,
+      profile: input.profile as Prisma.InputJsonValue,
+      followUpAt: input.followUpAt,
+      ownerEmployeeId: managerId,
+      status: "PROSPECT",
+    },
+  });
+  await recordAudit(db, {
+    actorId: managerId,
+    action: "distributor_prospect.created",
+    entityType: "SeeraProspect",
+    entityId: prospect.id,
+  });
+  return prospect;
+}
+export async function updateDistributorProspect(
+  db: PrismaClient,
+  managerId: string,
+  prospectId: string,
+  input: {
+    status: "PROSPECT" | "UNDER_REVIEW" | "SUSPENDED";
+    interest: string;
+    recommendation?: string;
+    followUpAt?: Date;
+  },
+) {
+  await authorize(db, { actorId: managerId, permission: "prospect:create" });
+  const prospect = await db.seeraProspect.findFirst({
+    where: {
+      id: prospectId,
+      ownerEmployeeId: managerId,
+      prospectType: "DISTRIBUTOR",
+    },
+  });
+  if (!prospect)
+    throw new FoundationError(
+      "PROSPECT_SCOPE_DENIED",
+      "Prospect outside Manager scope",
+      403,
+    );
+  return db.seeraProspect.update({
+    where: { id: prospect.id },
+    data: {
+      status: input.status,
+      followUpAt: input.followUpAt,
+      profile: {
+        ...(prospect.profile as object),
+        interest: input.interest,
+        recommendation: input.recommendation,
+      },
+    },
+  });
+}
+export async function managerTeamReadModel(
+  db: PrismaClient,
+  managerId: string,
+) {
+  await authorize(db, { actorId: managerId, permission: "manager_team:view" });
+  const assignments = await db.seeraAssignment.findMany({
+    where: {
+      assignmentType: "MANAGER_TEAM",
+      targetId: managerId,
+      effectiveFrom: { lte: new Date() },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+    },
+  });
+  const employeeIds = assignments.map((item) => item.subjectId);
+  const [sessions, visits, orders, targets, prospects, instructions] =
+    await Promise.all([
+      db.seeraWorkSession.findMany({
+        where: { employeeId: { in: employeeIds } },
+      }),
+      db.seeraVisit.findMany({
+        where: { workSession: { employeeId: { in: employeeIds } } },
+      }),
+      db.seeraSalesOrder.findMany({
+        where: { salespersonId: { in: employeeIds } },
+      }),
+      db.seeraTarget.findMany({ where: { employeeId: { in: employeeIds } } }),
+      db.seeraProspect.findMany({
+        where: { ownerEmployeeId: { in: employeeIds } },
+      }),
+      db.seeraManagerInstruction.findMany({ where: { managerId } }),
+    ]);
+  return {
+    employeeIds,
+    attendance: sessions,
+    dailyWorking: sessions,
+    visits,
+    bookedAndDeliveredSales: orders,
+    targets,
+    prospects,
+    followUps: prospects.filter((p) => p.followUpAt),
+    instructions,
+  };
 }

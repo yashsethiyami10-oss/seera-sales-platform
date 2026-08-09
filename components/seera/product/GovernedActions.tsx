@@ -1,0 +1,271 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import styles from "./WorkflowActions.module.css";
+
+type Option = { value: string; label: string; meta?: string };
+
+async function post(url: string, body: unknown) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new Error(
+      result?.error?.message ?? result?.error?.code ?? "Action failed",
+    );
+  return result;
+}
+
+function useAction(language: "EN" | "HI") {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  return {
+    busy,
+    message,
+    run: async (action: () => Promise<unknown>) => {
+      setBusy(true);
+      setMessage("");
+      try {
+        await action();
+        setMessage(
+          language === "HI"
+            ? "कार्रवाई सफलतापूर्वक पूरी हुई।"
+            : "Action completed successfully.",
+        );
+        router.refresh();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Action failed");
+      } finally {
+        setBusy(false);
+      }
+    },
+  };
+}
+
+export function ApprovalActions({
+  language,
+  approvals,
+}: {
+  language: "EN" | "HI";
+  approvals: Option[];
+}) {
+  const hi = language === "HI";
+  const state = useAction(language);
+  return (
+    <section className={styles.panel}>
+      <div>
+        <small>{hi ? "अनुमोदन कतार" : "APPROVAL QUEUE"}</small>
+        <h2>{hi ? "लंबित अनुरोध पर निर्णय" : "Decide a pending request"}</h2>
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          void state.run(() =>
+            post(`/api/approvals/${String(form.get("approvalId"))}`, {
+              decision: String(form.get("decision")),
+              reason: String(form.get("reason")),
+            }),
+          );
+        }}
+      >
+        <label>
+          {hi ? "अनुरोध" : "Request"}
+          <select name="approvalId" required>
+            <option value="">
+              {hi ? "लंबित अनुरोध चुनें" : "Choose pending request"}
+            </option>
+            {approvals.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+                {option.meta ? ` · ${option.meta}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {hi ? "निर्णय" : "Decision"}
+          <select name="decision">
+            <option value="APPROVED">{hi ? "स्वीकृत" : "Approve"}</option>
+            <option value="REJECTED">{hi ? "अस्वीकृत" : "Reject"}</option>
+          </select>
+        </label>
+        <label>
+          {hi ? "निर्णय का कारण" : "Decision reason"}
+          <input name="reason" minLength={3} required />
+        </label>
+        <button disabled={state.busy || !approvals.length}>
+          {hi ? "निर्णय सुरक्षित करें" : "Save decision"}
+        </button>
+      </form>
+      {state.message && <p role="status">{state.message}</p>}
+    </section>
+  );
+}
+
+export function MasterActions({
+  language,
+  skus,
+}: {
+  language: "EN" | "HI";
+  skus: Option[];
+}) {
+  const hi = language === "HI";
+  const state = useAction(language);
+  return (
+    <section className={styles.panel}>
+      <div>
+        <small>{hi ? "मास्टर डेटा" : "MASTER DATA"}</small>
+        <h2>
+          {hi ? "SKU या मूल्य संस्करण बनाएँ" : "Create SKU or price version"}
+        </h2>
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const action = String(form.get("action"));
+          const payload =
+            action === "create-sku"
+              ? {
+                  code: String(form.get("code")),
+                  productName: String(form.get("productName")),
+                  category: String(form.get("category")),
+                  packSize: Number(form.get("packSize")),
+                  unitType: String(form.get("unitType")),
+                  unitsPerCase: Number(form.get("unitsPerCase")),
+                  mrp: Number(form.get("mrp")),
+                  hsn: String(form.get("hsn") || "") || undefined,
+                  taxRate: Number(form.get("taxRate")),
+                }
+              : {
+                  skuId: String(form.get("skuId")),
+                  tier: String(form.get("tier")),
+                  amount: Number(form.get("amount")),
+                  effectiveFrom: String(form.get("effectiveFrom")),
+                };
+          void state.run(() =>
+            post("/api/foundation/masters", { action, payload }),
+          );
+        }}
+      >
+        <label>
+          {hi ? "कार्रवाई" : "Action"}
+          <select name="action">
+            <option value="create-sku">{hi ? "नया SKU" : "New SKU"}</option>
+            <option value="create-price">
+              {hi ? "नया मूल्य संस्करण" : "New price version"}
+            </option>
+          </select>
+        </label>
+        <label>
+          {hi ? "SKU (मूल्य के लिए)" : "SKU (for price)"}
+          <select name="skuId">
+            <option value="">{hi ? "SKU चुनें" : "Choose SKU"}</option>
+            {skus.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {hi ? "SKU कोड" : "SKU code"}
+          <input name="code" />
+        </label>
+        <label>
+          {hi ? "उत्पाद नाम" : "Product name"}
+          <input name="productName" />
+        </label>
+        <label>
+          {hi ? "श्रेणी" : "Category"}
+          <input name="category" />
+        </label>
+        <label>
+          {hi ? "पैक आकार" : "Pack size"}
+          <input
+            name="packSize"
+            type="number"
+            min="0.01"
+            step="0.01"
+            defaultValue="1"
+          />
+        </label>
+        <label>
+          {hi ? "इकाई" : "Unit"}
+          <input name="unitType" defaultValue="UNIT" />
+        </label>
+        <label>
+          {hi ? "प्रति केस इकाइयाँ" : "Units per case"}
+          <input
+            name="unitsPerCase"
+            type="number"
+            min="1"
+            step="1"
+            defaultValue="1"
+          />
+        </label>
+        <label>
+          MRP
+          <input
+            name="mrp"
+            type="number"
+            min="0.01"
+            step="0.01"
+            defaultValue="1"
+          />
+        </label>
+        <label>
+          HSN
+          <input name="hsn" />
+        </label>
+        <label>
+          {hi ? "कर दर %" : "Tax rate %"}
+          <input
+            name="taxRate"
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            defaultValue="0"
+          />
+        </label>
+        <label>
+          {hi ? "मूल्य स्तर" : "Price tier"}
+          <select name="tier">
+            <option>COMPANY_TO_SS</option>
+            <option>SS_TO_DISTRIBUTOR</option>
+            <option>DISTRIBUTOR_TO_RETAILER</option>
+          </select>
+        </label>
+        <label>
+          {hi ? "राशि" : "Amount"}
+          <input
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            defaultValue="1"
+          />
+        </label>
+        <label>
+          {hi ? "प्रभावी तिथि" : "Effective date"}
+          <input
+            name="effectiveFrom"
+            type="date"
+            defaultValue={new Date().toISOString().slice(0, 10)}
+          />
+        </label>
+        <button disabled={state.busy}>
+          {hi ? "सुरक्षित बनाएँ" : "Create governed record"}
+        </button>
+      </form>
+      {state.message && <p role="status">{state.message}</p>}
+    </section>
+  );
+}

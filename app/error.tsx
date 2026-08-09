@@ -1,0 +1,2 @@
+"use client";
+export default function ErrorPage({reset}:{error:Error&{digest?:string};reset:()=>void}){return <main style={{maxWidth:620,margin:"12vh auto",padding:28,fontFamily:"system-ui",background:"#fff",border:"1px solid #fecaca",borderRadius:18}}><p style={{color:"#dc2626",fontWeight:900}}>SEERA</p><h1>We could not load this workspace</h1><p>Your access remains secure. Check the connection and retry.</p><button onClick={reset} style={{minHeight:44,padding:"0 18px",border:0,borderRadius:9,background:"#1d4ed8",color:"#fff",fontWeight:800}}>Try again</button></main>}

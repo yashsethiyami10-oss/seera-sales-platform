@@ -1,0 +1,132 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import styles from "./WorkflowActions.module.css";
+
+type Line = { id: string; label: string; remaining: number };
+
+export function DeliveryActions({
+  deliveryId,
+  language,
+  lines,
+}: {
+  deliveryId: string;
+  language: "EN" | "HI";
+  lines: Line[];
+}) {
+  const hi = language === "HI";
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  return (
+    <section className={styles.panel}>
+      <div>
+        <small>{hi ? "डिलीवरी निष्पादन" : "DELIVERY EXECUTION"}</small>
+        <h2>
+          {hi ? "परिणाम और प्राप्ति प्रमाण" : "Outcome & proof of delivery"}
+        </h2>
+      </div>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setBusy(true);
+          setMessage("");
+          try {
+            const form = new FormData(event.currentTarget);
+            const payload = {
+              deliveryId,
+              status: String(form.get("status")),
+              receiverName: String(form.get("receiverName") ?? "") || undefined,
+              reason: String(form.get("reason") ?? "") || undefined,
+              proof: {
+                reference:
+                  String(form.get("proofReference") ?? "") || undefined,
+                capturedFrom: "PORTAL",
+              },
+              lines: lines.map((line) => ({
+                lineId: line.id,
+                quantity: Number(form.get(`line-${line.id}`) ?? 0),
+              })),
+            };
+            const response = await fetch("/api/distribution/operations", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "complete-delivery", payload }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok)
+              throw new Error(
+                result?.error?.message ??
+                  result?.error?.code ??
+                  "Delivery update failed",
+              );
+            setMessage(
+              hi
+                ? "डिलीवरी परिणाम सुरक्षित रूप से सहेजा गया।"
+                : "Delivery outcome saved securely.",
+            );
+            router.refresh();
+          } catch (error) {
+            setMessage(
+              error instanceof Error ? error.message : "Delivery update failed",
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label>
+          {hi ? "परिणाम" : "Outcome"}
+          <select name="status">
+            <option>DELIVERED</option>
+            <option>PARTIAL_DELIVERED</option>
+            <option>REFUSED</option>
+            <option>SHOP_CLOSED</option>
+            <option>PAYMENT_ISSUE</option>
+            <option>RESCHEDULED</option>
+            <option>DAMAGED</option>
+            <option>OTHER</option>
+          </select>
+        </label>
+        <label>
+          {hi ? "प्राप्तकर्ता" : "Receiver name"}
+          <input name="receiverName" />
+        </label>
+        {lines.map((line) => (
+          <label key={line.id}>
+            {line.label}
+            <input
+              name={`line-${line.id}`}
+              type="number"
+              min="0"
+              max={line.remaining}
+              step="1"
+              defaultValue={line.remaining}
+            />
+          </label>
+        ))}
+        <label>
+          {hi ? "प्रमाण संदर्भ" : "Proof reference"}
+          <input
+            name="proofReference"
+            placeholder={
+              hi
+                ? "ओटीपी / हस्ताक्षर / फोटो संदर्भ"
+                : "OTP / signature / photo reference"
+            }
+          />
+        </label>
+        <label>
+          {hi ? "कारण / टिप्पणी" : "Reason / note"}
+          <input name="reason" />
+        </label>
+        <button disabled={busy}>
+          {hi ? "डिलीवरी परिणाम सहेजें" : "Save delivery outcome"}
+        </button>
+      </form>
+      {message && <p role="status">{message}</p>}
+    </section>
+  );
+}

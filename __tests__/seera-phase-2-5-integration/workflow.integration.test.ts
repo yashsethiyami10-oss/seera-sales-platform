@@ -56,9 +56,8 @@ describe("guarded Phase 2-5 shared-truth integration", () => {
 
   it("Phase 5 enforces distributor credit and company advance", async () => {
     expect((await evaluateOrderCredit(prisma, distributorId, 1000, new Date("2026-08-08"))).decision).toBe("ALLOW");
-    await expect(createCompanyOrder(prisma, superStockistOwner, superStockistId, { idempotencyKey: `company-unverified-${suffix}`, subtotal: 5000, paymentProofStatus: "SUBMITTED" })).rejects.toThrow("ADVANCE_PAYMENT_NOT_VERIFIED");
-    const companyOrder = await createCompanyOrder(prisma, superStockistOwner, superStockistId, { idempotencyKey: `company-${suffix}`, subtotal: 5000, paymentProofStatus: "VERIFIED" });
-    expect(companyOrder.contractualCreditDays).toBe(0); expect(companyOrder.status).toBe("CONFIRMED");
+    const companyOrder = await createCompanyOrder(prisma, superStockistOwner, superStockistId, { idempotencyKey: `company-${suffix}`, subtotal: 5000 });
+    expect(companyOrder.contractualCreditDays).toBe(0); expect(companyOrder.status).toBe("SUBMITTED"); expect(companyOrder.financialAcceptance).toBe(false);
   });
 
   it("manager assisted operation preserves actor and commercial party", async () => {

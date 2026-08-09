@@ -6,11 +6,21 @@ import { recordAudit } from "./audit-service";
 import { FoundationError } from "./errors";
 
 const createInput = z.object({ email: z.string().trim().email(), name: z.string().trim().min(2).max(120), password: z.string().min(12).max(256) });
+const updateIdentityInput = z.object({ email: z.string().trim().email(), name: z.string().trim().min(2).max(120) });
 export async function createUser(prisma: PrismaClient, actorId: string, input: unknown) {
   await authorize(prisma, { actorId, permission: "user:create" });
   const data = createInput.parse(input); const normalizedEmail = data.email.toLowerCase();
   const user = await prisma.user.create({ data: { email: data.email, normalizedEmail, name: data.name, passwordHash: await hashPassword(data.password) } });
   await recordAudit(prisma, { actorId, action: "user.create", entityType: "User", entityId: user.id, afterState: { email: normalizedEmail, status: user.status } });
+  return user;
+}
+
+export async function updateUserIdentity(prisma: PrismaClient, actorId: string, userId: string, input: unknown) {
+  await authorize(prisma, { actorId, permission: "user:update" });
+  const data = updateIdentityInput.parse(input), normalizedEmail = data.email.toLowerCase();
+  const before = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const user = await prisma.user.update({ where: { id: userId }, data: { email: data.email, normalizedEmail, name: data.name } });
+  await recordAudit(prisma, { actorId, action: "user.identity_update", entityType: "User", entityId: userId, beforeState: { email: before.email, name: before.name }, afterState: { email: normalizedEmail, name: user.name } });
   return user;
 }
 
