@@ -37,6 +37,7 @@
     "verify:seera:test-db-connectivity": "tsx scripts/seera/check-test-connectivity.ts",
     "verify:seera:phase10-test-schema": "tsx scripts/seera/inspect-phase10-test-schema.ts",
     "verify:seera:phase11-test-schema": "tsx scripts/seera/inspect-phase11-test-schema.ts",
+    "verify:seera:phase11-restore": "tsx scripts/seera/verify-phase11-restore.ts",
     "verify:phase2:build": "tsc lib/sales-channel/routing.ts lib/sales-channel/identity-matching.ts lib/sales-channel/assignment.ts lib/sales-channel/validation.ts --outDir .tmp-phase2-services --rootDir lib/sales-channel --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck",
     "verify:phase2": "npm run verify:phase2:build && node scripts/verify-sales-phase2.cjs",
     "verify:knowledge-publisher": "tsx scripts/verify-knowledge-publisher.ts",

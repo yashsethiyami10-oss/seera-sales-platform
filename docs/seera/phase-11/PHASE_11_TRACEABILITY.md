@@ -13,6 +13,6 @@
 | Security | 55/55 Phase 11 local gates plus offline denial/idempotency evidence | PASS |
 | Local regression | Phase 2-5 24/24; localization 20/20; Phase 6-9 43/43; Phase 10 48/48; Phase 11 55/55; Phase 1 static 29/29 | PASS |
 | TypeScript/build | TypeScript PASS; production build PASS, 29/29 pages | PASS |
-| Backup/restore | No isolated restore target or Neon management credential | BLOCKED |
+| Backup/restore | Temporary branch fingerprint `0df43487d2718927`; 934 schema columns, 13 migrations, representative counts and 37/37 validated FKs matched; final validation 4.195 s; checkpoint RPO zero | PASS |
 | MUV zero harm | No access or modification | PASS |
 | Production safety | No deployment, production migration or production data change | PASS |
