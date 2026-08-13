@@ -108,21 +108,98 @@ export function ApprovalActions({
   );
 }
 
+type PriceVersionRow = {
+  id: string;
+  skuLabel: string;
+  tier: string;
+  amount: number;
+  status: string;
+  isCurrentlyActive: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  marginType: string | null;
+  marginValue: number | null;
+};
+
 export function MasterActions({
   language,
   skus,
+  priceVersions = [],
 }: {
   language: "EN" | "HI";
   skus: Option[];
+  priceVersions?: PriceVersionRow[];
 }) {
   const hi = language === "HI";
   const state = useAction(language);
+  const active = priceVersions.filter((p) => p.isCurrentlyActive);
+  const history = priceVersions.filter((p) => !p.isCurrentlyActive);
   return (
     <section className={styles.panel}>
       <div>
+        <small>{hi ? "मूल्य सूची" : "PRICE LIST"}</small>
+        <h2>{hi ? "सक्रिय मूल्य" : "Active prices"}</h2>
+      </div>
+      <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
+        <table>
+          <thead>
+            <tr>
+              <th>{hi ? "उत्पाद" : "Product"}</th>
+              <th>{hi ? "स्तर" : "Tier"}</th>
+              <th>{hi ? "राशि" : "Amount"}</th>
+              <th>{hi ? "नीति" : "Policy"}</th>
+              <th>{hi ? "प्रभावी से" : "Effective from"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {active.length === 0 && (
+              <tr>
+                <td colSpan={5}>{hi ? "कोई सक्रिय मूल्य नहीं।" : "No active prices yet."}</td>
+              </tr>
+            )}
+            {active.map((p) => (
+              <tr key={p.id}>
+                <td>{p.skuLabel}</td>
+                <td>{p.tier}</td>
+                <td>₹{p.amount.toFixed(2)}</td>
+                <td>{p.marginType ? `${p.marginType}${p.marginValue != null ? ` (${p.marginValue})` : ""}` : "—"}</td>
+                <td>{p.effectiveFrom}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {history.length > 0 && (
+        <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
+          <h3>{hi ? "मूल्य इतिहास (बंद संस्करण)" : "Price history (closed / superseded versions)"}</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>{hi ? "उत्पाद" : "Product"}</th>
+                <th>{hi ? "स्तर" : "Tier"}</th>
+                <th>{hi ? "राशि" : "Amount"}</th>
+                <th>{hi ? "स्थिति" : "Status"}</th>
+                <th>{hi ? "अवधि" : "Period"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.slice(0, 30).map((p) => (
+                <tr key={p.id}>
+                  <td>{p.skuLabel}</td>
+                  <td>{p.tier}</td>
+                  <td>₹{p.amount.toFixed(2)}</td>
+                  <td>{p.status}</td>
+                  <td>{p.effectiveFrom} → {p.effectiveTo ?? (hi ? "जारी" : "ongoing")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div>
         <small>{hi ? "मास्टर डेटा" : "MASTER DATA"}</small>
         <h2>
-          {hi ? "SKU या मूल्य संस्करण बनाएँ" : "Create SKU or price version"}
+          {hi ? "SKU बनाएँ या मूल्य बदलें" : "Create SKU or change a price"}
         </h2>
       </div>
       <form
@@ -143,12 +220,22 @@ export function MasterActions({
                   hsn: String(form.get("hsn") || "") || undefined,
                   taxRate: Number(form.get("taxRate")),
                 }
-              : {
-                  skuId: String(form.get("skuId")),
-                  tier: String(form.get("tier")),
-                  amount: Number(form.get("amount")),
-                  effectiveFrom: String(form.get("effectiveFrom")),
-                };
+              : action === "supersede-price"
+                ? {
+                    skuId: String(form.get("skuId")),
+                    tier: String(form.get("tier")),
+                    amount: Number(form.get("amount")),
+                    effectiveFrom: String(form.get("effectiveFrom")),
+                    marginType: String(form.get("marginType") || "") || undefined,
+                    marginValue: form.get("marginValue") ? Number(form.get("marginValue")) : undefined,
+                    reason: String(form.get("reason")),
+                  }
+                : {
+                    skuId: String(form.get("skuId")),
+                    tier: String(form.get("tier")),
+                    amount: Number(form.get("amount")),
+                    effectiveFrom: String(form.get("effectiveFrom")),
+                  };
           void state.run(() =>
             post("/api/foundation/masters", { action, payload }),
           );
@@ -159,10 +246,18 @@ export function MasterActions({
           <select name="action">
             <option value="create-sku">{hi ? "नया SKU" : "New SKU"}</option>
             <option value="create-price">
-              {hi ? "नया मूल्य संस्करण" : "New price version"}
+              {hi ? "नया मूल्य संस्करण (कोई मौजूदा मूल्य नहीं)" : "New price version (SKU has no price yet)"}
+            </option>
+            <option value="supersede-price">
+              {hi ? "मूल्य बदलें (मौजूदा मूल्य बंद करें और नया शुरू करें)" : "CHANGE PRICE (close current, start new — no code edit)"}
             </option>
           </select>
         </label>
+        <p className={styles.emptyHint}>
+          {hi
+            ? "मूल्य बदलने के लिए 'मूल्य बदलें' चुनें — पुराना मूल्य इतिहास में सुरक्षित रहता है, पुराने ऑर्डर अप्रभावित रहते हैं।"
+            : "Use CHANGE PRICE to revise an existing rate — the old version is preserved in history (never deleted), and past orders keep their original snapshot untouched."}
+        </p>
         <label>
           {hi ? "SKU (मूल्य के लिए)" : "SKU (for price)"}
           <select name="skuId">
@@ -261,8 +356,24 @@ export function MasterActions({
             defaultValue={new Date().toISOString().slice(0, 10)}
           />
         </label>
+        <label>
+          {hi ? "नीति प्रकार (केवल मूल्य बदलने के लिए, वैकल्पिक)" : "Policy type (CHANGE PRICE only, optional)"}
+          <select name="marginType" defaultValue="">
+            <option value="">{hi ? "— लागू नहीं —" : "— not applicable —"}</option>
+            <option value="FIXED">{hi ? "निश्चित दर" : "FIXED rate"}</option>
+            <option value="PERCENTAGE">{hi ? "प्रतिशत मार्कअप" : "PERCENTAGE markup"}</option>
+          </select>
+        </label>
+        <label>
+          {hi ? "नीति मान (जैसे 8 के लिए 8%)" : "Policy value (e.g. 8 for 8%)"}
+          <input name="marginValue" type="number" step="0.01" />
+        </label>
+        <label>
+          {hi ? "कारण (केवल मूल्य बदलने के लिए आवश्यक)" : "Reason (required for CHANGE PRICE)"}
+          <input name="reason" placeholder={hi ? "जैसे: तिमाही मूल्य समीक्षा" : "e.g. Quarterly rate revision"} />
+        </label>
         <button disabled={state.busy}>
-          {hi ? "सुरक्षित बनाएँ" : "Create governed record"}
+          {hi ? "सुरक्षित बनाएँ" : "Save governed record"}
         </button>
       </form>
       {state.message && <p role="status">{state.message}</p>}

@@ -15,13 +15,20 @@ type Party = {
     stateCode?: string;
   };
 };
+// taxRate null (not 0) means "no governed GST rate configured yet" — see QuotationActions.tsx's
+// identical comment. This component is a THIRD, independent path to a tax-bearing document (posts
+// straight to /api/documents/issue -> issueSystemDocument, which trusts whatever cgst/sgst/igst the
+// caller computed — it has no skuId per line to re-validate against, unlike buildLineSnapshots'
+// document-lines.ts gate) — Founder UAT fix: it must not let a TAX_INVOICE/CREDIT_NOTE/DEBIT_NOTE go
+// out with silently-zero tax for an unconfigured SKU, so the client-side gate below is the real
+// enforcement point for this specific path, not decorative.
 type Sku = {
   id: string;
   label: string;
   hsn?: string;
   unit: string;
   rate: number;
-  taxRate: number;
+  taxRate: number | null;
 };
 const key = () => crypto.randomUUID();
 export function DocumentActions({
@@ -32,6 +39,8 @@ export function DocumentActions({
   skus,
   canIssue,
   canUpload,
+  mode = "ALL",
+  canPostLedger = false,
 }: {
   language: "EN" | "HI";
   portal: string;
@@ -40,6 +49,8 @@ export function DocumentActions({
   skus: Sku[];
   canIssue: boolean;
   canUpload: boolean;
+  mode?: "ALL" | "QUOTATION" | "BILLING";
+  canPostLedger?: boolean;
 }) {
   const hi = language === "HI",
     router = useRouter(),
@@ -48,7 +59,12 @@ export function DocumentActions({
     [message, setMessage] = useState(""),
     [skuId, setSkuId] = useState(""),
     [qty, setQty] = useState(1),
+    // Mirrors the JSX <option> order below so the controlled select's initial value matches
+    // whichever option would have rendered first (was previously an uncontrolled select).
+    [docType, setDocType] = useState(mode === "QUOTATION" ? "QUOTATION_DOCUMENT" : canPostLedger ? "TAX_INVOICE" : "PRO_FORMA_INVOICE"),
     chosen = skus.find((x) => x.id === skuId),
+    needsGovernedTax = ["TAX_INVOICE", "NON_TAX_INVOICE", "CREDIT_NOTE", "DEBIT_NOTE"].includes(docType),
+    taxConfigMissing = needsGovernedTax && Boolean(chosen) && chosen?.taxRate == null,
     totals = useMemo(() => {
       const taxable = (chosen?.rate ?? 0) * qty,
         tax = (taxable * (chosen?.taxRate ?? 0)) / 100;
@@ -153,15 +169,22 @@ export function DocumentActions({
         >
           <label>
             {hi ? "दस्तावेज़ प्रकार" : "Document type"}
-            <select name="type">
-              <option>TAX_INVOICE</option>
-              <option>NON_TAX_INVOICE</option>
-              <option>PRO_FORMA_INVOICE</option>
-              <option>DELIVERY_CHALLAN</option>
-              <option>RECEIPT</option>
-              <option>PAYMENT_RECEIPT</option>
-              <option>CREDIT_NOTE</option>
-              <option>DEBIT_NOTE</option>
+            <select name="type" value={docType} onChange={(e) => setDocType(e.target.value)}>
+              {mode === "QUOTATION" ? (
+                <option>QUOTATION_DOCUMENT</option>
+              ) : (
+                <>
+                  {canPostLedger && <option>TAX_INVOICE</option>}
+                  {canPostLedger && <option>NON_TAX_INVOICE</option>}
+                  <option>PRO_FORMA_INVOICE</option>
+                  {mode === "ALL" && <option>QUOTATION_DOCUMENT</option>}
+                  <option>DELIVERY_CHALLAN</option>
+                  <option>RECEIPT</option>
+                  <option>PAYMENT_RECEIPT</option>
+                  {canPostLedger && <option>CREDIT_NOTE</option>}
+                  {canPostLedger && <option>DEBIT_NOTE</option>}
+                </>
+              )}
             </select>
           </label>
           <label>
@@ -215,6 +238,13 @@ export function DocumentActions({
               onChange={(e) => setQty(Number(e.target.value))}
             />
           </label>
+          {taxConfigMissing && (
+            <p className={styles.emptyHint}>
+              {hi
+                ? "कर कॉन्फ़िगरेशन आवश्यक — चयनित उत्पाद के लिए कोई शासित GST दर सेट नहीं है। कृपया Masters से संपर्क करें।"
+                : "TAX CONFIGURATION REQUIRED — the chosen product has no governed GST rate set. Contact Masters/Founder before issuing."}
+            </p>
+          )}
           <label>
             {hi ? "भुगतान शर्तें" : "Payment terms"}
             <input name="paymentTerms" />
@@ -228,7 +258,7 @@ export function DocumentActions({
             <input value={`₹${totals.total.toFixed(2)}`} readOnly />
           </label>
           <button
-            disabled={busy || !issuers.length || !buyers.length || !chosen}
+            disabled={busy || !issuers.length || !buyers.length || !chosen || taxConfigMissing}
           >
             {hi ? "दस्तावेज़ जारी करें" : "Issue document"}
           </button>

@@ -15,7 +15,29 @@ export function assertLegalIssuer(input: { sellerType: string; sellerId: string;
 
 export function assertDocumentMutable(status: string) { if (status !== "DRAFT") throw new Error("ISSUED_DOCUMENT_IMMUTABLE"); }
 export function assertOptionalBilling(mode: "SYSTEM" | "UPLOAD" | "PENDING" | "SUPPORTING") { return mode; }
-export function documentNumber(input: { prefix: string; financialYear: string; nextNumber: bigint }) { return `${input.prefix}/${input.financialYear}/${input.nextNumber.toString().padStart(6, "0")}`; }
+// Stage 2 fix: a bare {prefix}/{fy}/{number} string collides across document types — the FIRST
+// TAX_INVOICE and the FIRST PAYMENT_RECEIPT for the same issuer+year both land on sequence #1
+// (each documentType has its own SeeraDocumentSequence counter, correctly non-colliding in the DB,
+// but the human-readable/printed number string never encoded which type it was, so a Distributor or
+// GST auditor would see two apparently-identical numbers). A short type code closes that gap without
+// touching the actual per-type sequence counters — collision-safety was already real at the data
+// layer, this makes it real in the printed number too. Matches the pattern quotation-service.ts
+// already uses for its own separate "/QT/" numbering.
+const DOCUMENT_TYPE_CODES: Record<string, string> = {
+  TAX_INVOICE: "INV",
+  NON_TAX_INVOICE: "NTI",
+  PRO_FORMA_INVOICE: "PFI",
+  RECEIPT: "RCT",
+  PAYMENT_RECEIPT: "PRC",
+  DELIVERY_CHALLAN: "DC",
+  CREDIT_NOTE: "CN",
+  DEBIT_NOTE: "DN",
+  QUOTATION_DOCUMENT: "QT",
+};
+export function documentNumber(input: { prefix: string; financialYear: string; nextNumber: bigint; type: string }) {
+  const typeCode = DOCUMENT_TYPE_CODES[input.type] ?? input.type.slice(0, 3);
+  return `${input.prefix}/${typeCode}/${input.financialYear}/${input.nextNumber.toString().padStart(6, "0")}`;
+}
 
 export function assertShareAccess(input: { now: Date; expiresAt: Date; revokedAt?: Date | null; recipientType: string; recipientId: string; actorType: string; actorId: string }) {
   if (input.revokedAt) throw new Error("SHARE_REVOKED");

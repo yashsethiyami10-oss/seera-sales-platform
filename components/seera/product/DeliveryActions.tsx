@@ -5,20 +5,21 @@ import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
 
 type Line = { id: string; label: string; remaining: number };
+type Delivery = { id: string; label: string; lines: Line[] };
 
 export function DeliveryActions({
-  deliveryId,
   language,
-  lines,
+  deliveries,
 }: {
-  deliveryId: string;
   language: "EN" | "HI";
-  lines: Line[];
+  deliveries: Delivery[];
 }) {
   const hi = language === "HI";
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [deliveryId, setDeliveryId] = useState(deliveries[0]?.id ?? "");
+  const lines = deliveries.find((delivery)=>delivery.id===deliveryId)?.lines ?? [];
 
   return (
     <section className={styles.panel}>
@@ -77,6 +78,7 @@ export function DeliveryActions({
           }
         }}
       >
+        <label>{hi ? "डिलीवरी" : "Delivery"}<select value={deliveryId} onChange={(event)=>setDeliveryId(event.target.value)} required><option value="">{hi ? "ऑर्डर नंबर से चुनें" : "Choose by order number"}</option>{deliveries.map((delivery)=><option key={delivery.id} value={delivery.id}>{delivery.label}</option>)}</select></label>
         <label>
           {hi ? "परिणाम" : "Outcome"}
           <select name="status">
@@ -85,6 +87,8 @@ export function DeliveryActions({
             <option>REFUSED</option>
             <option>SHOP_CLOSED</option>
             <option>PAYMENT_ISSUE</option>
+            <option>STOCK_UNAVAILABLE</option>
+            <option>WRONG_ORDER</option>
             <option>RESCHEDULED</option>
             <option>DAMAGED</option>
             <option>OTHER</option>
@@ -122,7 +126,7 @@ export function DeliveryActions({
           {hi ? "कारण / टिप्पणी" : "Reason / note"}
           <input name="reason" />
         </label>
-        <button disabled={busy}>
+        <button disabled={busy || !deliveryId}>
           {hi ? "डिलीवरी परिणाम सहेजें" : "Save delivery outcome"}
         </button>
       </form>

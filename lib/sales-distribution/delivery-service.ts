@@ -1,7 +1,12 @@
 import type { DeliveryStatus, Prisma, PrismaClient } from "@prisma/client";
+import { createHash } from "crypto";
 import { effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
+import { queueRetailerCommunication } from "./retailer-communication-service";
+function numberFor(prefix: string, key: string) {
+  return `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
+}
 export async function completeDelivery(
   db: PrismaClient,
   actorId: string,
@@ -15,11 +20,18 @@ export async function completeDelivery(
   },
 ) {
   const permissions = await effectivePermissions(db, actorId);
-  return db.$transaction(
+  const completedDelivery = await db.$transaction(
     async (tx) => {
       const delivery = await tx.seeraDelivery.findUnique({
         where: { id: deliveryId },
-        include: { order: { include: { lines: true } } },
+        include: {
+          order: {
+            include: {
+              lines: true,
+              sellerPartner: { select: { id: true, type: true } },
+            },
+          },
+        },
       });
       if (!delivery)
         throw new FoundationError(
@@ -27,6 +39,8 @@ export async function completeDelivery(
           "Delivery unavailable",
           404,
         );
+      if (["REFUSED","SHOP_CLOSED","PAYMENT_ISSUE","STOCK_UNAVAILABLE","WRONG_ORDER","RESCHEDULED","DAMAGED","OTHER"].includes(input.status) && !input.reason?.trim())
+        throw new FoundationError("DELIVERY_REASON_REQUIRED","A reason is required for this delivery outcome",400);
       const assigned =
         permissions.has("distributor_delivery:execute") &&
         delivery.deliveryUserId === actorId;
@@ -46,6 +60,8 @@ export async function completeDelivery(
             },
           }),
         );
+      if (!operator && permissions.has("super_stockist_orders:fulfil") && delivery.order.sellerPartnerId)
+        operator = Boolean(await tx.seeraPartyUser.findFirst({where:{userId:actorId,partnerId:delivery.order.sellerPartnerId,active:true,partner:{type:"SUPER_STOCKIST"},OR:[{effectiveTo:null},{effectiveTo:{gt:new Date()}}]}}));
       if (!assigned && !operator)
         throw new FoundationError(
           "DELIVERY_SCOPE_DENIED",
@@ -53,7 +69,7 @@ export async function completeDelivery(
           403,
         );
       if (delivery.status === input.status && delivery.actorId === actorId)
-        return delivery;
+        return { delivery, orderType: delivery.order.type, retailerId: delivery.order.retailerId };
       const claimed = await tx.seeraDelivery.updateMany({
         where: { id: delivery.id, status: { in: ["PENDING", "RESCHEDULED"] } },
         data: {
@@ -85,7 +101,8 @@ export async function completeDelivery(
         const remaining =
           Number(line.dispatchedQuantity) -
           Number(line.deliveredQuantity) -
-          Number(line.refusedQuantity);
+          Number(line.refusedQuantity) -
+          Number(line.returnedQuantity);
         if (quantity > remaining)
           throw new FoundationError(
             "OVER_DELIVERY_DENIED",
@@ -93,7 +110,11 @@ export async function completeDelivery(
             409,
           );
       }
-      if (["DELIVERED", "PARTIAL_DELIVERED", "REFUSED"].includes(input.status))
+      if (
+        ["DELIVERED", "PARTIAL_DELIVERED", "REFUSED", "DAMAGED"].includes(
+          input.status,
+        )
+      )
         for (const line of delivery.order.lines) {
           const quantity = quantities.get(line.id) ?? 0;
           if (quantity > 0)
@@ -102,9 +123,76 @@ export async function completeDelivery(
               data:
                 input.status === "REFUSED"
                   ? { refusedQuantity: { increment: quantity } }
-                  : { deliveredQuantity: { increment: quantity } },
+                  : input.status === "DAMAGED"
+                    ? { returnedQuantity: { increment: quantity } }
+                    : { deliveredQuantity: { increment: quantity } },
             });
         }
+      // A REFUSED delivery is physically intact and comes back to the seller's sellable
+      // stock, so it is credited back in. A DAMAGED delivery is not sellable — the DISPATCH
+      // movement already removed it from onHand, so it stays excluded; the loss is tracked
+      // as a claim instead (same pattern as the short-receipt claim in receiveIncomingOrder),
+      // not a second inventory movement, to avoid double-counting the stock reduction.
+      if (
+        input.status === "REFUSED" &&
+        delivery.order.sellerPartner &&
+        delivery.order.sellerPartnerId
+      )
+        for (const line of delivery.order.lines) {
+          const quantity = quantities.get(line.id) ?? 0;
+          if (quantity > 0)
+            await tx.seeraInventoryMovement.create({
+              data: {
+                partyType: delivery.order.sellerPartner.type,
+                partyId: delivery.order.sellerPartnerId,
+                skuId: line.skuId,
+                type: "RETURN",
+                direction: "IN",
+                quantity,
+                sourceType: "SeeraDelivery",
+                sourceId: delivery.id,
+                actorId,
+                sourcePortal:
+                  delivery.order.sellerPartner.type === "DISTRIBUTOR"
+                    ? "distributor"
+                    : "super-stockist",
+                reason: input.reason?.trim() || "Delivery refused — stock returned",
+                idempotencyKey: `${delivery.id}-return-${line.id}`,
+              },
+            });
+        }
+      if (
+        input.status === "DAMAGED" &&
+        delivery.order.sellerPartner &&
+        delivery.order.sellerPartnerId
+      ) {
+        const damagedLines = delivery.order.lines
+          .map((line) => ({ line, quantity: quantities.get(line.id) ?? 0 }))
+          .filter((x) => x.quantity > 0);
+        if (damagedLines.length)
+          await tx.seeraClaim.create({
+            data: {
+              claimNumber: numberFor("DC", `${delivery.id}-damage`),
+              claimantType: delivery.order.sellerPartner.type,
+              claimantId: delivery.order.sellerPartnerId,
+              againstPartyType: delivery.order.sellerPartner.type === "DISTRIBUTOR" ? "SUPER_STOCKIST" : "COMPANY",
+              againstPartyId: "SEERA_COMPANY",
+              type: "DAMAGE_IN_TRANSIT",
+              sourceType: "SeeraDelivery",
+              sourceId: delivery.id,
+              details: {
+                lines: damagedLines.map((x) => ({
+                  lineId: x.line.id,
+                  skuId: x.line.skuId,
+                  quantity: x.quantity,
+                })),
+                reason: input.reason,
+              },
+              actorId,
+              idempotencyKey: `${delivery.id}-damage-claim`,
+            },
+          });
+      }
       await tx.seeraDelivery.update({
         where: { id: delivery.id },
         data: {
@@ -119,7 +207,8 @@ export async function completeDelivery(
             Number(x.deliveredQuantity) >=
             Number(x.orderedQuantity) -
               Number(x.cancelledQuantity) -
-              Number(x.refusedQuantity),
+              Number(x.refusedQuantity) -
+              Number(x.returnedQuantity),
         ),
         someDelivered = lines.some((x) => Number(x.deliveredQuantity) > 0);
       await tx.seeraSalesOrder.update({
@@ -143,8 +232,18 @@ export async function completeDelivery(
           orderNumber: delivery.order.orderNumber,
         },
       });
-      return tx.seeraDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      return {
+        delivery: await tx.seeraDelivery.findUniqueOrThrow({ where: { id: delivery.id } }),
+        orderType: delivery.order.type,
+        retailerId: delivery.order.retailerId,
+      };
     },
     { isolationLevel: "Serializable", timeout: 15000 },
   );
+  // Stage 7 fix: DELIVERED was defined in the retailer-communication event matrix but never
+  // triggered anywhere — queued AFTER commit, only for real retailer orders (this same function
+  // also completes Distributor/S.S. replenishment deliveries, which have no retailer to notify).
+  if (completedDelivery.orderType === "RETAILER_ORDER" && completedDelivery.retailerId && input.status === "DELIVERED")
+    await queueRetailerCommunication(db, { eventType: "DELIVERED", retailerId: completedDelivery.retailerId, actorId });
+  return completedDelivery.delivery;
 }

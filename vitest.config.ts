@@ -15,6 +15,25 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["__tests__/**/*.test.ts"],
+    // These folders TRUNCATE the entire users/roles/permissions table CASCADE
+    // as part of their own "bootstrap from an empty DB" fixture setup
+    // (see __tests__/seera-block3/test-context.ts and the analogous
+    // phaseN-integration suites) and each already has its own dedicated,
+    // DB-identity-guarded npm command (test:seera:block3, test:seera:phase2-5
+    // :integration, :phase6-9:integration, :phase10:integration, :phase11
+    // :integration). Without this exclude, a plain `npm test` silently
+    // re-runs them too and wipes every user in the shared TEST database —
+    // including the permanent review-*@seera.test fixtures — which was the
+    // confirmed root cause of review credentials repeatedly going missing
+    // between sessions. Run those suites only via their dedicated commands.
+    exclude: [
+      "**/node_modules/**",
+      "__tests__/seera-block3/**",
+      "__tests__/seera-phase-2-5-integration/**",
+      "__tests__/seera-phase-6-9-integration/**",
+      "__tests__/seera-phase-10-integration/**",
+      "__tests__/seera-phase-11-integration/**",
+    ],
     setupFiles: ["./__tests__/muv-ai/test-setup.ts"],
     // Integration tests across this suite share one live database and,
     // starting with Part 3C, mutate global org-scoped singleton rows

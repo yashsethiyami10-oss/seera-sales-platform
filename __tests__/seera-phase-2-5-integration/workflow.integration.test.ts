@@ -56,7 +56,12 @@ describe("guarded Phase 2-5 shared-truth integration", () => {
 
   it("Phase 5 enforces distributor credit and company advance", async () => {
     expect((await evaluateOrderCredit(prisma, distributorId, 1000, new Date("2026-08-08"))).decision).toBe("ALLOW");
-    const companyOrder = await createCompanyOrder(prisma, superStockistOwner, superStockistId, { idempotencyKey: `company-${suffix}`, subtotal: 5000 });
+    // createCompanyOrder now prices from real, governed SKU lines (never an arbitrary caller-supplied
+    // subtotal) so the company advance order carries the same canonical, non-invented pricing every
+    // other order type uses — this SKU needs its own COMPANY_TO_SS price version, separate from the
+    // DISTRIBUTOR_TO_RETAILER one created in "Phase 2", before it can be ordered at this tier.
+    await createPriceVersion(prisma, founder, { skuId, tier: "COMPANY_TO_SS", amount: 100, effectiveFrom: new Date("2026-01-01") });
+    const companyOrder = await createCompanyOrder(prisma, superStockistOwner, superStockistId, { idempotencyKey: `company-${suffix}`, lines: [{ skuId, quantity: 5 }] });
     expect(companyOrder.contractualCreditDays).toBe(0); expect(companyOrder.status).toBe("SUBMITTED"); expect(companyOrder.financialAcceptance).toBe(false);
   });
 

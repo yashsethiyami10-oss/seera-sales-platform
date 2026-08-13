@@ -87,7 +87,7 @@ export async function documentSelectorData(
       include: {
         prices: {
           where: {
-            tier: "DISTRIBUTOR_TO_RETAILER",
+            tier: portal === "super-stockist" ? "SS_TO_DISTRIBUTOR" : "DISTRIBUTOR_TO_RETAILER",
             status: "ACTIVE",
             effectiveFrom: { lte: now },
             OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],

@@ -88,6 +88,18 @@
   font-size: 11px;
   font-weight: 800;
 }
+.badge[data-tone="ok"] {
+  background: #dcfce7;
+  color: #15803d;
+}
+.badge[data-tone="warn"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+.badge[data-tone="error"] {
+  background: #fee2e2;
+  color: #b91c1c;
+}
 .pagination {
   display: flex;
   gap: 10px;
@@ -129,6 +141,26 @@
 .timeline p { margin: 0; color: #475569; }
 .readOnly { border-left: 4px solid #687386; background: #f8fafc; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.mobileOnly { display: none; }
+.cardList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cardListItem {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 8px 30px #0f172a0a;
+}
+.cardListItem[data-active="true"] { border-color: #a61f2a; }
+.cardListItem p { margin: 0; color: #475569; font-size: 13px; }
+.cardListItem a { color: #a61f2a; text-decoration: none; font-weight: 800; }
 @media (max-width: 700px) {
   .toolbar {
     display: grid;
@@ -144,4 +176,6 @@
     width: 100%;
     justify-content: center;
   }
+  .desktopOnly { display: none; }
+  .mobileOnly { display: grid; }
 }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/database/client";
 import { apiFailure } from "@/lib/foundation/api-response";
 import { FoundationError } from "@/lib/foundation/errors";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
+import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { placeRetailerOrder } from "@/lib/sales-distribution/workflow-service";
 
 const inputSchema = z.object({
@@ -24,6 +25,10 @@ const inputSchema = z.object({
 export async function POST(request: Request) {
   try {
     const { user } = await resolveRequestIdentity();
+    // HARDENING A: per-actor rate limit, matching the pattern already used on comparable
+    // authenticated mutation routes (/api/foundation/users, /api/offline/sync) — this route was
+    // previously unlimited.
+    enforceRateLimit(`retailer-orders:${user.id}`, 60, 60_000);
     const input = inputSchema.parse(await request.json());
     const assignment = await prisma.seeraAssignment.findFirst({
       where: {

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/database/client";
 import { decideApproval } from "@/lib/foundation/approval-service";
 import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
+import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 
 const body = z.object({
   decision: z.enum(["APPROVED", "REJECTED"]),
@@ -16,6 +17,10 @@ export async function POST(
 ) {
   try {
     const { user } = await resolveRequestIdentity();
+    // HARDENING A: per-actor rate limit, matching the pattern already used on comparable
+    // authenticated mutation routes (/api/foundation/users, /api/offline/sync) — this route was
+    // previously unlimited.
+    enforceRateLimit(`approvals-decide:${user.id}`, 60, 60_000);
     const { id } = await context.params;
     return NextResponse.json(
       await decideApproval(

@@ -1,12 +1,43 @@
-export function portalLandingPath(permissions:Set<string>):string{
-  if(permissions.has("system:super_admin"))return "/portal/founder-admin";
-  if(permissions.has("portal:admin"))return "/portal/company-admin";
-  if(permissions.has("portal:accounts"))return "/portal/accounts";
-  if(permissions.has("portal:sales_manager"))return "/portal/sales-manager";
-  if(permissions.has("portal:sales_executive"))return "/portal/sales-executive";
-  if(permissions.has("portal:distributor"))return "/portal/distributor";
-  if(permissions.has("portal:super_stockist"))return "/portal/super-stockist";
-  if(permissions.has("portal:retailer"))return "/portal/retailer";
-  if(permissions.has("audit:view"))return "/portal/auditor";
-  return "/";
+import type { PrismaClient } from "@prisma/client";
+
+// P0 fix (Founder UAT): a user with a single SALES_MANAGER role landed in /portal/accounts after
+// a second role was assigned. The defect this function had: it picked a landing portal by scanning
+// the *unioned* permission set
+// in a fixed, hardcoded precedence order, so ANY user holding two roles whose permission arrays
+// contain different portal:* values would always land on whichever portal happened to be checked
+// first here — never a reflection of which role is actually "primary" for that person. The header
+// role badge (app/portal/[portal]/layout.tsx) already has a well-defined "primary role" concept:
+// the OLDEST active UserRoleAssignment. This function now takes that SAME primary role's code
+// (not a permission Set) so the login redirect, the root redirect and the header badge can never
+// disagree.
+const ROLE_TO_PORTAL: Record<string, string> = {
+  FOUNDER_SUPER_ADMIN: "/portal/founder-admin",
+  COMPANY_ADMIN: "/portal/company-admin",
+  ACCOUNTS_MANAGER: "/portal/accounts",
+  ACCOUNTS_EXECUTIVE: "/portal/accounts",
+  SALES_HEAD: "/portal/sales-manager",
+  SALES_MANAGER: "/portal/sales-manager",
+  SALES_EXECUTIVE: "/portal/sales-executive",
+  SUPER_STOCKIST_OWNER: "/portal/super-stockist",
+  SUPER_STOCKIST_OPERATOR: "/portal/super-stockist",
+  DISTRIBUTOR_OWNER: "/portal/distributor",
+  DISTRIBUTOR_OPERATOR: "/portal/distributor",
+  DISTRIBUTOR_DELIVERY_USER: "/portal/distributor",
+  RETAILER_USER: "/portal/retailer",
+  READ_ONLY_AUDITOR: "/portal/auditor",
+};
+
+export function portalLandingPathForRole(primaryRoleCode: string | null | undefined): string {
+  return (primaryRoleCode && ROLE_TO_PORTAL[primaryRoleCode]) || "/";
+}
+
+// Single canonical "primary role" query — the oldest active UserRoleAssignment — reused by the
+// login redirect, the root page redirect, and the header role badge (app/portal/[portal]/layout.tsx)
+// so all three can never disagree about which role is "primary" for a multi-role user.
+export async function primaryRoleAssignment(prisma: PrismaClient, userId: string) {
+  return prisma.userRoleAssignment.findFirst({
+    where: { userId, status: "ACTIVE" },
+    include: { role: true },
+    orderBy: { assignedAt: "asc" },
+  });
 }

@@ -4,6 +4,16 @@ import { LanguageSelector } from "@/components/seera/LanguageSelector";
 import { OfflineStatus } from "@/components/seera/phase-11/OfflineStatus";
 import { Phase10Dashboard } from "@/components/seera/phase-10/Phase10Dashboard";
 import { ProductHome } from "@/components/seera/product/ProductHome";
+import { ManagerDashboardSummary } from "@/components/seera/product/ManagerDashboardSummary";
+import { managerDashboardSummary } from "@/lib/sales-distribution/manager-service";
+import { SuperStockistDashboardSummary } from "@/components/seera/product/SuperStockistDashboardSummary";
+import { superStockistDashboardSummary } from "@/lib/sales-distribution/super-stockist-easy-mode-service";
+import { DistributorDashboardSummary } from "@/components/seera/product/DistributorDashboardSummary";
+import { distributorDashboardSummary } from "@/lib/sales-distribution/distributor-easy-mode-service";
+import { AccountsDashboardSummary } from "@/components/seera/product/AccountsDashboardSummary";
+import { accountsDashboardSummary } from "@/lib/sales-distribution/financial-service";
+import { FounderAttentionDashboard } from "@/components/seera/product/FounderAttentionDashboard";
+import { founderAttentionDashboard } from "@/lib/sales-distribution/founder-service";
 import { prisma } from "@/lib/database/client";
 import {
   authorize,
@@ -156,6 +166,69 @@ export default async function PortalShell({
           errorName: error instanceof Error ? error.name : "UnknownError",
         });
       }
+    let managerSummary: Awaited<ReturnType<typeof managerDashboardSummary>> | null = null;
+    let assignableDistributors: { value: string; label: string }[] = [];
+    if (portal === "sales-manager" && permissions.has("manager_team:view"))
+      try {
+        managerSummary = await managerDashboardSummary(prisma, user.id);
+        if (managerSummary.unassignedOrders.length > 0) {
+          const active = await prisma.seeraPartner.findMany({
+            where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" },
+            select: { id: true, legalName: true, tradeName: true, code: true },
+            orderBy: { legalName: "asc" },
+            take: 200,
+          });
+          assignableDistributors = active.map((d) => ({ value: d.id, label: `${d.tradeName ?? d.legalName} · ${d.code}` }));
+        }
+      } catch (error) {
+        console.error("[SEERA] manager dashboard summary unavailable", {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    let superStockistSummary: Awaited<ReturnType<typeof superStockistDashboardSummary>> | null = null;
+    if (portal === "super-stockist" && permissions.has("super_stockist_orders:view"))
+      try {
+        const link = await prisma.seeraPartyUser.findFirst({
+          where: { userId: user.id, active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+          select: { partnerId: true },
+        });
+        if (link) superStockistSummary = await superStockistDashboardSummary(prisma, user.id, link.partnerId);
+      } catch (error) {
+        console.error("[SEERA] super stockist dashboard summary unavailable", {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    let distributorSummary: Awaited<ReturnType<typeof distributorDashboardSummary>> | null = null;
+    if (portal === "distributor" && permissions.has("distributor_orders:view") && !deliveryOnly)
+      try {
+        const link = await prisma.seeraPartyUser.findFirst({
+          where: { userId: user.id, active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+          select: { partnerId: true },
+        });
+        if (link) distributorSummary = await distributorDashboardSummary(prisma, user.id, link.partnerId);
+      } catch (error) {
+        console.error("[SEERA] distributor dashboard summary unavailable", {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    let accountsSummary: Awaited<ReturnType<typeof accountsDashboardSummary>> | null = null;
+    if (portal === "accounts" && permissions.has("finance_dashboard:view"))
+      try {
+        accountsSummary = await accountsDashboardSummary(prisma, user.id);
+      } catch (error) {
+        console.error("[SEERA] accounts dashboard summary unavailable", {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    let founderSummary: Awaited<ReturnType<typeof founderAttentionDashboard>> | null = null;
+    if (portal === "founder-admin" && permissions.has("portal:admin"))
+      try {
+        founderSummary = await founderAttentionDashboard(prisma, user.id);
+      } catch (error) {
+        console.error("[SEERA] founder attention dashboard unavailable", {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
     const title = experience?.title ?? messages[portal]?.[language] ?? "Seera";
     return (
       <main
@@ -203,6 +276,21 @@ export default async function PortalShell({
         <div className={styles.content}>
           {portal === "sales-executive" && (
             <OfflineStatus language={language} />
+          )}
+          {managerSummary && (
+            <ManagerDashboardSummary language={language} summary={managerSummary} portal={portal} mappedDistributors={assignableDistributors} />
+          )}
+          {superStockistSummary && (
+            <SuperStockistDashboardSummary language={language} summary={superStockistSummary} portal={portal} />
+          )}
+          {distributorSummary && (
+            <DistributorDashboardSummary language={language} summary={distributorSummary} portal={portal} />
+          )}
+          {accountsSummary && (
+            <AccountsDashboardSummary language={language} summary={accountsSummary} portal={portal} />
+          )}
+          {founderSummary && (
+            <FounderAttentionDashboard language={language} summary={founderSummary} portal={portal} />
           )}
           {analytics && (
             <Phase10Dashboard data={analytics} language={language} />

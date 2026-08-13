@@ -5,7 +5,7 @@ import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
 
 type Option = { value: string; label: string; meta?: string };
-type Kind = "allocate" | "reverse" | "settle-claim" | "approve-ta";
+type Kind = "allocate" | "reverse" | "settle-claim" | "approve-ta" | "decide-credit-extension";
 
 export function FinanceControlActions({
   kind,
@@ -31,6 +31,7 @@ export function FinanceControlActions({
     reverse: hi ? "पोस्ट की गई प्रविष्टि पलटें" : "Reverse posted entry",
     "settle-claim": hi ? "दावा निपटान" : "Settle claim",
     "approve-ta": hi ? "TA स्वीकृत और पोस्ट करें" : "Approve and post TA",
+    "decide-credit-extension": hi ? "क्रेडिट विस्तार तय करें" : "Decide credit extension",
   }[kind];
   return (
     <section className={styles.panel}>
@@ -80,6 +81,15 @@ export function FinanceControlActions({
                   outcome: String(form.get("outcome")),
                   approvedAmount: Number(form.get("amount")),
                   rejectedAmount: Number(form.get("rejectedAmount")),
+                  reason: String(form.get("reason")),
+                },
+              };
+            else if (kind === "decide-credit-extension")
+              body = {
+                action: "decide-credit-extension",
+                payload: {
+                  extensionId: String(form.get("primary")),
+                  decision: String(form.get("decision")),
                   reason: String(form.get("reason")),
                 },
               };
@@ -135,9 +145,13 @@ export function FinanceControlActions({
                 ? hi
                   ? "लेजर प्रविष्टि"
                   : "Ledger entry"
-                : hi
-                  ? "भुगतान"
-                  : "Payment"}
+                : kind === "decide-credit-extension"
+                  ? hi
+                    ? "आदेश"
+                    : "Order"
+                  : hi
+                    ? "भुगतान"
+                    : "Payment"}
           <select name="primary" required>
             <option value="">
               {hi ? "व्यावसायिक नंबर से चुनें" : "Choose by business number"}
@@ -180,6 +194,15 @@ export function FinanceControlActions({
               <option>DEBIT_NOTE</option>
               <option>REPLACEMENT</option>
               <option>NO_FINANCIAL_EFFECT</option>
+            </select>
+          </label>
+        )}
+        {kind === "decide-credit-extension" && (
+          <label>
+            {hi ? "निर्णय" : "Decision"}
+            <select name="decision" required>
+              <option value="APPROVED">{hi ? "स्वीकृत" : "APPROVED"}</option>
+              <option value="REJECTED">{hi ? "अस्वीकृत" : "REJECTED"}</option>
             </select>
           </label>
         )}

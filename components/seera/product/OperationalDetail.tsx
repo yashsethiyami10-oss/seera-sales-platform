@@ -7,6 +7,16 @@ import { PageHeading } from "@/components/seera/foundation/States";
 import styles from "./ProductSurface.module.css";
 import { PartnerLifecycleActions } from "./WorkflowActions";
 import { DeliveryActions } from "./DeliveryActions";
+import { RetailerActions } from "./RetailerActions";
+import { DocumentShareActions } from "./DocumentShareActions";
+import { PartnerAccessPanel } from "./PartnerAccessPanel";
+import { ReassignDistributorPanel } from "./ReassignDistributorPanel";
+import { CreditPolicyPanel } from "./CreditPolicyPanel";
+import { DistributorClosureSettlementPanel } from "./DistributorClosureSettlementPanel";
+import { canonicalDistributorExposure, superStockistDistributorCollectionsSnapshot } from "@/lib/sales-distribution/credit-service";
+import { companyOrderNextStep } from "@/lib/sales-distribution/business-rules";
+import { partnerObligationsPreview } from "@/lib/sales-distribution/travel-lifecycle-service";
+import { distributorClosureStockPosition } from "@/lib/sales-distribution/distributor-management-service";
 
 type Field = { label: string; value: string };
 const money = (v: unknown) =>
@@ -36,6 +46,10 @@ export async function OperationalDetail({
   language,
   canManageLifecycle = false,
   canExecuteDelivery = false,
+  canManageFollowUp = false,
+  canShareDocument = false,
+  canManageAccess = false,
+  canManageCredit = false,
 }: {
   db: PrismaClient;
   userId: string;
@@ -45,6 +59,10 @@ export async function OperationalDetail({
   language: UiLanguage;
   canManageLifecycle?: boolean;
   canExecuteDelivery?: boolean;
+  canManageFollowUp?: boolean;
+  canShareDocument?: boolean;
+  canManageAccess?: boolean;
+  canManageCredit?: boolean;
 }) {
   const hi = language === "HI",
     back = `/portal/${portal}/${item.slug}`,
@@ -56,9 +74,13 @@ export async function OperationalDetail({
       <PageHeading
         title={title}
         description={
-          hi
-            ? "अधिकृत व्यावसायिक विवरण और इतिहास।"
-            : "Authorized business detail and history."
+          portal === "sales-executive"
+            ? hi
+              ? "इस ग्राहक का पूरा इतिहास — विज़िट, ऑर्डर और फॉलो-अप।"
+              : "Full history for this customer — visits, orders, and follow-ups."
+            : hi
+              ? "अधिकृत व्यावसायिक विवरण और इतिहास।"
+              : "Authorized business detail and history."
         }
         action={
           <Link className={styles.back} href={back}>
@@ -89,15 +111,18 @@ export async function OperationalDetail({
         lines: true,
         deliveries: { orderBy: { createdAt: "desc" } },
         promises: { orderBy: { createdAt: "desc" } },
+        paymentProofs: { orderBy: { submittedAt: "desc" }, take: 1 },
       },
     });
     if (!x) notFound();
+    const nextStep = x.type === "COMPANY_REPLENISHMENT" ? companyOrderNextStep(x, x.paymentProofs[0]?.status) : null;
     return (
       <>
         {head(x.orderNumber)}
         <Fields
           items={[
             { label: "Status", value: x.status },
+            ...(nextStep ? [{ label: "Next step", value: nextStep }] : []),
             { label: "Type", value: x.type },
             {
               label: "Seller",
@@ -115,6 +140,13 @@ export async function OperationalDetail({
             { label: "Grace until", value: text(x.graceUntil) },
           ]}
         />
+        {nextStep === "PAYMENT VERIFIED — READY FOR DISPATCH" && (
+          <p className={styles.notice}>
+            <Link href={`/portal/accounts/company-order-dispatch`}>
+              {hi ? "कंपनी डिस्पैच तैयार करें →" : "PREPARE COMPANY DISPATCH →"}
+            </Link>
+          </p>
+        )}
         <section className={styles.panel}>
           <h2>{hi ? "आइटम और पूर्ति" : "Items & fulfilment"}</h2>
           <div className={styles.tableWrap}>
@@ -124,6 +156,8 @@ export async function OperationalDetail({
                   <th>SKU</th>
                   <th>Ordered</th>
                   <th>Accepted</th>
+                  <th>Cancelled</th>
+                  <th>Remaining</th>
                   <th>Dispatched</th>
                   <th>Delivered</th>
                   <th>Refused</th>
@@ -140,6 +174,17 @@ export async function OperationalDetail({
                     </td>
                     <td>{text(l.orderedQuantity)}</td>
                     <td>{text(l.acceptedQuantity)}</td>
+                    <td>{text(l.cancelledQuantity)}</td>
+                    <td>
+                      {text(
+                        Math.max(
+                          0,
+                          Number(l.orderedQuantity) -
+                            Number(l.acceptedQuantity) -
+                            Number(l.cancelledQuantity),
+                        ),
+                      )}
+                    </td>
                     <td>{text(l.dispatchedQuantity)}</td>
                     <td>{text(l.deliveredQuantity)}</td>
                     <td>{text(l.refusedQuantity)}</td>
@@ -157,6 +202,20 @@ export async function OperationalDetail({
               <time>{text(d.occurredAt ?? d.createdAt)}</time>
               <strong>{d.status}</strong>
               <p>{d.receiverName ?? d.reason ?? "Recorded delivery event"}</p>
+              {(d.vehicleNumber || d.driverName || d.lrNumber || d.challanNumber || d.transporterName) && (
+                <p>
+                  {[
+                    d.vehicleNumber && `Vehicle ${d.vehicleNumber}`,
+                    d.driverName && `Driver ${d.driverName}${d.driverMobile ? ` (${d.driverMobile})` : ""}`,
+                    d.transporterName && `Transporter ${d.transporterName}`,
+                    d.lrNumber && `LR ${d.lrNumber}`,
+                    d.challanNumber && `Challan ${d.challanNumber}`,
+                    d.eta && `ETA ${text(d.eta)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
             </article>
           ))}
           {x.promises.map((p) => (
@@ -174,14 +233,113 @@ export async function OperationalDetail({
     );
   }
   if (item.kind === "partners") {
+    const crossPartnerScope =
+      portal === "super-stockist" && item.slug === "distributors" && party
+        ? { assignedSuperStockistId: { in: party } }
+        : party
+          ? { id: { in: party } }
+          : {};
     const x = await db.seeraPartner.findFirst({
-      where: { id, ...(party ? { id: { in: party } } : {}) },
+      where: { id, ...crossPartnerScope },
       include: {
         creditTerms: { orderBy: { effectiveFrom: "desc" } },
         users: { where: { active: true } },
       },
     });
     if (!x) notFound();
+    // Founder/Admin UAT correction (P0, section 4-5): the rich 360 previously only rendered for a
+    // Super Stockist viewing its OWN distributors. Founder/Admin (which is unrestricted — `party`
+    // is null for this global portal, so crossPartnerScope above imposes no filter) gets the same
+    // Distributor 360 here, plus a lighter but real Super Stockist 360 of its own (mapped
+    // Distributor count, orders it has sold, open claims) — S.S.-specific credit-exposure/DISTRIBUTOR
+    // order-status metrics don't apply to a Super Stockist itself, so those stay Distributor-only.
+    const showDistributor360 = (portal === "super-stockist" || portal === "founder-admin") && item.slug === "distributors";
+    const showSuperStockist360 = portal === "founder-admin" && item.slug === "super-stockists";
+    const show360 = showDistributor360 || showSuperStockist360;
+    const superStockistId = party?.[0];
+    const [recentOrders, openClaims, outstanding, statusCounts, collectionsSnapshot] = showDistributor360
+      ? await Promise.all([
+          db.seeraSalesOrder.findMany({
+            where: { buyerPartnerId: x.id },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          }),
+          db.seeraClaim.findMany({
+            where: {
+              status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+              OR: [{ claimantId: x.id }, { againstPartyId: x.id }],
+            },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          }),
+          canonicalDistributorExposure(db, x.id, new Date()),
+          db.seeraSalesOrder.groupBy({
+            by: ["status"],
+            where: { buyerPartnerId: x.id, type: "DISTRIBUTOR_REPLENISHMENT" },
+            _count: { _all: true },
+          }),
+          superStockistId
+            ? superStockistDistributorCollectionsSnapshot(db, userId, superStockistId, x.id).catch(() => null)
+            : null,
+        ])
+      : [[], [], null, [], null];
+    const [ssRecentOrders, ssOpenClaims, ssDistributorCount] = showSuperStockist360
+      ? await Promise.all([
+          db.seeraSalesOrder.findMany({
+            where: { sellerPartnerId: x.id, type: "DISTRIBUTOR_REPLENISHMENT" },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          }),
+          db.seeraClaim.findMany({
+            where: {
+              status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+              OR: [{ claimantId: x.id }, { againstPartyId: x.id }],
+            },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          }),
+          db.seeraPartner.count({ where: { type: "DISTRIBUTOR", assignedSuperStockistId: x.id } }),
+        ])
+      : [[], [], 0];
+    const countFor = (statuses: string[]) => statusCounts.filter((s) => statuses.includes(s.status)).reduce((sum, s) => sum + s._count._all, 0);
+    const members = canManageAccess
+      ? await (async () => {
+          const partyUsers = await db.seeraPartyUser.findMany({ where: { partnerId: x.id }, orderBy: { createdAt: "desc" } });
+          const userRecords = partyUsers.length
+            ? await db.user.findMany({ where: { id: { in: partyUsers.map((m) => m.userId) } }, select: { id: true, name: true, email: true } })
+            : [];
+          const userMap = new Map(userRecords.map((u) => [u.id, u]));
+          return partyUsers.map((m) => ({
+            membershipId: m.id,
+            userId: m.userId,
+            name: userMap.get(m.userId)?.name ?? userMap.get(m.userId)?.email ?? "—",
+            email: userMap.get(m.userId)?.email ?? "—",
+            accessRole: m.accessRole,
+            active: m.active,
+          }));
+        })()
+      : [];
+    const reassignSuperStockists =
+      canManageAccess && x.type === "DISTRIBUTOR"
+        ? (
+            await db.seeraPartner.findMany({
+              where: { type: "SUPER_STOCKIST", lifecycle: { not: "CLOSED" } },
+              select: { id: true, tradeName: true, legalName: true, code: true },
+              orderBy: { updatedAt: "desc" },
+              take: 200,
+            })
+          ).map((s) => ({ value: s.id, label: `${s.tradeName ?? s.legalName} · ${s.code}` }))
+        : [];
+    const contact = x.primaryContact as { mobile?: string; ownerName?: string } | null;
+    // STAGE 14: real obligations preview (was never wired — PartnerLifecycleActions' warning banner
+    // silently never rendered) plus, for a Distributor specifically, its closure stock position —
+    // the governed take-back settlement panel only renders when there's real stock to resolve.
+    const obligationsPreview = canManageLifecycle && x.lifecycle === "ACTIVE"
+      ? await partnerObligationsPreview(db, userId, x.id).catch(() => null)
+      : null;
+    const closureStockPosition = canManageLifecycle && x.type === "DISTRIBUTOR" && x.lifecycle === "ACTIVE"
+      ? await distributorClosureStockPosition(db, userId, x.id).catch(() => null)
+      : null;
     const history = await db.seeraPartnerLifecycleEvent.findMany({
         where: { partnerId: x.id },
         orderBy: { occurredAt: "desc" },
@@ -219,6 +377,19 @@ export async function OperationalDetail({
     return (
       <>
         {head(x.tradeName ?? x.legalName)}
+        {canManageLifecycle && closureStockPosition && closureStockPosition.totalUnits > 0 && (
+          <DistributorClosureSettlementPanel
+            language={language}
+            distributorId={x.id}
+            totalUnits={closureStockPosition.totalUnits}
+            lines={closureStockPosition.lines}
+            receivingSuperStockist={
+              x.assignedSuperStockistId
+                ? { value: x.assignedSuperStockistId, label: reassignSuperStockists.find((s) => s.value === x.assignedSuperStockistId)?.label ?? (x.tradeName ?? x.legalName) }
+                : null
+            }
+          />
+        )}
         {canManageLifecycle && (
           <PartnerLifecycleActions
             partnerId={x.id}
@@ -228,6 +399,22 @@ export async function OperationalDetail({
               value: a.id,
               label: a.name ?? a.email,
             }))}
+            obligations={
+              obligationsPreview
+                ? { openOrders: obligationsPreview.openOrders, outstanding: obligationsPreview.outstanding, openClaims: obligationsPreview.pendingClaims, stock: obligationsPreview.stock }
+                : undefined
+            }
+          />
+        )}
+        {canManageAccess && (
+          <PartnerAccessPanel language={language} partnerId={x.id} partnerType={x.type} members={members} />
+        )}
+        {canManageAccess && x.type === "DISTRIBUTOR" && (
+          <ReassignDistributorPanel
+            language={language}
+            distributorId={x.id}
+            currentSuperStockistId={x.assignedSuperStockistId}
+            superStockists={reassignSuperStockists}
           />
         )}
         <Fields
@@ -239,8 +426,23 @@ export async function OperationalDetail({
             { label: "GSTIN", value: x.gstin ?? "Not provided" },
             { label: "Territories", value: x.territoryIds.join(", ") || "—" },
             { label: "Active users", value: String(x.users.length) },
+            ...(show360
+              ? [
+                  { label: "Owner", value: contact?.ownerName ?? "—" },
+                  { label: "Mobile", value: contact?.mobile ?? "—" },
+                ]
+              : []),
           ]}
         />
+        {portal === "super-stockist" && showDistributor360 && (
+          <div className={styles.detail} style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <Link href={`/portal/${portal}/quotations`}>{hi ? "कोटेशन बनाएं" : "CREATE QUOTATION"}</Link>
+            <Link href={`/portal/${portal}/billing`}>{hi ? "जीएसटी इनवॉइस बनाएं" : "CREATE GST INVOICE"}</Link>
+            <Link href={`/portal/${portal}/payments?tab=receive&distributorId=${x.id}`}>{hi ? "भुगतान दर्ज करें" : "RECORD PAYMENT"}</Link>
+            <Link href={`/portal/${portal}/collections?distributorId=${x.id}`}>{hi ? "विवरण देखें" : "VIEW STATEMENT"}</Link>
+            <Link href={`/portal/${portal}/credit`}>{hi ? "क्रेडिट नीति संपादित करें" : "EDIT CREDIT POLICY"}</Link>
+          </div>
+        )}
         {credit && (
           <section className={styles.panel}>
             <h2>{hi ? "क्रेडिट शासन" : "Credit governance"}</h2>
@@ -253,7 +455,7 @@ export async function OperationalDetail({
                 { label: "Limit", value: money(credit.creditLimit) },
                 { label: "Days", value: String(credit.creditDays) },
                 {
-                  label: "Grace",
+                  label: "Grace Days",
                   value: credit.graceEnabled
                     ? `${credit.graceDays} days`
                     : "Disabled",
@@ -261,6 +463,139 @@ export async function OperationalDetail({
                 { label: "Reason", value: credit.changeReason },
               ]}
             />
+          </section>
+        )}
+        {canManageCredit && portal === "super-stockist" && showDistributor360 && x.type === "DISTRIBUTOR" && x.assignedSuperStockistId && (
+          // STAGE 13 (Founder read-only oversight): this edit form must only ever render for the
+          // owning Super Stockist viewing its OWN Distributor (portal==="super-stockist") — it
+          // previously also rendered for Founder/Admin here (an earlier phase deliberately removed
+          // the `portal` gate, reasoning that updateDistributorCreditPolicy's system:super_admin
+          // bypass meant this was "only a UI reachability gap" — but a reachable routine self-service
+          // edit form is exactly what "S.S. governs its own Distributors' credit terms; Founder
+          // read-only oversight" rules out. Founder still sees the Fields block above (read-only) plus
+          // the network-wide read-only oversight page (credit-service.ts's
+          // founderDistributorCreditOversight) — never this edit form. Reuses the same panel the
+          // Super Stockist portal's own Credit nav item renders, just pre-scoped to this Distributor.
+          <CreditPolicyPanel
+            language={language}
+            superStockistId={x.assignedSuperStockistId}
+            distributors={[{ value: x.id, label: x.tradeName ?? x.legalName }]}
+          />
+        )}
+        {showDistributor360 && outstanding && (
+          <section className={styles.panel}>
+            <h2>{hi ? "क्रेडिट एक्सपोज़र" : "Credit exposure"}</h2>
+            <Fields
+              items={[
+                { label: "Net exposure", value: money(outstanding.exposure) },
+                {
+                  label: "Open order value",
+                  value: money(outstanding.orderExposureTotal),
+                },
+                {
+                  label: "Open orders",
+                  value: String(outstanding.openOrders.length),
+                },
+                ...(collectionsSnapshot
+                  ? [
+                      { label: "Outstanding", value: money(collectionsSnapshot.outstanding) },
+                      { label: "Overdue", value: money(collectionsSnapshot.overdue) },
+                      { label: "Oldest due", value: text(collectionsSnapshot.oldestDueDate) },
+                      { label: "Promise date", value: text(collectionsSnapshot.promisedPaymentDate) },
+                      {
+                        label: "Last payment",
+                        value: collectionsSnapshot.lastPayment ? `${money(collectionsSnapshot.lastPayment.amount)} · ${text(collectionsSnapshot.lastPayment.postedAt)}` : "—",
+                      },
+                      { label: "Available credit", value: collectionsSnapshot.availableCredit == null ? "—" : money(collectionsSnapshot.availableCredit) },
+                    ]
+                  : []),
+              ]}
+            />
+          </section>
+        )}
+        {showDistributor360 && statusCounts.length > 0 && (
+          <section className={styles.panel}>
+            <h2>{hi ? "ऑर्डर स्थिति" : "Order status"}</h2>
+            <Fields
+              items={[
+                { label: "Pending", value: String(countFor(["SUBMITTED", "ACKNOWLEDGED", "HELD"])) },
+                { label: "Accepted", value: String(countFor(["ACCEPTED", "PARTIAL_ACCEPTED", "ALLOCATED"])) },
+                { label: "Dispatch pending", value: String(countFor(["DISPATCH_READY"])) },
+                { label: "Delivered", value: String(countFor(["DISPATCHED", "PARTIAL_DELIVERED", "DELIVERED", "CLOSED"])) },
+                { label: "Rejected/Cancelled", value: String(countFor(["REJECTED", "CANCELLED"])) },
+                { label: "Open claims", value: String(openClaims.length) },
+              ]}
+            />
+          </section>
+        )}
+        {showDistributor360 && (
+          <section className={styles.panel}>
+            <h2>{hi ? "हाल के ऑर्डर" : "Recent orders"}</h2>
+            {recentOrders.length === 0 ? (
+              <p className={styles.readOnly}>
+                {hi ? "कोई ऑर्डर उपलब्ध नहीं है।" : "No orders available."}
+              </p>
+            ) : (
+              recentOrders.map((o) => (
+                <p key={o.id}>
+                  {o.orderNumber} · {o.status} · {money(o.total)}
+                </p>
+              ))
+            )}
+          </section>
+        )}
+        {showDistributor360 && (
+          <section className={styles.panel}>
+            <h2>{hi ? "खुले दावे" : "Open claims"}</h2>
+            {openClaims.length === 0 ? (
+              <p className={styles.readOnly}>
+                {hi ? "कोई खुला दावा नहीं है।" : "No open claims."}
+              </p>
+            ) : (
+              openClaims.map((c) => (
+                <p key={c.id}>
+                  {c.claimNumber} · {c.type} · {c.status}
+                </p>
+              ))
+            )}
+          </section>
+        )}
+        {showSuperStockist360 && (
+          <section className={styles.panel}>
+            <h2>{hi ? "नेटवर्क" : "Network"}</h2>
+            <Fields items={[{ label: hi ? "असाइन किए वितरक" : "Assigned distributors", value: String(ssDistributorCount) }]} />
+          </section>
+        )}
+        {showSuperStockist360 && (
+          <section className={styles.panel}>
+            <h2>{hi ? "हाल के ऑर्डर (वितरकों को बेचे गए)" : "Recent orders (sold to distributors)"}</h2>
+            {ssRecentOrders.length === 0 ? (
+              <p className={styles.readOnly}>
+                {hi ? "कोई ऑर्डर उपलब्ध नहीं है।" : "No orders available."}
+              </p>
+            ) : (
+              ssRecentOrders.map((o) => (
+                <p key={o.id}>
+                  {o.orderNumber} · {o.status} · {money(o.total)}
+                </p>
+              ))
+            )}
+          </section>
+        )}
+        {showSuperStockist360 && (
+          <section className={styles.panel}>
+            <h2>{hi ? "खुले दावे" : "Open claims"}</h2>
+            {ssOpenClaims.length === 0 ? (
+              <p className={styles.readOnly}>
+                {hi ? "कोई खुला दावा नहीं है।" : "No open claims."}
+              </p>
+            ) : (
+              ssOpenClaims.map((c) => (
+                <p key={c.id}>
+                  {c.claimNumber} · {c.type} · {c.status}
+                </p>
+              ))
+            )}
           </section>
         )}
         <section className={styles.timeline}>
@@ -291,27 +626,90 @@ export async function OperationalDetail({
       },
     });
     if (!x) notFound();
+    const collections = await db.seeraCollectionEntry.aggregate({
+      where: { retailerId: x.id },
+      _sum: { amount: true },
+    });
+    const totalOrdered = x.orders.reduce((sum, o) => sum + Number(o.total), 0);
+    const totalCollected = Number(collections._sum.amount ?? 0);
+    const outstanding = Math.max(0, totalOrdered - totalCollected);
+    const showRetailerActions = portal === "sales-executive" && canManageFollowUp && x.salespersonId === userId;
+    const [followUps, photos] = showRetailerActions
+      ? await Promise.all([
+          db.seeraFollowUp.findMany({
+            where: { retailerId: x.id, ownerId: userId, status: "OPEN" },
+            orderBy: { dueDate: "asc" },
+          }),
+          db.seeraVisitPhoto.findMany({
+            where: { retailerId: x.id, deletedAt: null },
+            orderBy: { capturedAt: "desc" },
+            take: 12,
+          }),
+        ])
+      : [[], []];
     return (
       <>
         {head(x.businessName)}
         <Fields
           items={[
             { label: "Retailer code", value: x.code },
-            { label: "Owner", value: x.ownerName },
-            { label: "Mobile", value: x.mobile },
-            { label: "Shop type", value: x.shopType },
+            { label: "Owner", value: x.ownerName ?? "Not provided" },
+            { label: "Mobile", value: x.mobile ?? "Not provided" },
+            { label: "Shop type", value: x.shopType ?? "Not classified" },
             { label: "Classification", value: x.classification ?? "—" },
             { label: "Lifecycle", value: x.lifecycle },
+            { label: "Source", value: x.source === "UNPLANNED_FIELD_ADDED" ? "Field-added (unplanned)" : "Planned" },
             { label: "GSTIN", value: x.gstin ?? "Not provided" },
+            { label: "Total ordered", value: money(totalOrdered) },
+            { label: "Total collected", value: money(totalCollected) },
+            { label: "Outstanding (estimated)", value: money(outstanding) },
           ]}
         />
+        {showRetailerActions && (
+          <RetailerActions
+            language={language}
+            retailerId={x.id}
+            followUps={followUps.map((f) => ({
+              id: f.id,
+              type: f.type,
+              dueDate: f.dueDate.toISOString(),
+              priority: f.priority,
+              note: f.note,
+            }))}
+            photos={photos.map((p) => ({
+              id: p.id,
+              photoType: p.photoType,
+              capturedAt: p.capturedAt.toISOString(),
+            }))}
+          />
+        )}
         <section className={styles.panel}>
           <h2>{hi ? "हाल के ऑर्डर" : "Recent orders"}</h2>
+          {x.orders.length === 0 && (
+            <p className={styles.readOnly}>
+              {hi ? "कोई ऑर्डर उपलब्ध नहीं है।" : "No orders available."}
+            </p>
+          )}
           {x.orders.map((o) => (
             <Link key={o.id} href={`/portal/${portal}/orders/${o.id}`}>
               {o.orderNumber} · {o.status} · {money(o.total)}
             </Link>
           ))}
+        </section>
+        <section className={styles.panel}>
+          <h2>{hi ? "हाल की विज़िट" : "Recent visits"}</h2>
+          {x.visits.length === 0 ? (
+            <p className={styles.readOnly}>
+              {hi ? "कोई विज़िट उपलब्ध नहीं है।" : "No visits available."}
+            </p>
+          ) : (
+            x.visits.map((v) => (
+              <p key={v.id}>
+                {text(v.checkedInAt)} · {v.outcome}
+                {v.notes ? ` · ${v.notes}` : ""}
+              </p>
+            ))
+          )}
         </section>
       </>
     );
@@ -386,18 +784,18 @@ export async function OperationalDetail({
         {canExecuteDelivery &&
           ["PENDING", "RESCHEDULED"].includes(x.status) && (
             <DeliveryActions
-              deliveryId={x.id}
               language={language}
-              lines={x.order.lines.map((line) => ({
+              deliveries={[{id:x.id,label:x.order.orderNumber,lines:x.order.lines.map((line) => ({
                 id: line.id,
                 label: `${line.skuCodeSnapshot} · ${line.productNameSnapshot}`,
                 remaining: Math.max(
                   0,
                   Number(line.dispatchedQuantity) -
                     Number(line.deliveredQuantity) -
-                    Number(line.refusedQuantity),
+                    Number(line.refusedQuantity) -
+                    Number(line.returnedQuantity),
                 ),
-              }))}
+              }))}]}
             />
           )}
         <Fields
@@ -451,12 +849,26 @@ export async function OperationalDetail({
           ]}
         />
         <div className={styles.actions}>
-          {x.generatedFileId && (
+          {x.status !== "DRAFT" && (
             <Link href={`/api/documents/${x.id}/download`}>
               {hi ? "PDF डाउनलोड / प्रिंट" : "Download / print PDF"}
             </Link>
           )}
         </div>
+        {canShareDocument && x.status !== "DRAFT" && (
+          <DocumentShareActions
+            language={language}
+            documentId={x.id}
+            grants={x.shareGrants.map((g) => ({
+              id: g.id,
+              recipientType: g.recipientType,
+              recipientId: g.recipientId,
+              expiresAt: text(g.expiresAt),
+              revokedAt: g.revokedAt ? text(g.revokedAt) : null,
+              accessCount: g.accessCount,
+            }))}
+          />
+        )}
       </>
     );
   }
@@ -498,6 +910,29 @@ export async function OperationalDetail({
           </section>
         </>
       );
+    const c = await db.seeraCollectionEntry.findFirst({
+      where: { id, ...(employees ? { actorId: { in: employees } } : {}) },
+    });
+    if (c) {
+      const retailer = await db.seeraRetailer.findUnique({
+        where: { id: c.retailerId },
+        select: { businessName: true },
+      });
+      return (
+        <>
+          {head(retailer?.businessName ?? c.retailerId)}
+          <Fields
+            items={[
+              { label: "Amount", value: money(c.amount) },
+              { label: "Mode", value: c.paymentMode },
+              { label: "Reference", value: text(c.reference ?? c.invoiceRef) },
+              { label: "Remarks", value: text(c.remarks) },
+              { label: "Collected", value: text(c.collectedAt) },
+            ]}
+          />
+        </>
+      );
+    }
     const x = await db.seeraFinancialEntry.findFirst({
       where: {
         id,
@@ -590,6 +1025,33 @@ export async function OperationalDetail({
           {hi
             ? "केवल-पठन नियंत्रित ऑडिट प्रमाण।"
             : "Read-only governed audit evidence."}
+        </p>
+      </>
+    );
+  }
+  if (item.kind === "employee") {
+    const x = await db.seeraEmployeeDocument.findFirst({ where: { id, employeeId: userId } });
+    if (!x) notFound();
+    return (
+      <>
+        {head(x.title)}
+        <Fields
+          items={[
+            { label: "Type", value: x.type },
+            { label: "Period", value: x.periodLabel ?? "—" },
+            { label: "Notes", value: x.notes ?? "—" },
+            { label: "Issued", value: text(x.createdAt) },
+          ]}
+        />
+        <div className={styles.actions}>
+          <Link href={`/api/field/employee-documents/${x.id}`}>
+            {hi ? "डाउनलोड / प्रिंट" : "Download / print"}
+          </Link>
+        </div>
+        <p className={styles.readOnly}>
+          {hi
+            ? "यह आपका निजी दस्तावेज़ है — केवल आप इसे देख सकते हैं।"
+            : "This is your personal document — visible only to you."}
         </p>
       </>
     );

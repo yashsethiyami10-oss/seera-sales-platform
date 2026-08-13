@@ -38,6 +38,10 @@ const accounts = [
   ["Sales Executive", "review-sales-executive-1@seera.test", "SALES_EXECUTIVE", "/portal/sales-executive"],
   ["Super Stockist Owner", "review-ss-owner@seera.test", "SUPER_STOCKIST_OWNER", "/portal/super-stockist"],
   ["Super Stockist Operator", "review-ss-operator@seera.test", "SUPER_STOCKIST_OPERATOR", "/portal/super-stockist"],
+  // RUN 2B Section 22: covers the second S.S. review login (seed-integrated-review.ts) in the same
+  // repair/verify safety net as every other review account, so a block3/phase2-5/6-9/10/11 TRUNCATE
+  // doesn't silently drop it the way review-* accounts historically did before this script existed.
+  ["Super Stockist Owner (South)", "review-ss2-owner@seera.test", "SUPER_STOCKIST_OWNER", "/portal/super-stockist"],
   ["Distributor Owner", "review-distributor-owner@seera.test", "DISTRIBUTOR_OWNER", "/portal/distributor"],
   ["Distributor Operator", "review-distributor-operator@seera.test", "DISTRIBUTOR_OPERATOR", "/portal/distributor"],
   ["Distributor Delivery User", "review-delivery@seera.test", "DISTRIBUTOR_DELIVERY_USER", "/portal/distributor"],

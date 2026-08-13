@@ -300,6 +300,10 @@ export default async function WorkspaceDetail({
         language={language}
         canManageLifecycle={allowed("partner_lifecycle:manage")}
         canExecuteDelivery={allowed("distributor_delivery:execute") || allowed("distributor_orders:fulfil")}
+        canManageFollowUp={allowed("retailer:visit")}
+        canShareDocument={allowed("document:share")}
+        canManageAccess={allowed("master:manage")}
+        canManageCredit={allowed("distributor_credit:manage")}
       />
     );
   notFound();

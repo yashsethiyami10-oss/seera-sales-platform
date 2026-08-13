@@ -3,16 +3,30 @@ import { z } from "zod";
 import { prisma } from "@/lib/database/client";
 import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
+import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import {
   startFieldDay,
   endFieldDay,
   placeRetailerOrder,
 } from "@/lib/sales-distribution/workflow-service";
-import { recordCollection } from "@/lib/sales-distribution/operational-service";
+import { recordCollection, captureMarketIntelligence } from "@/lib/sales-distribution/operational-service";
+import { createDistributorProspect, updateDistributorProspect } from "@/lib/sales-distribution/manager-service";
+import { submitTaClaim } from "@/lib/sales-distribution/travel-lifecycle-service";
 import {
   executiveCheckIn,
   executiveCheckOut,
+  skipRetailer,
+  recordRouteDeviation,
+  createRetailer,
+  capturePhoto,
+  recordPhotoException,
+  deleteVisitPhoto,
+  createFollowUp,
+  resolveFollowUp,
+  acknowledgeInstruction,
+  completeInstruction,
 } from "@/lib/sales-distribution/field-portal-service";
+
 const body = z.object({
   action: z.enum([
     "start-day",
@@ -21,13 +35,32 @@ const body = z.object({
     "check-out",
     "place-order",
     "collection",
+    "skip-retailer",
+    "route-deviation",
+    "create-retailer",
+    "capture-photo",
+    "photo-exception",
+    "delete-photo",
+    "create-follow-up",
+    "resolve-follow-up",
+    "acknowledge-instruction",
+    "complete-instruction",
+    "create-prospect",
+    "update-prospect",
+    "submit-ta-claim",
+    "market-intelligence",
   ]),
   payload: z.record(z.unknown()).default({}),
 });
+
 export async function POST(request: Request) {
   try {
-    const { user } = await resolveRequestIdentity(),
-      { action, payload } = body.parse(await request.json());
+    const { user } = await resolveRequestIdentity();
+    // HARDENING A: per-actor rate limit, matching the pattern already used on comparable
+    // authenticated mutation routes (/api/foundation/users, /api/offline/sync) — this route was
+    // previously unlimited.
+    enforceRateLimit(`field-operations:${user.id}`, 60, 60_000);
+    const { action, payload } = body.parse(await request.json());
     let result;
     if (action === "start-day")
       result = await startFieldDay(prisma, user.id, {
@@ -38,6 +71,8 @@ export async function POST(request: Request) {
             plannedGeographyId: z.string().optional(),
             latitude: z.number().optional(),
             longitude: z.number().optional(),
+            accuracy: z.number().optional(),
+            startExceptionReason: z.string().optional(),
             remarks: z.string().optional(),
           })
           .parse(payload),
@@ -48,6 +83,8 @@ export async function POST(request: Request) {
           sessionId: z.string(),
           latitude: z.number().optional(),
           longitude: z.number().optional(),
+          accuracy: z.number().optional(),
+          endExceptionReason: z.string().optional(),
           remarks: z.string().optional(),
           outcome: z.string(),
         })
@@ -63,6 +100,8 @@ export async function POST(request: Request) {
             retailerId: z.string(),
             latitude: z.number().optional(),
             longitude: z.number().optional(),
+            accuracy: z.number().optional(),
+            gpsExceptionReason: z.string().optional(),
             idempotencyKey: z.string(),
           })
           .parse(payload),
@@ -81,6 +120,10 @@ export async function POST(request: Request) {
           noOrderReason: z.string().optional(),
           followUpAt: z.coerce.date().optional(),
           notes: z.string().optional(),
+          photoExceptionReason: z.string().optional(),
+          latitude: z.number().optional(),
+          longitude: z.number().optional(),
+          accuracy: z.number().optional(),
         })
         .parse(payload);
       result = await executiveCheckOut(prisma, user.id, v.visitId, v);
@@ -90,11 +133,13 @@ export async function POST(request: Request) {
             retailerId: z.string(),
             requestedDeliveryAt: z.coerce.date().optional(),
             notes: z.string().optional(),
+            commercialPaymentType: z.enum(["CASH", "CREDIT"]).optional(),
             lines: z
               .array(
                 z.object({
                   skuId: z.string(),
                   quantity: z.number().positive(),
+                  rate: z.number().positive().optional(),
                 }),
               )
               .min(1),
@@ -108,19 +153,22 @@ export async function POST(request: Request) {
             lifecycle: "ACTIVE",
           },
         });
-      if (!retailer?.distributorId)
-        throw new Error("Retailer has no active Distributor assignment");
+      if (!retailer) throw new Error("Retailer is outside your scope");
+      // placeRetailerOrder itself now resolves an unmapped retailer's Distributor (territory
+      // auto-route, or books unassigned for Manager to resolve) — this route no longer hard-blocks
+      // on a missing distributorId; commercialPartyId here is only the pre-resolution value used
+      // for the FORGED_ASSIGNMENT tamper check when a distributor was already assigned.
       result = await placeRetailerOrder(
         prisma,
         {
           actorId: user.id,
           sourcePortal: "sales-executive",
           commercialPartyType: "DISTRIBUTOR",
-          commercialPartyId: retailer.distributorId,
+          commercialPartyId: retailer.distributorId ?? "",
         },
         v,
       );
-    } else
+    } else if (action === "collection")
       result = await recordCollection(
         prisma,
         user.id,
@@ -134,6 +182,198 @@ export async function POST(request: Request) {
             invoiceRef: z.string().optional(),
             remarks: z.string().optional(),
             idempotencyKey: z.string(),
+          })
+          .parse(payload),
+      );
+    else if (action === "skip-retailer")
+      result = await skipRetailer(
+        prisma,
+        user.id,
+        z
+          .object({
+            workSessionId: z.string(),
+            retailerId: z.string(),
+            reason: z.string().min(1),
+            remarks: z.string().optional(),
+            idempotencyKey: z.string(),
+          })
+          .parse(payload),
+      );
+    else if (action === "route-deviation")
+      result = await recordRouteDeviation(
+        prisma,
+        user.id,
+        z.object({ visitId: z.string(), reason: z.string().min(1) }).parse(payload),
+      );
+    else if (action === "create-retailer")
+      result = await createRetailer(
+        prisma,
+        user.id,
+        z
+          .object({
+            businessName: z.string().min(1),
+            address: z.record(z.unknown()),
+            ownerName: z.string().optional(),
+            mobile: z.string().optional(),
+            alternateMobile: z.string().optional(),
+            pincode: z.string().optional(),
+            shopType: z
+              .enum([
+                "KIRANA",
+                "GENERAL_STORE",
+                "SUPERMARKET",
+                "MINI_MART",
+                "DEPARTMENTAL_STORE",
+                "WHOLESALE_RETAILER",
+                "CHEMIST_PHARMACY",
+                "INSTITUTIONAL_COUNTER",
+                "OTHER",
+              ])
+              .optional(),
+            customerType: z
+              .enum(["RETAILER", "WHOLESALER", "DISTRIBUTOR_PROSPECT", "INSTITUTIONAL_OTHER"])
+              .optional(),
+            gstin: z.string().optional(),
+            distributorId: z.string().optional(),
+            beatId: z.string().optional(),
+            latitude: z.number().optional(),
+            longitude: z.number().optional(),
+            notes: z.string().optional(),
+            confirmDuplicate: z.boolean().optional(),
+            idempotencyKey: z.string(),
+          })
+          .parse(payload),
+      );
+    else if (action === "capture-photo")
+      result = await capturePhoto(
+        prisma,
+        user.id,
+        z
+          .object({
+            visitId: z.string(),
+            photoType: z.enum([
+              "SHOPFRONT",
+              "COUNTER",
+              "PRODUCT_DISPLAY",
+              "BANNER_BRANDING",
+              "MERCHANDISING",
+              "OTHER",
+            ]),
+            fileBase64: z.string().min(1),
+            mimeType: z.string(),
+            originalName: z.string(),
+            latitude: z.number().optional(),
+            longitude: z.number().optional(),
+            idempotencyKey: z.string(),
+          })
+          .parse(payload),
+      );
+    else if (action === "photo-exception")
+      result = await recordPhotoException(
+        prisma,
+        user.id,
+        z.object({ visitId: z.string(), reason: z.string().min(1) }).parse(payload),
+      );
+    else if (action === "delete-photo") {
+      const v = z.object({ photoId: z.string(), reason: z.string().min(1) }).parse(payload);
+      result = await deleteVisitPhoto(prisma, user.id, v.photoId, v);
+    } else if (action === "create-follow-up")
+      result = await createFollowUp(
+        prisma,
+        user.id,
+        z
+          .object({
+            type: z.string(),
+            retailerId: z.string().optional(),
+            prospectId: z.string().optional(),
+            visitId: z.string().optional(),
+            dueDate: z.coerce.date(),
+            priority: z.enum(["NORMAL", "HIGH"]).optional(),
+            note: z.string().min(1),
+            idempotencyKey: z.string(),
+          })
+          .parse(payload),
+      );
+    else if (action === "resolve-follow-up") {
+      const v = z.object({ followUpId: z.string(), resolutionNote: z.string().optional() }).parse(payload);
+      result = await resolveFollowUp(prisma, user.id, v.followUpId, v);
+    } else if (action === "acknowledge-instruction") {
+      const v = z.object({ instructionId: z.string() }).parse(payload);
+      result = await acknowledgeInstruction(prisma, user.id, v.instructionId);
+    } else if (action === "complete-instruction") {
+      const v = z.object({ instructionId: z.string(), remarks: z.string().optional() }).parse(payload);
+      result = await completeInstruction(prisma, user.id, v.instructionId, v);
+    } else if (action === "create-prospect")
+      result = await createDistributorProspect(
+        prisma,
+        user.id,
+        z
+          .object({
+            businessName: z.string().min(1),
+            mobile: z.string().min(10),
+            alternateMobile: z.string().optional(),
+            areaId: z.string().optional(),
+            geographyType: z.string().optional(),
+            existingBrands: z.string().optional(),
+            expectedVolume: z.string().optional(),
+            sampleGiven: z.boolean().optional(),
+            sampleDetails: z.string().optional(),
+            notes: z.string().optional(),
+            profile: z.record(z.unknown()).default({}),
+            followUpAt: z.coerce.date().optional(),
+            confirmDuplicate: z.boolean().optional(),
+          })
+          .parse(payload),
+      );
+    else if (action === "update-prospect") {
+      const v = z
+        .object({
+          prospectId: z.string(),
+          stage: z.enum(["NEW", "CONTACTED", "INTERESTED", "FOLLOW_UP", "EVALUATION", "APPROVAL", "ACTIVATED", "NOT_INTERESTED"]),
+          interest: z.string().optional(),
+          recommendation: z.string().optional(),
+          notes: z.string().optional(),
+          followUpAt: z.coerce.date().optional(),
+        })
+        .parse(payload);
+      result = await updateDistributorProspect(prisma, user.id, v.prospectId, v);
+    } else if (action === "submit-ta-claim")
+      result = await submitTaClaim(
+        prisma,
+        user.id,
+        z
+          .object({
+            workSessionId: z.string(),
+            managerId: z.string().optional(),
+            vehicleType: z.string(),
+            claimedDistanceKm: z.number().nonnegative(),
+            tollAmount: z.number().nonnegative().default(0),
+            parkingAmount: z.number().nonnegative().default(0),
+            dailyAllowance: z.number().nonnegative().default(0),
+            deviationReason: z.string().optional(),
+            remarks: z.string().optional(),
+            proofFileIds: z.array(z.string()).default([]),
+            idempotencyKey: z.string(),
+          })
+          .parse(payload),
+      );
+    else
+      result = await captureMarketIntelligence(
+        prisma,
+        user.id,
+        z
+          .object({
+            retailerId: z.string().optional(),
+            geographyId: z.string().optional(),
+            competitor: z.string().min(1),
+            product: z.string().optional(),
+            price: z.number().optional(),
+            scheme: z.string().optional(),
+            retailerFeedback: z.string().optional(),
+            newLaunch: z.string().optional(),
+            shelfDisplay: z.string().optional(),
+            marketIssue: z.string().optional(),
+            workSessionId: z.string().optional(),
           })
           .parse(payload),
       );

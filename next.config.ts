@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
-const scriptPolicy = process.env.SEERA_LOCAL_QA === "true" && process.env.NODE_ENV !== "production"
+// Next.js dev mode (webpack HMR/fast-refresh) executes its bundle via eval() — without
+// 'unsafe-eval' the CSP silently blocks the entire client bundle from running, so React never
+// hydrates and every onClick/onSubmit handler is inert (P0 login blocker, 2026-08-10: the form
+// fell back to a native, action-less HTML POST that reloads the page and clears the fields, with
+// no error surfaced because no JS was running to show one). This never weakens the production
+// policy — `next build`/`next start` always set NODE_ENV=production — so gating purely on that,
+// with no extra manual flag to remember, is safe and removes the operational footgun that caused
+// this to recur after already being diagnosed once (see SEERA_V1_INTEGRATED_DEFECT_REGISTER.md
+// IV-006, previously "fixed" only by remembering to set SEERA_LOCAL_QA=true).
+const scriptPolicy = process.env.NODE_ENV !== "production"
   ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
   : "script-src 'self' 'unsafe-inline'";
 

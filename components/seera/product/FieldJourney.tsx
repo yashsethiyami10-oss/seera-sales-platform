@@ -1,323 +1,1485 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import styles from "./FieldJourney.module.css";
-type Retailer = { id: string; label: string; detail: string };
-type Sku = { id: string; label: string; price: string };
-async function send(action: string, payload: Record<string, unknown>) {
-  const response = await fetch("/api/field/operations", {
+import { queueOfflineOperation, syncClientQueue, listClientQueue } from "@/lib/phase-11/offline-client";
+import { captureGps, GpsBadge, type GpsStatus, type GpsPoint } from "./gps";
+
+type BeatRetailer = {
+  id: string;
+  businessName: string;
+  ownerName: string | null;
+  mobile: string | null;
+  distributorId: string | null;
+  followUpAt: Date | null;
+  visitStatus: string | null;
+};
+type Sku = { id: string; brand: string; productName: string; packLabel: string; price: string; rate: number };
+type Photo = { id: string; photoType: string; capturedAt: string };
+type Visit = {
+  id: string;
+  retailerId: string;
+  retailerName: string;
+  retailerMobile: string | null;
+  retailerArea: string | null;
+  distributorId: string | null;
+  checkedInAt: string;
+  photos: Photo[];
+};
+type Dashboard = {
+  employeeName: string;
+  employeeCode: string;
+  manager: string | null;
+  territory: string | null;
+  dayStatus: "NOT_STARTED" | "ACTIVE" | "ENDED";
+  target: {
+    value: number;
+    achieved: number;
+    remaining: number;
+    achievementPct: number;
+    daysRemaining: number;
+    requiredDailyRunRate: number;
+  } | null;
+  today: {
+    planned: number;
+    visited: number;
+    productive: number;
+    skipped: number;
+    orders: number;
+    bookedValue: number;
+    followUpsDue: number;
+    newRetailers: number;
+    distributorProspects: number;
+    photos: number;
+  };
+};
+type OrderLine = { key: string; skuId: string; quantity: number; rate: number; brandFilter: string; search: string };
+type WorkingType = "RETAILING" | "DISTRIBUTOR_SEARCH" | "DISTRIBUTOR_VISIT" | "WHOLESALE_MARKET" | "OTHER";
+
+// Normalized action outcome — business/validation failures (photo required, duplicate customer,
+// permission denied, network failure) are DATA, never a thrown exception. An uncaught throw from a
+// fetch callback that nobody awaits/`.catch()`s becomes an unhandled promise rejection, which
+// Next.js's dev-mode overlay surfaces as a scary runtime-error screen for what is really just a
+// normal "please add a photo" validation message — that was the actual cause of the runtime
+// overlay reported from this file's old send().
+type ActionOutcome =
+  | { success: true; data: any }
+  | { success: false; code: string; message: string; details?: Record<string, unknown> };
+
+async function send(action: string, payload: Record<string, unknown>): Promise<ActionOutcome> {
+  let response: Response;
+  try {
+    response = await fetch("/api/field/operations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, payload }),
-    }),
-    data = await response.json().catch(() => ({}));
+    });
+  } catch {
+    // fetch() itself failed to complete — a real network-layer problem (offline/DNS/CORS), not a
+    // business rejection from the server.
+    return { success: false, code: "NETWORK_ERROR", message: "Could not save. Please retry." };
+  }
+  const data = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new Error(
-      data?.error?.message ?? data?.error?.code ?? "Action failed",
-    );
-  return data;
+    return {
+      success: false,
+      code: data?.error?.code ?? "ACTION_FAILED",
+      message: data?.error?.message ?? data?.error?.code ?? "Action failed",
+      details: data?.error?.details,
+    };
+  return { success: true, data };
+}
+// After checkout (or starting the day, or opening Add Customer), the screen content underneath
+// the user's finger swaps to a fresh state, but the browser keeps whatever scroll position it had
+// on the previous (often long) form — so the new "Next customer" section renders correctly but is
+// invisible below the fold, reading as if nothing happened / as if it's buried further down the
+// page. Force the viewport back to the top of the journey card at every such transition.
+function scrollToJourneyTop() {
+  if (typeof document === "undefined") return;
+  document.getElementById("field-journey-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 const key = () => crypto.randomUUID();
+const blankOrderLine = (): OrderLine => ({ key: key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "" });
+// The offline sync API rejects any queued operation whose sessionContext.sessionId doesn't match
+// the server-side Session row that's live at sync time (a deliberate staleness/identity check —
+// see app/api/offline/sync/route.ts's STALE_DEVICE_SESSION check) — this used to be hardcoded to
+// the literal string "field-session", which could never match a real session id, so every synced
+// operation was unconditionally rejected and "Sync now" could never actually drain the queue.
+// Fetched once per page load and cached; a stale cached id from a since-ended session correctly
+// still gets rejected server-side (that's the check doing its job), it just won't be masked by a
+// placeholder that was *always* wrong.
+let cachedSessionId: string | null = null;
+async function currentSessionId(): Promise<string> {
+  if (cachedSessionId) return cachedSessionId;
+  try {
+    const response = await fetch("/api/auth/session");
+    const data = await response.json();
+    cachedSessionId = typeof data?.sessionId === "string" && data.sessionId ? data.sessionId : "unknown-session";
+  } catch {
+    cachedSessionId = "unknown-session";
+  }
+  return cachedSessionId ?? "unknown-session";
+}
+const deviceId = () => {
+  if (typeof window === "undefined") return "server";
+  const stored = window.localStorage.getItem("seera-device-id");
+  if (stored) return stored;
+  const created = `device-${crypto.randomUUID()}`;
+  window.localStorage.setItem("seera-device-id", created);
+  return created;
+};
+
+// Tries the live API first; if the browser genuinely has no network (or the fetch itself fails at
+// the network layer, not a business-rule rejection), the same action is queued idempotently through
+// the existing offline engine instead of being lost. A conflict (e.g. Distributor mapping changed)
+// surfaces later, at sync time, through the shared offline queue/status UI.
+async function runOrQueue(
+  action: string,
+  payload: Record<string, unknown>,
+  offline: { entityType: string; actionType: string } | null,
+): Promise<ActionOutcome | { queued: true }> {
+  const offlineCapable = Boolean(offline);
+  if (offlineCapable && typeof navigator !== "undefined" && !navigator.onLine) {
+    await queueOfflineOperation({
+      clientOperationId: String(payload.idempotencyKey ?? key()),
+      deviceId: deviceId(),
+      sessionContext: { sessionId: await currentSessionId(), appVersion: "1", platform: "web" },
+      entityType: offline!.entityType,
+      actionType: offline!.actionType,
+      localCreatedAt: new Date().toISOString(),
+      payloadVersion: 1,
+      payload,
+    });
+    return { queued: true as const };
+  }
+  const result = await send(action, payload);
+  if (!result.success && result.code === "NETWORK_ERROR" && offlineCapable) {
+    await queueOfflineOperation({
+      clientOperationId: String(payload.idempotencyKey ?? key()),
+      deviceId: deviceId(),
+      sessionContext: { sessionId: await currentSessionId(), appVersion: "1", platform: "web" },
+      entityType: offline!.entityType,
+      actionType: offline!.actionType,
+      localCreatedAt: new Date().toISOString(),
+      payloadVersion: 1,
+      payload,
+    });
+    return { queued: true as const };
+  }
+  return result;
+}
+
+function DashboardHeader({
+  language,
+  dashboard,
+}: {
+  language: "EN" | "HI";
+  dashboard: Dashboard;
+}) {
+  const hi = language === "HI";
+  return (
+    <section id="field-journey-top" className={styles.journey}>
+      <div className={styles.dashboard}>
+        <div className="idRow">
+          <span>
+            <strong>{dashboard.employeeName}</strong> · {dashboard.employeeCode}
+          </span>
+          {dashboard.manager && (
+            <span>
+              {hi ? "प्रबंधक" : "Manager"}: {dashboard.manager}
+            </span>
+          )}
+          {dashboard.territory && (
+            <span>
+              {hi ? "क्षेत्र" : "Territory"}: {dashboard.territory}
+            </span>
+          )}
+          <span className={styles.pill} data-status={dashboard.dayStatus === "ACTIVE" ? "PRODUCTIVE" : undefined}>
+            {dashboard.dayStatus === "ACTIVE"
+              ? hi
+                ? "दिन सक्रिय"
+                : "Day active"
+              : dashboard.dayStatus === "ENDED"
+                ? hi
+                  ? "दिन समाप्त"
+                  : "Day ended"
+                : hi
+                  ? "दिन शुरू नहीं हुआ"
+                  : "Day not started"}
+          </span>
+        </div>
+        {dashboard.target && (
+          <dl className={styles.statGrid}>
+            <div>
+              <dt>{hi ? "मासिक लक्ष्य" : "Monthly target"}</dt>
+              <dd>₹{dashboard.target.value.toLocaleString("en-IN")}</dd>
+            </div>
+            <div>
+              <dt>{hi ? "योग्य वितरित" : "Eligible delivered"}</dt>
+              <dd>₹{dashboard.target.achieved.toLocaleString("en-IN")}</dd>
+            </div>
+            <div>
+              <dt>{hi ? "शेष" : "Remaining"}</dt>
+              <dd>₹{dashboard.target.remaining.toLocaleString("en-IN")}</dd>
+            </div>
+            <div>
+              <dt>{hi ? "उपलब्धि %" : "Achievement %"}</dt>
+              <dd>{dashboard.target.achievementPct}%</dd>
+            </div>
+            <div>
+              <dt>{hi ? "शेष दिन" : "Days remaining"}</dt>
+              <dd>{dashboard.target.daysRemaining}</dd>
+            </div>
+            <div>
+              <dt>{hi ? "आवश्यक दैनिक दर" : "Required daily run rate"}</dt>
+              <dd>₹{dashboard.target.requiredDailyRunRate.toLocaleString("en-IN")}</dd>
+            </div>
+          </dl>
+        )}
+        <dl className={styles.statGrid}>
+          <div>
+            <dt>{hi ? "योजनाबद्ध" : "Planned"}</dt>
+            <dd>{dashboard.today.planned}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "देखे गए" : "Visited"}</dt>
+            <dd>{dashboard.today.visited}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "उत्पादक" : "Productive"}</dt>
+            <dd>{dashboard.today.productive}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "छोड़े गए" : "Skipped"}</dt>
+            <dd>{dashboard.today.skipped}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
+            <dd>{dashboard.today.orders}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "बुक मूल्य" : "Booked value"}</dt>
+            <dd>₹{dashboard.today.bookedValue.toLocaleString("en-IN")}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "फॉलो-अप देय" : "Follow-ups due"}</dt>
+            <dd>{dashboard.today.followUpsDue}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "फ़ोटो" : "Photos"}</dt>
+            <dd>{dashboard.today.photos}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "वितरक संभावना" : "Distributor prospects"}</dt>
+            <dd>{dashboard.today.distributorProspects}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+const CUSTOMER_TYPES = [
+  ["RETAILER", "Retailer", "खुदरा विक्रेता"],
+  ["WHOLESALER", "Wholesaler", "थोक विक्रेता"],
+  ["DISTRIBUTOR_PROSPECT", "Distributor prospect", "वितरक संभावना"],
+  ["INSTITUTIONAL_OTHER", "Institutional / other business", "संस्थागत / अन्य व्यवसाय"],
+] as const;
+
+const WORK_TYPES = [
+  ["RETAILING", "Retail Market / Beat Work", "खुदरा बाज़ार / बीट कार्य"],
+  ["DISTRIBUTOR_SEARCH", "Distributor Search / Appointment", "वितरक खोज / नियुक्ति"],
+  ["DISTRIBUTOR_VISIT", "Distributor Visit", "वितरक विज़िट"],
+  ["WHOLESALE_MARKET", "Wholesale Market Work", "थोक बाज़ार कार्य"],
+  ["OTHER", "Other Authorized Field Work", "अन्य अधिकृत फील्ड कार्य"],
+] as const;
+
 export function FieldJourney({
   language,
+  dashboard,
   session,
   visit,
-  retailers,
+  beatRetailers,
+  hasPublishedPlan,
   skus,
 }: {
   language: "EN" | "HI";
-  session?: { id: string; startedAt: string };
-  visit?: { id: string; retailerId: string; retailerName: string };
-  retailers: Retailer[];
+  dashboard: Dashboard;
+  session?: { id: string; startedAt: string; workingType: string };
+  visit?: Visit;
+  beatRetailers: BeatRetailer[];
+  hasPublishedPlan: boolean;
   skus: Sku[];
 }) {
   const hi = language === "HI",
     router = useRouter(),
+    fileRef = useRef<HTMLInputElement>(null),
     [busy, setBusy] = useState(false),
-    [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
-      null,
-    ),
-    [mode, setMode] = useState<"ORDER" | "COLLECTION" | "NOTE">("ORDER");
-  const run = async (action: string, payload: Record<string, unknown>) => {
-    setBusy(true);
+    [busyLabel, setBusyLabel] = useState<string | null>(null),
+    [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null),
+    [mode, setMode] = useState<"ORDER" | "PHOTO" | "FOLLOW_UP">("ORDER"),
+    [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine()]),
+    [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
+    [photoPreview, setPhotoPreview] = useState<string | null>(null),
+    [showEndDayPreview, setShowEndDayPreview] = useState(false),
+    [showAddCustomer, setShowAddCustomer] = useState(false),
+    [duplicateWarning, setDuplicateWarning] = useState<{ similar: { id: string; businessName: string; mobile: string | null }[] } | null>(null),
+    [gpsStatus, setGpsStatus] = useState<GpsStatus>("IDLE"),
+    [startWorkingType, setStartWorkingType] = useState<WorkingType>("RETAILING"),
+    [pendingSyncCount, setPendingSyncCount] = useState(0);
+
+  // FieldJourney stays mounted as the SAME component instance across the whole day — moving from
+  // an active visit to "Next customer", or from one customer's visit to the next, only changes
+  // props (visit goes from defined -> undefined -> a new id), it never remounts the component. Without
+  // this, local state (photo preview, order lines, payment type, the success/error message, the
+  // uncontrolled file input's selected file) silently carries over from the previous customer —
+  // showing a stale photo, a stale "saved successfully" message, or stale order data on what looks
+  // like a fresh screen. Reset everything visit-scoped whenever the active visit identity changes.
+  useEffect(() => {
     setMessage(null);
-    try {
-      await send(action, payload);
+    setMode("ORDER");
+    setOrderLines([blankOrderLine()]);
+    setPaymentType("CREDIT");
+    setPhotoPreview(null);
+    setDuplicateWarning(null);
+    setBusy(false);
+    setBusyLabel(null);
+    if (fileRef.current) fileRef.current.value = "";
+    scrollToJourneyTop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visit?.id]);
+
+  // Same reasoning as above, for the transition into today's very first screen once Start Day
+  // succeeds (session goes from undefined to defined) — the Start Day button can sit low on the
+  // page, so the freshly-rendered "Next customer" screen needs the same explicit scroll-up.
+  useEffect(() => {
+    if (session?.id) scrollToJourneyTop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
+
+  const skuById = new Map(skus.map((s) => [s.id, s]));
+  const brands = Array.from(new Set(skus.map((s) => s.brand))).sort();
+  // Rate is editable by the Executive (Founder decision — no fixed catalog price is forced on the
+  // field-order screen), so the order total is always computed from what's actually typed into
+  // each line's Rate field, never silently re-derived from the catalog price behind the scenes.
+  const orderTotal = orderLines.reduce((sum, line) => sum + (line.rate || 0) * (line.quantity || 0), 0);
+
+  // Never throws — a business/validation failure is reported through `message` like any other
+  // outcome, so `void run(...)` at every call site is safe with no `.catch()` required anywhere,
+  // and a failed action can never surface as an unhandled-promise-rejection runtime overlay.
+  const run = async (
+    action: string,
+    payload: Record<string, unknown>,
+    offline: { entityType: string; actionType: string } | null = null,
+    successText?: string,
+    busyText?: string,
+  ): Promise<ActionOutcome | { queued: true }> => {
+    setBusy(true);
+    setBusyLabel(busyText ?? null);
+    setMessage(null);
+    const result = await runOrQueue(action, payload, offline);
+    setBusy(false);
+    setBusyLabel(null);
+    if ("queued" in result) {
       setMessage({
         ok: true,
         text: hi
-          ? "कार्रवाई सुरक्षित रूप से सहेजी गई।"
-          : "Action saved securely.",
+          ? "कोई नेटवर्क नहीं — कार्रवाई सुरक्षित रूप से सिंक के लिए कतार में है।"
+          : "No network — action is safely queued to sync.",
+      });
+    } else if (result.success) {
+      setMessage({
+        ok: true,
+        text: successText ?? (hi ? "कार्रवाई सुरक्षित रूप से सहेजी गई।" : "Action saved securely."),
       });
       router.refresh();
-    } catch (error) {
-      setMessage({
-        ok: false,
-        text: error instanceof Error ? error.message : "Action failed",
-      });
-    } finally {
-      setBusy(false);
+    } else {
+      setMessage({ ok: false, text: result.message });
     }
+    return result;
   };
+
+  const header = <DashboardHeader language={language} dashboard={dashboard} />;
+
+  // ---------------------------------------------------------------- Start Day ----
   if (!session)
     return (
-      <section className={styles.journey}>
-        <header>
-          <span>1</span>
+      <>
+        {header}
+        <section className={styles.journey}>
+          <header>
+            <span>1</span>
+            <div>
+              <small>{hi ? "फील्ड दिवस" : "FIELD DAY"}</small>
+              <h2>{hi ? "आज का काम शुरू करें" : "Start today’s work"}</h2>
+              <p>
+                {hasPublishedPlan
+                  ? hi
+                    ? `आज ${beatRetailers.length} खुदरा विक्रेता योजनाबद्ध हैं।`
+                    : `${beatRetailers.length} customers are planned for today.`
+                  : hi
+                    ? "आज के लिए कोई मार्ग निर्दिष्ट नहीं किया गया है — फिर भी काम शुरू करें और ग्राहक जोड़ें।"
+                    : "No route assigned for today — you can still start work and add customers as you go."}
+              </p>
+            </div>
+          </header>
           <div>
-            <small>{hi ? "फील्ड दिवस" : "FIELD DAY"}</small>
-            <h2>{hi ? "आज का काम शुरू करें" : "Start today’s work"}</h2>
-            <p>
-              {hi
-                ? "स्थान अनुमति स्थिति की पुष्टि करें और आज की बीट शुरू करें।"
-                : "Confirm location permission status and begin today’s beat."}
-            </p>
-          </div>
-        </header>
-        <button
-          className={styles.primary}
-          disabled={busy}
-          onClick={() =>
-            run("start-day", {
-              workingType: "RETAILING",
-              remarks: "Started from field portal",
-            })
-          }
-        >
-          {hi ? "दिन शुरू करें" : "Start day"}
-        </button>
-        {message && (
-          <p role="status" data-ok={message.ok}>
-            {message.text}
-          </p>
-        )}
-      </section>
-    );
-  if (!visit)
-    return (
-      <section className={styles.journey}>
-        <header>
-          <span>2</span>
-          <div>
-            <small>{hi ? "आज की बीट" : "TODAY’S BEAT"}</small>
-            <h2>
-              {hi ? "अगला खुदरा विक्रेता चुनें" : "Choose the next retailer"}
-            </h2>
-            <p>
-              {hi
-                ? `दिन ${new Date(session.startedAt).toLocaleTimeString("hi-IN", { hour: "2-digit", minute: "2-digit" })} पर शुरू हुआ।`
-                : `Day started at ${new Date(session.startedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}.`}
-            </p>
-          </div>
-        </header>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            void run("check-in", {
-              workSessionId: session.id,
-              retailerId: String(f.get("retailerId")),
-              idempotencyKey: key(),
-            });
-          }}
-        >
-          <label>
-            {hi ? "खुदरा विक्रेता खोजें / चुनें" : "Search / select retailer"}
-            <select name="retailerId" required>
-              <option value="">
-                {hi ? "व्यवसाय नाम से चुनें" : "Choose by business name"}
-              </option>
-              {retailers.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label} · {r.detail}
-                </option>
+            <strong>{hi ? "आज का कार्य प्रकार" : "Today's work type"}</strong>
+            <div className={styles.workTypeGrid}>
+              {WORK_TYPES.map(([value, en, hiLabel]) => (
+                <label key={value} className={styles.workTypeOption} data-active={startWorkingType === value}>
+                  <input
+                    type="radio"
+                    name="workingType"
+                    value={value}
+                    checked={startWorkingType === value}
+                    onChange={() => setStartWorkingType(value as WorkingType)}
+                  />
+                  {hi ? hiLabel : en}
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
+          <div className={styles.gpsRow}>
+            <GpsBadge language={language} status={gpsStatus} />
+          </div>
           <button
             className={styles.primary}
-            disabled={busy || !retailers.length}
+            disabled={busy}
+            onClick={async () => {
+              // Set busy synchronously, before the GPS await, so a second tap while the (often
+              // slow, permission-prompting) location lookup is in flight can't fire a second,
+              // concurrent submission — that race was the actual cause of "Active workday not
+              // found" / duplicate-start reports: the button only looked disabled once run()
+              // itself set busy, well after captureGps() had already started.
+              setBusy(true);
+              setGpsStatus("LOCATING");
+              const { status, point } = await captureGps();
+              setGpsStatus(status);
+              let startExceptionReason: string | undefined;
+              if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
+                startExceptionReason =
+                  window.prompt(
+                    hi
+                      ? "GPS उपलब्ध नहीं है। दिन शुरू करने का कारण दर्ज करें।"
+                      : "GPS is not available. Enter a reason to start the day anyway.",
+                  ) ?? undefined;
+                if (!startExceptionReason) {
+                  setBusy(false);
+                  return;
+                }
+              }
+              void run(
+                "start-day",
+                {
+                  workingType: startWorkingType,
+                  latitude: point.latitude,
+                  longitude: point.longitude,
+                  accuracy: point.accuracy,
+                  startExceptionReason,
+                  remarks: "Started from field portal",
+                },
+                null,
+                hi ? "दिन शुरू हुआ।" : "Day started.",
+                hi ? "दिन शुरू हो रहा है…" : "Starting day…",
+              );
+            }}
           >
-            {hi ? "चेक-इन करें" : "Check in"}
+            {busy ? (busyLabel ?? (hi ? "दिन शुरू हो रहा है…" : "Starting day…")) : hi ? "दिन शुरू करें" : "Start day"}
           </button>
-        </form>
-        <button
-          className={styles.secondary}
-          disabled={busy}
-          onClick={() =>
-            run("end-day", {
-              sessionId: session.id,
-              outcome: "COMPLETED",
-              remarks: "Completed from field portal",
-            })
-          }
-        >
-          {hi ? "दिन समाप्त करें" : "End day"}
-        </button>
-        {message && (
-          <p role="status" data-ok={message.ok}>
-            {message.text}
-          </p>
-        )}
-      </section>
+          {message && (
+            <p role="status" data-ok={message.ok}>
+              {message.text}
+            </p>
+          )}
+        </section>
+      </>
     );
-  return (
+
+  const isProspectMode = session.workingType === "DISTRIBUTOR_SEARCH" || session.workingType === "DISTRIBUTOR_VISIT";
+
+  const addCustomerForm = (
     <section className={styles.journey}>
       <header>
-        <span>3</span>
+        <span>+</span>
         <div>
-          <small>{hi ? "सक्रिय विज़िट" : "ACTIVE VISIT"}</small>
-          <h2>{visit.retailerName}</h2>
+          <small>{hi ? "नया ग्राहक" : "NEW CUSTOMER"}</small>
+          <h2>{hi ? "ग्राहक जोड़ें" : "Add customer"}</h2>
           <p>
             {hi
-              ? "ऑर्डर, संग्रह या नोट दर्ज करें; फिर चेकआउट करें।"
-              : "Record an order, collection or note, then check out."}
+              ? "केवल दुकान का नाम और क्षेत्र आवश्यक है। बाकी सब वैकल्पिक है।"
+              : "Only the shop name and area are required. Everything else is optional."}
           </p>
         </div>
       </header>
-      <div className={styles.tabs}>
-        {(["ORDER", "COLLECTION", "NOTE"] as const).map((x) => (
-          <button key={x} data-active={mode === x} onClick={() => setMode(x)}>
-            {x}
-          </button>
-        ))}
-      </div>
-      {mode === "ORDER" && (
+      {duplicateWarning ? (
+        <div className={styles.note}>
+          <strong>{hi ? "मिलती-जुलती दुकान पहले से मौजूद है" : "A similar customer may already exist"}</strong>
+          <ul>
+            {duplicateWarning.similar.map((s) => (
+              <li key={s.id}>
+                {s.businessName} {s.mobile ? `· ${s.mobile}` : ""}
+              </li>
+            ))}
+          </ul>
+          <div className={styles.quickActions}>
+            <button
+              className={styles.primary}
+              disabled={busy}
+              onClick={async () => {
+                const form = document.getElementById("add-customer-form") as HTMLFormElement | null;
+                if (!form) return;
+                await submitAddCustomer(new FormData(form), true);
+              }}
+            >
+              {hi ? "फिर भी सहेजें" : "Save anyway"}
+            </button>
+            <button onClick={() => setDuplicateWarning(null)}>{hi ? "वापस" : "Back"}</button>
+          </div>
+        </div>
+      ) : (
         <form
-          onSubmit={(e) => {
+          id="add-customer-form"
+          onSubmit={async (e) => {
             e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            void run("place-order", {
-              retailerId: visit.retailerId,
-              idempotencyKey: key(),
-              notes: String(f.get("notes") ?? ""),
-              lines: [
-                {
-                  skuId: String(f.get("skuId")),
-                  quantity: Number(f.get("quantity")),
-                },
-              ],
-            });
+            await submitAddCustomer(new FormData(e.currentTarget), false);
           }}
         >
           <label>
-            {hi ? "उत्पाद / SKU" : "Product / SKU"}
-            <select name="skuId" required>
-              <option value="">{hi ? "उत्पाद चुनें" : "Choose product"}</option>
-              {skus.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label} · {s.price}
+            {hi ? "दुकान / फर्म का नाम *" : "Firm / Shop / Customer name *"}
+            <input name="businessName" required />
+          </label>
+          <label>
+            {hi ? "क्षेत्र / पता *" : "Area / Address *"}
+            <input name="area" required />
+          </label>
+          <label>
+            {hi ? "मालिक / संपर्क व्यक्ति" : "Owner / Contact person"}
+            <input name="ownerName" />
+          </label>
+          <label>
+            {hi ? "मोबाइल" : "Mobile"}
+            <input name="mobile" inputMode="tel" />
+          </label>
+          <label>
+            {hi ? "वैकल्पिक मोबाइल" : "Alternate mobile"}
+            <input name="alternateMobile" inputMode="tel" />
+          </label>
+          <label>
+            {hi ? "ग्राहक प्रकार" : "Customer type"}
+            <select name="customerType" defaultValue="RETAILER">
+              {CUSTOMER_TYPES.map(([value, en, hiLabel]) => (
+                <option key={value} value={value}>
+                  {hi ? hiLabel : en}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            {hi ? "मात्रा" : "Quantity"}
-            <input name="quantity" type="number" min="1" step="1" required />
+            {hi ? "पिनकोड" : "Pincode"}
+            <input name="pincode" inputMode="numeric" />
           </label>
           <label>
-            {hi ? "ऑर्डर टिप्पणी" : "Order note"}
+            {hi ? "GSTIN" : "GSTIN"}
+            <input name="gstin" />
+          </label>
+          <label>
+            {hi ? "टिप्पणी" : "Notes"}
             <input name="notes" />
           </label>
-          <button className={styles.primary} disabled={busy || !skus.length}>
-            {hi ? "ऑर्डर सहेजें" : "Save order"}
-          </button>
-        </form>
-      )}
-      {mode === "COLLECTION" && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            void run("collection", {
-              retailerId: visit.retailerId,
-              amount: Number(f.get("amount")),
-              paymentMode: String(f.get("paymentMode")),
-              reference: String(f.get("reference") ?? "") || undefined,
-              remarks: String(f.get("remarks") ?? ""),
-              idempotencyKey: key(),
-            });
-          }}
-        >
-          <label>
-            {hi ? "राशि" : "Amount"}
-            <input
-              name="amount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
-            />
-          </label>
-          <label>
-            {hi ? "भुगतान प्रकार" : "Payment mode"}
-            <select name="paymentMode">
-              <option>UPI</option>
-              <option>CASH</option>
-              <option>BANK_TRANSFER</option>
-              <option>CHEQUE</option>
-            </select>
-          </label>
-          <label>
-            {hi ? "संदर्भ" : "Reference"}
-            <input name="reference" />
-          </label>
-          <label>
-            {hi ? "टिप्पणी" : "Remarks"}
-            <input name="remarks" />
-          </label>
           <button className={styles.primary} disabled={busy}>
-            {hi ? "संग्रह सहेजें" : "Save collection"}
+            {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "सहेजें और चेक-इन करें" : "Save & check in"}
+          </button>
+          <button type="button" disabled={busy} onClick={() => setShowAddCustomer(false)}>
+            {hi ? "रद्द करें" : "Cancel"}
           </button>
         </form>
       )}
-      {mode === "NOTE" && (
-        <p className={styles.note}>
-          {hi
-            ? "चेकआउट के समय फॉलो-अप या नो-ऑर्डर टिप्पणी दर्ज करें।"
-            : "Add follow-up or no-order notes during checkout."}
-        </p>
-      )}
-      <form
-        className={styles.checkout}
-        onSubmit={(e) => {
-          e.preventDefault();
-          const f = new FormData(e.currentTarget);
-          void run("check-out", {
-            visitId: visit.id,
-            outcome: String(f.get("outcome")),
-            noOrderReason: String(f.get("noOrderReason") ?? "") || undefined,
-            notes: String(f.get("notes") ?? ""),
-          });
-        }}
-      >
-        <label>
-          {hi ? "विज़िट परिणाम" : "Visit outcome"}
-          <select name="outcome">
-            <option value="ORDER_BOOKED">ORDER BOOKED</option>
-            <option value="COLLECTION">COLLECTION</option>
-            <option value="FOLLOW_UP">FOLLOW UP</option>
-            <option value="NO_ORDER">NO ORDER</option>
-            <option value="MARKET_INTELLIGENCE">MARKET INTELLIGENCE</option>
-          </select>
-        </label>
-        <label>
-          {hi ? "कारण / फॉलो-अप" : "Reason / follow-up"}
-          <input name="noOrderReason" />
-        </label>
-        <label>
-          {hi ? "विज़िट टिप्पणी" : "Visit note"}
-          <input name="notes" />
-        </label>
-        <button className={styles.secondary} disabled={busy}>
-          {hi ? "चेकआउट और अगला" : "Checkout & next"}
-        </button>
-      </form>
       {message && (
         <p role="status" data-ok={message.ok}>
           {message.text}
         </p>
       )}
     </section>
+  );
+
+  async function submitAddCustomer(f: FormData, confirmDuplicate: boolean) {
+    setBusy(true);
+    setBusyLabel(hi ? "ग्राहक जोड़ा जा रहा है…" : "Adding customer…");
+    setMessage(null);
+    setGpsStatus("LOCATING");
+    const { status, point } = await captureGps();
+    setGpsStatus(status);
+    const idempotencyKey = key();
+    const createResult = await send("create-retailer", {
+      businessName: String(f.get("businessName")),
+      address: { area: String(f.get("area")) },
+      ownerName: String(f.get("ownerName") ?? "") || undefined,
+      mobile: String(f.get("mobile") ?? "") || undefined,
+      alternateMobile: String(f.get("alternateMobile") ?? "") || undefined,
+      customerType: String(f.get("customerType") ?? "") || undefined,
+      pincode: String(f.get("pincode") ?? "") || undefined,
+      gstin: String(f.get("gstin") ?? "") || undefined,
+      notes: String(f.get("notes") ?? "") || undefined,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      confirmDuplicate,
+      idempotencyKey,
+    });
+    if (!createResult.success) {
+      setBusy(false);
+      setBusyLabel(null);
+      const similar = createResult.details?.similar as { id: string; businessName: string; mobile: string | null }[] | undefined;
+      if (similar?.length) setDuplicateWarning({ similar });
+      else
+        setMessage({
+          ok: false,
+          text:
+            createResult.code === "SIMILAR_RETAILER_EXISTS"
+              ? hi
+                ? "मिलती-जुलती दुकान पहले से मौजूद है। उसे खोलें या फिर भी सहेजें।"
+                : "A similar customer already exists. Open it or save anyway."
+              : createResult.message,
+        });
+      return;
+    }
+    setDuplicateWarning(null);
+    setShowAddCustomer(false);
+    setBusyLabel(hi ? "चेक-इन हो रहा है…" : "Checking in…");
+    const checkinResult = await send("check-in", {
+      workSessionId: session!.id,
+      retailerId: createResult.data.id,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      accuracy: point.accuracy,
+      idempotencyKey: key(),
+    });
+    setBusy(false);
+    setBusyLabel(null);
+    if (!checkinResult.success) {
+      setMessage({ ok: false, text: checkinResult.message });
+      return;
+    }
+    setMessage({ ok: true, text: hi ? "ग्राहक जोड़ा गया — विज़िट शुरू।" : "Customer added successfully — visit started." });
+    router.refresh();
+  }
+
+  // ---------------------------------------------------------------- Next customer ----
+  if (!visit)
+    return (
+      <>
+        {header}
+        {showAddCustomer ? (
+          addCustomerForm
+        ) : (
+          <section className={styles.journey}>
+            <header>
+              <span>2</span>
+              <div>
+                <small>{hi ? "आज की बीट" : "TODAY'S WORK"}</small>
+                <h2>{hi ? "अगला ग्राहक / विज़िट" : "Next customer / visit"}</h2>
+                <p>
+                  {hi
+                    ? `दिन ${new Date(session.startedAt).toLocaleTimeString("hi-IN", { hour: "2-digit", minute: "2-digit" })} पर शुरू हुआ।`
+                    : `Day started at ${new Date(session.startedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}.`}
+                </p>
+              </div>
+            </header>
+            {gpsStatus !== "IDLE" && (
+              <div className={styles.gpsRow}>
+                <GpsBadge language={language} status={gpsStatus} />
+              </div>
+            )}
+            <div className={styles.quickActions}>
+              <button
+                className={styles.addCustomerCta}
+                onClick={() => {
+                  setMessage(null);
+                  setShowAddCustomer(true);
+                  scrollToJourneyTop();
+                }}
+              >
+                {hi ? "+ ग्राहक जोड़ें" : "+ Add customer"}
+              </button>
+              {/* P0 fix (Founder UAT): a relative "../prospects" href resolves to /portal/prospects
+                  (one directory too high from /portal/sales-executive/today), which 404s and
+                  bounces back to the dashboard — every sibling component in this codebase uses an
+                  absolute path instead; FieldJourney only ever renders for sales-executive. */}
+              <Link href="/portal/sales-executive/prospects">
+                {hi ? "+ वितरक / संभावना विज़िट" : "+ Distributor / prospect visit"}
+              </Link>
+            </div>
+            {isProspectMode && (
+              <p className={styles.note}>
+                {hi
+                  ? "आज का कार्य प्रकार वितरक खोज/विज़िट है। ऊपर 'वितरक / संभावना विज़िट' खोलें, या किसी वास्तविक दुकान पर रुकने के लिए ग्राहक जोड़ें।"
+                  : "Today's work type is Distributor Search/Visit. Open “Distributor / prospect visit” above, or Add customer if you stop at an actual shop."}
+              </p>
+            )}
+            {beatRetailers.length > 0 && (
+              <>
+                <strong>{hi ? "योजनाबद्ध ग्राहक" : "PLANNED CUSTOMERS"}</strong>
+                <div className={styles.beatList}>
+                  {beatRetailers.map((retailer) => (
+                    <div className={styles.beatCard} key={retailer.id}>
+                      <header>
+                        <div>
+                          <h3>{retailer.businessName}</h3>
+                          <p className="meta">
+                            {retailer.ownerName ?? "—"} · {retailer.mobile ?? (hi ? "मोबाइल नहीं" : "No mobile")}
+                          </p>
+                        </div>
+                        {retailer.visitStatus && retailer.visitStatus !== "PENDING" && (
+                          <span className={styles.pill} data-status={retailer.visitStatus}>
+                            {retailer.visitStatus}
+                          </span>
+                        )}
+                        {retailer.followUpAt && new Date(retailer.followUpAt) <= new Date() && (
+                          <span className={styles.pill} data-status="FOLLOW_UP">
+                            {hi ? "फॉलो-अप देय" : "Follow-up due"}
+                          </span>
+                        )}
+                      </header>
+                      {(!retailer.visitStatus || retailer.visitStatus === "PENDING") && (
+                        <div className="rowActions">
+                          <button
+                            data-primary="true"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              setGpsStatus("LOCATING");
+                              const { status, point } = await captureGps();
+                              setGpsStatus(status);
+                              let gpsExceptionReason: string | undefined;
+                              if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
+                                gpsExceptionReason =
+                                  window.prompt(
+                                    hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason",
+                                  ) ?? undefined;
+                                if (!gpsExceptionReason) {
+                                  setBusy(false);
+                                  return;
+                                }
+                              }
+                              void run(
+                                "check-in",
+                                {
+                                  workSessionId: session.id,
+                                  retailerId: retailer.id,
+                                  latitude: point.latitude,
+                                  longitude: point.longitude,
+                                  accuracy: point.accuracy,
+                                  gpsExceptionReason,
+                                  idempotencyKey: key(),
+                                },
+                                { entityType: "SeeraVisit", actionType: "VISIT_DRAFT" },
+                                hi ? "विज़िट शुरू हुई।" : "Visit started.",
+                                hi ? "चेक-इन हो रहा है…" : "Checking in…",
+                              );
+                            }}
+                          >
+                            {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "विज़िट शुरू करें" : "Start visit"}
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => {
+                              const reason = window.prompt(
+                                hi
+                                  ? "छोड़ने का कारण (दुकान बंद / अनुपलब्ध / मार्ग बाधा / आपातकाल / प्रबंधक निर्देश / अन्य)"
+                                  : "Skip reason (Shop Closed / Unavailable / Route Constraint / Emergency / Manager Instruction / Other)",
+                              );
+                              if (!reason) return;
+                              void run(
+                                "skip-retailer",
+                                {
+                                  workSessionId: session.id,
+                                  retailerId: retailer.id,
+                                  reason,
+                                  idempotencyKey: key(),
+                                },
+                                null,
+                                hi ? "रिटेलर छोड़ा गया।" : "Retailer skipped.",
+                              );
+                            }}
+                          >
+                            {hi ? "छोड़ें" : "Skip"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <button
+              className={styles.secondary}
+              disabled={busy}
+              onClick={() => {
+                setShowEndDayPreview(true);
+                listClientQueue()
+                  .then((items) => setPendingSyncCount(items.filter((i) => !["SYNCED", "CANCELLED"].includes(i.status)).length))
+                  .catch(() => {});
+              }}
+            >
+              {hi ? "दिन समाप्त करें" : "End day"}
+            </button>
+            {showEndDayPreview && (
+              <div className={styles.note}>
+                <strong>{hi ? "दिन समाप्ति सारांश" : "End-day summary"}</strong>
+                <dl className={styles.statGrid}>
+                  <div>
+                    <dt>{hi ? "शुरू समय" : "Start time"}</dt>
+                    <dd>
+                      {new Date(session.startedAt).toLocaleTimeString(hi ? "hi-IN" : "en-IN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "देखे गए" : "Visited"}</dt>
+                    <dd>{dashboard.today.visited}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "उत्पादक" : "Productive"}</dt>
+                    <dd>{dashboard.today.productive}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "छोड़े गए" : "Skipped"}</dt>
+                    <dd>{dashboard.today.skipped}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
+                    <dd>{dashboard.today.orders}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "बुक मूल्य" : "Booked value"}</dt>
+                    <dd>₹{dashboard.today.bookedValue.toLocaleString("en-IN")}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "नए ग्राहक" : "New customers"}</dt>
+                    <dd>{dashboard.today.newRetailers}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "वितरक संभावना" : "Distributor prospects"}</dt>
+                    <dd>{dashboard.today.distributorProspects}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "फ़ोटो" : "Photos"}</dt>
+                    <dd>{dashboard.today.photos}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "फॉलो-अप देय" : "Follow-ups due"}</dt>
+                    <dd>{dashboard.today.followUpsDue}</dd>
+                  </div>
+                  <div>
+                    <dt>{hi ? "सिंक लंबित" : "Pending sync"}</dt>
+                    <dd>{pendingSyncCount}</dd>
+                  </div>
+                </dl>
+                {pendingSyncCount > 0 && (
+                  <p className={styles.note}>
+                    {hi
+                      ? `${pendingSyncCount} आइटम अभी भी सिंक होना बाकी है — पुष्टि करने पर पहले सिंक करने की कोशिश की जाएगी। यह डेटा सुरक्षित है और नेटवर्क वापस आने पर बाद में भी सिंक हो सकता है।`
+                      : `${pendingSyncCount} item(s) still need to sync — confirming will try to sync first. This data is safe and can also sync later once you're back online.`}
+                  </p>
+                )}
+                <div className={styles.quickActions}>
+                  <button
+                    className={styles.primary}
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      // Best-effort: try to drain the local offline queue before ending the day,
+                      // so pending visits/orders/photos are synchronized where possible rather
+                      // than silently left behind. Never blocks End Day indefinitely — a real
+                      // network outage just leaves items PENDING (still safe, still queued) and
+                      // the flow continues; only a hung network call could stall this, same risk
+                      // any fetch already carries.
+                      if (typeof navigator !== "undefined" && navigator.onLine) {
+                        setBusyLabel(hi ? "पहले सिंक हो रहा है…" : "Syncing first…");
+                        await syncClientQueue().catch(() => {});
+                      }
+                      setGpsStatus("LOCATING");
+                      const { status, point } = await captureGps();
+                      setGpsStatus(status);
+                      let endExceptionReason: string | undefined;
+                      if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
+                        endExceptionReason =
+                          window.prompt(
+                            hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason",
+                          ) ?? undefined;
+                        if (!endExceptionReason) {
+                          setBusy(false);
+                          return;
+                        }
+                      }
+                      void run(
+                        "end-day",
+                        {
+                          sessionId: session.id,
+                          outcome: "COMPLETED",
+                          latitude: point.latitude,
+                          longitude: point.longitude,
+                          accuracy: point.accuracy,
+                          endExceptionReason,
+                          remarks: "Completed from field portal",
+                        },
+                        { entityType: "SeeraWorkSession", actionType: "DAY_END_DRAFT" },
+                        hi ? "दिन समाप्त हुआ।" : "Day ended.",
+                        hi ? "दिन समाप्त हो रहा है…" : "Ending day…",
+                      );
+                    }}
+                  >
+                    {busy ? (busyLabel ?? (hi ? "दिन समाप्त हो रहा है…" : "Ending day…")) : hi ? "पुष्टि करें और समाप्त करें" : "Confirm & end day"}
+                  </button>
+                  <button disabled={busy} onClick={() => setShowEndDayPreview(false)}>{hi ? "वापस" : "Back"}</button>
+                </div>
+              </div>
+            )}
+            {message && (
+              <p role="status" data-ok={message.ok}>
+                {message.text}
+              </p>
+            )}
+          </section>
+        )}
+      </>
+    );
+
+  const currentDistributorId = beatRetailers.find((r) => r.id === visit.retailerId)?.distributorId ?? visit.distributorId;
+
+  return (
+    <>
+      {header}
+      {/* Keyed by visit.id: this is the hard state boundary the checkout->next-customer flow
+          needs. React fully unmounts and remounts this whole subtree whenever the active visit
+          changes identity (a new check-in, or going back to no visit at all) — which clears every
+          uncontrolled input (order note, checkout note/reason fields, follow-up note) that the
+          visit?.id useEffect above can't reach, since those inputs live in plain DOM, not React
+          state. Without this, Customer B's order form could silently start with Customer A's typed
+          note still sitting in the field. */}
+      <section className={styles.journey} key={visit.id}>
+        <header>
+          <span>3</span>
+          <div>
+            <small>{hi ? "सक्रिय विज़िट" : "ACTIVE VISIT"}</small>
+            <h2>{visit.retailerName}</h2>
+            <p>
+              {visit.retailerMobile ?? (hi ? "मोबाइल उपलब्ध नहीं" : "No mobile")}
+              {visit.retailerArea ? ` · ${visit.retailerArea}` : ""} ·{" "}
+              {hi ? "चेक-इन" : "Checked in"}{" "}
+              {new Date(visit.checkedInAt).toLocaleTimeString(hi ? "hi-IN" : "en-IN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
+        </header>
+        <div className={styles.tabs}>
+          {(["ORDER", "PHOTO", "FOLLOW_UP"] as const).map((x) => (
+            <button key={x} data-active={mode === x} onClick={() => setMode(x)}>
+              {x === "ORDER"
+                ? hi
+                  ? "ऑर्डर"
+                  : "Order"
+                : x === "PHOTO"
+                  ? hi
+                    ? "फ़ोटो"
+                    : "Photo"
+                  : hi
+                    ? "फॉलो-अप"
+                    : "Follow-up"}
+            </button>
+          ))}
+        </div>
+        {mode === "ORDER" && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              const lines = orderLines
+                .filter((line) => line.skuId && line.quantity > 0)
+                .map(({ skuId, quantity, rate }) => ({ skuId, quantity, rate }));
+              if (!lines.length) {
+                setMessage({
+                  ok: false,
+                  text: hi ? "कम से कम एक उत्पाद और मात्रा चुनें।" : "Choose at least one product and quantity.",
+                });
+                return;
+              }
+              if (lines.some((line) => !(line.rate > 0))) {
+                setMessage({
+                  ok: false,
+                  text: hi ? "हर उत्पाद के लिए दर (₹0 से अधिक) दर्ज करें।" : "Enter a rate greater than ₹0 for every product.",
+                });
+                return;
+              }
+              void (async () => {
+                const outcome = await run(
+                  "place-order",
+                  {
+                    retailerId: visit.retailerId,
+                    commercialPartyId: currentDistributorId,
+                    idempotencyKey: key(),
+                    notes: String(f.get("notes") ?? ""),
+                    commercialPaymentType: paymentType,
+                    lines,
+                  },
+                  {
+                    entityType: "SeeraSalesOrder",
+                    actionType: "ORDER_DRAFT",
+                  },
+                  hi ? "ऑर्डर सहेजा गया।" : "Order saved.",
+                  hi ? "ऑर्डर सहेजा जा रहा है…" : "Saving order…",
+                );
+                // Save Order should flow straight into Photo, not leave the Executive on the
+                // same tab (final UI reachability audit fix) — advance on both a live success and
+                // an offline-queued outcome, since either means the order step is done.
+                if ("queued" in outcome || outcome.success) setMode("PHOTO");
+              })();
+            }}
+          >
+            <div className={styles.lineItems}>
+              <strong>{hi ? "ऑर्डर उत्पाद" : "Order products"}</strong>
+              {orderLines.map((line, index) => {
+                const sku = skuById.get(line.skuId);
+                const lineTotal = (line.rate || 0) * (line.quantity || 0);
+                const searchText = line.search.trim().toLowerCase();
+                const visibleSkus = skus.filter(
+                  (s) =>
+                    (line.brandFilter === "ALL" || s.brand === line.brandFilter) &&
+                    (!searchText ||
+                      s.productName.toLowerCase().includes(searchText) ||
+                      s.brand.toLowerCase().includes(searchText) ||
+                      s.packLabel.toLowerCase().includes(searchText)),
+                );
+                const visibleBrands = Array.from(new Set(visibleSkus.map((s) => s.brand)));
+                return (
+                  <div className={styles.lineItem} key={line.key}>
+                    <label>
+                      {hi ? "ब्रांड" : "Brand"}
+                      <div className={styles.workTypeGrid}>
+                        {["ALL", ...brands].map((b) => (
+                          <label key={b} className={styles.workTypeOption} data-active={line.brandFilter === b}>
+                            <input
+                              type="radio"
+                              name={`brand-${line.key}`}
+                              checked={line.brandFilter === b}
+                              onChange={() =>
+                                setOrderLines((current) =>
+                                  current.map((item) => (item.key === line.key ? { ...item, brandFilter: b } : item)),
+                                )
+                              }
+                            />
+                            {b === "ALL" ? (hi ? "सभी" : "All") : b}
+                          </label>
+                        ))}
+                      </div>
+                    </label>
+                    <label>
+                      {hi ? "खोजें (नाम / पैक)" : "Search (name / pack)"}
+                      <input
+                        type="search"
+                        value={line.search}
+                        placeholder={hi ? "उदा. डिटर्जेंट, 1 kg" : "e.g. Detergent, 1 kg"}
+                        onChange={(event) =>
+                          setOrderLines((current) =>
+                            current.map((item) => (item.key === line.key ? { ...item, search: event.target.value } : item)),
+                          )
+                        }
+                      />
+                    </label>
+                    <label>
+                      {hi ? "उत्पाद / वेरिएंट" : "Product / Variant"}
+                      <select
+                        value={line.skuId}
+                        onChange={(event) => {
+                          const chosen = skuById.get(event.target.value);
+                          setOrderLines((current) =>
+                            current.map((item) =>
+                              item.key === line.key
+                                ? { ...item, skuId: event.target.value, rate: chosen?.rate || item.rate }
+                                : item,
+                            ),
+                          );
+                        }}
+                        required
+                      >
+                        <option value="">{hi ? "उत्पाद चुनें" : "Choose product"}</option>
+                        {visibleBrands.map((b) => (
+                          <optgroup key={b} label={b}>
+                            {visibleSkus
+                              .filter((s) => s.brand === b)
+                              .map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.productName} — {s.packLabel}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      {hi ? "मात्रा" : "Quantity"}
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={line.quantity}
+                        onChange={(event) =>
+                          setOrderLines((current) =>
+                            current.map((item) =>
+                              item.key === line.key ? { ...item, quantity: Number(event.target.value) } : item,
+                            ),
+                          )
+                        }
+                        required
+                      />
+                    </label>
+                    <label>
+                      {hi ? "दर (GST सहित)" : "Rate (Incl. GST)"}
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={line.rate || ""}
+                        placeholder={hi ? "दर दर्ज करें" : "Enter rate"}
+                        onChange={(event) =>
+                          setOrderLines((current) =>
+                            current.map((item) =>
+                              item.key === line.key ? { ...item, rate: Number(event.target.value) } : item,
+                            ),
+                          )
+                        }
+                        required
+                      />
+                    </label>
+                    <label>
+                      {hi ? "कुल" : "Total"}
+                      <input value={sku ? `₹${lineTotal.toFixed(2)}` : "—"} readOnly />
+                    </label>
+                    {orderLines.length > 1 && (
+                      <button
+                        className={styles.removeLine}
+                        type="button"
+                        onClick={() => setOrderLines((current) => current.filter((item) => item.key !== line.key))}
+                        aria-label={`${hi ? "उत्पाद हटाएँ" : "Remove product"} ${index + 1}`}
+                      >
+                        {hi ? "हटाएँ" : "Remove"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <button
+                className={styles.addLine}
+                type="button"
+                onClick={() => setOrderLines((current) => [...current, blankOrderLine()])}
+              >
+                {hi ? "+ उत्पाद जोड़ें" : "+ Add product"}
+              </button>
+              <div className={styles.orderTotalRow}>
+                <strong>{hi ? "ऑर्डर कुल" : "Order total"}</strong>
+                <span>₹{orderTotal.toFixed(2)}</span>
+              </div>
+            </div>
+            <label>
+              {hi ? "भुगतान प्रकार" : "Payment type"}
+              <select value={paymentType} onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT")}>
+                <option value="CREDIT">{hi ? "उधार" : "CREDIT"}</option>
+                <option value="CASH">{hi ? "नकद" : "CASH"}</option>
+              </select>
+            </label>
+            <label>
+              {hi ? "ऑर्डर टिप्पणी" : "Order note"}
+              <input name="notes" />
+            </label>
+            <button className={styles.primary} disabled={busy || !skus.length}>
+              {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "ऑर्डर सहेजें" : "Save order"}
+            </button>
+          </form>
+        )}
+        {mode === "PHOTO" && (
+          <div>
+            <div className={styles.photoGrid}>
+              {visit.photos.map((photo) => (
+                <div className={styles.photoThumb} key={photo.id}>
+                  <img src={`/api/field/photos/${photo.id}`} alt={photo.photoType} />
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label={hi ? "हटाएँ" : "Remove"}
+                    onClick={() => {
+                      const reason = window.prompt(hi ? "हटाने का कारण" : "Reason for removing this photo");
+                      if (!reason) return;
+                      void run("delete-photo", { photoId: photo.id, reason }, null, hi ? "फ़ोटो हटाई गई।" : "Photo removed.");
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                setMessage(null);
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => setPhotoPreview(String(reader.result));
+                reader.readAsDataURL(file);
+              }}
+            />
+            {photoPreview && (
+              <div>
+                <img src={photoPreview} alt="" style={{ maxWidth: 220, borderRadius: 10 }} />
+                <div className={styles.quickActions}>
+                  <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}>
+                    {hi ? "फिर से लें" : "Retake"}
+                  </button>
+                </div>
+              </div>
+            )}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const f = new FormData(e.currentTarget),
+                  file = fileRef.current?.files?.[0];
+                if (!file) {
+                  setMessage({ ok: false, text: hi ? "पहले एक फ़ोटो चुनें।" : "Choose a photo first." });
+                  return;
+                }
+                const photoType = String(f.get("photoType"));
+                const reader = new FileReader();
+                reader.onload = () => {
+                  void (async () => {
+                    const base64 = String(reader.result).split(",")[1] ?? "";
+                    const result = await run(
+                      "capture-photo",
+                      {
+                        visitId: visit.id,
+                        photoType,
+                        fileBase64: base64,
+                        mimeType: file.type,
+                        originalName: file.name,
+                        idempotencyKey: key(),
+                      },
+                      null,
+                      hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓",
+                      hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…",
+                    );
+                    // Only clear the preview/selected file once it's actually persisted — on
+                    // failure (unsupported format, too large, network) the preview and the
+                    // selected file stay exactly as they were so the user can just press
+                    // "Add photo" again without re-picking anything, and the inline error from
+                    // `message` explains exactly why it didn't go through.
+                    if ("queued" in result || result.success) {
+                      setPhotoPreview(null);
+                      if (fileRef.current) fileRef.current.value = "";
+                    }
+                  })();
+                };
+                reader.readAsDataURL(file);
+              }}
+            >
+              <label>
+                {hi ? "फ़ोटो प्रकार" : "Photo type"}
+                <select name="photoType">
+                  <option value="SHOPFRONT">{hi ? "दुकान का सामने का हिस्सा" : "Shopfront"}</option>
+                  <option value="COUNTER">{hi ? "काउंटर" : "Counter"}</option>
+                  <option value="PRODUCT_DISPLAY">{hi ? "उत्पाद प्रदर्शन" : "Product display"}</option>
+                  <option value="BANNER_BRANDING">{hi ? "बैनर / ब्रांडिंग" : "Banner / branding"}</option>
+                  <option value="MERCHANDISING">{hi ? "मर्चेंडाइजिंग" : "Merchandising"}</option>
+                  <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+                </select>
+              </label>
+              <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}>
+                {hi ? "कैमरा खोलें" : "Open camera"}
+              </button>
+              <button className={styles.primary} disabled={busy || !photoPreview}>
+                {busy ? (busyLabel ?? (hi ? "अपलोड हो रहा है…" : "Uploading…")) : hi ? "फ़ोटो जोड़ें" : "Add photo"}
+              </button>
+            </form>
+            <p className={styles.note}>
+              {hi
+                ? "फ़ोटो नहीं ले सकते? चेकआउट पर कारण दर्ज करें (रिटेलर ने मना किया / कैमरा खराब / आपातकाल / प्रबंधक-स्वीकृत छूट / अन्य)।"
+                : "Can’t take a photo? Record a reason at checkout (Retailer refused / Camera issue / Emergency / Manager-approved exception / Other)."}
+            </p>
+          </div>
+        )}
+        {mode === "FOLLOW_UP" && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              void run(
+                "create-follow-up",
+                {
+                  type: String(f.get("type")),
+                  retailerId: visit.retailerId,
+                  visitId: visit.id,
+                  dueDate: String(f.get("dueDate")),
+                  priority: String(f.get("priority")),
+                  note: String(f.get("note")),
+                  idempotencyKey: key(),
+                },
+                { entityType: "SeeraFollowUp", actionType: "FOLLOW_UP_DRAFT" },
+                hi ? "फॉलो-अप सहेजा गया।" : "Follow-up saved.",
+                hi ? "फॉलो-अप सहेजा जा रहा है…" : "Saving follow-up…",
+              );
+            }}
+          >
+            <label>
+              {hi ? "प्रकार" : "Type"}
+              <select name="type">
+                <option value="RETAIL_ORDER">{hi ? "खुदरा ऑर्डर" : "Retail order"}</option>
+                <option value="PAYMENT">{hi ? "भुगतान" : "Payment"}</option>
+                <option value="DISTRIBUTOR">{hi ? "वितरक" : "Distributor"}</option>
+                <option value="PROSPECT">{hi ? "संभावना" : "Prospect"}</option>
+                <option value="COMPLAINT">{hi ? "शिकायत" : "Complaint"}</option>
+                <option value="PRODUCT_AVAILABILITY">{hi ? "उत्पाद उपलब्धता" : "Product availability"}</option>
+                <option value="SAMPLE_FEEDBACK">{hi ? "नमूना प्रतिक्रिया" : "Sample feedback"}</option>
+                <option value="RETURN_ISSUE">{hi ? "वापसी / समस्या" : "Return / issue"}</option>
+                <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+              </select>
+            </label>
+            <label>
+              {hi ? "देय तिथि" : "Due date"}
+              <input name="dueDate" type="date" required />
+            </label>
+            <label>
+              {hi ? "प्राथमिकता" : "Priority"}
+              <select name="priority">
+                <option value="NORMAL">{hi ? "सामान्य" : "Normal"}</option>
+                <option value="HIGH">{hi ? "उच्च" : "High"}</option>
+              </select>
+            </label>
+            <label>
+              {hi ? "टिप्पणी" : "Note"}
+              <input name="note" required />
+            </label>
+            <button className={styles.primary} disabled={busy}>
+              {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "फॉलो-अप सहेजें" : "Save follow-up"}
+            </button>
+          </form>
+        )}
+        <div className={styles.note}>
+          <strong>{hi ? "विज़िट सारांश" : "Visit summary"}</strong>
+          <p>
+            {hi ? "ऑर्डर कुल" : "Order total"}: ₹{orderTotal.toFixed(2)} ·{" "}
+            {hi ? "भुगतान" : "Payment"}: {paymentType} · {hi ? "फ़ोटो" : "Photos"}: {visit.photos.length}
+          </p>
+          {gpsStatus !== "IDLE" && (
+            <div className={styles.gpsRow}>
+              <GpsBadge language={language} status={gpsStatus} />
+            </div>
+          )}
+        </div>
+        <form
+          className={styles.checkout}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget),
+              deviation = String(f.get("routeDeviationReason") ?? "");
+            void (async () => {
+              setBusy(true);
+              setBusyLabel(hi ? "विज़िट पूरी हो रही है…" : "Completing visit…");
+              setGpsStatus("LOCATING");
+              const { status, point } = await captureGps();
+              setGpsStatus(status);
+              if (deviation) await run("route-deviation", { visitId: visit.id, reason: deviation });
+              const result = await run(
+                "check-out",
+                {
+                  visitId: visit.id,
+                  outcome: String(f.get("outcome")),
+                  noOrderReason: String(f.get("noOrderReason") ?? "") || undefined,
+                  followUpAt: String(f.get("followUpAt") ?? "") || undefined,
+                  notes: String(f.get("notes") ?? ""),
+                  photoExceptionReason: String(f.get("photoExceptionReason") ?? "") || undefined,
+                  latitude: point.latitude,
+                  longitude: point.longitude,
+                  accuracy: point.accuracy,
+                },
+                { entityType: "SeeraVisit", actionType: "VISIT_CHECK_OUT" },
+                hi ? "विज़िट पूरी हुई।" : "Visit completed.",
+                hi ? "विज़िट पूरी हो रही है…" : "Completing visit…",
+              );
+              // Stay in a visible "loading" state through the server refresh that follows a
+              // successful checkout, instead of the button snapping back to normal and then the
+              // whole screen changing underneath the user a moment later — the visit?.id effect
+              // above clears this once the next-customer screen's fresh data actually lands.
+              if ("queued" in result || result.success) {
+                setBusy(true);
+                setBusyLabel(hi ? "अगला ग्राहक लोड हो रहा है…" : "Loading next customer…");
+              }
+            })();
+          }}
+        >
+          <label>
+            {hi ? "विज़िट परिणाम" : "Visit outcome"}
+            <select name="outcome">
+              <option value="ORDER_BOOKED">{hi ? "ऑर्डर बुक किया गया" : "Order booked"}</option>
+              <option value="FOLLOW_UP">{hi ? "फॉलो-अप" : "Follow up"}</option>
+              <option value="NO_ORDER">{hi ? "कोई ऑर्डर नहीं" : "No order"}</option>
+              <option value="MARKET_INTELLIGENCE">{hi ? "बाज़ार जानकारी" : "Market intelligence"}</option>
+            </select>
+          </label>
+          <label>
+            {hi ? "कारण (यदि कोई ऑर्डर नहीं)" : "Reason (if no order)"}
+            <input name="noOrderReason" />
+          </label>
+          <label>
+            {hi ? "फॉलो-अप तिथि (वैकल्पिक)" : "Follow-up date (optional)"}
+            <input name="followUpAt" type="date" />
+          </label>
+          <label>
+            {hi ? "विज़िट टिप्पणी" : "Visit note"}
+            <input name="notes" />
+          </label>
+          {visit.photos.length === 0 && (
+            <label>
+              {hi ? "फ़ोटो न होने का कारण" : "Reason no photo was taken"}
+              <select name="photoExceptionReason" defaultValue="">
+                <option value="">{hi ? "फ़ोटो संलग्न है" : "Photo attached"}</option>
+                <option value="RETAILER_REFUSED">{hi ? "रिटेलर ने मना किया" : "Retailer refused"}</option>
+                <option value="CAMERA_ISSUE">{hi ? "कैमरा / डिवाइस समस्या" : "Camera / device issue"}</option>
+                <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>
+                <option value="MANAGER_APPROVED">{hi ? "प्रबंधक-स्वीकृत छूट" : "Manager-approved exception"}</option>
+                <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+              </select>
+            </label>
+          )}
+          <label>
+            {hi ? "मार्ग विचलन (यदि लागू हो)" : "Route deviation (if applicable)"}
+            <select name="routeDeviationReason" defaultValue="">
+              <option value="">{hi ? "कोई विचलन नहीं" : "No deviation"}</option>
+              <option value="NEW_OUTLET_OPPORTUNITY">{hi ? "नया आउटलेट अवसर" : "New outlet opportunity"}</option>
+              <option value="URGENT_PAYMENT_FOLLOW_UP">{hi ? "अत्यावश्यक भुगतान फॉलो-अप" : "Urgent payment follow-up"}</option>
+              <option value="SHOP_CLOSURE">{hi ? "दुकान बंद" : "Shop closure"}</option>
+              <option value="ROAD_TRAFFIC">{hi ? "सड़क / यातायात" : "Road / traffic"}</option>
+              <option value="MANAGER_INSTRUCTION">{hi ? "प्रबंधक निर्देश" : "Manager instruction"}</option>
+              <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>
+              <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+            </select>
+          </label>
+          <button className={styles.secondary} disabled={busy}>
+            {busy ? (busyLabel ?? (hi ? "हो रहा है…" : "Working…")) : hi ? "चेकआउट और अगला ग्राहक" : "Checkout & next customer"}
+          </button>
+        </form>
+        {message && (
+          <p role="status" data-ok={message.ok}>
+            {message.text}
+          </p>
+        )}
+      </section>
+    </>
   );
 }

@@ -5,6 +5,8 @@ import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { documentNumber } from "./phase6-9-rules";
 import { documentPdfFilename, renderIssuedDocumentPdf, type IssuedDocumentSnapshot } from "./document-pdf";
+import { taxSplit, type CommercialLineSnapshot } from "./document-lines";
+import { postJournalForCompanyDocument } from "@/lib/finance/sales-integration-service";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -21,13 +23,18 @@ export async function canAccessDocument(db: PrismaClient, actorId: string, docum
 }
 
 export async function issueSystemDocument(db: PrismaClient, actorId: string, input: {
-  type: "TAX_INVOICE" | "NON_TAX_INVOICE" | "PRO_FORMA_INVOICE" | "RECEIPT" | "PAYMENT_RECEIPT" | "DELIVERY_CHALLAN" | "CREDIT_NOTE" | "DEBIT_NOTE";
+  type: "TAX_INVOICE" | "NON_TAX_INVOICE" | "PRO_FORMA_INVOICE" | "QUOTATION_DOCUMENT" | "RECEIPT" | "PAYMENT_RECEIPT" | "DELIVERY_CHALLAN" | "CREDIT_NOTE" | "DEBIT_NOTE";
   issuerType: string; issuerId: string; buyerType: string; buyerId: string; sourcePortal: string; orderId?: string; originalDocumentId?: string;
   issuerSnapshot: IssuedDocumentSnapshot["issuer"]; buyerSnapshot: IssuedDocumentSnapshot["buyer"]; supplySnapshot: Record<string, unknown>;
   lines: IssuedDocumentSnapshot["lines"]; subtotal: number; taxableTotal: number; cgstTotal: number; sgstTotal: number; igstTotal: number; grandTotal: number;
   paymentTerms?: string; notes?: string; idempotencyKey: string; approvedNote?: boolean;
 }) {
   await authorize(db, { actorId, permission: "document:issue" });
+  const actorPermissions = await effectivePermissions(db, actorId);
+  if (!actorPermissions.has("system:super_admin") && !actorPermissions.has("finance_dashboard:view")) {
+    const scopedParties = await actorPartyIds(db, actorId);
+    if (!scopedParties.has(input.issuerId)) throw new FoundationError("DOCUMENT_ISSUER_SCOPE_DENIED", "You can issue documents only for your assigned business", 403);
+  }
   if ((input.type === "CREDIT_NOTE" || input.type === "DEBIT_NOTE") && (!input.approvedNote || !input.originalDocumentId)) throw new FoundationError("NOTE_APPROVAL_REQUIRED", "Approved note and original invoice are required", 409);
   if (["TAX_INVOICE","NON_TAX_INVOICE","CREDIT_NOTE","DEBIT_NOTE"].includes(input.type)) await authorize(db, { actorId, permission: "ledger:post" });
   const existing = await db.seeraCommercialDocument.findUnique({ where: { idempotencyKey: input.idempotencyKey } }); if (existing) return existing;
@@ -37,11 +44,16 @@ export async function issueSystemDocument(db: PrismaClient, actorId: string, inp
   const now = new Date(); const fy = financialYear(now);
   return db.$transaction(async (tx) => {
     const sequence = await tx.seeraDocumentSequence.upsert({ where: { issuerType_issuerId_documentType_financialYear: { issuerType: input.issuerType, issuerId: input.issuerId, documentType: input.type, financialYear: fy } }, create: { issuerType: input.issuerType, issuerId: input.issuerId, documentType: input.type, financialYear: fy, prefix: profile.invoicePrefix, nextNumber: 2n }, update: { nextNumber: { increment: 1 } } });
-    const used = sequence.nextNumber - 1n; const number = documentNumber({ prefix: sequence.prefix, financialYear: fy, nextNumber: used });
+    const used = sequence.nextNumber - 1n; const number = documentNumber({ prefix: sequence.prefix, financialYear: fy, nextNumber: used, type: input.type });
     const created = await tx.seeraCommercialDocument.create({ data: { documentNumber: number, type: input.type, source: "SYSTEM_GENERATED", status: "ISSUED", issuerType: input.issuerType, issuerId: input.issuerId, buyerType: input.buyerType, buyerId: input.buyerId, actorId, sourcePortal: input.sourcePortal, orderId: input.orderId, originalDocumentId: input.originalDocumentId, issuerSnapshot: input.issuerSnapshot, buyerSnapshot: input.buyerSnapshot, supplySnapshot: input.supplySnapshot as Prisma.InputJsonValue, lineSnapshot: input.lines, taxSnapshot: { cgstTotal: input.cgstTotal, sgstTotal: input.sgstTotal, igstTotal: input.igstTotal }, subtotal: input.subtotal, taxableTotal: input.taxableTotal, cgstTotal: input.cgstTotal, sgstTotal: input.sgstTotal, igstTotal: input.igstTotal, grandTotal: input.grandTotal, issueDate: now, paymentTermsSnapshot: input.paymentTerms ? { text: input.paymentTerms } : undefined, verificationStatus: "VERIFIED", issuedAt: now, idempotencyKey: input.idempotencyKey } });
     if (["TAX_INVOICE","NON_TAX_INVOICE","CREDIT_NOTE","DEBIT_NOTE"].includes(input.type)) {
       const buyerDebit = input.type === "TAX_INVOICE" || input.type === "NON_TAX_INVOICE" || input.type === "DEBIT_NOTE"; const entryType: FinancialEntryType = input.type === "CREDIT_NOTE" ? "CREDIT_NOTE" : input.type === "DEBIT_NOTE" ? "DEBIT_NOTE" : "INVOICE";
       await tx.seeraFinancialEntry.create({ data: { entryNumber: `DOC-${createHash("sha256").update(input.idempotencyKey).digest("hex").slice(0,16).toUpperCase()}`, type: entryType, status: "POSTED", debitPartyType: buyerDebit ? input.buyerType : input.issuerType, debitPartyId: buyerDebit ? input.buyerId : input.issuerId, creditPartyType: buyerDebit ? input.issuerType : input.buyerType, creditPartyId: buyerDebit ? input.issuerId : input.buyerId, amount: input.grandTotal, documentId: created.id, commercialSnapshot: { originalDocumentId: input.originalDocumentId, documentNumber: number, approvedNote: input.type === "CREDIT_NOTE" || input.type === "DEBIT_NOTE" }, actorId, reason: `${input.type} issuance`, idempotencyKey: `${input.idempotencyKey}:ledger`, postedAt: now } });
+      // Company Finance OS GL posting (never for S.S./Distributor-issued documents —
+      // see postJournalForCompanyDocument's own gate). Sits alongside the party-ledger
+      // entry above, not in place of it: that entry is the network-wide commercial
+      // subledger, this is the Company's own Chart-of-Accounts general ledger.
+      await postJournalForCompanyDocument(tx, actorId, { id: created.id, type: input.type, issuerType: input.issuerType, taxableTotal: input.taxableTotal, cgstTotal: input.cgstTotal, sgstTotal: input.sgstTotal, igstTotal: input.igstTotal, grandTotal: input.grandTotal, issueDate: now, documentNumber: number, idempotencyKey: input.idempotencyKey });
     }
     await recordAudit(tx, { actorId, action: "document.issued", entityType: "SeeraCommercialDocument", entityId: created.id, afterState: { documentNumber: number, type: input.type, issuerId: input.issuerId, buyerId: input.buyerId, grandTotal: input.grandTotal } }); return created;
   });
@@ -49,13 +61,43 @@ export async function issueSystemDocument(db: PrismaClient, actorId: string, inp
 
 function snapshotForPdf(document: Awaited<ReturnType<PrismaClient["seeraCommercialDocument"]["findUniqueOrThrow"]>>): IssuedDocumentSnapshot {
   const terms = document.paymentTermsSnapshot as { text?: string } | null;
-  return { type: document.type, documentNumber: document.documentNumber, issueDate: (document.issueDate ?? document.issuedAt ?? document.createdAt).toISOString().slice(0, 10), issuer: document.issuerSnapshot as IssuedDocumentSnapshot["issuer"], buyer: document.buyerSnapshot as IssuedDocumentSnapshot["buyer"], orderReference: document.orderId ?? undefined, lines: document.lineSnapshot as unknown as IssuedDocumentSnapshot["lines"], subtotal: Number(document.subtotal), taxableTotal: Number(document.taxableTotal), cgstTotal: Number(document.cgstTotal), sgstTotal: Number(document.sgstTotal), igstTotal: Number(document.igstTotal), grandTotal: Number(document.grandTotal), currency: document.currency, paymentTerms: terms?.text };
+  const issuerGstin = (document.issuerSnapshot as { gstin?: string } | null)?.gstin;
+  const buyerGstin = (document.buyerSnapshot as { gstin?: string } | null)?.gstin;
+  // Two different callers populate lineSnapshot in two different shapes: createBillingDraft/
+  // createQuotationDraft (billing-service.ts/quotation-service.ts) store buildLineSnapshots'
+  // CommercialLineSnapshot[] (skuId/productNameSnapshot/packSnapshot/discountPct/taxAmount/...),
+  // while issueSystemDocument stores the caller-supplied lines already in the PDF renderer's own
+  // DocumentLineSnapshot shape (description/hsn/unit/taxableValue/cgst/sgst/igst/total). Detect by
+  // the presence of `skuId` — CommercialLineSnapshot always has it, DocumentLineSnapshot never
+  // does — and only remap the former; the latter passes through as before.
+  const storedLines = (document.lineSnapshot as unknown[]) ?? [];
+  const lines: IssuedDocumentSnapshot["lines"] = storedLines.map((raw) => {
+    if (raw && typeof raw === "object" && "skuId" in raw) {
+      const line = raw as CommercialLineSnapshot;
+      const split = taxSplit(issuerGstin, buyerGstin, line.taxAmount);
+      return {
+        description: line.productNameSnapshot,
+        hsn: line.hsnSnapshot || undefined,
+        quantity: line.quantity,
+        unit: line.packSnapshot,
+        rate: line.rate,
+        discount: (line.rate * line.quantity * line.discountPct) / 100,
+        taxableValue: line.taxableValue,
+        cgst: split.cgst,
+        sgst: split.sgst,
+        igst: split.igst,
+        total: line.lineTotal,
+      };
+    }
+    return raw as IssuedDocumentSnapshot["lines"][number];
+  });
+  return { type: document.type, documentNumber: document.documentNumber, issueDate: (document.issueDate ?? document.issuedAt ?? document.createdAt).toISOString().slice(0, 10), issuer: document.issuerSnapshot as IssuedDocumentSnapshot["issuer"], buyer: document.buyerSnapshot as IssuedDocumentSnapshot["buyer"], orderReference: document.orderId ?? undefined, lines, subtotal: Number(document.subtotal), taxableTotal: Number(document.taxableTotal), cgstTotal: Number(document.cgstTotal), sgstTotal: Number(document.sgstTotal), igstTotal: Number(document.igstTotal), grandTotal: Number(document.grandTotal), currency: document.currency, paymentTerms: terms?.text };
 }
 
 export async function downloadDocument(db: PrismaClient, actorId: string, documentId: string) {
   await authorize(db, { actorId, permission: "document:view_scoped" }); const document = await db.seeraCommercialDocument.findUniqueOrThrow({ where: { id: documentId } });
   if (!(await canAccessDocument(db, actorId, document))) throw new FoundationError("DOCUMENT_SCOPE_DENIED", "Document scope denied", 403);
-  if (document.source === "SYSTEM_GENERATED") { if (document.status !== "ISSUED") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only issued documents can be rendered", 409); const bytes = await renderIssuedDocumentPdf(snapshotForPdf(document)); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes, mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
+  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); const bytes = await renderIssuedDocumentPdf(snapshotForPdf(document)); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes, mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
   if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404); const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } }); if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes: new Uint8Array(file.contentBytes), mimeType: file.mimeType, filename: file.originalName };
 }
 
@@ -68,7 +110,7 @@ export async function downloadValidatedShare(db: PrismaClient, grantId: string) 
   const grant = await db.seeraDocumentShareGrant.findFirst({ where: { id: grantId, revokedAt: null, expiresAt: { gt: new Date() }, accessCount: { gt: 0 } }, include: { document: true } });
   if (!grant) throw new FoundationError("SHARE_ACCESS_DENIED", "Secure share unavailable", 403);
   const document = grant.document;
-  if (document.source === "SYSTEM_GENERATED") { if (document.status !== "ISSUED") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only issued documents can be rendered", 409); return { bytes: await renderIssuedDocumentPdf(snapshotForPdf(document)), mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
+  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); return { bytes: await renderIssuedDocumentPdf(snapshotForPdf(document)), mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
   if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404); const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } }); if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404); return { bytes: new Uint8Array(file.contentBytes), mimeType: file.mimeType, filename: file.originalName };
 }
 

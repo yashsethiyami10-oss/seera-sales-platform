@@ -25,9 +25,9 @@ const target = authorizeDatabaseCommand({
   testUrl: test,
 });
 const runtime = new URL(test);
-runtime.searchParams.set("connection_limit", "2");
-runtime.searchParams.set("pool_timeout", "60");
-runtime.searchParams.set("connect_timeout", "20");
+runtime.searchParams.set("connection_limit", "5");
+runtime.searchParams.set("pool_timeout", "120");
+runtime.searchParams.set("connect_timeout", "30");
 const db = new PrismaClient({ datasourceUrl: runtime.toString() });
 const password = "SeeraReview!2026";
 const prefix = "IV26";
@@ -44,6 +44,9 @@ const actors = [
   ["sales-executive-2", "SALES_EXECUTIVE", "Sales Executive North Two"],
   ["ss-owner", "SUPER_STOCKIST_OWNER", "Super Stockist Owner Review"],
   ["ss-operator", "SUPER_STOCKIST_OPERATOR", "Super Stockist Operator Review"],
+  // RUN 2B Section 22: a second S.S. review login, scoped to ss2 only, so S.S.-1 vs S.S.-2 UI
+  // isolation can be verified with two real logged-in sessions, not just an API-level scope check.
+  ["ss2-owner", "SUPER_STOCKIST_OWNER", "Super Stockist Owner Review (South)"],
   ["distributor-owner", "DISTRIBUTOR_OWNER", "Distributor Owner Review"],
   [
     "distributor-operator",
@@ -225,6 +228,7 @@ async function main() {
   const partyUsers = [
     [ss1.id, users.get("ss-owner")!.id, "OWNER"],
     [ss1.id, users.get("ss-operator")!.id, "OPERATOR"],
+    [ss2.id, users.get("ss2-owner")!.id, "OWNER"],
     [distributor1.id, users.get("distributor-owner")!.id, "OWNER"],
     [distributor1.id, users.get("distributor-operator")!.id, "OPERATOR"],
     [distributor1.id, delivery.id, "DELIVERY"],
@@ -312,6 +316,15 @@ async function main() {
       },
     });
 
+  // CROSS-PORTAL PRODUCT CATALOG CORRECTION (Founder UAT): these 3 rows are internal fixture-only
+  // SKUs used purely as snapshot targets for this seed's own historical demo orders below (see
+  // `skus[0]` usages) — they were never part of the Founder-approved Seera catalog and their real
+  // names ("Seera Face Wash 100 ml" etc.) were showing up as selectable products in every live
+  // portal selector. Seeded DISCONTINUED (not ACTIVE, and never force-reactivated on re-seed) so
+  // they stop appearing anywhere a selector filters by status:"ACTIVE" — the canonical 9-item Seera
+  // catalog lives in scripts/seera/seed-product-catalog.ts instead. The rows themselves are kept
+  // (never deleted) purely because this seed's own historical order-line snapshots below still
+  // reference their id; those snapshots are immutable regardless of the live row's status.
   const skuDefinitions = [
     ["HAIR-OIL-100", "Seera Hair Oil 100 ml", 149],
     ["SHAMPOO-200", "Seera Shampoo 200 ml", 249],
@@ -321,7 +334,7 @@ async function main() {
   for (const [code, productName, mrp] of skuDefinitions) {
     const sku = await db.seeraSku.upsert({
       where: { code: `${prefix}-${code}` },
-      update: { status: "ACTIVE" },
+      update: {},
       create: {
         code: `${prefix}-${code}`,
         productName,
@@ -332,7 +345,7 @@ async function main() {
         mrp,
         hsn: "330590",
         taxRate: 18,
-        status: "ACTIVE",
+        status: "DISCONTINUED",
         createdById: founder.id,
       },
     });
@@ -553,6 +566,35 @@ async function main() {
         createdById: founder.id,
       },
     }));
+  // RUN 2 root-cause fix: Quotation/GST Billing selectors for the S.S. portal were empty not
+  // because of a query-scope bug (assignedSuperStockistId scoping was already correct) but
+  // because documentSelectorData() early-returns empty buyers/products for ANY issuer with no
+  // VERIFIED SeeraBillingProfile — and no Super Stockist ever had one seeded, only distributor1.
+  // Seeded for both ss1 and ss2 (not just the one under review) so S.S.-1/S.S.-2 isolation live
+  // tests can issue documents from either side. Same governed-identity fields the partner record
+  // already carries — nothing invented.
+  for (const ss of [ss1, ss2])
+    await db.seeraBillingProfile.upsert({
+      where: { ownerType_ownerId_effectiveFrom: { ownerType: "SUPER_STOCKIST", ownerId: ss.id, effectiveFrom: new Date("2026-01-01") } },
+      update: {},
+      create: {
+        ownerType: "SUPER_STOCKIST",
+        ownerId: ss.id,
+        legalName: ss.legalName,
+        tradeName: ss.tradeName,
+        gstRegistered: true,
+        gstin: ss.gstin,
+        registeredAddress: ss.addresses,
+        state: (ss.addresses as { state?: string })?.state ?? "Maharashtra",
+        stateCode: ss.gstin?.slice(0, 2) ?? "27",
+        invoicePrefix: `${prefix}-${ss.code}-INV`,
+        authorizedBilling: true,
+        verificationStatus: "VERIFIED",
+        verifiedById: founder.id,
+        effectiveFrom: new Date("2026-01-01"),
+        createdById: founder.id,
+      },
+    });
   const invoice = await db.seeraCommercialDocument.upsert({
     where: { idempotencyKey: `${prefix}-DOC-INVOICE` },
     update: {},
