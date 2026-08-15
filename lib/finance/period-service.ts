@@ -8,7 +8,15 @@ import { ensurePeriodForDate } from "./journal-service";
 // against existing/new Finance tables, never a hardcoded pass.
 export async function periodCloseChecklist(db: PrismaClient, actorId: string, periodCode: string) {
   await authorize(db, { actorId, permission: "financial_statements:view" });
-  const period = await db.seeraAccountingPeriod.findUniqueOrThrow({ where: { code: periodCode } });
+  // Periods are created lazily by ensurePeriodForDate() the first time a journal is posted for
+  // them (see journal-service.ts) — a period with zero activity yet (a brand new company, or
+  // simply the first moment of any new calendar month before any transaction) has no row at all.
+  // That is a normal, valid, empty state, not an error: findUniqueOrThrow() here used to throw an
+  // uncaught Prisma P2025 straight through Promise.all in founder-workspace-data.ts, bypassing
+  // tryOrNull() (which only catches 403s) and crashing the whole Finance dashboard render with a
+  // generic "Data temporarily unavailable" — reported as a live production bug.
+  const period = await db.seeraAccountingPeriod.findUnique({ where: { code: periodCode } });
+  if (!period) return { period: null, blockers: [{ code: "PERIOD_NOT_STARTED", title: "This period has not started — no activity recorded yet" }], journalCount: 0, canClose: false };
   const [unmatchedBankLines, pendingExpenseApprovals, unpostedVendorBills, unallocatedPayments, imbalancedJournals] = await Promise.all([
     db.seeraBankStatementLine.count({ where: { matchStatus: "UNMATCHED", import: {} } }),
     db.seeraExpense.count({ where: { status: "SUBMITTED" } }),

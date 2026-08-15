@@ -5,6 +5,7 @@ import { analyticsScope, type AnalyticsPortal } from "@/lib/phase-10/scope";
 import type { SurfaceItem } from "@/lib/foundation/product-surface";
 import { surfaceLabel } from "@/lib/foundation/product-surface";
 import { FoundationError } from "@/lib/foundation/errors";
+import { operationalLog } from "@/lib/foundation/logger";
 // A scope/not-found rejection from a service function is a real, expected outcome (a stale query
 // param, cross-portal snooping) and safe to render as "nothing selected". Anything else — a Prisma
 // connection/timeout error, a genuine bug — must propagate to the page's error boundary instead of
@@ -3833,8 +3834,24 @@ export async function OperationalWorkspace({
       />
     );
   } else if ((portal === "founder-admin" || portal === "accounts") && item.slug === "finance-os") {
-    const financeData = await financeWorkspaceData(db, userId);
-    workflow = <FinanceWorkspacePanel portal={portal} data={financeData} />;
+    // financeWorkspaceData() runs during server render, not via a client fetch — anything it
+    // throws bypasses the governed API-error architecture (apiFailure/safeError) entirely and
+    // used to fall through to the generic, contextless app/error.tsx boundary ("Data temporarily
+    // unavailable", live production bug). Catching it here keeps the governed-error contract
+    // (what's unavailable, why, an Error ID matching the server log) on this specific screen.
+    try {
+      const financeData = await financeWorkspaceData(db, userId);
+      workflow = <FinanceWorkspacePanel portal={portal} data={financeData} />;
+    } catch (error) {
+      const incidentId = crypto.randomUUID();
+      operationalLog("error", "finance_workspace.load_failed", { incidentId, actorId: userId, errorName: error instanceof Error ? error.name : "unknown" });
+      workflow = (
+        <EmptyState
+          title="Finance data is temporarily unavailable"
+          description={`Something went wrong loading this screen. Please try again. If this keeps happening, share Error ID ${incidentId} with your Admin.`}
+        />
+      );
+    }
   } else if ((portal === "founder-admin" || portal === "manufacturing") && item.slug === "manufacturing-os") {
     const mfgData = await manufacturingWorkspaceData(db, userId);
     workflow = <ManufacturingWorkspacePanel portal={portal} data={mfgData} />;
