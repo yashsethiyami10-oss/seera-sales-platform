@@ -212,6 +212,7 @@ export function MasterActions({
               ? {
                   code: String(form.get("code")),
                   productName: String(form.get("productName")),
+                  brand: String(form.get("brand") || "") || undefined,
                   category: String(form.get("category")),
                   packSize: Number(form.get("packSize")),
                   unitType: String(form.get("unitType")),
@@ -276,6 +277,10 @@ export function MasterActions({
         <label>
           {hi ? "उत्पाद नाम" : "Product name"}
           <input name="productName" />
+        </label>
+        <label>
+          {hi ? "ब्रांड" : "Brand"}
+          <input name="brand" defaultValue="Seera" placeholder="Seera / MUV / Shine Plus / Yuva" />
         </label>
         <label>
           {hi ? "श्रेणी" : "Category"}

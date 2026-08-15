@@ -23,7 +23,7 @@ export type CompanyOrderStatusCard = { id: string; orderNumber: string; status: 
 // trusted for the actual commercial total.
 export type CompanyCatalogItem = {
   skuId: string;
-  brand: "Seera" | "MUV";
+  brand: string;
   productName: string;
   packDescription: string;
   orderUnit: string;

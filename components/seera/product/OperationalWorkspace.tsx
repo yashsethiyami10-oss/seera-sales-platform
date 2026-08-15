@@ -31,7 +31,7 @@ import { DistributorMoneyPanel } from "./DistributorMoneyPanel";
 import { IncomingStockCards } from "./IncomingStockCards";
 import { OrderFromSSWizard } from "./OrderFromSSWizard";
 import { CompanyOrderWizard, type CompanyCatalogItem } from "./CompanyOrderWizard";
-import { COMPANY_ORDER_UNIT_OVERRIDES, COMPANY_ORDER_SCHEME_NOTES, MUV_SCHEME_NOTE, DEFAULT_MUV_ORDER_UNIT } from "@/lib/sales-distribution/company-order-catalog";
+import { COMPANY_ORDER_UNIT_OVERRIDES, DEFAULT_MUV_ORDER_UNIT, activeSchemeNotesForSkus } from "@/lib/sales-distribution/company-order-catalog";
 import { formatAddress } from "@/lib/sales-distribution/document-lines";
 import { distributorOrderLineAvailability, superStockistStockSummary, distributorReceiptStatus } from "@/lib/sales-distribution/super-stockist-easy-mode-service";
 import { PaymentProofReviewActions } from "./PaymentProofReviewActions";
@@ -4359,6 +4359,7 @@ export async function OperationalWorkspace({
         }),
       ]);
       const priceBySkuId = new Map(pricedVersions.map((p) => [p.skuId, Number(p.amount)]));
+      const schemeNoteBySkuId = await activeSchemeNotesForSkus(db, allSkus.map((x) => x.id), "COMPANY_TO_SS_DISPLAY_ONLY", now);
       const statusOf = (o: (typeof recentCompanyOrders)[number]): "PAYMENT_REQUIRED" | "PROOF_SUBMITTED" | "VERIFIED" | "DISPATCHED" => {
         if (["DISPATCHED", "PARTIAL_DELIVERED", "DELIVERED"].includes(o.status)) return "DISPATCHED";
         if (o.status === "CONFIRMED") return "VERIFIED";
@@ -4371,14 +4372,14 @@ export async function OperationalWorkspace({
         const rate = priceBySkuId.get(x.id) ?? null;
         return {
           skuId: x.id,
-          brand: x.brand === "MUV" ? "MUV" : "Seera",
+          brand: x.brand,
           productName: x.productName,
           packDescription: `${x.packSize.toString()} ${x.unitType}`,
           orderUnit: override?.orderUnit ?? DEFAULT_MUV_ORDER_UNIT,
           unitsPerOrderUnit: override?.unitsPerOrderUnit ?? 1,
           rateBasis: override?.rateBasis ?? "Rate per piece",
           rate,
-          scheme: COMPANY_ORDER_SCHEME_NOTES[x.code] ?? (x.brand === "MUV" && rate != null ? MUV_SCHEME_NOTE : undefined),
+          scheme: schemeNoteBySkuId.get(x.id),
           unavailable: rate == null,
         };
       });

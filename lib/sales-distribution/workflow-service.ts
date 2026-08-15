@@ -42,6 +42,11 @@ export async function createSku(
     mrp: number;
     hsn?: string;
     taxRate?: number;
+    // Optional so every existing caller (all of which only ever sold "Seera"-branded goods) keeps
+    // working unchanged. Multi-brand catalog restoration (MUV/SEERA/SHINE PLUS/YUVA) needs a real
+    // brand per SKU — the previous hardcoded "Seera" silently merged every non-Seera product into
+    // the Seera brand string, which is exactly the brand-identity loss the restoration must avoid.
+    brand?: string;
   },
 ) {
   await authorize(prisma, { actorId, permission: "master:manage" });
@@ -56,7 +61,7 @@ export async function createSku(
       data: {
         ...input,
         code: input.code.trim().toUpperCase(),
-        brand: "Seera",
+        brand: input.brand?.trim() || "Seera",
         status: "ACTIVE",
         createdById: actorId,
       },

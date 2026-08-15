@@ -52,6 +52,7 @@ export async function POST(request: Request) {
                 mrp: z.number().positive(),
                 hsn: z.string().trim().max(20).optional(),
                 taxRate: z.number().min(0).max(100).optional(),
+                brand: z.string().trim().min(1).max(40).optional(),
               })
               .parse(payload),
           )

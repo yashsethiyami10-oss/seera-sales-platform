@@ -83,6 +83,14 @@ const OVERRIDES: Record<string, GovernedErrorInfo> = {
   DUPLICATE_VENDOR_INVOICE: { category: "CONFLICT", userMessage: "This vendor invoice has already been recorded.", nextAction: "Check existing invoices before submitting again.", retryable: false, supportRequired: false },
   QUOTATION_ALREADY_CONVERTED: { category: "CONFLICT", userMessage: "This quotation has already been converted to an order.", nextAction: "Check the resulting order instead.", retryable: false, supportRequired: false },
   BEAT_PLAN_ALREADY_EXISTS: { category: "CONFLICT", userMessage: "A beat plan already exists for this day/employee.", nextAction: "Edit the existing plan instead of creating a new one.", retryable: false, supportRequired: false },
+
+  // --- Catalog / pricing ---
+  // PRICE_UNAVAILABLE would otherwise be misclassified INFRASTRUCTURE by the generic `_UNAVAILABLE$`
+  // name pattern below ("try again in a moment") — it is a missing-configuration condition (no
+  // active price version for this SKU/tier), not a transient failure; retrying the same order
+  // without a price being set will fail identically every time.
+  PRICE_UNAVAILABLE: { category: "CONFIGURATION", userMessage: "Distributor price is not configured for this product.", nextAction: "Ask Founder/Admin to set the rate for this product.", retryable: false, supportRequired: true },
+  SKU_UNAVAILABLE: { category: "CONFLICT", userMessage: "One of the ordered products is no longer available.", nextAction: "Remove it from the order or choose an active alternative.", retryable: false, supportRequired: false },
 };
 
 // Systematic fallback: derive a category (and therefore nextAction/

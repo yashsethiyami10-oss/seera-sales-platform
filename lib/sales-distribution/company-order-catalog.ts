@@ -1,3 +1,5 @@
+import type { Prisma, PrismaClient } from "@prisma/client";
+
 // RUN 2B: Founder-supplied Company→S.S. commercial-unit overrides.
 //
 // The generic SeeraSku.packSize/unitType describe the physical pack (e.g. "180 g", "1 L") — that is
@@ -87,34 +89,49 @@ export function canonicalPiecesToWholesaleOrderUnit(skuCode: string, pieces: num
 // OperationalWorkspace.tsx's catalog-building code).
 export const DEFAULT_MUV_ORDER_UNIT: CompanyOrderUnit = "PCS";
 
-// Display-only scheme notes (Founder Section 8/RUN 2B): SeeraScheme rows carry this same text as
-// their `name`, but the model has no wired application-to-order-total mechanism anywhere in this
-// codebase today (grep confirms zero reads of SeeraScheme outside seed scripts), so a scheme is
-// shown as information only — never deducted from a line/order total here, to avoid inventing an
-// unGoverned financial posting rule.
-export const COMPANY_ORDER_SCHEME_NOTES: Record<string, string> = {
-  "SEERA-CAKE-BLUE": "1 pc Free per Box",
-  "SEERA-CAKE-WHITE": "1 pc Free per Box",
-  "SEERA-YUVA-CAKE-BLUE": "2 pcs Free per Box",
-};
+// Governed free-goods scheme lookup — reads real SeeraScheme rows (never a hardcoded map). A
+// scheme is display-only, informational entitlement text on the order line: it is NEVER deducted
+// from or folded into the line/order total (createCompanyOrder/createDistributorReplenishment
+// price math is untouched by this), matching the explicit "no hidden discount, no artificially
+// lowered rate" governance for free goods. `eligibilityType` is the plain-string scope tag this
+// codebase's seed data already uses (e.g. "COMPANY_TO_SS_DISPLAY_ONLY") — no JSON-path query needed.
+export async function activeSchemeNotesForSkus(
+  db: PrismaClient | Prisma.TransactionClient,
+  skuIds: string[],
+  eligibilityType: "COMPANY_TO_SS_DISPLAY_ONLY" | "SS_TO_DISTRIBUTOR_DISPLAY_ONLY",
+  now: Date,
+): Promise<Map<string, string>> {
+  const schemes = await db.seeraScheme.findMany({
+    where: { skuId: { in: skuIds }, eligibilityType, status: "ACTIVE", effectiveFrom: { lte: now }, effectiveTo: { gt: now } },
+  });
+  const notes = new Map<string, string>();
+  // `name` is the already-correct, unit-specific display text set at scheme-authoring time (e.g.
+  // "Buy 1 BOX -> +1 PC FREE") — reusing it directly instead of reconstructing a generic note from
+  // minimumQuantity/freeQuantity avoids losing the BOX/BAG unit context this function has no other
+  // way to know (SeeraScheme itself carries no order-unit field).
+  for (const s of schemes) {
+    if (!s.skuId) continue;
+    notes.set(s.skuId, s.name);
+  }
+  return notes;
+}
 
-// Founder's RUN 2B source list says "Phenyl 1L / Phenyl 5L" with no brand qualifier. The canonical
-// MUV catalog (PRODUCTION_CATALOG_MANIFEST.json) has no plain "Phenyl" product — only "MUV White
-// Phenyl" (1L/5L, code MUV-WP-STD-1000/5000) and "MUV Black Phenyl" (1L only, code MUV-BP-STD-1000,
-// still DRAFT/no MRP). Since the Founder's own list separately and explicitly names "Black Phenyl
-// 1L" as its own line, "Phenyl" without a qualifier is read as White Phenyl — the only other Phenyl
-// product that exists in both requested pack sizes (1L and 5L). This is a governed alias resolution,
+// The Founder's canonical 37-variant list uses "Phenyl 1L / Phenyl 5L" with no brand qualifier,
+// alongside a separately-named "Black Phenyl 1L" line. The canonical MUV catalog has no plain
+// "Phenyl" product — only "MUV White Phenyl" (1L/5L, code MUV-WP-STD-1000/5000) and "MUV Black
+// Phenyl" (1L, code MUV-BP-STD-1000). Unqualified "Phenyl" resolves to White Phenyl — the only
+// other Phenyl product existing in both requested pack sizes. This is a governed alias resolution,
 // not a duplicate SKU creation; flagged here rather than assumed silently.
 export const MUV_PHENYL_ALIAS_NOTE =
-  "Founder RUN 2B list's unqualified 'Phenyl 1L/5L' resolved to canonical MUV White Phenyl (MUV-WP-STD-1000 / MUV-WP-STD-5000) — the only Phenyl product existing in both requested pack sizes. 'Black Phenyl 1L' from the same list maps to MUV-BP-STD-1000, which is intentionally NOT priced this pass (see below).";
+  "Unqualified 'Phenyl 1L/5L' resolves to canonical MUV White Phenyl (MUV-WP-STD-1000 / MUV-WP-STD-5000) — the only Phenyl product existing in both requested pack sizes. 'Black Phenyl 1L' maps to its own SKU, MUV-BP-STD-1000.";
 
-// Founder's list also prices "Black Phenyl 1L = ₹60.00", but the canonical MUV-BP-STD-1000 SKU is
-// still DRAFT status with no real MRP anywhere in the approved catalog manifest (kept as a
-// placeholder per an earlier phase's explicit instruction: "Once a real MRP is supplied, create the
-// variant... do not recreate or delete the Product row"). RUN 2B Section 7 says "If source list
-// contains a SKU currently excluded/inactive in canonical MUV: do not silently activate it" — so
-// this SKU is deliberately left unpriced and excluded from the Company Order catalog this pass.
-export const MUV_BLACK_PHENYL_EXCLUDED_NOTE =
-  "MUV-BP-STD-1000 (Black Phenyl 1L) intentionally left unpriced/inactive — DRAFT status, no approved MRP anywhere in the catalog manifest. Not activated per governance instruction not to silently activate an excluded SKU.";
+// Historical note: MUV-BP-STD-1000 (Black Phenyl 1L) was previously excluded/unpriced (no approved
+// MRP existed anywhere). The Founder's current 37-variant restoration list supplies complete data
+// for it (MRP 80, Company→S.S. 60.00, S.S.→Distributor 64.80) — it is created/activated like every
+// other MUV SKU this pass, not excluded.
 
-export const MUV_SCHEME_NOTE = "Additional 2.5% Scheme on Each Buy (informational — application mechanism not governed, not applied to order totals)";
+// IMPORTANT: no active "Additional MUV scheme" (e.g. the historical "2.5% on each buy" note) may be
+// created, calculated, displayed, or referenced anywhere — the Founder has explicitly confirmed no
+// such scheme is part of the current live commercial configuration. There is deliberately no
+// MUV_SCHEME_NOTE export in this file; see activeSchemeNotesForSkus() above for the only governed,
+// DB-backed scheme mechanism, which reads real SeeraScheme rows and was never wired to any MUV SKU.
