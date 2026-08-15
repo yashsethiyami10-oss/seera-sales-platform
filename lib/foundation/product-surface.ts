@@ -20,7 +20,8 @@ export type SurfaceKind =
   | "audit"
   | "employee"
   | "instructions"
-  | "notifications";
+  | "notifications"
+  | "manufacturing";
 export type SurfaceItem = {
   slug: string;
   en: string;
@@ -151,6 +152,10 @@ const founder: SurfaceItem[] = [
   // Ledgers/Outstanding/Payments items above (which remain the Company<->S.S./
   // Distributor/Retailer commercial subledger and are untouched).
   item("finance-os", "Finance", "वित्त", "₹", "finance", "financial_statements:view"),
+  // SEERA MANUFACTURING OS — first-class module inside the existing
+  // Founder/Admin portal (spec §2), sharing the same panel component the
+  // dedicated Manufacturing portal below uses, permission-scoped identically.
+  item("manufacturing-os", "Manufacturing", "विनिर्माण", "⚙", "manufacturing", "mfg_ledger:view"),
   item("payments", "Payments", "भुगतान", "₹", "finance", "payment:review"),
   item("claims", "Claims", "दावे", "◇", "claims", "claim_settlement:manage"),
   item(
@@ -526,6 +531,16 @@ const retailer: SurfaceItem[] = [
   shared.notifications,
   shared.profile,
 ];
+// Dedicated Manufacturing portal (spec §2) — one item, permission-gated by
+// mfg_ledger:view (every Manufacturing role has it), sharing the exact same
+// ManufacturingWorkspacePanel the Founder nav item above renders. Role-scoped
+// sections inside the panel (Operator sees far less than Manager) rather than
+// a separate SurfaceItem set per role, mirroring the Finance OS pattern.
+const manufacturing: SurfaceItem[] = [
+  item("manufacturing-os", "Manufacturing", "विनिर्माण", "⚙", "manufacturing", "mfg_ledger:view"),
+  shared.notifications,
+  shared.profile,
+];
 const auditor: SurfaceItem[] = [
   item("audit", "Activity log", "गतिविधि लॉग", "▤", "audit", "audit:view"),
   item(
@@ -591,7 +606,9 @@ export function surfaceItems(
                   ? retailer
                   : portal === "auditor"
                     ? auditor
-                    : [];
+                    : portal === "manufacturing"
+                      ? manufacturing
+                      : [];
   return source.filter(
     (x) =>
       (!x.permission ||

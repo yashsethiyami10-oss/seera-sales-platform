@@ -4,7 +4,7 @@ import { recordAudit } from "./audit-service";
 import { FoundationError } from "./errors";
 import { PHASE_1_FEATURE_FLAGS } from "./rbac-catalog";
 
-export const PHASE_1_SETTING_KEYS = new Set(["security.session.max_age_hours", "foundation.test"]);
+export const PHASE_1_SETTING_KEYS = new Set(["security.session.max_age_hours", "foundation.test", "manufacturing.company_inventory_mode"]);
 
 function validateValue(type: SettingValueType, value: Prisma.InputJsonValue) {
   if ((type === "STRING" && typeof value !== "string") || (type === "NUMBER" && typeof value !== "number") || (type === "BOOLEAN" && typeof value !== "boolean")) throw new FoundationError("SETTING_TYPE_MISMATCH", "Setting value does not match its declared type");

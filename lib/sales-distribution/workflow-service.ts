@@ -16,6 +16,7 @@ import { notifyPartyUsers, requirePartyMembership } from "./scope";
 import { deriveInclusiveTax } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
 import { queueRetailerCommunication } from "./retailer-communication-service";
+import { assertCompanyDispatchAvailable, postCompanyDispatchStockAndCogs } from "@/lib/manufacturing/company-stock-service";
 
 type OrderLineInput = { skuId: string; quantity: number; rate?: number };
 type ActorContext = {
@@ -1707,6 +1708,15 @@ export async function dispatchCompanyOrder(
       });
       if (!order || !order.buyerPartnerId)
         throw new FoundationError("ORDER_SCOPE_OR_STATE_DENIED", "Order is not ready for dispatch", 403);
+      const dispatchLines = order.lines
+        .map((line) => ({ skuId: line.skuId, quantity: Number(line.orderedQuantity) - Number(line.dispatchedQuantity) }))
+        .filter((line) => line.quantity > 0);
+      // Company Stock Compatibility Mode (spec §10/§11) — governed, Founder/Admin-only,
+      // defaults to LEGACY_UNBOUNDED so this check/posting is a total no-op unless a
+      // Founder has explicitly enabled Manufacturing-governed Company stock. Checked here,
+      // BEFORE any mutation, so an insufficient-stock dispatch fails cleanly with nothing
+      // written — never a partial dispatchedQuantity increment followed by a thrown error.
+      const companyInventoryMode = await assertCompanyDispatchAvailable(tx, dispatchLines);
       for (const line of order.lines) {
         const quantity = Number(line.orderedQuantity) - Number(line.dispatchedQuantity);
         if (quantity <= 0) continue;
@@ -1734,6 +1744,9 @@ export async function dispatchCompanyOrder(
         },
       });
       await recordAudit(tx, { actorId, action: "company_order.dispatched", entityType: "SeeraSalesOrder", entityId: order.id, afterState: { deliveryId: delivery.id } });
+      if (companyInventoryMode === "MANUFACTURING_GOVERNED") {
+        await postCompanyDispatchStockAndCogs(tx, actorId, { orderId: order.id, deliveryId: delivery.id, idempotencyKey: input.idempotencyKey, lines: dispatchLines });
+      }
       return delivery;
     },
     { isolationLevel: "Serializable", timeout: 15000 },

@@ -51,6 +51,8 @@ import { distributorCreditPosition, superStockistDistributorCreditOverview, supe
 import { ledgerReadModel, partyOutstanding } from "@/lib/sales-distribution/financial-service";
 import { financeWorkspaceData } from "@/lib/finance/founder-workspace-data";
 import { FinanceWorkspacePanel } from "./FinanceWorkspacePanel";
+import { manufacturingWorkspaceData } from "@/lib/manufacturing/workspace-data";
+import { ManufacturingWorkspacePanel } from "./ManufacturingWorkspacePanel";
 import {
   executiveDashboard,
   executiveBeat,
@@ -3833,6 +3835,9 @@ export async function OperationalWorkspace({
   } else if ((portal === "founder-admin" || portal === "accounts") && item.slug === "finance-os") {
     const financeData = await financeWorkspaceData(db, userId);
     workflow = <FinanceWorkspacePanel portal={portal} data={financeData} />;
+  } else if ((portal === "founder-admin" || portal === "manufacturing") && item.slug === "manufacturing-os") {
+    const mfgData = await manufacturingWorkspaceData(db, userId);
+    workflow = <ManufacturingWorkspacePanel portal={portal} data={mfgData} />;
   } else if (["distributor", "super-stockist"].includes(portal)) {
     const partyType =
         portal === "distributor" ? "DISTRIBUTOR" : "SUPER_STOCKIST",

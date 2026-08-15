@@ -39,6 +39,11 @@ export const SEERA_PORTALS = {
     requiredPermission: "portal:retailer",
     featureFlag: "portal.retailer.enabled",
   },
+  manufacturing: {
+    title: "Manufacturing",
+    requiredPermission: "portal:manufacturing",
+    featureFlag: "portal.manufacturing.enabled",
+  },
 } as const;
 
 export type SeeraPortalKey = keyof typeof SEERA_PORTALS;

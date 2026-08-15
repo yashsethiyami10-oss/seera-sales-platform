@@ -19,6 +19,9 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: "ASSET" | "LIABILITY
   { code: "1401", name: "Input CGST", type: "ASSET", system: true },
   { code: "1402", name: "Input SGST", type: "ASSET", system: true },
   { code: "1403", name: "Input IGST", type: "ASSET", system: true },
+  { code: "1210", name: "Raw Material Inventory", type: "ASSET", system: true },
+  { code: "1220", name: "Packaging Inventory", type: "ASSET", system: true },
+  { code: "1230", name: "WIP / Finished Goods Inventory", type: "ASSET", system: true },
   { code: "1500", name: "Other Current Assets", type: "ASSET" },
   { code: "1600", name: "Fixed Assets", type: "ASSET", system: true },
   { code: "1610", name: "Accumulated Depreciation", type: "ASSET", system: true },
@@ -43,6 +46,11 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: "ASSET" | "LIABILITY
   { code: "4010", name: "Other Operating Revenue", type: "INCOME" },
   { code: "4020", name: "Other Income", type: "INCOME", system: true },
   // EXPENSE
+  // Deliberately its own dedicated account (not folded into "5000 Raw
+  // Material") — profitAndLoss() in statements-service.ts special-cases this
+  // exact code to compute a real Gross Profit line, per Manufacturing OS
+  // integration spec §17.
+  { code: "5001", name: "Cost of Goods Sold (COGS)", type: "EXPENSE", system: true },
   { code: "5000", name: "Raw Material", type: "EXPENSE" },
   { code: "5010", name: "Packaging Material", type: "EXPENSE" },
   { code: "5020", name: "Freight", type: "EXPENSE" },
@@ -67,6 +75,7 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: "ASSET" | "LIABILITY
   { code: "5210", name: "Travel", type: "EXPENSE" },
   { code: "5220", name: "Office/Admin", type: "EXPENSE" },
   { code: "5230", name: "Miscellaneous", type: "EXPENSE", system: true },
+  { code: "5240", name: "Manufacturing Variance / Wastage", type: "EXPENSE", system: true },
 ];
 
 export async function seedDefaultChartOfAccounts(db: PrismaClient, actorId: string) {

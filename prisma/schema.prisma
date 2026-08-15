@@ -246,6 +246,18 @@ enum DeliveryStatus {
 enum InventoryPartyType {
   DISTRIBUTOR
   SUPER_STOCKIST
+  // Added for Manufacturing OS: Sales V1 deliberately never gave Company a
+  // governed stock position (Company was the network's infinite-supply
+  // root — see receiveIncomingOrder/dispatchCompanyOrder in workflow-service.ts,
+  // neither of which ever debits a Company-side balance). Manufacturing's
+  // finished-goods output needs a real, queryable Company stock position, so
+  // this value is added — purely additive, nothing existing reads/writes it.
+  // Sales V1's own dispatch/receipt logic is deliberately NOT changed by this
+  // addition: it remains exactly as frozen/audited. Wiring an actual stock
+  // check into Company Order dispatch would be a real business-policy change
+  // and needs its own explicit Founder approval, not a side effect of adding
+  // Manufacturing visibility.
+  COMPANY
 }
 
 enum InventoryMovementType {
@@ -2109,6 +2121,9 @@ enum JournalSourceType {
   CAPITAL_INTRODUCED
   DRAWINGS
   ASSET_PURCHASE
+  MANUFACTURING_TRANSFORMATION
+  MANUFACTURING_WASTAGE
+  COGS_RECOGNITION
 }
 
 enum JournalStatus {
@@ -2517,4 +2532,788 @@ model SeeraFinanceApprovalPolicy {
   updatedAt        DateTime                 @updatedAt
 
   @@map("seera_finance_approval_policies")
+}
+
+// ============================================================================
+// SEERA MANUFACTURING OS — Material/UOM/Location foundation, immutable
+// material ledger, BOM/SOP/Packaging-BOM versioning, Production Planning/MRP,
+// Production Orders/Batches, QC, GRN, Stock Transfers/Adjustments/Counts,
+// Wastage/Deviation, Batch Costing. Finished-goods output posts into the
+// EXISTING SeeraInventoryMovement ledger (partyType COMPANY, newly added
+// above) rather than a second finished-goods truth. Raw/packaging/WIP
+// materials get their OWN ledger (SeeraManufacturingMovement) because they
+// are a genuinely different physical domain Sales V1 never modeled at all.
+// Reuses SeeraApprovalItem (generic queue) and SeeraChartOfAccount/journal
+// posting (Finance OS) rather than duplicating either.
+// ============================================================================
+
+enum ManufacturingMaterialType {
+  RAW_MATERIAL
+  PACKAGING_MATERIAL
+  SEMI_FINISHED
+  FINISHED_GOODS
+  CONSUMABLE
+  SCRAP
+}
+
+enum ManufacturingUnit {
+  KG
+  GRAM
+  LITRE
+  ML
+  PCS
+  ROLL
+  BOX
+  BAG
+  CARTON
+  DRUM
+  CAN
+  METER
+  OTHER
+}
+
+enum ManufacturingLocationType {
+  RAW_STORE
+  PACKAGING_STORE
+  PRODUCTION_FLOOR
+  WIP_AREA
+  QC_HOLD
+  FINISHED_STORE
+  REJECT_SCRAP
+  OTHER
+}
+
+enum ManufacturingMovementType {
+  PURCHASE_RECEIPT
+  OPENING_STOCK
+  TRANSFER_IN
+  TRANSFER_OUT
+  PRODUCTION_ISSUE
+  PRODUCTION_CONSUMPTION
+  PRODUCTION_RETURN
+  QC_HOLD
+  QC_RELEASE
+  REJECT
+  SCRAP
+  WASTAGE
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  STOCK_COUNT_CORRECTION
+  SUPPLIER_RETURN
+}
+
+enum ManufacturingMovementDirection {
+  IN
+  OUT
+  RESERVE
+  RELEASE
+}
+
+enum BomStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  ACTIVE
+  SUPERSEDED
+  RETIRED
+}
+
+enum PackLevel {
+  PRIMARY
+  SECONDARY
+  TERTIARY
+}
+
+enum ProductionPlanPeriod {
+  DAY
+  WEEK
+  CUSTOM
+}
+
+enum ProductionPlanStatus {
+  DRAFT
+  APPROVED
+  PARTIALLY_EXECUTED
+  COMPLETED
+  CANCELLED
+}
+
+enum ProductionOrderStatus {
+  DRAFT
+  APPROVED
+  READY
+  IN_PROGRESS
+  AWAITING_QC
+  COMPLETED
+  CANCELLED
+}
+
+enum ProductionBatchStatus {
+  IN_PROGRESS
+  AWAITING_QC
+  COMPLETED
+  CANCELLED
+}
+
+enum BatchQcOverallStatus {
+  PENDING
+  PASSED
+  FAILED
+  HOLD
+  RELEASED
+}
+
+enum MaterialEventKind {
+  ISSUE
+  RETURN
+  CONSUMPTION
+}
+
+enum WastageType {
+  PROCESS_LOSS
+  RAW_MATERIAL_WASTAGE
+  PACKAGING_WASTAGE
+  SPILLAGE
+  DAMAGED_PACK
+  QC_SAMPLE
+  SCRAP
+  OTHER
+}
+
+enum DeviationType {
+  MATERIAL
+  PROCESS
+  OUTPUT
+  PACKAGING
+  QC
+  OTHER
+}
+
+enum DeviationStatus {
+  OPEN
+  REVIEWED
+  CLOSED
+}
+
+enum GrnStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum StockCountStatus {
+  DRAFT
+  REVIEWED
+  APPROVED
+  CLOSED
+}
+
+enum StockAdjustmentDirection {
+  INCREASE
+  DECREASE
+}
+
+enum ManufacturingApprovalCategory {
+  BOM_ACTIVATION
+  SOP_ACTIVATION
+  LARGE_STOCK_ADJUSTMENT
+  MATERIAL_SUBSTITUTION
+  PRODUCTION_DEVIATION
+  QC_OVERRIDE
+  STOCK_COUNT_VARIANCE
+  REWORK
+}
+
+enum CostConfidence {
+  RELIABLE
+  PARTIAL
+  UNAVAILABLE
+}
+
+model SeeraManufacturingMaterial {
+  id                String                    @id @default(cuid())
+  code              String                    @unique
+  name              String
+  type              ManufacturingMaterialType
+  category          String?
+  baseUnit          ManufacturingUnit
+  purchaseUnit      ManufacturingUnit?
+  issueUnit         ManufacturingUnit?
+  // Material-specific conversion (spec §6: "1 drum != universally fixed
+  // kilograms") — purchaseUnit/issueUnit quantities × this factor = baseUnit
+  // canonical quantity for THIS material only, never assumed globally.
+  conversionFactor  Decimal                   @default(1) @db.Decimal(14, 6)
+  // Current weighted-average cost per baseUnit — updated only from a real
+  // captured GRN receipt cost (see SeeraGrnLine.unitCost), never from selling
+  // price (spec §46). Null until the first costed receipt exists.
+  unitCost          Decimal?                  @db.Decimal(14, 4)
+  preferredVendorId String?
+  hsn               String?
+  taxRate           Decimal?                  @db.Decimal(7, 4)
+  reorderLevel      Decimal?                  @db.Decimal(14, 3)
+  minStock          Decimal?                  @db.Decimal(14, 3)
+  maxStock          Decimal?                  @db.Decimal(14, 3)
+  leadTimeDays      Int?
+  defaultLocationId String?
+  lotTracked        Boolean                   @default(true)
+  expiryTracked     Boolean                   @default(false)
+  qcRequired        Boolean                   @default(false)
+  isActive          Boolean                   @default(true)
+  notes             String?
+  createdById       String
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@index([type, isActive])
+  @@map("seera_mfg_materials")
+}
+
+model SeeraManufacturingLocation {
+  id       String                    @id @default(cuid())
+  code     String                    @unique
+  name     String
+  type     ManufacturingLocationType
+  isActive Boolean                   @default(true)
+  notes    String?
+
+  @@map("seera_mfg_locations")
+}
+
+model SeeraManufacturingLot {
+  id             String    @id @default(cuid())
+  lotNumber      String    @unique
+  materialId     String
+  supplierLotRef String?
+  vendorId       String?
+  receiptDate    DateTime  @default(now())
+  manufactureDate DateTime?
+  expiryDate     DateTime?
+  qcStatus       BatchQcOverallStatus @default(PENDING)
+  sourceGrnId    String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  @@index([materialId, expiryDate])
+  @@map("seera_mfg_lots")
+}
+
+// The immutable material ledger (spec §8) — every raw/packaging/WIP stock
+// fact is a row here; nothing is ever an editable single number. Mirrors the
+// existing SeeraInventoryMovement pattern (direction IN/OUT/RESERVE/RELEASE,
+// idempotencyKey-unique, sourceType/sourceId pointer) deliberately, since
+// that pattern is already proven correct in this codebase — this is a
+// parallel ledger for a genuinely different physical domain, not a
+// duplicate of the same one.
+model SeeraManufacturingMovement {
+  id               String                         @id @default(cuid())
+  materialId       String
+  lotId            String?
+  movementType     ManufacturingMovementType
+  direction        ManufacturingMovementDirection
+  quantity         Decimal                        @db.Decimal(14, 3)
+  unit             ManufacturingUnit
+  canonicalQuantity Decimal                       @db.Decimal(14, 3)
+  fromLocationId   String?
+  toLocationId     String?
+  sourceType       String
+  sourceId         String
+  actorId          String
+  reason           String
+  approvalId       String?
+  idempotencyKey   String                         @unique
+  occurredAt       DateTime                       @default(now())
+  createdAt        DateTime                       @default(now())
+
+  @@index([materialId, lotId, direction, occurredAt])
+  @@index([sourceType, sourceId])
+  @@index([toLocationId, direction])
+  @@map("seera_mfg_movements")
+}
+
+model SeeraBom {
+  id               String    @id @default(cuid())
+  productSkuId     String
+  version          Int
+  effectiveFrom    DateTime
+  effectiveUntil   DateTime?
+  status           BomStatus @default(DRAFT)
+  standardBatchSize Decimal  @db.Decimal(14, 3)
+  batchUnit        ManufacturingUnit
+  expectedOutput   Decimal?  @db.Decimal(14, 3)
+  expectedYieldPct Decimal?  @db.Decimal(6, 3)
+  createdById      String
+  approvedById     String?
+  approvedAt       DateTime?
+  supersededById   String?
+  sopId            String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  lines            SeeraBomLine[]
+
+  @@unique([productSkuId, version])
+  @@index([productSkuId, status])
+  @@map("seera_mfg_boms")
+}
+
+model SeeraBomLine {
+  id                String   @id @default(cuid())
+  bomId             String
+  materialId        String
+  requiredQuantity  Decimal  @db.Decimal(14, 4)
+  unit              ManufacturingUnit
+  canonicalQuantity Decimal  @db.Decimal(14, 4)
+  lossAllowancePct  Decimal? @db.Decimal(6, 3)
+  stage             String?
+  isRequired        Boolean  @default(true)
+  sequence          Int      @default(0)
+  notes             String?
+  bom               SeeraBom @relation(fields: [bomId], references: [id], onDelete: Cascade)
+
+  @@index([bomId])
+  @@index([materialId])
+  @@map("seera_mfg_bom_lines")
+}
+
+model SeeraPackagingBom {
+  id             String    @id @default(cuid())
+  productSkuId   String
+  packLevel      PackLevel @default(PRIMARY)
+  version        Int
+  status         BomStatus @default(DRAFT)
+  unitsPerParent Decimal?  @db.Decimal(14, 3)
+  effectiveFrom  DateTime
+  approvedById   String?
+  approvedAt     DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  lines          SeeraPackagingBomLine[]
+
+  @@unique([productSkuId, packLevel, version])
+  @@map("seera_mfg_packaging_boms")
+}
+
+model SeeraPackagingBomLine {
+  id                String            @id @default(cuid())
+  packagingBomId    String
+  materialId        String
+  quantityPerUnit   Decimal           @db.Decimal(14, 4)
+  unit              ManufacturingUnit
+  canonicalQuantity Decimal           @db.Decimal(14, 4)
+  notes             String?
+  packagingBom      SeeraPackagingBom @relation(fields: [packagingBomId], references: [id], onDelete: Cascade)
+
+  @@index([packagingBomId])
+  @@map("seera_mfg_packaging_bom_lines")
+}
+
+model SeeraSop {
+  id             String    @id @default(cuid())
+  productSkuId   String
+  version        Int
+  effectiveFrom  DateTime
+  documentFileId String?
+  status         BomStatus @default(DRAFT)
+  approvedById   String?
+  approvedAt     DateTime?
+  linkedBomId    String?
+  supersedes     String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  @@unique([productSkuId, version])
+  @@map("seera_mfg_sops")
+}
+
+model SeeraProductionPlan {
+  id          String                @id @default(cuid())
+  planNumber  String                @unique
+  period      ProductionPlanPeriod
+  periodStart DateTime
+  periodEnd   DateTime
+  status      ProductionPlanStatus  @default(DRAFT)
+  createdById String
+  createdAt   DateTime              @default(now())
+  lines       SeeraProductionPlanLine[]
+
+  @@map("seera_mfg_production_plans")
+}
+
+model SeeraProductionPlanLine {
+  id             String              @id @default(cuid())
+  planId         String
+  productSkuId   String
+  targetQuantity Decimal             @db.Decimal(14, 3)
+  targetBatches  Int
+  requiredDate   DateTime
+  priority       String              @default("NORMAL")
+  notes          String?
+  plan           SeeraProductionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+  @@map("seera_mfg_production_plan_lines")
+}
+
+model SeeraProductionOrder {
+  id              String                 @id @default(cuid())
+  orderNumber     String                 @unique
+  productSkuId    String
+  plannedBatches  Int
+  plannedOutput   Decimal                @db.Decimal(14, 3)
+  bomId           String
+  bomVersion      Int
+  packagingBomId  String?
+  sopId           String?
+  productionDate  DateTime
+  shiftId         String?
+  machineId       String?
+  supervisorId    String?
+  priority        String                 @default("NORMAL")
+  status          ProductionOrderStatus  @default(DRAFT)
+  planLineId      String?
+  createdById     String
+  idempotencyKey  String                 @unique
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([productSkuId, status])
+  @@index([productionDate, status])
+  @@map("seera_mfg_production_orders")
+}
+
+model SeeraProductionBatch {
+  id                    String                 @id @default(cuid())
+  batchNumber           String                 @unique
+  productionOrderId     String
+  productSkuId          String
+  bomId                 String
+  bomVersion            Int
+  sopId                 String?
+  date                  DateTime
+  shiftId               String?
+  machineId             String?
+  supervisorId          String?
+  operatorIds           String[]
+  plannedQuantity       Decimal                @db.Decimal(14, 3)
+  actualOutputQuantity  Decimal?               @db.Decimal(14, 3)
+  yieldPct              Decimal?               @db.Decimal(6, 3)
+  status                ProductionBatchStatus  @default(IN_PROGRESS)
+  qcStatus              BatchQcOverallStatus   @default(PENDING)
+  idempotencyKey        String                 @unique
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([productionOrderId])
+  @@index([productSkuId, date])
+  @@index([status, qcStatus])
+  @@map("seera_mfg_production_batches")
+}
+
+// Issue / Return / Consumption unified — spec §21/§22/§20 are the same
+// physical-event shape (material moving between production and store, or
+// theoretical-vs-actual being recorded) with a different `kind`, not three
+// independent truths.
+model SeeraProductionMaterialEvent {
+  id                   String             @id @default(cuid())
+  kind                 MaterialEventKind
+  productionOrderId    String
+  batchId              String?
+  materialId           String
+  lotId                String?
+  theoreticalQuantity  Decimal?           @db.Decimal(14, 4)
+  quantity             Decimal            @db.Decimal(14, 4)
+  unit                 ManufacturingUnit
+  canonicalQuantity    Decimal            @db.Decimal(14, 4)
+  fromLocationId       String?
+  toLocationId         String?
+  reason               String?
+  actorId              String
+  movementId           String?
+  idempotencyKey       String             @unique
+  createdAt            DateTime           @default(now())
+
+  @@index([productionOrderId, kind])
+  @@index([batchId, kind])
+  @@index([materialId])
+  @@map("seera_mfg_material_events")
+}
+
+// Batch traceability forward-link: Batch -> Company finished-goods stock.
+// The actual stock IN posts to the existing SeeraInventoryMovement ledger
+// (partyType COMPANY) — this row is the Manufacturing-side record of that
+// link (lot number = batch number) plus the QC gate before it becomes
+// available (spec §24: "must become available... only after appropriate QC status").
+model SeeraFinishedGoodsReceipt {
+  id                String               @id @default(cuid())
+  batchId           String               @unique
+  productSkuId      String
+  quantity          Decimal              @db.Decimal(14, 3)
+  unit              ManufacturingUnit
+  locationId        String
+  qcStatus          BatchQcOverallStatus @default(PENDING)
+  inventoryMovementId String?
+  idempotencyKey    String               @unique
+  createdAt         DateTime             @default(now())
+
+  @@map("seera_mfg_finished_goods_receipts")
+}
+
+model SeeraQcTemplate {
+  id           String   @id @default(cuid())
+  productSkuId String
+  version      Int
+  parameter    String
+  unit         String?
+  minValue     Decimal? @db.Decimal(14, 4)
+  maxValue     Decimal? @db.Decimal(14, 4)
+  targetValue  Decimal? @db.Decimal(14, 4)
+  isRequired   Boolean  @default(true)
+  method       String?
+  sequence     Int      @default(0)
+  isActive     Boolean  @default(true)
+
+  @@index([productSkuId, version, isActive])
+  @@map("seera_mfg_qc_templates")
+}
+
+model SeeraBatchQc {
+  id             String   @id @default(cuid())
+  batchId        String
+  templateId     String?
+  parameter      String
+  unit           String?
+  observedValue  Decimal? @db.Decimal(14, 4)
+  passFail       Boolean?
+  remarks        String?
+  testerId       String
+  sampleDate     DateTime @default(now())
+  documentFileId String?
+  createdAt      DateTime @default(now())
+
+  @@index([batchId])
+  @@map("seera_mfg_batch_qc")
+}
+
+model SeeraWastageRecord {
+  id                String      @id @default(cuid())
+  productionOrderId String?
+  batchId           String?
+  materialId        String?
+  wastageType       WastageType
+  expectedQuantity  Decimal?    @db.Decimal(14, 4)
+  actualQuantity    Decimal?    @db.Decimal(14, 4)
+  wasteQuantity     Decimal     @db.Decimal(14, 4)
+  unit              ManufacturingUnit
+  reason            String
+  actorId           String
+  approvalId        String?
+  movementId        String?
+  idempotencyKey    String      @unique
+  createdAt         DateTime    @default(now())
+
+  @@index([batchId])
+  @@index([productionOrderId])
+  @@map("seera_mfg_wastage_records")
+}
+
+model SeeraDeviationRecord {
+  id                String          @id @default(cuid())
+  batchId           String?
+  productionOrderId String?
+  deviationType     DeviationType
+  description       String
+  impact            String?
+  immediateAction   String?
+  responsibleUserId String?
+  status            DeviationStatus @default(OPEN)
+  documentFileId    String?
+  actorId           String
+  closedAt          DateTime?
+  idempotencyKey    String          @unique
+  createdAt         DateTime        @default(now())
+
+  @@index([batchId])
+  @@index([status])
+  @@map("seera_mfg_deviation_records")
+}
+
+model SeeraGrn {
+  id            String    @id @default(cuid())
+  grnNumber     String    @unique
+  date          DateTime
+  vendorId      String
+  purchaseRef   String?
+  status        GrnStatus @default(DRAFT)
+  actorId       String
+  idempotencyKey String   @unique
+  createdAt     DateTime  @default(now())
+  lines         SeeraGrnLine[]
+
+  @@map("seera_mfg_grns")
+}
+
+model SeeraGrnLine {
+  id                String    @id @default(cuid())
+  grnId             String
+  materialId        String
+  supplierLotRef    String?
+  quantity          Decimal   @db.Decimal(14, 3)
+  unit              ManufacturingUnit
+  canonicalQuantity Decimal   @db.Decimal(14, 3)
+  acceptedQuantity  Decimal   @db.Decimal(14, 3)
+  rejectedQuantity  Decimal   @default(0) @db.Decimal(14, 3)
+  unitCost          Decimal?  @db.Decimal(14, 4)
+  internalLotId     String?
+  manufactureDate   DateTime?
+  expiryDate        DateTime?
+  locationId        String
+  qcStatus          BatchQcOverallStatus @default(PENDING)
+  documentFileId     String?
+  grn               SeeraGrn  @relation(fields: [grnId], references: [id], onDelete: Cascade)
+
+  @@index([grnId])
+  @@index([materialId])
+  @@map("seera_mfg_grn_lines")
+}
+
+model SeeraStockTransfer {
+  id                String   @id @default(cuid())
+  transferNumber    String   @unique
+  materialId        String
+  lotId             String?
+  quantity          Decimal  @db.Decimal(14, 3)
+  unit              ManufacturingUnit
+  canonicalQuantity Decimal  @db.Decimal(14, 3)
+  fromLocationId    String
+  toLocationId      String
+  reason            String
+  actorId           String
+  idempotencyKey    String   @unique
+  createdAt         DateTime @default(now())
+
+  @@map("seera_mfg_stock_transfers")
+}
+
+model SeeraStockAdjustment {
+  id             String                   @id @default(cuid())
+  adjustmentNumber String                 @unique
+  materialId     String
+  lotId          String?
+  direction      StockAdjustmentDirection
+  quantity       Decimal                  @db.Decimal(14, 3)
+  unit           ManufacturingUnit
+  canonicalQuantity Decimal               @db.Decimal(14, 3)
+  locationId     String
+  reason         String
+  actorId        String
+  approvalId     String?
+  idempotencyKey String                   @unique
+  createdAt      DateTime                 @default(now())
+
+  @@map("seera_mfg_stock_adjustments")
+}
+
+model SeeraStockCount {
+  id          String            @id @default(cuid())
+  countNumber String            @unique
+  locationId  String
+  date        DateTime
+  status      StockCountStatus  @default(DRAFT)
+  actorId     String
+  createdAt   DateTime          @default(now())
+  lines       SeeraStockCountLine[]
+
+  @@map("seera_mfg_stock_counts")
+}
+
+model SeeraStockCountLine {
+  id                    String          @id @default(cuid())
+  countSessionId        String
+  materialId            String
+  lotId                 String?
+  systemQuantity        Decimal         @db.Decimal(14, 3)
+  physicalQuantity      Decimal         @db.Decimal(14, 3)
+  varianceQuantity      Decimal         @db.Decimal(14, 3)
+  reason                String?
+  adjustmentMovementId  String?
+  countSession          SeeraStockCount @relation(fields: [countSessionId], references: [id], onDelete: Cascade)
+
+  @@index([countSessionId])
+  @@map("seera_mfg_stock_count_lines")
+}
+
+model SeeraManufacturingMachine {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  name       String
+  type       String?
+  locationId String?
+  capacity   String?
+  isActive   Boolean  @default(true)
+  notes      String?
+
+  @@map("seera_mfg_machines")
+}
+
+model SeeraManufacturingShift {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  startTime String
+  endTime   String
+  isActive  Boolean  @default(true)
+
+  @@map("seera_mfg_shifts")
+}
+
+model SeeraManufacturingApprovalPolicy {
+  id               String                          @id @default(cuid())
+  category         ManufacturingApprovalCategory    @unique
+  thresholdAmount  Decimal                          @default(0) @db.Decimal(16, 2)
+  requiresApproval Boolean                          @default(true)
+  updatedById      String?
+  updatedAt        DateTime                          @updatedAt
+
+  @@map("seera_mfg_approval_policies")
+}
+
+model SeeraBatchCost {
+  id               String          @id @default(cuid())
+  batchId          String          @unique
+  rawMaterialCost  Decimal         @default(0) @db.Decimal(16, 2)
+  packagingCost    Decimal         @default(0) @db.Decimal(16, 2)
+  otherCost        Decimal         @default(0) @db.Decimal(16, 2)
+  totalCost        Decimal         @default(0) @db.Decimal(16, 2)
+  unitCost         Decimal?        @db.Decimal(16, 4)
+  confidence       CostConfidence  @default(UNAVAILABLE)
+  computedAt       DateTime        @default(now())
+
+  @@map("seera_mfg_batch_costs")
+}
+
+// Company Sales dispatch -> finished-goods batch/lot allocation (spec §15).
+// FIFO-consumes released SeeraFinishedGoodsReceipt rows for the dispatched
+// SKU; "remaining" per receipt is always DERIVED as receipt.quantity minus
+// the sum of its allocations here (never a separately-stored counter that
+// could drift) — same immutable-ledger philosophy as everything else in this
+// module. Also the audit trail COGS posting reads its per-batch cost basis
+// from (unitCost captured at allocation time, from the batch's SeeraBatchCost
+// at that moment, so a later batch-cost recompute never rewrites a historical
+// dispatch's COGS).
+model SeeraCompanyDispatchAllocation {
+  id             String   @id @default(cuid())
+  orderId        String
+  deliveryId     String
+  skuId          String
+  receiptId      String
+  batchId        String
+  quantity       Decimal  @db.Decimal(14, 3)
+  unitCost       Decimal? @db.Decimal(16, 4)
+  costConfidence CostConfidence @default(UNAVAILABLE)
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+
+  @@index([receiptId])
+  @@index([orderId])
+  @@index([skuId])
+  @@map("seera_mfg_company_dispatch_allocations")
 }

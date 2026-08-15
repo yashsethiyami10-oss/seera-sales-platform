@@ -6,6 +6,13 @@ import { authorize } from "@/lib/foundation/authorization-service";
 // straight from the GL (RELIABLE once the GL has postings); COGS/SKU margin
 // stay PARTIAL/UNAVAILABLE until a real Manufacturing cost truth exists —
 // deliberately never backed into from selling price.
+// COGS (code 5001) is deliberately split out of operatingExpense so a real
+// Gross Profit line can be computed (Manufacturing OS integration spec §16).
+// Confidence is derived from SeeraCompanyDispatchAllocation coverage in the
+// same period — never assumed RELIABLE just because a 5001 balance exists,
+// since legacy/no-cost dispatch lines post nothing to 5001 at all and must
+// not be silently read as "no COGS this period" when they are really
+// "unpriced this period".
 export async function profitAndLoss(db: PrismaClient, actorId: string, periodStart: Date, periodEnd: Date) {
   await authorize(db, { actorId, permission: "financial_statements:view" });
   const lines = await db.seeraJournalLine.findMany({ where: { journal: { status: "POSTED", date: { gte: periodStart, lte: periodEnd } } }, include: { journal: false } });
@@ -20,24 +27,40 @@ export async function profitAndLoss(db: PrismaClient, actorId: string, periodSta
     else expense.set(account.code, (expense.get(account.code) ?? 0) + (Number(line.debit) - Number(line.credit)));
   }
   const totalRevenue = [...revenue.values()].reduce((s, v) => s + v, 0);
-  const totalOperatingExpense = [...expense.values()].reduce((s, v) => s + v, 0);
-  const operatingProfit = totalRevenue - totalOperatingExpense;
+  const cogsAmount = expense.get("5001") ?? 0;
+  const operatingExpenseEntries = [...expense.entries()].filter(([code]) => code !== "5001");
+  const totalOperatingExpense = operatingExpenseEntries.reduce((s, [, v]) => s + v, 0);
+  const grossProfit = totalRevenue - cogsAmount;
+  const operatingProfit = grossProfit - totalOperatingExpense;
+
+  const allocations = await db.seeraCompanyDispatchAllocation.findMany({ where: { createdAt: { gte: periodStart, lte: periodEnd } } });
+  const allocatedQty = allocations.reduce((s, a) => s + Number(a.quantity), 0);
+  const reliableQty = allocations.filter((a) => a.costConfidence === "RELIABLE").reduce((s, a) => s + Number(a.quantity), 0);
+  const cogsConfidence: "RELIABLE" | "PARTIAL" | "UNAVAILABLE" =
+    allocatedQty === 0 ? "UNAVAILABLE" : reliableQty === allocatedQty ? "RELIABLE" : "PARTIAL";
+  const cogsNote =
+    cogsConfidence === "RELIABLE"
+      ? "COGS fully cost-based from governed Manufacturing batch costing"
+      : cogsConfidence === "PARTIAL"
+        ? `COGS partially cost-based — ${reliableQty} of ${allocatedQty} dispatched units had a governed cost basis; remainder excluded from 5001 rather than fabricated`
+        : "COST DATA INCOMPLETE / PARTIAL PROFITABILITY — no governed Manufacturing production-cost source exists for this period yet (either Company Inventory Mode is LEGACY_UNBOUNDED, or no dispatch has occurred)";
+
   return {
     periodStart,
     periodEnd,
     revenue: [...revenue.entries()].map(([code, amount]) => ({ code, name: byCode.get(code)!.name, amount })),
     totalRevenue,
     revenueConfidence: "RELIABLE" as const,
-    cogs: null,
-    cogsConfidence: "UNAVAILABLE" as const,
-    cogsNote: "COST DATA INCOMPLETE / PARTIAL PROFITABILITY — no governed Manufacturing production-cost source exists yet",
-    grossProfit: null,
-    operatingExpense: [...expense.entries()].map(([code, amount]) => ({ code, name: byCode.get(code)!.name, amount })),
+    cogs: cogsAmount,
+    cogsConfidence,
+    cogsNote,
+    grossProfit,
+    operatingExpense: operatingExpenseEntries.map(([code, amount]) => ({ code, name: byCode.get(code)!.name, amount })),
     totalOperatingExpense,
     operatingExpenseConfidence: "RELIABLE" as const,
     operatingProfit,
     netResult: operatingProfit,
-    netResultConfidence: "PARTIAL" as const,
+    netResultConfidence: cogsConfidence === "RELIABLE" ? ("RELIABLE" as const) : ("PARTIAL" as const),
   };
 }
 

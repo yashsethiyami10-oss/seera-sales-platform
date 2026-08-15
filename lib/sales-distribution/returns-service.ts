@@ -87,7 +87,7 @@ export async function decideReturnRequest(
   // problem, rather than inventing a new permission or a new escalation path.
   const permissions = await effectivePermissions(prisma, actorId);
   if (!permissions.has("system:super_admin") && !permissions.has("finance_dashboard:view"))
-    await requirePartyMembership(prisma, actorId, existing.partyId, existing.partyType);
+    await requirePartyMembership(prisma, actorId, existing.partyId, existing.partyType as "DISTRIBUTOR" | "SUPER_STOCKIST");
   if (!input.reason.trim())
     throw new FoundationError("RETURN_DECISION_REASON_REQUIRED", "A decision reason is required", 400);
   return prisma.$transaction(async (tx) => {

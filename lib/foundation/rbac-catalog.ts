@@ -13,6 +13,11 @@ export const PHASE_1_ROLES = [
   ["DISTRIBUTOR_DELIVERY_USER", "Distributor Delivery User"],
   ["RETAILER_USER", "Retailer User"],
   ["READ_ONLY_AUDITOR", "Read-only Auditor"],
+  ["MANUFACTURING_MANAGER", "Manufacturing Manager"],
+  ["PRODUCTION_SUPERVISOR", "Production Supervisor"],
+  ["STORE_EXECUTIVE", "Store / Inventory Executive"],
+  ["QC_USER", "Quality / QC User"],
+  ["PRODUCTION_OPERATOR", "Production Operator"],
 ] as const;
 
 export const PHASE_1_ROLE_CODES = PHASE_1_ROLES.map(([code]) => code);
@@ -43,6 +48,15 @@ export const PHASE_1_PERMISSIONS = [
   "coa:manage", "treasury_account:manage", "journal:post", "journal:reverse", "gl:view", "money_in:record", "money_out:record",
   "vendor:manage", "vendor_bill:manage", "vendor_payment:record", "expense:create", "expense:approve", "expense:post",
   "budget:manage", "loan:manage", "asset:manage", "bank_statement:import", "finance_approval_policy:manage", "financial_statements:view",
+  "portal:manufacturing",
+  "mfg_material:manage", "mfg_location:manage", "mfg_ledger:view",
+  "mfg_bom:manage", "mfg_bom:approve", "mfg_sop:manage", "mfg_sop:approve",
+  "mfg_plan:manage", "mfg_order:manage",
+  "mfg_batch:execute", "mfg_batch:supervise",
+  "mfg_qc:enter", "mfg_qc:release",
+  "mfg_wastage:record", "mfg_deviation:manage",
+  "mfg_grn:manage", "mfg_stock_transfer:manage", "mfg_stock_adjustment:manage", "mfg_stock_count:manage",
+  "mfg_machine_shift:manage", "mfg_approval_policy:manage", "mfg_cost:view", "mfg_reports:view", "mfg_settings:manage",
 ] as const;
 
 export const PHASE_1_PERMISSION_NAMESPACES = [...new Set(PHASE_1_PERMISSIONS.map((code) => code.split(":")[0]))] as readonly string[];
@@ -66,6 +80,20 @@ export const ROLE_PERMISSION_MATRIX: Record<Phase1RoleCode, readonly Phase1Permi
   DISTRIBUTOR_DELIVERY_USER: ["portal:distributor", "distributor_delivery:execute", "notifications:view", "session:revoke_self"],
   RETAILER_USER: ["portal:retailer", ...common],
   READ_ONLY_AUDITOR: ["audit:view", "settings:view", "feature_flags:view", "role:view", "permission:view", "user:view", "notifications:view", "files:view", "session:revoke_self"],
+  MANUFACTURING_MANAGER: ["portal:manufacturing", "mfg_material:manage", "mfg_location:manage", "mfg_ledger:view", "mfg_bom:manage", "mfg_bom:approve", "mfg_sop:manage", "mfg_sop:approve", "mfg_plan:manage", "mfg_order:manage", "mfg_batch:execute", "mfg_batch:supervise", "mfg_qc:enter", "mfg_wastage:record", "mfg_deviation:manage", "mfg_grn:manage", "mfg_stock_transfer:manage", "mfg_stock_adjustment:manage", "mfg_stock_count:manage", "mfg_machine_shift:manage", "mfg_approval_policy:manage", "mfg_cost:view", "mfg_reports:view", "mfg_settings:manage", "document:view_scoped", "document:upload", ...common],
+  PRODUCTION_SUPERVISOR: ["portal:manufacturing", "mfg_ledger:view", "mfg_order:manage", "mfg_batch:execute", "mfg_batch:supervise", "mfg_wastage:record", "mfg_deviation:manage", "mfg_stock_transfer:manage", "mfg_reports:view", "document:view_scoped", "document:upload", ...common],
+  STORE_EXECUTIVE: ["portal:manufacturing", "mfg_ledger:view", "mfg_grn:manage", "mfg_stock_transfer:manage", "mfg_stock_count:manage", "mfg_batch:execute", "mfg_reports:view", "document:view_scoped", "document:upload", ...common],
+  QC_USER: ["portal:manufacturing", "mfg_ledger:view", "mfg_qc:enter", "mfg_qc:release", "mfg_reports:view", "document:view_scoped", "document:upload", ...common],
+  // mfg_ledger:view added this closure pass — it is READ-only stock/order
+  // visibility (not BOM/SOP/Finance/global-adjustment/Founder-settings edit
+  // rights, which stay withheld per spec), and without it Operator could not
+  // even see their own assigned Production Orders in the simplified Today's
+  // Jobs workspace (listProductionOrders/materialStockPosition both require it).
+  // mfg_wastage:record added this closure pass too — reporting spillage/
+  // process-loss on the floor ("Exception") is normal operator-level work,
+  // distinct from the still-withheld mfg_deviation:manage (formal deviation
+  // review/closure stays Supervisor+).
+  PRODUCTION_OPERATOR: ["portal:manufacturing", "mfg_ledger:view", "mfg_batch:execute", "mfg_wastage:record", "mfg_reports:view", ...common],
 };
 
-export const PHASE_1_FEATURE_FLAGS = ["portal.accounts.enabled", "portal.sales_manager.enabled", "portal.sales_executive.enabled", "portal.distributor.enabled", "portal.super_stockist.enabled", "portal.retailer.enabled"] as const;
+export const PHASE_1_FEATURE_FLAGS = ["portal.accounts.enabled", "portal.sales_manager.enabled", "portal.sales_executive.enabled", "portal.distributor.enabled", "portal.super_stockist.enabled", "portal.retailer.enabled", "portal.manufacturing.enabled"] as const;

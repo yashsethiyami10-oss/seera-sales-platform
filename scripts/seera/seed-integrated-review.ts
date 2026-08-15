@@ -56,6 +56,15 @@ const actors = [
   ["delivery", "DISTRIBUTOR_DELIVERY_USER", "Delivery User Review"],
   ["retailer", "RETAILER_USER", "Retailer User Review"],
   ["auditor", "READ_ONLY_AUDITOR", "Auditor Review"],
+  // Manufacturing OS closure pass — one review login per Manufacturing role,
+  // needed for real RBAC/UAT verification (role UX re-verification, browser
+  // UAT across Operator/Store/QC/Founder) instead of testing every role
+  // through the Founder super-admin account only.
+  ["mfg-manager", "MANUFACTURING_MANAGER", "Manufacturing Manager Review"],
+  ["production-supervisor", "PRODUCTION_SUPERVISOR", "Production Supervisor Review"],
+  ["store-executive", "STORE_EXECUTIVE", "Store Executive Review"],
+  ["qc-user", "QC_USER", "QC User Review"],
+  ["production-operator", "PRODUCTION_OPERATOR", "Production Operator Review"],
 ] as const;
 
 async function main() {

@@ -25,6 +25,16 @@ const ROLE_TO_PORTAL: Record<string, string> = {
   DISTRIBUTOR_DELIVERY_USER: "/portal/distributor",
   RETAILER_USER: "/portal/retailer",
   READ_ONLY_AUDITOR: "/portal/auditor",
+  // Manufacturing OS closure pass — these 5 roles existed in the RBAC catalog
+  // but were never added here, so logging in as one would redirect to "/"
+  // which redirects right back to this same function ("/" -> unmapped ->
+  // "/") — an infinite redirect loop, not just a missing landing page. Found
+  // and fixed during this pass's browser UAT, not a pre-existing known gap.
+  MANUFACTURING_MANAGER: "/portal/manufacturing",
+  PRODUCTION_SUPERVISOR: "/portal/manufacturing",
+  STORE_EXECUTIVE: "/portal/manufacturing",
+  QC_USER: "/portal/manufacturing",
+  PRODUCTION_OPERATOR: "/portal/manufacturing",
 };
 
 export function portalLandingPathForRole(primaryRoleCode: string | null | undefined): string {
