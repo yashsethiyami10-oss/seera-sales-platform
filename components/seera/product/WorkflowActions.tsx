@@ -4,21 +4,9 @@ import { useRef, useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import journeyStyles from "./FieldJourney.module.css";
 import { captureGps, GpsBadge, type GpsStatus } from "./gps";
+import { send, GovernedError } from "./governed-fetch";
+import { ActionMessageBanner, type ActionMessage } from "./ErrorBanner";
 type Option = { value: string; label: string; meta?: string };
-async function send(url: string, body: unknown) {
-  const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-    data = await r.json().catch(() => ({}));
-  if (!r.ok)
-    throw Object.assign(
-      new Error(data?.error?.message ?? data?.error?.code ?? "Request failed"),
-      { code: data?.error?.code as string | undefined, details: data?.error?.details as Record<string, unknown> | undefined },
-    );
-  return data;
-}
 type SimilarProspect = { id: string; businessName: string; normalizedMobile: string; stage: string };
 const key = () => crypto.randomUUID();
 type EndDaySummary = {
@@ -69,14 +57,16 @@ export function WorkflowActions({
     [busy, setBusy] = useState(false),
     [gpsStatus, setGpsStatus] = useState<GpsStatus>("IDLE"),
     [confirmEndDay, setConfirmEndDay] = useState(false),
-    [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
-      null,
-    );
+    [message, setMessage] = useState<ActionMessage | null>(null);
+  const toActionMessage = (e: unknown, fallback: string): ActionMessage =>
+    e instanceof GovernedError
+      ? { ok: false, text: e.userMessage ?? e.message, nextAction: e.nextAction, requestId: e.requestId, retryable: e.retryable, supportRequired: e.supportRequired }
+      : { ok: false, text: e instanceof Error ? e.message : fallback };
   const prospectFormRef = useRef<HTMLFormElement>(null);
   const [prospectBusy, setProspectBusy] = useState(false);
   const [prospectCreated, setProspectCreated] = useState<{ id: string; businessName: string; stage: string } | null>(null);
   const [prospectDuplicate, setProspectDuplicate] = useState<SimilarProspect[] | null>(null);
-  const [prospectMessage, setProspectMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [prospectMessage, setProspectMessage] = useState<ActionMessage | null>(null);
   const submitProspect = async (form: HTMLFormElement, confirmDuplicate: boolean) => {
     const f = new FormData(form);
     setProspectBusy(true);
@@ -109,7 +99,7 @@ export function WorkflowActions({
       if (details?.similar?.length) {
         setProspectDuplicate(details.similar);
       } else {
-        setProspectMessage({ ok: false, text: e instanceof Error ? e.message : "Save failed" });
+        setProspectMessage(toActionMessage(e, "Save failed"));
       }
     } finally {
       setProspectBusy(false);
@@ -125,7 +115,7 @@ export function WorkflowActions({
       setProspectMessage({ ok: true, text: hi ? "फॉलो-अप निर्धारित किया गया।" : "Follow-up scheduled." });
       router.refresh();
     } catch (e) {
-      setProspectMessage({ ok: false, text: e instanceof Error ? e.message : "Could not schedule follow-up" });
+      setProspectMessage(toActionMessage(e, "Could not schedule follow-up"));
     } finally {
       setProspectBusy(false);
     }
@@ -138,7 +128,7 @@ export function WorkflowActions({
       setProspectMessage({ ok: true, text: hi ? "मौजूदा संभावना अपडेट की गई।" : "Existing prospect updated." });
       router.refresh();
     } catch (e) {
-      setProspectMessage({ ok: false, text: e instanceof Error ? e.message : "Could not update" });
+      setProspectMessage(toActionMessage(e, "Could not update"));
     } finally {
       setProspectBusy(false);
     }
@@ -164,10 +154,18 @@ export function WorkflowActions({
       });
       router.refresh();
     } catch (e) {
-      setMessage({
-        ok: false,
-        text: e instanceof Error ? e.message : "Action failed",
-      });
+      if (e instanceof GovernedError) {
+        setMessage({
+          ok: false,
+          text: e.userMessage ?? e.message,
+          nextAction: e.nextAction,
+          requestId: e.requestId,
+          retryable: e.retryable,
+          supportRequired: e.supportRequired,
+        });
+      } else {
+        setMessage({ ok: false, text: e instanceof Error ? e.message : "Action failed" });
+      }
     } finally {
       setBusy(false);
     }
@@ -288,11 +286,7 @@ export function WorkflowActions({
             </button>
           </form>
         )}
-        {message && (
-          <p role="status" data-ok={message.ok}>
-            {message.text}
-          </p>
-        )}
+        <ActionMessageBanner message={message} language={language} />
       </section>
     );
   if (kind === "prospect")
@@ -417,11 +411,7 @@ export function WorkflowActions({
           </button>
           </form>
         )}
-        {prospectMessage && (
-          <p role="status" data-ok={prospectMessage.ok}>
-            {prospectMessage.text}
-          </p>
-        )}
+        <ActionMessageBanner message={prospectMessage} language={language} />
       </section>
     );
   if (kind === "finance-payment")
@@ -507,11 +497,7 @@ export function WorkflowActions({
             {hi ? "नियंत्रित कार्रवाई करें" : "Run governed action"}
           </button>
         </form>
-        {message && (
-          <p role="status" data-ok={message.ok}>
-            {message.text}
-          </p>
-        )}
+        <ActionMessageBanner message={message} language={language} />
       </section>
     );
   return (
@@ -562,11 +548,7 @@ export function WorkflowActions({
           {hi ? "सत्यापित करें" : "Verify claim"}
         </button>
       </form>
-      {message && (
-        <p role="status" data-ok={message.ok}>
-          {message.text}
-        </p>
-      )}
+      <ActionMessageBanner message={message} language={language} />
     </section>
   );
 }

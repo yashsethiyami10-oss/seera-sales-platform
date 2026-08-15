@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./FieldJourney.module.css";
 import { queueOfflineOperation, syncClientQueue, listClientQueue } from "@/lib/phase-11/offline-client";
 import { captureGps, GpsBadge, type GpsStatus, type GpsPoint } from "./gps";
+import { ActionMessageBanner, type ActionMessage } from "./ErrorBanner";
 
 type BeatRetailer = {
   id: string;
@@ -65,7 +66,17 @@ type WorkingType = "RETAILING" | "DISTRIBUTOR_SEARCH" | "DISTRIBUTOR_VISIT" | "W
 // overlay reported from this file's old send().
 type ActionOutcome =
   | { success: true; data: any }
-  | { success: false; code: string; message: string; details?: Record<string, unknown> };
+  | {
+      success: false;
+      code: string;
+      message: string;
+      details?: Record<string, unknown>;
+      userMessage?: string;
+      nextAction?: string;
+      retryable?: boolean;
+      supportRequired?: boolean;
+      requestId?: string;
+    };
 
 async function send(action: string, payload: Record<string, unknown>): Promise<ActionOutcome> {
   let response: Response;
@@ -78,7 +89,7 @@ async function send(action: string, payload: Record<string, unknown>): Promise<A
   } catch {
     // fetch() itself failed to complete — a real network-layer problem (offline/DNS/CORS), not a
     // business rejection from the server.
-    return { success: false, code: "NETWORK_ERROR", message: "Could not save. Please retry." };
+    return { success: false, code: "NETWORK_ERROR", message: "Could not save. Please retry.", nextAction: "Check your connection and try again.", retryable: true };
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok)
@@ -87,6 +98,11 @@ async function send(action: string, payload: Record<string, unknown>): Promise<A
       code: data?.error?.code ?? "ACTION_FAILED",
       message: data?.error?.message ?? data?.error?.code ?? "Action failed",
       details: data?.error?.details,
+      userMessage: data?.error?.userMessage,
+      nextAction: data?.error?.nextAction,
+      retryable: data?.error?.retryable,
+      supportRequired: data?.error?.supportRequired,
+      requestId: data?.error?.requestId,
     };
   return { success: true, data };
 }
@@ -317,7 +333,7 @@ export function FieldJourney({
     fileRef = useRef<HTMLInputElement>(null),
     [busy, setBusy] = useState(false),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
-    [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null),
+    [message, setMessage] = useState<ActionMessage | null>(null),
     [mode, setMode] = useState<"ORDER" | "PHOTO" | "FOLLOW_UP">("ORDER"),
     [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine()]),
     [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
@@ -395,7 +411,14 @@ export function FieldJourney({
       });
       router.refresh();
     } else {
-      setMessage({ ok: false, text: result.message });
+      setMessage({
+        ok: false,
+        text: result.userMessage ?? result.message,
+        nextAction: result.nextAction,
+        requestId: result.requestId,
+        retryable: result.retryable,
+        supportRequired: result.supportRequired,
+      });
     }
     return result;
   };
@@ -488,11 +511,7 @@ export function FieldJourney({
           >
             {busy ? (busyLabel ?? (hi ? "दिन शुरू हो रहा है…" : "Starting day…")) : hi ? "दिन शुरू करें" : "Start day"}
           </button>
-          {message && (
-            <p role="status" data-ok={message.ok}>
-              {message.text}
-            </p>
-          )}
+          <ActionMessageBanner message={message} language={language} />
         </section>
       </>
     );
@@ -596,11 +615,7 @@ export function FieldJourney({
           </button>
         </form>
       )}
-      {message && (
-        <p role="status" data-ok={message.ok}>
-          {message.text}
-        </p>
-      )}
+      <ActionMessageBanner message={message} language={language} />
     </section>
   );
 
@@ -938,11 +953,7 @@ export function FieldJourney({
                 </div>
               </div>
             )}
-            {message && (
-              <p role="status" data-ok={message.ok}>
-                {message.text}
-              </p>
-            )}
+            <ActionMessageBanner message={message} language={language} />
           </section>
         )}
       </>
@@ -1474,11 +1485,7 @@ export function FieldJourney({
             {busy ? (busyLabel ?? (hi ? "हो रहा है…" : "Working…")) : hi ? "चेकआउट और अगला ग्राहक" : "Checkout & next customer"}
           </button>
         </form>
-        {message && (
-          <p role="status" data-ok={message.ok}>
-            {message.text}
-          </p>
-        )}
+        <ActionMessageBanner message={message} language={language} />
       </section>
     </>
   );
