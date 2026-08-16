@@ -142,6 +142,11 @@ const provisionInput = z.object({
   mobile: z.string().trim().min(10).max(15),
   email: z.string().trim().email().optional(),
   accessRole: z.enum(["OWNER", "OPERATOR", "DELIVERY"]),
+  // Founder onboarding correction: real distributor owners are often verbally handed a temporary
+  // password over a phone call, not shown a screen — the previously auto-generated 24-char
+  // base64url string (generateTemporaryPassword() below) is unusable for that. Optional so every
+  // existing caller that omits it keeps the prior auto-generated behavior unchanged.
+  password: z.string().min(12).max(256).optional(),
 });
 
 export async function provisionPartnerLogin(prisma: PrismaClient, actorId: string, input: unknown) {
@@ -154,7 +159,7 @@ export async function provisionPartnerLogin(prisma: PrismaClient, actorId: strin
   if (!roleCode) throw new FoundationError("UNSUPPORTED_PARTNER_TYPE", "Login provisioning is not supported for this partner type", 400);
   const normalizedMobile = data.mobile.replace(/\D/g, "");
   const email = data.email ?? `partner-${normalizedMobile}-${Date.now()}@seera.local`;
-  const temporaryPassword = generateTemporaryPassword();
+  const temporaryPassword = data.password ?? generateTemporaryPassword();
   const user = await createUser(prisma, actorId, { email, name: data.name, password: temporaryPassword });
   // Best-effort only: phone is @unique on User, and a shared/reused mobile number across two
   // provisioned logins should not fail the whole provisioning flow (login itself works by

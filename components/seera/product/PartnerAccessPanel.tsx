@@ -154,6 +154,7 @@ export function PartnerAccessPanel({
               mobile: String(f.get("mobile") || ""),
               email: String(f.get("email") || "") || undefined,
               accessRole: String(f.get("accessRole") || "OWNER"),
+              password: String(f.get("password") || "") || undefined,
             })
               .then((result: { user: { email: string }; roleCode: string; temporaryPassword: string }) => {
                 setOpen(false);
@@ -184,6 +185,10 @@ export function PartnerAccessPanel({
                 </option>
               ))}
             </select>
+          </label>
+          <label>
+            {hi ? "अस्थायी पासवर्ड (वैकल्पिक — खाली छोड़ें तो स्वतः जनरेट होगा)" : "Temporary password (optional — leave blank to auto-generate)"}
+            <input name="password" minLength={12} placeholder={hi ? "कम से कम 12 अक्षर" : "At least 12 characters"} />
           </label>
           <button disabled={busy} className={styles.primaryBig}>
             {hi ? "लॉगिन बनाएं" : "CREATE LOGIN"}

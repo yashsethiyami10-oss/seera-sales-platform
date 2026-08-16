@@ -70,7 +70,7 @@ export function AddDistributorPanel({
             void post("add-distributor", {
               superStockistId: targetSuperStockistId,
               firmName: String(f.get("firmName") || ""),
-              address: { line: String(f.get("address") || "") },
+              address: { line: String(f.get("address") || ""), city: String(f.get("city") || ""), state: String(f.get("state") || "") },
               mobile: String(f.get("mobile") || ""),
               ownerName: String(f.get("ownerName") || "") || undefined,
               alternateMobile: String(f.get("alternateMobile") || "") || undefined,
@@ -117,6 +117,14 @@ export function AddDistributorPanel({
           <label>
             {hi ? "क्षेत्र / पता" : "Area / Address"}
             <input name="address" required />
+          </label>
+          <label>
+            {hi ? "शहर / कस्बा" : "Town / City"}
+            <input name="city" required />
+          </label>
+          <label>
+            {hi ? "राज्य" : "State"}
+            <input name="state" required defaultValue="Uttar Pradesh" />
           </label>
           <label>
             {hi ? "प्राथमिक मोबाइल" : "Primary mobile"}

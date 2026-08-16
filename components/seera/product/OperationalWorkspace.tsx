@@ -1579,6 +1579,7 @@ async function rowsFor(
                   { legalName: { contains: q, mode: "insensitive" } },
                   { tradeName: { contains: q, mode: "insensitive" } },
                   { code: { contains: q, mode: "insensitive" } },
+                  { primaryContact: { path: ["mobile"], string_contains: q } },
                 ],
               }
             : {}),
@@ -1595,13 +1596,21 @@ async function rowsFor(
         skip,
         take,
       })
-    ).map((x) => ({
-      id: x.id,
-      primary: x.tradeName ?? x.legalName,
-      secondary: `${x.code} · ${x.type}`,
-      status: x.lifecycle,
-      date: x.updatedAt,
-    }));
+    ).map((x) => {
+      // Firm names are not unique across towns (e.g. two "Sahu Kirana" distributors in different
+      // towns) — disambiguate the primary display line with Town whenever the freeform addresses
+      // JSON has one, per the {line, area, city, state, pincode} convention formatAddress() already
+      // relies on elsewhere in this codebase, rather than forcing readers to decode the partner code.
+      const city = (x.addresses as { city?: string } | null)?.city;
+      const firm = x.tradeName ?? x.legalName;
+      return {
+        id: x.id,
+        primary: city ? `${firm} — ${city}` : firm,
+        secondary: `${x.code} · ${x.type}`,
+        status: x.lifecycle,
+        date: x.updatedAt,
+      };
+    });
   if (item.kind === "retailers")
     return (
       await db.seeraRetailer.findMany({
