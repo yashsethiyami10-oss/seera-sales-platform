@@ -24,6 +24,7 @@ import { DistributorOrderCards } from "./DistributorOrderCards";
 import { retailerOrderLineAvailability, distributorStockSummary } from "@/lib/sales-distribution/distributor-easy-mode-service";
 import { SuperStockistOrderCards } from "./SuperStockistOrderCards";
 import { AddDistributorPanel } from "./AddDistributorPanel";
+import { RatanBulkOnboardPanel } from "./RatanBulkOnboardPanel";
 import { CreateSuperStockistPanel } from "./CreateSuperStockistPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { CompanyOrderDispatchPanel } from "./CompanyOrderDispatchPanel";
@@ -3767,15 +3768,25 @@ export async function OperationalWorkspace({
       orderBy: { updatedAt: "desc" },
       take: 200,
     });
+    // Founder-authorized one-time Ratan Products & Traders batch (see RatanBulkOnboardPanel) —
+    // auto-hides once all 10 distributors under that specific S.S. exist, so this one-time action
+    // disappears on its own after successful use instead of needing a manual follow-up deploy.
+    const ratanSuperStockist = founderSuperStockists.find((s) => s.legalName === "M/s Ratan Products & Traders");
+    const ratanDistributorCount = ratanSuperStockist
+      ? await db.seeraPartner.count({ where: { type: "DISTRIBUTOR", assignedSuperStockistId: ratanSuperStockist.id } })
+      : 0;
     headerAction = (
-      <AddDistributorPanel
-        language={language}
-        superStockists={founderSuperStockists.map((s) => ({
-          value: s.id,
-          label: `${s.tradeName ?? s.legalName} · ${s.code}`,
-        }))}
-        redirectBase={base}
-      />
+      <>
+        {ratanSuperStockist && ratanDistributorCount < 10 && <RatanBulkOnboardPanel language={language} />}
+        <AddDistributorPanel
+          language={language}
+          superStockists={founderSuperStockists.map((s) => ({
+            value: s.id,
+            label: `${s.tradeName ?? s.legalName} · ${s.code}`,
+          }))}
+          redirectBase={base}
+        />
+      </>
     );
   } else if (
     portal === "founder-admin" &&
