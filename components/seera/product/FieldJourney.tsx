@@ -115,8 +115,76 @@ function scrollToJourneyTop() {
   if (typeof document === "undefined") return;
   document.getElementById("field-journey-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
+// PERFORMANCE PHASE 3: every GPS-gated action sets `busy`/`busyLabel` synchronously as the very
+// first line, before `captureGps()` — but `captureGps()`'s underlying `getCurrentPosition()` can
+// resolve near-instantly (a cached position, or this codebase's own test/emulated geolocation),
+// racing the pending-feedback paint against GPS resolution instead of guaranteeing it lands first.
+// One `requestAnimationFrame` round trip is the standard way to force the browser to actually
+// paint the just-scheduled state update before the next expensive synchronous/async step starts —
+// not an artificial delay, just ceding the frame React already asked for instead of letting the
+// GPS call's own scheduling race ahead of it.
+function yieldToPaint(): Promise<void> {
+  if (typeof requestAnimationFrame === "undefined") return Promise.resolve();
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+// FINAL PERFORMANCE PASS — photo pipeline root cause: unresized camera photos (routinely 3-8MB)
+// were base64-encoded whole (~33% larger again) and written directly into a Postgres `bytea`
+// column in one request — this, not any client-side wait-on-refresh pattern, was the real source
+// of "adding a photo takes too long". Field evidence photos don't need full camera resolution to
+// stay legible, so this resizes to a reasonable long edge and re-encodes as JPEG before upload —
+// the ORIGINAL file is still what's shown in the instant local preview (unchanged, still instant),
+// this only changes what actually gets uploaded. `imageOrientation: "from-image"` makes
+// createImageBitmap apply the source's EXIF rotation itself, since re-encoding through a canvas
+// otherwise silently drops EXIF (a classic "photo comes out sideways" bug this avoids introducing).
+// HEIC/HEIF (common on iPhones) can't be decoded by canvas in most browsers, so those upload
+// as-is, same as before — no regression for that case, just no size reduction. Any resize failure
+// falls back to the original file rather than ever blocking a photo submission on this being
+// safe/available; a photo that fails to upload is worse than one that uploads a bit larger than ideal.
+async function prepareImageForUpload(
+  file: File,
+  maxDimension = 1920,
+  quality = 0.82,
+): Promise<{ base64: string; mimeType: string; originalName: string }> {
+  const original = { base64: await blobToBase64(file), mimeType: file.type, originalName: file.name };
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined") return original;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    if (scale >= 1) return original; // already within target size — don't reprocess an optimal image
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return original;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const resizedBlob: Blob | null = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", quality));
+    if (!resizedBlob || resizedBlob.size >= file.size) return original;
+    return { base64: await blobToBase64(resizedBlob), mimeType: "image/jpeg", originalName: file.name.replace(/\.\w+$/, ".jpg") };
+  } catch {
+    return original; // resize is a pure optimization — never block the actual upload on it
+  }
+}
 const key = () => crypto.randomUUID();
-const blankOrderLine = (): OrderLine => ({ key: key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "" });
+// PERFORMANCE PHASE 3 (hydration mismatch fix): `key()` is genuinely random, so calling it as the
+// default `useState` initializer ran once during SSR (baking one random value into the
+// server-rendered HTML's `name="brand-{key}"` radio attribute) and once again during the client's
+// first render before hydration reconciles — two different random values, a guaranteed mismatch.
+// An optional deterministic key lets the one SSR-visible call site (the initial `useState` below)
+// pass a fixed value instead, while every other call site (adding a line, resetting on visit
+// change) still gets a real random key — those only ever run client-side, post-mount, in a
+// useEffect/event handler, never during SSR, so they carry no hydration risk and keeping them
+// random preserves correct React list-reconciliation identity across visits.
+const blankOrderLine = (fixedKey?: string): OrderLine => ({ key: fixedKey ?? key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "" });
 // The offline sync API rejects any queued operation whose sessionContext.sessionId doesn't match
 // the server-side Session row that's live at sync time (a deliberate staleness/identity check —
 // see app/api/offline/sync/route.ts's STALE_DEVICE_SESSION check) — this used to be hardcoded to
@@ -315,7 +383,7 @@ export function FieldJourney({
   language,
   dashboard,
   session,
-  visit,
+  visit: rawVisit,
   beatRetailers,
   hasPublishedPlan,
   skus,
@@ -335,7 +403,7 @@ export function FieldJourney({
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
     [mode, setMode] = useState<"ORDER" | "PHOTO" | "FOLLOW_UP">("ORDER"),
-    [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine()]),
+    [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine("initial")]),
     [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
     [photoPreview, setPhotoPreview] = useState<string | null>(null),
     [showEndDayPreview, setShowEndDayPreview] = useState(false),
@@ -343,7 +411,33 @@ export function FieldJourney({
     [duplicateWarning, setDuplicateWarning] = useState<{ similar: { id: string; businessName: string; mobile: string | null }[] } | null>(null),
     [gpsStatus, setGpsStatus] = useState<GpsStatus>("IDLE"),
     [startWorkingType, setStartWorkingType] = useState<WorkingType>("RETAILING"),
-    [pendingSyncCount, setPendingSyncCount] = useState(0);
+    [pendingSyncCount, setPendingSyncCount] = useState(0),
+    // Checkout already durably completes server-side before this ever gets set (see the checkout
+    // handler below) — this is not an optimistic-before-success write, it's skipping an UNRELATED
+    // wait: previously the screen stayed on "Loading next customer…" until the entire portal
+    // server-refresh (dashboard+beat+follow-up+catalog) round-tripped, even though the beat list
+    // needed to show the next retailer was already sitting in `beatRetailers` props the whole
+    // time. Clearing this locally the instant checkout succeeds lets the beat list reappear
+    // immediately; router.refresh() (kicked off by run()) still lands moments later in the
+    // background to reconcile dashboard/beat counters, and resets this flag once real props arrive.
+    [optimisticVisitCleared, setOptimisticVisitCleared] = useState(false),
+    // PERFORMANCE PHASE 3: mirrors optimisticVisitCleared's reasoning in the other direction — set
+    // ONLY after check-in has already durably succeeded server-side (never on the offline-queued
+    // path, since that has no durable confirmation yet), from the server response's own
+    // authoritative id/retailerId/checkedInAt plus retailer display fields already sitting in the
+    // beatRetailers prop. Lets the active-visit workspace render immediately instead of waiting for
+    // the unrelated full-portal router.refresh() to deliver the same visit back through props.
+    // rawVisit (the real prop) always wins once it catches up — see the `visit` derivation below.
+    [localOptimisticVisit, setLocalOptimisticVisit] = useState<Visit | null>(null),
+    // FINAL PERFORMANCE PASS: same reasoning again for photo capture/delete — the durable write
+    // already succeeded server-side before either of these gets touched, so this isn't showing a
+    // fake result, it's just not waiting for the background router.refresh() to deliver the same
+    // photo list back through `visit.photos` before the count/grid/checkout-gate reflect it.
+    [localAddedPhotos, setLocalAddedPhotos] = useState<Photo[]>([]),
+    [locallyDeletedPhotoIds, setLocallyDeletedPhotoIds] = useState<Set<string>>(new Set());
+
+  const visit = optimisticVisitCleared ? undefined : (rawVisit ?? localOptimisticVisit ?? undefined);
+  const effectivePhotos = visit ? [...visit.photos, ...localAddedPhotos].filter((p) => !locallyDeletedPhotoIds.has(p.id)) : [];
 
   // FieldJourney stays mounted as the SAME component instance across the whole day — moving from
   // an active visit to "Next customer", or from one customer's visit to the next, only changes
@@ -352,6 +446,15 @@ export function FieldJourney({
   // uncontrolled file input's selected file) silently carries over from the previous customer —
   // showing a stale photo, a stale "saved successfully" message, or stale order data on what looks
   // like a fresh screen. Reset everything visit-scoped whenever the active visit identity changes.
+  //
+  // Keyed on `visit?.id` (the derived, optimistic-aware value), NOT `rawVisit?.id` directly:
+  // after check-in, `localOptimisticVisit` makes `visit` resolve to the just-created visit's real
+  // id immediately, while `rawVisit` itself stays undefined until the background router.refresh()
+  // lands moments later. `rawVisit?.id` would then jump from undefined -> that same id, re-firing
+  // this effect and wiping out any order-line edits the user already made in that window. Since
+  // `visit?.id` is the SAME value throughout the optimistic-then-confirmed transition, it only
+  // changes when the user genuinely moves to a different visit (or back to none) — exactly the
+  // cases this reset is meant to catch.
   useEffect(() => {
     setMessage(null);
     setMode("ORDER");
@@ -361,6 +464,10 @@ export function FieldJourney({
     setDuplicateWarning(null);
     setBusy(false);
     setBusyLabel(null);
+    setOptimisticVisitCleared(false);
+    setLocalOptimisticVisit(null);
+    setLocalAddedPhotos([]);
+    setLocallyDeletedPhotoIds(new Set());
     if (fileRef.current) fileRef.current.value = "";
     scrollToJourneyTop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -478,6 +585,7 @@ export function FieldJourney({
               // itself set busy, well after captureGps() had already started.
               setBusy(true);
               setGpsStatus("LOCATING");
+              await yieldToPaint();
               const { status, point } = await captureGps();
               setGpsStatus(status);
               let startExceptionReason: string | undefined;
@@ -624,6 +732,7 @@ export function FieldJourney({
     setBusyLabel(hi ? "ग्राहक जोड़ा जा रहा है…" : "Adding customer…");
     setMessage(null);
     setGpsStatus("LOCATING");
+    await yieldToPaint();
     const { status, point } = await captureGps();
     setGpsStatus(status);
     const idempotencyKey = key();
@@ -677,6 +786,20 @@ export function FieldJourney({
       return;
     }
     setMessage({ ok: true, text: hi ? "ग्राहक जोड़ा गया — विज़िट शुरू।" : "Customer added successfully — visit started." });
+    // Same durable-success-gated optimistic transition as the main check-in flow — both writes
+    // above already completed successfully server-side before this runs.
+    const newRetailer = createResult.data as { id: string; businessName: string; mobile: string | null; distributorId: string | null };
+    const newVisit = checkinResult.data as { id: string; checkedInAt: string };
+    setLocalOptimisticVisit({
+      id: newVisit.id,
+      retailerId: newRetailer.id,
+      retailerName: newRetailer.businessName,
+      retailerMobile: newRetailer.mobile,
+      retailerArea: null,
+      distributorId: newRetailer.distributorId,
+      checkedInAt: newVisit.checkedInAt,
+      photos: [],
+    });
     router.refresh();
   }
 
@@ -764,6 +887,7 @@ export function FieldJourney({
                             onClick={async () => {
                               setBusy(true);
                               setGpsStatus("LOCATING");
+                              await yieldToPaint();
                               const { status, point } = await captureGps();
                               setGpsStatus(status);
                               let gpsExceptionReason: string | undefined;
@@ -777,7 +901,7 @@ export function FieldJourney({
                                   return;
                                 }
                               }
-                              void run(
+                              const result = await run(
                                 "check-in",
                                 {
                                   workSessionId: session.id,
@@ -792,6 +916,25 @@ export function FieldJourney({
                                 hi ? "विज़िट शुरू हुई।" : "Visit started.",
                                 hi ? "चेक-इन हो रहा है…" : "Checking in…",
                               );
+                              // Only on a REAL server response confirming the durable write — never
+                              // on the offline-queued path, which has no durable confirmation yet.
+                              // Jump straight to the active-visit workspace using the response's own
+                              // authoritative id/checkedInAt plus retailer fields already in props,
+                              // instead of waiting for the unrelated full-portal router.refresh() to
+                              // deliver the same visit back through props.
+                              if (!("queued" in result) && result.success) {
+                                const data = result.data as { id: string; checkedInAt: string };
+                                setLocalOptimisticVisit({
+                                  id: data.id,
+                                  retailerId: retailer.id,
+                                  retailerName: retailer.businessName,
+                                  retailerMobile: retailer.mobile,
+                                  retailerArea: null,
+                                  distributorId: retailer.distributorId,
+                                  checkedInAt: data.checkedInAt,
+                                  photos: [],
+                                });
+                              }
                             }}
                           >
                             {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "विज़िट शुरू करें" : "Start visit"}
@@ -917,6 +1060,7 @@ export function FieldJourney({
                         await syncClientQueue().catch(() => {});
                       }
                       setGpsStatus("LOCATING");
+                      await yieldToPaint();
                       const { status, point } = await captureGps();
                       setGpsStatus(status);
                       let endExceptionReason: string | undefined;
@@ -1105,6 +1249,7 @@ export function FieldJourney({
                     <label>
                       {hi ? "उत्पाद / वेरिएंट" : "Product / Variant"}
                       <select
+                        data-testid="order-line-product-select"
                         value={line.skuId}
                         onChange={(event) => {
                           const chosen = skuById.get(event.target.value);
@@ -1215,17 +1360,19 @@ export function FieldJourney({
         {mode === "PHOTO" && (
           <div>
             <div className={styles.photoGrid}>
-              {visit.photos.map((photo) => (
+              {effectivePhotos.map((photo) => (
                 <div className={styles.photoThumb} key={photo.id}>
                   <img src={`/api/field/photos/${photo.id}`} alt={photo.photoType} />
                   <button
                     type="button"
                     disabled={busy}
                     aria-label={hi ? "हटाएँ" : "Remove"}
-                    onClick={() => {
+                    onClick={async () => {
                       const reason = window.prompt(hi ? "हटाने का कारण" : "Reason for removing this photo");
                       if (!reason) return;
-                      void run("delete-photo", { photoId: photo.id, reason }, null, hi ? "फ़ोटो हटाई गई।" : "Photo removed.");
+                      const result = await run("delete-photo", { photoId: photo.id, reason }, null, hi ? "फ़ोटो हटाई गई।" : "Photo removed.");
+                      if (!("queued" in result) && result.success)
+                        setLocallyDeletedPhotoIds((current) => new Set(current).add(photo.id));
                     }}
                   >
                     ×
@@ -1268,36 +1415,47 @@ export function FieldJourney({
                   return;
                 }
                 const photoType = String(f.get("photoType"));
-                const reader = new FileReader();
-                reader.onload = () => {
-                  void (async () => {
-                    const base64 = String(reader.result).split(",")[1] ?? "";
-                    const result = await run(
-                      "capture-photo",
-                      {
-                        visitId: visit.id,
-                        photoType,
-                        fileBase64: base64,
-                        mimeType: file.type,
-                        originalName: file.name,
-                        idempotencyKey: key(),
-                      },
-                      null,
-                      hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓",
-                      hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…",
-                    );
-                    // Only clear the preview/selected file once it's actually persisted — on
-                    // failure (unsupported format, too large, network) the preview and the
-                    // selected file stay exactly as they were so the user can just press
-                    // "Add photo" again without re-picking anything, and the inline error from
-                    // `message` explains exactly why it didn't go through.
-                    if ("queued" in result || result.success) {
-                      setPhotoPreview(null);
-                      if (fileRef.current) fileRef.current.value = "";
-                    }
-                  })();
-                };
-                reader.readAsDataURL(file);
+                void (async () => {
+                  // Set busy/feedback synchronously before the resize step (not just once the
+                  // network request starts) so "Uploading…" appears the instant the user taps "Add
+                  // photo" — the resize itself is typically much faster than the upload it shrinks,
+                  // so folding it into the same visible busy window keeps the UI simple without
+                  // adding a wait the user would perceive as new.
+                  setBusy(true);
+                  setBusyLabel(hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…");
+                  await yieldToPaint();
+                  const { base64, mimeType, originalName } = await prepareImageForUpload(file);
+                  const result = await run(
+                    "capture-photo",
+                    {
+                      visitId: visit.id,
+                      photoType,
+                      fileBase64: base64,
+                      mimeType,
+                      originalName,
+                      idempotencyKey: key(),
+                    },
+                    null,
+                    hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓",
+                    hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…",
+                  );
+                  // Only clear the preview/selected file once it's actually persisted — on
+                  // failure (unsupported format, too large, network) the preview and the
+                  // selected file stay exactly as they were so the user can just press
+                  // "Add photo" again without re-picking anything, and the inline error from
+                  // `message` explains exactly why it didn't go through.
+                  if ("queued" in result || result.success) {
+                    setPhotoPreview(null);
+                    if (fileRef.current) fileRef.current.value = "";
+                  }
+                  // Only on a REAL server response (never the offline-queued path, which has no
+                  // durable id yet) — merge the new photo into the visible count/grid immediately
+                  // instead of waiting for the background router.refresh() to deliver it.
+                  if (!("queued" in result) && result.success) {
+                    const data = result.data as { id: string; photoType: string; capturedAt: string };
+                    setLocalAddedPhotos((current) => [...current, { id: data.id, photoType: data.photoType, capturedAt: data.capturedAt }]);
+                  }
+                })();
               }}
             >
               <label>
@@ -1385,7 +1543,7 @@ export function FieldJourney({
           <strong>{hi ? "विज़िट सारांश" : "Visit summary"}</strong>
           <p>
             {hi ? "ऑर्डर कुल" : "Order total"}: ₹{orderTotal.toFixed(2)} ·{" "}
-            {hi ? "भुगतान" : "Payment"}: {paymentType} · {hi ? "फ़ोटो" : "Photos"}: {visit.photos.length}
+            {hi ? "भुगतान" : "Payment"}: {paymentType} · {hi ? "फ़ोटो" : "Photos"}: {effectivePhotos.length}
           </p>
           {gpsStatus !== "IDLE" && (
             <div className={styles.gpsRow}>
@@ -1403,6 +1561,7 @@ export function FieldJourney({
               setBusy(true);
               setBusyLabel(hi ? "विज़िट पूरी हो रही है…" : "Completing visit…");
               setGpsStatus("LOCATING");
+              await yieldToPaint();
               const { status, point } = await captureGps();
               setGpsStatus(status);
               if (deviation) await run("route-deviation", { visitId: visit.id, reason: deviation });
@@ -1423,13 +1582,13 @@ export function FieldJourney({
                 hi ? "विज़िट पूरी हुई।" : "Visit completed.",
                 hi ? "विज़िट पूरी हो रही है…" : "Completing visit…",
               );
-              // Stay in a visible "loading" state through the server refresh that follows a
-              // successful checkout, instead of the button snapping back to normal and then the
-              // whole screen changing underneath the user a moment later — the visit?.id effect
-              // above clears this once the next-customer screen's fresh data actually lands.
+              // Checkout has already durably succeeded server-side at this point (or is safely
+              // queued offline) — jump straight to the beat list using data already in props
+              // instead of waiting for the unrelated full-portal router.refresh() that run() also
+              // kicked off. That refresh still lands moments later in the background to reconcile
+              // dashboard/beat counters; the rawVisit?.id effect resets this flag once it does.
               if ("queued" in result || result.success) {
-                setBusy(true);
-                setBusyLabel(hi ? "अगला ग्राहक लोड हो रहा है…" : "Loading next customer…");
+                setOptimisticVisitCleared(true);
               }
             })();
           }}
@@ -1455,7 +1614,7 @@ export function FieldJourney({
             {hi ? "विज़िट टिप्पणी" : "Visit note"}
             <input name="notes" />
           </label>
-          {visit.photos.length === 0 && (
+          {effectivePhotos.length === 0 && (
             <label>
               {hi ? "फ़ोटो न होने का कारण" : "Reason no photo was taken"}
               <select name="photoExceptionReason" defaultValue="">

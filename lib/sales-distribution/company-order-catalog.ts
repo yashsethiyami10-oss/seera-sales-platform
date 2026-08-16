@@ -89,6 +89,47 @@ export function canonicalPiecesToWholesaleOrderUnit(skuCode: string, pieces: num
 // OperationalWorkspace.tsx's catalog-building code).
 export const DEFAULT_MUV_ORDER_UNIT: CompanyOrderUnit = "PCS";
 
+// PERFORMANCE PHASE 2: the Sales Executive retailer-order catalog (ACTIVE SKUs + their current
+// DISTRIBUTOR_TO_RETAILER price) is not actor/partner/role-scoped — it's the same ~44-SKU list for
+// every executive — yet OperationalWorkspace.tsx re-ran this query from scratch on every single
+// router.refresh() (i.e. after every check-in/checkout/order/photo, not just when the catalog
+// itself changed). A short in-process TTL cache removes that redundant DB round trip from the vast
+// majority of portal reloads without ever serving data more than 2 minutes stale. Module-level
+// (not unstable_cache) deliberately: this process only ever talks to one database at a time (TEST
+// or production, enforced by lib/database/identity-guard.ts's caller), so there's no cross-database
+// leakage risk, and it avoids Next's data-cache key-serialization concerns around passing a
+// PrismaClient argument. Rate is editable by the Executive at order time regardless (see
+// OperationalWorkspace.tsx), so a briefly-stale suggested price carries no governance risk — it is
+// never the number actually charged.
+type RetailerCatalogSku = Awaited<ReturnType<PrismaClient["seeraSku"]["findMany"]>>[number] & {
+  prices: Array<{ amount: Prisma.Decimal }>;
+};
+let retailerCatalogCache: { data: RetailerCatalogSku[]; expiresAt: number } | null = null;
+const RETAILER_CATALOG_CACHE_TTL_MS = 120_000;
+
+export async function activeRetailerCatalog(db: PrismaClient | Prisma.TransactionClient, now: Date): Promise<RetailerCatalogSku[]> {
+  if (retailerCatalogCache && retailerCatalogCache.expiresAt > now.getTime()) return retailerCatalogCache.data;
+  const skus = (await db.seeraSku.findMany({
+    where: { status: "ACTIVE" },
+    include: {
+      prices: {
+        where: {
+          tier: "DISTRIBUTOR_TO_RETAILER",
+          status: "ACTIVE",
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+        },
+        orderBy: { effectiveFrom: "desc" },
+        take: 1,
+      },
+    },
+    orderBy: [{ brand: "asc" }, { productName: "asc" }],
+    take: 200,
+  })) as RetailerCatalogSku[];
+  retailerCatalogCache = { data: skus, expiresAt: now.getTime() + RETAILER_CATALOG_CACHE_TTL_MS };
+  return skus;
+}
+
 // Governed free-goods scheme lookup — reads real SeeraScheme rows (never a hardcoded map). A
 // scheme is display-only, informational entitlement text on the order line: it is NEVER deducted
 // from or folded into the line/order total (createCompanyOrder/createDistributorReplenishment

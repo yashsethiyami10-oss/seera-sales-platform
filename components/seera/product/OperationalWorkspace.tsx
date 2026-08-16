@@ -31,7 +31,7 @@ import { DistributorMoneyPanel } from "./DistributorMoneyPanel";
 import { IncomingStockCards } from "./IncomingStockCards";
 import { OrderFromSSWizard } from "./OrderFromSSWizard";
 import { CompanyOrderWizard, type CompanyCatalogItem } from "./CompanyOrderWizard";
-import { COMPANY_ORDER_UNIT_OVERRIDES, DEFAULT_MUV_ORDER_UNIT, activeSchemeNotesForSkus } from "@/lib/sales-distribution/company-order-catalog";
+import { COMPANY_ORDER_UNIT_OVERRIDES, DEFAULT_MUV_ORDER_UNIT, activeSchemeNotesForSkus, activeRetailerCatalog } from "@/lib/sales-distribution/company-order-catalog";
 import { formatAddress } from "@/lib/sales-distribution/document-lines";
 import { distributorOrderLineAvailability, superStockistStockSummary, distributorReceiptStatus } from "@/lib/sales-distribution/super-stockist-easy-mode-service";
 import { PaymentProofReviewActions } from "./PaymentProofReviewActions";
@@ -2334,32 +2334,16 @@ export async function OperationalWorkspace({
     // active-visit lookup depends on dashboardData's session, so it runs after. This turns 5
     // sequential round trips into 2, which is most of what "the portal feels slow after every
     // action" was — every action ends in router.refresh(), which re-runs this exact loader.
+    // Catalog is served from a short TTL cache (activeRetailerCatalog, PERFORMANCE PHASE 2) instead
+    // of a fresh DB round trip on every router.refresh() — see that function's comment. No invented
+    // fallback to `mrp` here: a SKU with no approved governed price (e.g. Seera's field catalog,
+    // pending a Founder-approved price list) pre-fills the Executive's Rate field with nothing
+    // rather than a fabricated number — they type the real rate themselves.
     const [dashboardData, beat, distributorFollowUp, skus] = await Promise.all([
       executiveDashboard(db, userId, now),
       executiveBeat(db, userId, "today", now),
       executiveDistributorFollowUp(db, userId, now),
-      db.seeraSku.findMany({
-        // No longer requires an active governed price version to appear here: Rate is editable
-        // by the Executive at order time (Founder decision, this closure pass), so a SKU with no
-        // price version yet (e.g. Seera's field-catalog products, pending a Founder-approved
-        // price list) still shows up — its `rate` below just falls back to `mrp` as a starting
-        // value instead of being silently hidden from the selector.
-        where: { status: "ACTIVE" },
-        include: {
-          prices: {
-            where: {
-              tier: "DISTRIBUTOR_TO_RETAILER",
-              status: "ACTIVE",
-              effectiveFrom: { lte: now },
-              OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
-            },
-            orderBy: { effectiveFrom: "desc" },
-            take: 1,
-          },
-        },
-        orderBy: [{ brand: "asc" }, { productName: "asc" }],
-        take: 200,
-      }),
+      activeRetailerCatalog(db, now),
     ]);
     const session = dashboardData.session;
     const visit = session

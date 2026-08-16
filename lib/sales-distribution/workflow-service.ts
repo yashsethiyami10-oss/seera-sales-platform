@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
+import { timeOperation } from "@/lib/foundation/logger";
 import {
   assertAssistedAction,
   assertPromisePreservesContract,
@@ -201,14 +202,20 @@ export async function startFieldDay(
     remarks?: string;
   },
 ) {
-  await authorize(prisma, {
-    actorId,
-    permission:
-      input.employeeRole === "SALES_MANAGER"
-        ? "manager_field:operate"
-        : "field_day:manage_self",
-  });
-  const geofence = await evaluateHqGeofence(prisma, input, new Date());
+  // PERFORMANCE PHASE 2: evaluateHqGeofence() only reads `input` (the GPS point already captured
+  // client-side) and currently-active SeeraHqConfiguration rows — it has no dependency on the
+  // authorize() permission check, so the two independent reads run concurrently instead of
+  // sequentially.
+  const [, geofence] = await Promise.all([
+    authorize(prisma, {
+      actorId,
+      permission:
+        input.employeeRole === "SALES_MANAGER"
+          ? "manager_field:operate"
+          : "field_day:manage_self",
+    }),
+    evaluateHqGeofence(prisma, input, new Date()),
+  ]);
   try {
     const session = await prisma.seeraWorkSession.create({
       data: {
@@ -264,10 +271,19 @@ export async function endFieldDay(
     outcome: string;
   },
 ) {
-  const owned = await prisma.seeraWorkSession.findFirst({
-    where: { id: sessionId, employeeId: actorId },
-    select: { employeeRole: true, status: true },
-  });
+  const timing = timeOperation("workflow.endFieldDay");
+  // PERFORMANCE PHASE 2: evaluateHqGeofence() depends only on `input`/`now`, not on the session
+  // lookup below — running them concurrently instead of sequentially removes one round trip from
+  // End Day's critical path. The tiny amount of geofence work "wasted" on the rare
+  // already-ended/not-found early-return paths below is a pure read with no side effects.
+  const [owned, geofence] = await Promise.all([
+    prisma.seeraWorkSession.findFirst({
+      where: { id: sessionId, employeeId: actorId },
+      select: { employeeRole: true, status: true },
+    }),
+    evaluateHqGeofence(prisma, input, new Date()),
+  ]);
+  timing.stage("session_lookup_and_geofence");
   if (!owned)
     throw new FoundationError(
       "WORKDAY_NOT_ACTIVE",
@@ -281,6 +297,7 @@ export async function endFieldDay(
         ? "manager_field:operate"
         : "field_day:manage_self",
   });
+  timing.stage("authorize");
   // Idempotency fix (P0, Founder UAT): "Confirm & end day" returned "Active workday not found"
   // for a session the dashboard clearly showed as active. Root cause: FieldJourney's End Day
   // handler unconditionally drains the offline queue right before firing an explicit end-day call
@@ -295,7 +312,6 @@ export async function endFieldDay(
       "Active workday not found",
       409,
     );
-  const geofence = await evaluateHqGeofence(prisma, input, new Date());
   const result = await prisma.seeraWorkSession.updateMany({
     where: { id: sessionId, employeeId: actorId, status: "ACTIVE" },
     data: {
@@ -309,6 +325,7 @@ export async function endFieldDay(
       outcome: input.outcome,
     },
   });
+  timing.stage("session_update");
   if (result.count !== 1) {
     // Same race as above, closed at the point of a concurrent double-submit landing between the
     // status read above and this write — re-check rather than assume failure.
@@ -329,7 +346,10 @@ export async function endFieldDay(
     source: "END_DAY",
     trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
   });
+  timing.stage("gps_sample");
   await recomputeSessionDistance(prisma, actorId, sessionId);
+  timing.stage("recompute_distance");
+  timing.finish({ actorId, sessionId });
 }
 
 export async function placeRetailerOrder(
@@ -344,9 +364,11 @@ export async function placeRetailerOrder(
     lines: OrderLineInput[];
   },
 ) {
+  const timing = timeOperation("workflow.placeRetailerOrder");
   const retailer = await prisma.seeraRetailer.findUniqueOrThrow({
     where: { id: input.retailerId },
   });
+  timing.stage("retailer_lookup");
   // Executive→Distributor routing foundation (Founder decision, RUN 1 shared-foundation pass): a
   // retailer with no Distributor mapping must NEVER lose the order for ANY field-order source
   // portal — Executive included, not just Manager Own Retailing. Resolution order:
@@ -458,7 +480,8 @@ export async function placeRetailerOrder(
   // change, matching the Founder's "minimum safe additive mechanism" instruction.
   const commercialPartyId = resolvedDistributorId ?? "";
   const commercialPartyType = "DISTRIBUTOR";
-  return prisma.$transaction(async (tx) => {
+  timing.stage("routing_and_authorize");
+  const order = await prisma.$transaction(async (tx) => {
     const existing = await tx.seeraSalesOrder.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
       include: { lines: true },
@@ -466,40 +489,63 @@ export async function placeRetailerOrder(
     if (existing) return existing;
     if (territoryResolved && resolvedDistributorId)
       await tx.seeraRetailer.update({ where: { id: retailer.id }, data: { distributorId: resolvedDistributorId } });
-    const snapshots = await Promise.all(
-      input.lines.map(async (line) => {
-        const sku = await tx.seeraSku.findUniqueOrThrow({
-          where: { id: line.skuId },
-        });
-        // Rate is editable by the Executive at field-order time (Founder decision — the field
-        // screen no longer forces a fixed governed catalog price). A positive client-submitted
-        // rate wins; only when one isn't supplied (older/other callers, e.g. Manager-assisted
-        // flows not yet updated) does this fall back to the governed DISTRIBUTOR_TO_RETAILER
-        // price version, preserving prior behavior for every other caller of this function.
-        let unitRate: number;
-        if (typeof line.rate === "number" && line.rate > 0) {
-          unitRate = line.rate;
-        } else {
-          const price = await tx.seeraPriceVersion.findFirstOrThrow({
-            where: {
-              skuId: line.skuId,
-              tier: "DISTRIBUTOR_TO_RETAILER",
-              status: "ACTIVE",
-              effectiveFrom: { lte: new Date() },
-              OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
-            },
+    // PERFORMANCE PHASE 2: this runs inside an interactive $transaction, which pins `tx` to a
+    // SINGLE reserved connection — a per-line Promise.all here does NOT give real concurrency, it
+    // just queues N (or up to 2N) round trips one after another on the wire while looking parallel
+    // in source. Batched below: one findMany for every line's SKU, one findMany for every line that
+    // still needs a governed price (client-submitted rate is normal path per Founder decision — see
+    // comment further down), instead of a per-line query pair. `now` computed once for consistency
+    // across the whole order (previously implicitly the same by being inside one request anyway).
+    const now = new Date();
+    const skuIds = Array.from(new Set(input.lines.map((l) => l.skuId)));
+    const fetchedSkus = await tx.seeraSku.findMany({ where: { id: { in: skuIds } } });
+    const skuById = new Map(fetchedSkus.map((s) => [s.id, s]));
+    // Same not-found semantics as the previous per-line findUniqueOrThrow — only reached if a
+    // submitted skuId isn't a real SKU at all, so paying for an individual lookup here (to get the
+    // identical P2025 error) costs nothing in the normal, all-valid-SKUs path.
+    for (const id of skuIds) if (!skuById.has(id)) await tx.seeraSku.findUniqueOrThrow({ where: { id } });
+
+    const skuIdsNeedingGovernedPrice = Array.from(
+      new Set(input.lines.filter((l) => !(typeof l.rate === "number" && l.rate > 0)).map((l) => l.skuId)),
+    );
+    const priceVersionBySkuId = new Map<string, Prisma.Decimal>();
+    if (skuIdsNeedingGovernedPrice.length > 0) {
+      const priceVersions = await tx.seeraPriceVersion.findMany({
+        where: {
+          skuId: { in: skuIdsNeedingGovernedPrice },
+          tier: "DISTRIBUTOR_TO_RETAILER",
+          status: "ACTIVE",
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+        },
+        orderBy: { effectiveFrom: "desc" },
+      });
+      // Ordered desc — the first row seen per skuId is the latest, matching the previous
+      // findFirstOrThrow's `orderBy: { effectiveFrom: "desc" }` semantics exactly.
+      for (const pv of priceVersions) if (!priceVersionBySkuId.has(pv.skuId!)) priceVersionBySkuId.set(pv.skuId!, pv.amount);
+      for (const id of skuIdsNeedingGovernedPrice)
+        if (!priceVersionBySkuId.has(id))
+          await tx.seeraPriceVersion.findFirstOrThrow({
+            where: { skuId: id, tier: "DISTRIBUTOR_TO_RETAILER", status: "ACTIVE", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
             orderBy: { effectiveFrom: "desc" },
           });
-          unitRate = Number(price.amount);
-        }
-        return {
-          sku,
-          unitRate,
-          quantity: line.quantity,
-          total: unitRate * line.quantity,
-        };
-      }),
-    );
+    }
+
+    const snapshots = input.lines.map((line) => {
+      const sku = skuById.get(line.skuId)!;
+      // Rate is editable by the Executive at field-order time (Founder decision — the field
+      // screen no longer forces a fixed governed catalog price). A positive client-submitted
+      // rate wins; only when one isn't supplied (older/other callers, e.g. Manager-assisted
+      // flows not yet updated) does this fall back to the governed DISTRIBUTOR_TO_RETAILER
+      // price version, preserving prior behavior for every other caller of this function.
+      const unitRate = typeof line.rate === "number" && line.rate > 0 ? line.rate : Number(priceVersionBySkuId.get(line.skuId));
+      return {
+        sku,
+        unitRate,
+        quantity: line.quantity,
+        total: unitRate * line.quantity,
+      };
+    });
     const subtotal = snapshots.reduce((sum, item) => sum + item.total, 0);
     // RUN 2B resume Section 12: taxTotal must reflect real EMBEDDED tax when the SKU carries a
     // governed taxRate — the line-level taxSnapshot below already derives this correctly via
@@ -600,6 +646,8 @@ export async function placeRetailerOrder(
     });
     return order;
   });
+  timing.finish({ actorId: context.actorId, retailerId: input.retailerId, lineCount: input.lines.length });
+  return order;
 }
 
 export async function fulfilRetailerOrder(

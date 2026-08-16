@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient, VisitOutcome } from "@prisma/client";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
+import { timeOperation } from "@/lib/foundation/logger";
 import { eligibleDelivered } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { recordGpsSample } from "./field-travel-service";
@@ -25,68 +26,76 @@ export async function executiveCheckIn(
   },
 ) {
   await authorize(db, { actorId, permission: "retailer:visit" });
-  const session = await db.seeraWorkSession.findFirst({
-    where: {
-      id: input.workSessionId,
-      employeeId: actorId,
-      employeeRole: "SALES_EXECUTIVE",
-      status: "ACTIVE",
-    },
-  });
+  // These three reads are independent of each other (none consumes another's result, only the
+  // validation logic below combines them) — one round trip instead of three.
+  const [session, retailer, open] = await Promise.all([
+    db.seeraWorkSession.findFirst({
+      where: {
+        id: input.workSessionId,
+        employeeId: actorId,
+        employeeRole: "SALES_EXECUTIVE",
+        status: "ACTIVE",
+      },
+    }),
+    db.seeraRetailer.findFirst({
+      where: {
+        id: input.retailerId,
+        salespersonId: actorId,
+        lifecycle: "ACTIVE",
+      },
+    }),
+    db.seeraVisit.findFirst({
+      where: { workSession: { employeeId: actorId }, checkedOutAt: null },
+    }),
+  ]);
   if (!session)
     throw new FoundationError(
       "ACTIVE_WORKDAY_REQUIRED",
       "Start Day before checking in",
       409,
     );
-  const retailer = await db.seeraRetailer.findFirst({
-    where: {
-      id: input.retailerId,
-      salespersonId: actorId,
-      lifecycle: "ACTIVE",
-    },
-  });
   if (!retailer)
     throw new FoundationError(
       "RETAILER_SCOPE_DENIED",
       "Retailer is not assigned or active",
       403,
     );
-  const open = await db.seeraVisit.findFirst({
-    where: { workSession: { employeeId: actorId }, checkedOutAt: null },
-  });
   if (open && open.retailerId !== retailer.id)
     throw new FoundationError(
       "OPEN_VISIT_EXISTS",
       "Checkout the current retailer first",
       409,
     );
-  const visit = await db.seeraVisit.upsert({
-    where: { idempotencyKey: input.idempotencyKey },
-    update: {},
-    create: {
+  // The visit upsert and the GPS sample write are independent (recordGpsSample only needs
+  // session.id, already known) — one round trip instead of two.
+  const [visit] = await Promise.all([
+    db.seeraVisit.upsert({
+      where: { idempotencyKey: input.idempotencyKey },
+      update: {},
+      create: {
+        workSessionId: session.id,
+        retailerId: retailer.id,
+        checkedInAt: new Date(),
+        checkInLatitude: input.latitude,
+        checkInLongitude: input.longitude,
+        gpsExceptionReason: input.gpsExceptionReason,
+        idempotencyKey: input.idempotencyKey,
+      },
+    }),
+    recordGpsSample(db, {
+      employeeId: actorId,
       workSessionId: session.id,
-      retailerId: retailer.id,
-      checkedInAt: new Date(),
-      checkInLatitude: input.latitude,
-      checkInLongitude: input.longitude,
-      gpsExceptionReason: input.gpsExceptionReason,
-      idempotencyKey: input.idempotencyKey,
-    },
-  });
-  await recordGpsSample(db, {
-    employeeId: actorId,
-    workSessionId: session.id,
-    latitude: input.latitude,
-    longitude: input.longitude,
-    accuracy: input.accuracy,
-    source: "CHECK_IN",
-    trackingStatus: input.gpsExceptionReason
-      ? "EXCEPTION"
-      : input.latitude != null
-        ? "OK"
-        : "UNAVAILABLE",
-  });
+      latitude: input.latitude,
+      longitude: input.longitude,
+      accuracy: input.accuracy,
+      source: "CHECK_IN",
+      trackingStatus: input.gpsExceptionReason
+        ? "EXCEPTION"
+        : input.latitude != null
+          ? "OK"
+          : "UNAVAILABLE",
+    }),
+  ]);
   return visit;
 }
 
@@ -111,12 +120,14 @@ export async function executiveCheckOut(
   },
 ) {
   await authorize(db, { actorId, permission: "retailer:visit" });
+  // Photo count folded into the same query as a relation count instead of a second round trip.
   const visit = await db.seeraVisit.findFirst({
     where: {
       id: visitId,
       checkedOutAt: null,
       workSession: { employeeId: actorId, status: "ACTIVE" },
     },
+    include: { _count: { select: { photos: { where: { deletedAt: null } } } } },
   });
   if (!visit)
     throw new FoundationError(
@@ -130,10 +141,7 @@ export async function executiveCheckOut(
       "No-order reason required",
       400,
     );
-  const photoCount = await db.seeraVisitPhoto.count({
-    where: { visitId: visit.id, deletedAt: null },
-  });
-  if (photoCount === 0 && !input.photoExceptionReason && !visit.photoExceptionReason)
+  if (visit._count.photos === 0 && !input.photoExceptionReason && !visit.photoExceptionReason)
     throw new FoundationError(
       "PHOTO_OR_EXCEPTION_REQUIRED",
       "Add a shop photo or choose a valid no-photo reason.",
@@ -145,38 +153,42 @@ export async function executiveCheckOut(
       : input.outcome === "FOLLOW_UP"
         ? "FOLLOW_UP"
         : "PRODUCTIVE";
-  const updated = await db.seeraVisit.update({
-    where: { id: visit.id },
-    data: {
-      outcome,
-      noOrderReason: input.noOrderReason,
-      followUpAt: input.followUpAt,
-      notes: input.notes,
-      photoExceptionReason: input.photoExceptionReason ?? visit.photoExceptionReason,
-      checkedOutAt: new Date(),
-    },
-  });
-  await recordGpsSample(db, {
-    employeeId: actorId,
-    workSessionId: visit.workSessionId,
-    latitude: input.latitude,
-    longitude: input.longitude,
-    accuracy: input.accuracy,
-    source: "CHECK_OUT",
-    trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
-  });
-  // Retailer WhatsApp communication event — provider-agnostic outbox foundation (see
-  // retailer-communication-service.ts). Never allowed to fail checkout itself: a governed
-  // template/queue problem is a communication concern, not a reason to lose a real field visit.
+  // The visit update and the GPS sample write are independent (recordGpsSample only needs
+  // visit.workSessionId, already known) — one round trip instead of two. Retailer WhatsApp
+  // notification is fire-and-forget (never awaited inline): it was already documented as "never
+  // allowed to fail checkout" via try/catch, which only protected against errors, not latency —
+  // this closes the same gap for speed, since a governed communication/outbox concern was never
+  // something the field user needed to wait on. The visit is already durably updated (this same
+  // Promise.all) before the notification even starts, so there is no consistency risk.
   const commEventType: RetailerCommEventType | null =
     input.outcome === "ORDER_BOOKED" ? "ORDER_RECORDED" : input.outcome === "NO_ORDER" ? "REFUSED_OR_UNABLE" : input.outcome === "FOLLOW_UP" ? "FOLLOW_UP" : null;
   if (commEventType && visit.retailerId) {
-    try {
-      await queueRetailerCommunication(db, { eventType: commEventType, retailerId: visit.retailerId, visitId: visit.id, actorId });
-    } catch (error) {
+    void queueRetailerCommunication(db, { eventType: commEventType, retailerId: visit.retailerId, visitId: visit.id, actorId }).catch((error) => {
       console.error("retailer_communication.queue_failed", error);
-    }
+    });
   }
+  const [updated] = await Promise.all([
+    db.seeraVisit.update({
+      where: { id: visit.id },
+      data: {
+        outcome,
+        noOrderReason: input.noOrderReason,
+        followUpAt: input.followUpAt,
+        notes: input.notes,
+        photoExceptionReason: input.photoExceptionReason ?? visit.photoExceptionReason,
+        checkedOutAt: new Date(),
+      },
+    }),
+    recordGpsSample(db, {
+      employeeId: actorId,
+      workSessionId: visit.workSessionId,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      accuracy: input.accuracy,
+      source: "CHECK_OUT",
+      trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
+    }),
+  ]);
   return updated;
 }
 
@@ -677,9 +689,19 @@ export async function executiveBeat(
 }
 
 export async function executiveDashboard(db: PrismaClient, actorId: string, now = new Date()) {
+  const timing = timeOperation("field_portal.executiveDashboard");
   await authorize(db, { actorId, permission: "field_day:manage_self" });
+  timing.stage("authorize");
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const [session, employee, retailers, target, todayVisits, todayOrders, followUpsDue, prospects] =
+  // Every read below is independent of every other read in this same batch (none of them consume
+  // another's result) — only `monthDelivered` and `plannedCount` further down genuinely need
+  // `target`/`plannedToday` resolved first. Previously this was 4 sequential round-trip stages
+  // (this batch, then newRetailersToday alone, then a second batch, then plannedCount alone) purely
+  // because of source-order, not real dependencies — each stage costs a full network round trip to
+  // Neon regardless of how many queries run within it, so collapsing to 2 stages here materially
+  // cuts this function's latency on every call (and this function reruns on every field-portal
+  // router.refresh(), i.e. after every field action).
+  const [session, employee, retailers, target, todayVisits, todayOrders, followUpsDue, prospects, newRetailersToday, photosToday, plannedToday] =
     await Promise.all([
       db.seeraWorkSession.findFirst({
         where: { employeeId: actorId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
@@ -712,51 +734,52 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
       db.seeraProspect.count({
         where: { ownerEmployeeId: actorId, prospectType: "DISTRIBUTOR", status: { in: ["PROSPECT", "UNDER_REVIEW"] } },
       }),
+      db.seeraRetailer.count({ where: { salespersonId: actorId, createdAt: { gte: startOfDay } } }),
+      db.seeraVisitPhoto.count({
+        where: { actorId, capturedAt: { gte: startOfDay }, deletedAt: null },
+      }),
+      db.seeraJourneyPlan.findFirst({
+        where: {
+          employeeId: actorId,
+          dayOfWeek: now.getDay(),
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+        },
+        orderBy: { effectiveFrom: "desc" },
+      }),
     ]);
-  const newRetailersToday = await db.seeraRetailer.count({
-    where: { salespersonId: actorId, createdAt: { gte: startOfDay } },
-  });
-  // These three don't depend on each other (only plannedCount below depends on plannedToday), so
-  // they're run as one round trip instead of three sequential ones.
-  const [monthDelivered, photosToday, plannedToday] = await Promise.all([
+  timing.stage("batch1_independent_reads");
+  // Only these two genuinely depend on the batch above (monthDelivered needs target's period;
+  // plannedCount needs plannedToday's geography) — they don't depend on each other, so still one
+  // round trip, not two.
+  const [monthDelivered, plannedCount] = await Promise.all([
     deliveredValueForPeriod(
       db,
       actorId,
       target?.periodStart ?? new Date(now.getFullYear(), now.getMonth(), 1),
       target?.periodEnd ?? now,
     ),
-    db.seeraVisitPhoto.count({
-      where: { actorId, capturedAt: { gte: startOfDay }, deletedAt: null },
-    }),
-    db.seeraJourneyPlan.findFirst({
-      where: {
-        employeeId: actorId,
-        dayOfWeek: now.getDay(),
-        effectiveFrom: { lte: now },
-        OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
-      },
-      orderBy: { effectiveFrom: "desc" },
-    }),
+    plannedToday
+      ? db.seeraRetailer.count({
+          where: {
+            salespersonId: actorId,
+            lifecycle: "ACTIVE",
+            OR: [
+              { beatId: plannedToday.geographyId },
+              { marketId: plannedToday.geographyId },
+              { territoryId: plannedToday.geographyId },
+            ],
+          },
+        })
+      : Promise.resolve(retailers),
   ]);
+  timing.stage("batch2_dependent_reads");
   const targetValue = Number(target?.targetValue ?? 0);
   const achieved = monthDelivered;
   const remaining = Math.max(0, targetValue - achieved);
   const periodEnd = target?.periodEnd ?? new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const daysRemaining = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / 86_400_000));
-  const plannedCount = plannedToday
-    ? await db.seeraRetailer.count({
-        where: {
-          salespersonId: actorId,
-          lifecycle: "ACTIVE",
-          OR: [
-            { beatId: plannedToday.geographyId },
-            { marketId: plannedToday.geographyId },
-            { territoryId: plannedToday.geographyId },
-          ],
-        },
-      })
-    : retailers;
-  return {
+  const dashboardResult = {
     employee,
     dayStatus: session ? "ACTIVE" : "NOT_STARTED",
     session,
@@ -784,6 +807,8 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
     },
     retailerCount: retailers,
   };
+  timing.finish({ actorId });
+  return dashboardResult;
 }
 
 export async function deliveredValueForPeriod(db: PrismaClient, actorId: string, from: Date, to: Date) {
