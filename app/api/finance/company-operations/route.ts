@@ -10,6 +10,8 @@ import { postJournal, reverseJournal } from "@/lib/finance/journal-service";
 import { createTreasuryAccount, recordMoneyIn, recordMoneyOut, transferFunds, commitBankStatementImport, confirmBankMatch, unmatchBankLine, suggestBankMatches } from "@/lib/finance/treasury-service";
 import { createVendor, updateVendor, createVendorBill, recordVendorPayment } from "@/lib/finance/vendor-service";
 import { createExpenseCategory, createExpense, submitExpense, decideExpense, postExpense, payExpensePayable, reverseExpense, createRecurringExpenseTemplate, generateExpenseFromRecurringTemplate, skipRecurringOccurrence, setRecurringTemplateActive } from "@/lib/finance/expense-service";
+import { quickEntryCreate, QUICK_ENTRY_TYPES } from "@/lib/finance/quick-entry-service";
+import { seedQuickEntryCategoryMaster } from "@/lib/finance/chart-of-accounts";
 import { createBudget } from "@/lib/finance/budget-service";
 import { createLoan, recordLoanDisbursement, recordLoanRepayment, createFixedAsset, closeLoan } from "@/lib/finance/loan-asset-service";
 import { recordCapitalIntroduced, recordDrawings } from "@/lib/finance/capital-service";
@@ -28,6 +30,7 @@ const ACTIONS = [
   "import-bank-statement", "confirm-bank-match", "unmatch-bank-line", "suggest-bank-matches",
   "create-vendor", "update-vendor", "create-vendor-bill", "record-vendor-payment",
   "create-expense-category", "create-expense", "submit-expense", "decide-expense", "post-expense", "pay-expense-payable", "reverse-expense",
+  "quick-entry", "seed-quick-entry-categories",
   "create-recurring-expense", "generate-expense-from-recurring", "skip-recurring-occurrence", "set-recurring-active",
   "create-budget",
   "create-loan", "record-loan-disbursement", "record-loan-repayment", "create-fixed-asset", "close-loan",
@@ -217,6 +220,34 @@ export async function POST(request: Request) {
         result = await decideApproval(prisma, user.id, v.approvalId, v);
         break;
       }
+      case "quick-entry":
+        result = await quickEntryCreate(
+          prisma,
+          user.id,
+          z
+            .object({
+              entryType: z.enum(QUICK_ENTRY_TYPES),
+              date: z.coerce.date(),
+              amount: z.number(),
+              categoryId: z.string().optional(),
+              manualCategoryName: z.string().optional(),
+              saveManualCategory: z.boolean().optional(),
+              paymentMode: z.enum(["CASH", "BANK", "UPI", "OTHER"]),
+              treasuryAccountId: z.string().optional(),
+              partyType: z.string().optional(),
+              partyId: z.string().optional(),
+              partyName: z.string().optional(),
+              employeeId: z.string().optional(),
+              remark: z.string().optional(),
+              documentFileId: z.string().optional(),
+              idempotencyKey: z.string(),
+            })
+            .parse(payload),
+        );
+        break;
+      case "seed-quick-entry-categories":
+        result = await seedQuickEntryCategoryMaster(prisma, user.id);
+        break;
     }
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

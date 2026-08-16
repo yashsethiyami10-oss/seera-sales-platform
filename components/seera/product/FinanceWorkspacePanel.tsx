@@ -109,11 +109,14 @@ type Ctx = {
   router: ReturnType<typeof useRouter>;
 };
 
-const GROUPS = ["overview", "money", "sales", "purchases", "control", "statements", "tools"] as const;
+const GROUPS = ["overview", "quickentry", "categories", "employees", "money", "sales", "purchases", "control", "statements", "tools"] as const;
 type Group = (typeof GROUPS)[number];
-const GROUP_LABEL: Record<Group, string> = { overview: "Overview", money: "Money", sales: "Sales Finance", purchases: "Purchases & Costs", control: "Control", statements: "Statements", tools: "Tools" };
+const GROUP_LABEL: Record<Group, string> = { overview: "Overview", quickentry: "+ Quick Entry", categories: "Categories", employees: "Employees", money: "Money", sales: "Sales Finance", purchases: "Purchases & Costs", control: "Control", statements: "Statements", tools: "Tools" };
 const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
   overview: [],
+  quickentry: [],
+  categories: [],
+  employees: [],
   money: [{ key: "bank", label: "Bank & Cash" }, { key: "moneyin", label: "Money In" }, { key: "moneyout", label: "Money Out" }, { key: "transfer", label: "Transfer" }, { key: "statement", label: "Statement Import" }, { key: "reconcile", label: "Reconciliation" }, { key: "journals", label: "Recent Journals" }],
   sales: [{ key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledger" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
   purchases: [{ key: "vendors", label: "Vendors & Bills" }, { key: "expenses", label: "Expenses" }, { key: "recurring", label: "Recurring Expenses" }, { key: "payroll", label: "Payroll" }, { key: "marketing", label: "Marketing Spend" }],
@@ -165,6 +168,9 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
 
       <div style={{ gridColumn: "1/-1" }}>
         {group === "overview" && <OverviewSection ctx={ctx} setGroup={setGroup} setSection={setSection} />}
+        {group === "quickentry" && <QuickEntrySection ctx={ctx} />}
+        {group === "categories" && <CategoriesSection ctx={ctx} />}
+        {group === "employees" && <EmployeesSection />}
         {group === "money" && section === "bank" && <BankSection ctx={ctx} />}
         {group === "money" && section === "moneyin" && <MoneyInSection ctx={ctx} />}
         {group === "money" && section === "moneyout" && <MoneyOutSection ctx={ctx} />}
@@ -205,6 +211,11 @@ function OverviewSection({ ctx, setGroup, setSection }: { ctx: Ctx; setGroup: (g
   const jump = (g: Group, s: string) => { setGroup(g); setSection(s); };
   return (
     <div className={styles.notice} data-ok="true">
+      <div className={styles.inlineActions}>
+        <button type="button" onClick={() => jump("quickentry", "")} style={{ fontWeight: 700 }}>+ QUICK ENTRY</button>
+        <button type="button" onClick={() => jump("categories", "")}>CATEGORIES →</button>
+        <button type="button" onClick={() => jump("employees", "")}>EMPLOYEES →</button>
+      </div>
       <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
         <div><dt>Bank + Cash</dt><dd>{data.cf ? money(data.cf.closingCash) : "DATA REQUIRED"}</dd></div>
         <div><dt>Revenue (YTD)</dt><dd>{data.pnl ? money(data.pnl.totalRevenue) : "DATA REQUIRED"} <small>RELIABLE</small></dd></div>
@@ -235,6 +246,341 @@ function OverviewSection({ ctx, setGroup, setSection }: { ctx: Ctx; setGroup: (g
           </ul>
         </>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// QUICK ENTRY — Founder's "record an expense/payment/receipt in 10-20
+// seconds" primary action. Posts through the SAME governed lifecycle as the
+// full Expenses screen (createExpense -> submitExpense -> postExpense) via
+// quickEntryCreate() — this form only removes the account-mapping/treasury
+// decisions the backend can safely resolve for the user, never the approval
+// governance itself (see lib/finance/quick-entry-service.ts).
+// ---------------------------------------------------------------------------
+const QUICK_ENTRY_TYPES = [
+  { value: "EXPENSE", label: "Expense" },
+  { value: "ADVANCE", label: "Advance" },
+  { value: "REIMBURSEMENT", label: "Reimbursement" },
+  { value: "SALARY", label: "Salary" },
+  { value: "PAYMENT", label: "Payment" },
+  { value: "OTHER", label: "Other" },
+];
+const CATEGORY_GROUP_TITLE: Record<string, string> = {
+  TRANSPORT_LOGISTICS: "Transport / Logistics",
+  FACTORY: "Factory",
+  LABOUR_STAFF: "Labour / Staff",
+  ADMIN_OFFICE: "Admin / Office",
+  SALES_MARKETING: "Sales / Marketing",
+  PURCHASE_OPERATIONS: "Purchase / Operations",
+  FINANCE: "Finance",
+  OTHER: "Other",
+};
+type EmployeeOption = { id: string; label: string };
+function EmployeePicker({ value, onChange }: { value: EmployeeOption | null; onChange: (v: EmployeeOption | null) => void }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<{ id: string; name: string | null; email: string; roleAssignments: { role: { name: string } }[] }[]>([]);
+  useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return; }
+    const t = setTimeout(() => { getReport("search-employees", { q }).then(setResults).catch(() => setResults([])); }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  if (value) return <p>{value.label} <button type="button" onClick={() => onChange(null)}>Change</button></p>;
+  return (
+    <div>
+      <input placeholder="Search employee by name…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {results.length > 0 && (
+        <ul>
+          {results.map((r) => {
+            const label = `${r.name ?? r.email}${r.roleAssignments[0] ? ` — ${r.roleAssignments[0].role.name}` : ""}`;
+            return <li key={r.id}><button type="button" onClick={() => onChange({ id: r.id, label })}>{label}</button></li>;
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+function QuickEntrySection({ ctx }: { ctx: Ctx }) {
+  const { data, busy, router } = ctx;
+  const [entryType, setEntryType] = useState("EXPENSE");
+  const [categoryMode, setCategoryMode] = useState<"select" | "manual">("select");
+  const [employee, setEmployee] = useState<EmployeeOption | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const categories = data.expenseCategories ?? [];
+  const grouped: Record<string, typeof categories> = {};
+  for (const c of categories) (grouped[c.parentGroup ?? "OTHER"] ??= []).push(c);
+  const coaCount = data.chartOfAccounts?.length ?? 0;
+
+  if (coaCount === 0) {
+    return <p>Chart of Accounts is not configured yet. Go to Tools → Settings and click &quot;BOOTSTRAP CHART OF ACCOUNTS&quot; before using Quick Entry.</p>;
+  }
+  if (categories.length === 0) {
+    return (
+      <div>
+        <p>Quick Entry categories are not configured yet.</p>
+        <button type="button" disabled={busy} onClick={() => ctx.run("seed-quick-entry-categories", {}, "Quick Entry categories seeded.")}>BOOTSTRAP QUICK ENTRY CATEGORIES</button>
+      </div>
+    );
+  }
+
+  function onSubmit(e: { preventDefault: () => void; currentTarget: HTMLFormElement }) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const f = new FormData(form);
+    setSaving(true);
+    setResult(null);
+    void (async () => {
+      try {
+        let documentFileId: string | undefined;
+        const file = f.get("receipt") as File | null;
+        if (file && file.size > 0) {
+          const uploadForm = new FormData();
+          uploadForm.append("file", file);
+          uploadForm.append("metadata", JSON.stringify({ entityType: "SeeraExpense", entityId: "quick-entry-pending" }));
+          const r = await fetch("/api/finance/documents/upload", { method: "POST", body: uploadForm });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d?.error?.message ?? "Receipt upload failed — only PDF, PNG or JPEG under 25MB");
+          documentFileId = d.id;
+        }
+        const payload: Record<string, unknown> = {
+          entryType,
+          date: f.get("date"),
+          amount: Number(f.get("amount")),
+          paymentMode: f.get("paymentMode"),
+          remark: f.get("remark") || undefined,
+          documentFileId,
+          idempotencyKey: key(),
+        };
+        if (categoryMode === "select") payload.categoryId = f.get("categoryId");
+        else { payload.manualCategoryName = f.get("manualCategoryName"); payload.saveManualCategory = f.get("saveManualCategory") === "on"; }
+        if (employee) payload.employeeId = employee.id;
+        const partyName = f.get("partyName");
+        if (partyName) payload.partyName = partyName;
+        const res = await post("quick-entry", payload);
+        const status = res?.expense?.status;
+        const statusText = status === "POSTED" ? "Saved & posted ✓" : status === "APPROVED" ? "Saved — approved, awaiting posting by an Accounts user." : "Saved — pending Founder/Accounts approval.";
+        setResult({ ok: true, text: statusText });
+        form.reset();
+        setEmployee(null);
+        setCategoryMode("select");
+        router.refresh();
+      } catch (err) {
+        setResult({ ok: false, text: err instanceof Error ? err.message : "Could not save this entry" });
+      } finally {
+        setSaving(false);
+      }
+    })();
+  }
+
+  return (
+    <div>
+      <p>Choose what this is for, enter the amount, add a receipt if you have one, Save. That's it — the correct accounting entry is created automatically.</p>
+      <form onSubmit={onSubmit}>
+        <label>Entry type
+          <select name="entryType" value={entryType} onChange={(e) => setEntryType(e.target.value)}>
+            {QUICK_ENTRY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </label>
+        <div className={styles.inlineActions}>
+          <button type="button" aria-pressed={categoryMode === "select"} onClick={() => setCategoryMode("select")} style={{ fontWeight: categoryMode === "select" ? 700 : 400 }}>Select category</button>
+          <button type="button" aria-pressed={categoryMode === "manual"} onClick={() => setCategoryMode("manual")} style={{ fontWeight: categoryMode === "manual" ? 700 : 400 }}>Type a new one</button>
+        </div>
+        {categoryMode === "select" ? (
+          <label>Category
+            <select name="categoryId" required>
+              {Object.entries(grouped).map(([group, cats]) => (
+                <optgroup key={group} label={CATEGORY_GROUP_TITLE[group] ?? group}>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <>
+            <label>Category name<input name="manualCategoryName" required placeholder="e.g. Factory Cleaning" /></label>
+            <label><input name="saveManualCategory" type="checkbox" /> Save as a reusable category (Founder/Admin only — otherwise this still saves, just for this entry)</label>
+          </>
+        )}
+        <label>Amount (₹)<input name="amount" type="number" step="0.01" min="0.01" required /></label>
+        <label>Paid / Received via
+          <select name="paymentMode" required>
+            <option value="CASH">Cash</option>
+            <option value="BANK">Bank</option>
+            <option value="UPI">UPI</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </label>
+        <label>Date<input name="date" type="date" required defaultValue={isoDate(new Date())} /></label>
+        <label>Party / Person (optional)<input name="partyName" /></label>
+        <div>
+          <span>Employee (optional — links to their Financial 360)</span>
+          <EmployeePicker value={employee} onChange={setEmployee} />
+        </div>
+        <label>Remark (optional)<input name="remark" /></label>
+        <label>Receipt / document (optional — PDF, PNG or JPEG)<input name="receipt" type="file" accept="image/png,image/jpeg,application/pdf" capture="environment" /></label>
+        <button disabled={saving || busy}>{saving ? "Saving…" : "SAVE ENTRY"}</button>
+      </form>
+      {result && <p role="status" data-ok={result.ok}>{result.text}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CATEGORIES — automatic category ledgers + spending dashboard (spec Parts
+// 5-7). Reuses the existing expenseByCategory report for the summary, and
+// the new categoryLedger report for the per-category drill-down.
+// ---------------------------------------------------------------------------
+type CategorySummaryRow = { categoryId: string; categoryName: string; total: number };
+type CategoryLedgerData = {
+  category: { id: string; name: string; parentGroup: string };
+  entries: { id: string; expenseNumber: string; date: string; amount: string; paymentMode: string; payeeName: string | null; employeeId: string | null; status: string; documentFileId: string | null; requestedById: string; description: string | null }[];
+  totals: { today: number; thisMonth: number; thisYear: number };
+};
+function CategoriesSection({ ctx }: { ctx: Ctx }) {
+  const { data, busy, run } = ctx;
+  const [selected, setSelected] = useState<string | null>(null);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const { data: summary, loading, err } = useReportOnDemand<CategorySummaryRow[]>("expense-by-category", { from: monthStart, to: isoDate(now) }, []);
+  const { data: ledger, loading: ledgerLoading, err: ledgerErr } = useReportOnDemand<CategoryLedgerData>("category-ledger", selected ? { categoryId: selected } : {}, [selected]);
+  const coaCount = data.chartOfAccounts?.length ?? 0;
+  const categoryCount = data.expenseCategories?.length ?? 0;
+  if (categoryCount === 0) {
+    return (
+      <div>
+        {coaCount === 0 ? (
+          <p>Chart of Accounts is not set up yet. Go to Tools → Settings and click &quot;BOOTSTRAP CHART OF ACCOUNTS&quot; first, then come back here.</p>
+        ) : (
+          <>
+            <p>No expense categories are set up yet.</p>
+            <button type="button" disabled={busy} onClick={() => run("seed-quick-entry-categories", {}, "Quick Entry categories seeded.")}>BOOTSTRAP QUICK ENTRY CATEGORIES</button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (selected) {
+    return (
+      <div>
+        <button type="button" onClick={() => setSelected(null)}>← All categories</button>
+        {ledgerLoading && <p>Loading…</p>}
+        {ledgerErr && <p role="status" data-ok="false">{ledgerErr}</p>}
+        {ledger && (
+          <>
+            <h3>{ledger.category.name}</h3>
+            <div className={styles.inlineActions}>
+              <span>Today: {money(ledger.totals.today)}</span>
+              <span>This month: {money(ledger.totals.thisMonth)}</span>
+              <span>This year: {money(ledger.totals.thisYear)}</span>
+              <button type="button" onClick={() => exportCsv(`${ledger.category.name}-ledger`, ledger.entries.map((e) => ({ Date: fmtDate(e.date), Expense: e.expenseNumber, Amount: e.amount, Mode: e.paymentMode, Party: e.payeeName ?? "", Status: e.status, Remark: e.description ?? "" })))}>EXPORT CSV</button>
+            </div>
+            <div className={styles.tableWrap}>
+              <table>
+                <thead><tr><th>Date</th><th>Amount</th><th>Paid via</th><th>Party/Person</th><th>Status</th><th>Remark</th><th>Receipt</th></tr></thead>
+                <tbody>
+                  {ledger.entries.length === 0 && <tr><td colSpan={7}>No entries yet.</td></tr>}
+                  {ledger.entries.map((e) => (
+                    <tr key={e.id}>
+                      <td>{fmtDate(e.date)}</td><td>{money(Number(e.amount))}</td><td>{e.paymentMode}</td><td>{e.payeeName ?? "—"}</td><td>{e.status}</td><td>{e.description ?? "—"}</td>
+                      <td>{e.documentFileId ? <a href={`/api/finance/documents/${e.documentFileId}/download`} target="_blank" rel="noreferrer">View</a> : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p>This month's spending by category — click any category to see its full ledger.</p>
+      {loading && <p>Loading…</p>}
+      {err && <p role="status" data-ok="false">{err}</p>}
+      <div className={styles.tableWrap}>
+        <table>
+          <thead><tr><th>Category</th><th>This month</th></tr></thead>
+          <tbody>
+            {summary && summary.length === 0 && <tr><td colSpan={2}>No expenses posted this month yet.</td></tr>}
+            {summary?.map((row) => (
+              <tr key={row.categoryId}><td><button type="button" onClick={() => setSelected(row.categoryId)}>{row.categoryName}</button></td><td>{money(row.total)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EMPLOYEES — one-click Employee Financial 360 (spec Part 8-9).
+// ---------------------------------------------------------------------------
+type Employee360Data = {
+  employee: { id: string; name: string | null; email: string; status: string; roleAssignments: { role: { name: string; code: string } }[] };
+  entries: { id: string; expenseNumber: string; date: string; entryType: string; amount: string; paymentMode: string; status: string; description: string | null; documentFileId: string | null }[];
+  payroll: { id: string; month: string; netPayable: string; status: string; paymentDate: string | null }[];
+  summary: { salaryPaidThisMonth: number; advanceBalance: number; reimbursementPending: number; reimbursementPaid: number; incentiveThisYear: number; otherPaymentsThisMonth: number };
+};
+function Employee360({ employeeId, onBack }: { employeeId: string; onBack: () => void }) {
+  const { data, loading, err } = useReportOnDemand<Employee360Data>("employee-financial-360", { employeeId }, [employeeId]);
+  return (
+    <div>
+      <button type="button" onClick={onBack}>← All employees</button>
+      {loading && <p>Loading…</p>}
+      {err && <p role="status" data-ok="false">{err}</p>}
+      {data && (
+        <>
+          <h3>{data.employee.name ?? data.employee.email}</h3>
+          <p>{data.employee.roleAssignments[0]?.role.name ?? "—"} · {data.employee.status}</p>
+          <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
+            <div><dt>Salary paid this month</dt><dd>{money(data.summary.salaryPaidThisMonth)}</dd></div>
+            <div><dt>Advance balance</dt><dd>{money(data.summary.advanceBalance)}</dd></div>
+            <div><dt>Reimbursement pending</dt><dd>{money(data.summary.reimbursementPending)}</dd></div>
+            <div><dt>Reimbursement paid</dt><dd>{money(data.summary.reimbursementPaid)}</dd></div>
+            <div><dt>Other payments this month</dt><dd>{money(data.summary.otherPaymentsThisMonth)}</dd></div>
+          </dl>
+          <h4>Timeline</h4>
+          <div className={styles.tableWrap}>
+            <table>
+              <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Mode</th><th>Status</th><th>Remark</th><th>Receipt</th></tr></thead>
+              <tbody>
+                {data.entries.length === 0 && <tr><td colSpan={7}>No entries yet.</td></tr>}
+                {data.entries.map((e) => (
+                  <tr key={e.id}>
+                    <td>{fmtDate(e.date)}</td><td>{e.entryType}</td><td>{money(Number(e.amount))}</td><td>{e.paymentMode}</td><td>{e.status}</td><td>{e.description ?? "—"}</td>
+                    <td>{e.documentFileId ? <a href={`/api/finance/documents/${e.documentFileId}/download`} target="_blank" rel="noreferrer">View</a> : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {data.payroll.length > 0 && (
+            <>
+              <h4>Payroll register</h4>
+              <div className={styles.tableWrap}>
+                <table>
+                  <thead><tr><th>Month</th><th>Net payable</th><th>Status</th><th>Paid on</th></tr></thead>
+                  <tbody>{data.payroll.map((p) => <tr key={p.id}><td>{p.month}</td><td>{money(Number(p.netPayable))}</td><td>{p.status}</td><td>{fmtDate(p.paymentDate)}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+function EmployeesSection() {
+  const [selected, setSelected] = useState<EmployeeOption | null>(null);
+  if (selected) return <Employee360 employeeId={selected.id} onBack={() => setSelected(null)} />;
+  return (
+    <div>
+      <p>Search for an employee to open their one-click Financial 360 — Salary, Advances, Reimbursements, Incentives and every payment in one timeline.</p>
+      <EmployeePicker value={null} onChange={(v) => v && setSelected(v)} />
     </div>
   );
 }

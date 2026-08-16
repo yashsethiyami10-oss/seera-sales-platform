@@ -14,6 +14,7 @@ import { financeDocumentVault, financeDocumentsFor, type FinanceDocumentEntityTy
 import { ledgerReadModel } from "@/lib/sales-distribution/financial-service";
 import { listRecurringTemplates } from "@/lib/finance/expense-service";
 import { payrollRegister } from "@/lib/finance/payroll-service";
+import { quickEntryCategories, categoryLedger, employeeFinancial360, searchEmployees } from "@/lib/finance/quick-entry-service";
 
 // Read-only GET route (no mutation, so no Origin/CSRF concern — matches the
 // existing /api/health/* convention). Every function called here still
@@ -105,6 +106,27 @@ export async function GET(request: Request) {
       case "document-vault":
         result = await financeDocumentVault(prisma, user.id);
         break;
+      case "quick-entry-categories":
+        result = await quickEntryCategories(prisma, user.id);
+        break;
+      case "category-ledger": {
+        const categoryId = url.searchParams.get("categoryId");
+        if (!categoryId) throw new FoundationError("CATEGORY_ID_REQUIRED", "categoryId is required", 400);
+        const entryType = url.searchParams.get("entryType") ?? undefined;
+        const employeeId = url.searchParams.get("employeeId") ?? undefined;
+        const paymentMode = url.searchParams.get("paymentMode") ?? undefined;
+        result = await categoryLedger(prisma, user.id, { categoryId, from: url.searchParams.get("from") ? from : undefined, to: url.searchParams.get("to") ? to : undefined, entryType, employeeId, paymentMode });
+        break;
+      }
+      case "search-employees":
+        result = await searchEmployees(prisma, user.id, url.searchParams.get("q") ?? "");
+        break;
+      case "employee-financial-360": {
+        const employeeId = url.searchParams.get("employeeId");
+        if (!employeeId) throw new FoundationError("EMPLOYEE_ID_REQUIRED", "employeeId is required", 400);
+        result = await employeeFinancial360(prisma, user.id, employeeId);
+        break;
+      }
       case "documents-for": {
         const entityType = url.searchParams.get("entityType") as FinanceDocumentEntityType | null;
         const entityId = url.searchParams.get("entityId");

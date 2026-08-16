@@ -2337,7 +2337,15 @@ model SeeraExpenseCategory {
   name             String
   chartOfAccountId String
   isActive         Boolean @default(true)
+  // FINANCE QUICK ENTRY: additive fields only — every pre-existing row gets a
+  // safe default (parentGroup="OTHER", requiresParty=false, receiptPolicy=
+  // "OPTIONAL") via the migration, so nothing about the already-working
+  // Expense screen changes for categories that don't opt into these.
+  parentGroup      String  @default("OTHER") // e.g. TRANSPORT_LOGISTICS, FACTORY, LABOUR_STAFF, ADMIN_OFFICE, SALES_MARKETING, PURCHASE_OPERATIONS, FINANCE, OTHER
+  requiresParty    Boolean @default(false) // Quick Entry UI shows Party/Person as required, not optional, when true
+  receiptPolicy    String  @default("OPTIONAL") // OPTIONAL | RECOMMENDED | REQUIRED
 
+  @@index([parentGroup])
   @@map("seera_expense_categories")
 }
 
@@ -2359,6 +2367,13 @@ model SeeraExpense {
   isReimbursable         Boolean       @default(false)
   employeeId             String?
   recurringTemplateId    String?
+  // FINANCE QUICK ENTRY: what kind of entry this was AT THE TIME OF ENTRY
+  // (EXPENSE/ADVANCE/REIMBURSEMENT/SALARY/PAYMENT/OTHER) — purely descriptive
+  // for Quick Entry's own UI/filters/Employee 360 timeline; the actual
+  // accounting effect is still governed entirely by `categoryId`'s account
+  // mapping, exactly as before. Defaults to EXPENSE so every pre-existing row
+  // (created before this field existed) reads correctly without a backfill.
+  entryType              String        @default("EXPENSE")
   status                 ExpenseStatus @default(DRAFT)
   requestedById          String
   approvedById           String?
@@ -2371,6 +2386,8 @@ model SeeraExpense {
 
   @@index([status, date])
   @@index([employeeId])
+  @@index([categoryId, date])
+  @@index([entryType, date])
   @@map("seera_expenses")
 }
 

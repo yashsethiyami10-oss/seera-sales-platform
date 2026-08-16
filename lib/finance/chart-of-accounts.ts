@@ -76,7 +76,119 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: "ASSET" | "LIABILITY
   { code: "5220", name: "Office/Admin", type: "EXPENSE" },
   { code: "5230", name: "Miscellaneous", type: "EXPENSE", system: true },
   { code: "5240", name: "Manufacturing Variance / Wastage", type: "EXPENSE", system: true },
+  // FINANCE QUICK ENTRY: a small, deliberately modest set of new accounts —
+  // added only where the Founder's requested category list (spec Part 3)
+  // names a genuinely distinct expense nature not already covered by an
+  // existing account above. Everything else in that list maps onto an
+  // account that already exists (see QUICK_ENTRY_CATEGORY_MAP below) rather
+  // than growing the Chart of Accounts 1:1 with every category label.
+  { code: "5021", name: "Vehicle Running & Fuel", type: "EXPENSE" },
+  { code: "5022", name: "Loading, Unloading & Courier", type: "EXPENSE" },
+  { code: "5032", name: "Factory Operating Expense", type: "EXPENSE" },
+  { code: "5041", name: "Wages & Labour", type: "EXPENSE" },
+  { code: "5053", name: "Staff Reimbursement", type: "EXPENSE" },
+  { code: "5071", name: "Commission", type: "EXPENSE" },
 ];
+
+// FINANCE QUICK ENTRY: the Founder's requested everyday category list (spec
+// Part 3), each mapped to an existing-or-newly-added account above. A
+// category name intentionally reuses an existing account wherever one
+// already fits — e.g. "Petrol" and "Vehicle Repair" both post to the same
+// 5021 Vehicle Running & Fuel account, but remain distinct CATEGORY rows so
+// Quick Entry's category ledgers (Part 5) still separate them. "Staff
+// Advance" maps to 1300 (an ASSET, not an expense) — giving an employee an
+// advance is correctly Dr Advances-to-Employee / Cr Cash, not an expense,
+// exactly the same double-entry effect postExpense() already produces for
+// any category regardless of the mapped account's type. "Loan Repayment"
+// maps to 2050 (a LIABILITY) for the same reason — principal repayment
+// reduces the loan balance, it is not a P&L expense.
+const QUICK_ENTRY_CATEGORIES: { code: string; name: string; accountCode: string; parentGroup: string; requiresParty?: boolean; receiptPolicy?: "OPTIONAL" | "RECOMMENDED" | "REQUIRED" }[] = [
+  // TRANSPORT / LOGISTICS
+  { code: "QE-DIESEL", name: "Diesel", accountCode: "5021", parentGroup: "TRANSPORT_LOGISTICS", receiptPolicy: "RECOMMENDED" },
+  { code: "QE-PETROL", name: "Petrol", accountCode: "5021", parentGroup: "TRANSPORT_LOGISTICS", receiptPolicy: "RECOMMENDED" },
+  { code: "QE-VEHICLE-REPAIR", name: "Vehicle Repair", accountCode: "5021", parentGroup: "TRANSPORT_LOGISTICS", receiptPolicy: "RECOMMENDED" },
+  { code: "QE-TOLL", name: "Toll", accountCode: "5021", parentGroup: "TRANSPORT_LOGISTICS" },
+  { code: "QE-LOADING", name: "Loading", accountCode: "5022", parentGroup: "TRANSPORT_LOGISTICS" },
+  { code: "QE-UNLOADING", name: "Unloading", accountCode: "5022", parentGroup: "TRANSPORT_LOGISTICS" },
+  { code: "QE-COURIER", name: "Courier", accountCode: "5022", parentGroup: "TRANSPORT_LOGISTICS" },
+  // FACTORY
+  { code: "QE-FACTORY-EXPENSE", name: "Factory Expense", accountCode: "5032", parentGroup: "FACTORY" },
+  { code: "QE-WATER", name: "Water", accountCode: "5032", parentGroup: "FACTORY" },
+  { code: "QE-MAINTENANCE", name: "Maintenance", accountCode: "5032", parentGroup: "FACTORY" },
+  { code: "QE-MACHINE-REPAIR", name: "Machine Repair", accountCode: "5032", parentGroup: "FACTORY", receiptPolicy: "RECOMMENDED" },
+  { code: "QE-CONSUMABLES", name: "Consumables", accountCode: "5032", parentGroup: "FACTORY" },
+  { code: "QE-CLEANING", name: "Cleaning", accountCode: "5032", parentGroup: "FACTORY" },
+  { code: "QE-PACKING-EXPENSE", name: "Packing Expense", accountCode: "5032", parentGroup: "FACTORY" },
+  { code: "QE-FACTORY-RENT", name: "Factory Rent", accountCode: "5130", parentGroup: "FACTORY", receiptPolicy: "RECOMMENDED" },
+  // LABOUR / STAFF
+  { code: "QE-LABOUR", name: "Labour", accountCode: "5041", parentGroup: "LABOUR_STAFF", requiresParty: true },
+  { code: "QE-WAGES", name: "Wages", accountCode: "5041", parentGroup: "LABOUR_STAFF", requiresParty: true },
+  { code: "QE-OVERTIME", name: "Overtime", accountCode: "5041", parentGroup: "LABOUR_STAFF", requiresParty: true },
+  { code: "QE-STAFF-ADVANCE", name: "Staff Advance", accountCode: "1300", parentGroup: "LABOUR_STAFF", requiresParty: true },
+  { code: "QE-STAFF-REIMBURSEMENT", name: "Staff Reimbursement", accountCode: "5053", parentGroup: "LABOUR_STAFF", requiresParty: true, receiptPolicy: "RECOMMENDED" },
+  { code: "QE-BONUS", name: "Bonus", accountCode: "5050", parentGroup: "LABOUR_STAFF", requiresParty: true },
+  // ADMIN / OFFICE
+  { code: "QE-OFFICE-EXPENSE", name: "Office Expense", accountCode: "5220", parentGroup: "ADMIN_OFFICE" },
+  { code: "QE-OFFICE-RENT", name: "Office Rent", accountCode: "5130", parentGroup: "ADMIN_OFFICE", receiptPolicy: "RECOMMENDED" },
+  { code: "QE-STATIONERY", name: "Stationery", accountCode: "5220", parentGroup: "ADMIN_OFFICE" },
+  { code: "QE-MOBILE", name: "Mobile", accountCode: "5150", parentGroup: "ADMIN_OFFICE" },
+  // SALES / MARKETING
+  { code: "QE-SALES-ALLOWANCE", name: "Sales Allowance", accountCode: "5210", parentGroup: "SALES_MARKETING", requiresParty: true },
+  { code: "QE-SAMPLE-EXPENSE", name: "Sample Expense", accountCode: "5100", parentGroup: "SALES_MARKETING" },
+  { code: "QE-PROMOTION", name: "Promotion", accountCode: "5070", parentGroup: "SALES_MARKETING" },
+  { code: "QE-COMMISSION", name: "Commission", accountCode: "5071", parentGroup: "SALES_MARKETING", requiresParty: true },
+  // PURCHASE / OPERATIONS
+  { code: "QE-REPAIR", name: "Repair", accountCode: "5190", parentGroup: "PURCHASE_OPERATIONS" },
+  { code: "QE-MISC-PURCHASE", name: "Miscellaneous Purchase", accountCode: "5230", parentGroup: "PURCHASE_OPERATIONS" },
+  // FINANCE
+  { code: "QE-LOAN-REPAYMENT", name: "Loan Repayment", accountCode: "2050", parentGroup: "FINANCE", receiptPolicy: "REQUIRED" },
+  { code: "QE-OTHER-FINANCE-COST", name: "Other Finance Cost", accountCode: "5230", parentGroup: "FINANCE" },
+];
+
+// Applies parentGroup/requiresParty/receiptPolicy to the DEFAULT_ACCOUNTS-derived
+// categories that directly correspond to a Founder-named category (Freight,
+// Salary, Marketing, Rent, Electricity, etc.) — reusing the SAME category row
+// EXPENSE_CATEGORY_MAP already creates rather than duplicating it.
+const EXISTING_CATEGORY_GROUPING: Record<string, { parentGroup: string; requiresParty?: boolean; receiptPolicy?: "OPTIONAL" | "RECOMMENDED" | "REQUIRED" }> = {
+  "5020": { parentGroup: "TRANSPORT_LOGISTICS", receiptPolicy: "RECOMMENDED" }, // Freight
+  "5040": { parentGroup: "LABOUR_STAFF", requiresParty: true, receiptPolicy: "OPTIONAL" }, // Salary
+  "5050": { parentGroup: "LABOUR_STAFF", requiresParty: true }, // Incentives
+  "5140": { parentGroup: "FACTORY" }, // Electricity
+  "5150": { parentGroup: "ADMIN_OFFICE" }, // Internet/Phone
+  "5160": { parentGroup: "ADMIN_OFFICE", receiptPolicy: "RECOMMENDED" }, // Professional Fees
+  "5170": { parentGroup: "FINANCE", receiptPolicy: "RECOMMENDED" }, // Banking Charges
+  "5180": { parentGroup: "FINANCE" }, // Interest
+  "5070": { parentGroup: "SALES_MARKETING" }, // Marketing
+  "5080": { parentGroup: "SALES_MARKETING", receiptPolicy: "RECOMMENDED" }, // Advertising
+  "5100": { parentGroup: "SALES_MARKETING" }, // Sampling
+  "5120": { parentGroup: "ADMIN_OFFICE", receiptPolicy: "RECOMMENDED" }, // Software
+  "5130": { parentGroup: "ADMIN_OFFICE", receiptPolicy: "RECOMMENDED" }, // Rent
+  "5210": { parentGroup: "SALES_MARKETING", requiresParty: true }, // Travel
+  "5000": { parentGroup: "PURCHASE_OPERATIONS", receiptPolicy: "RECOMMENDED" }, // Raw Material
+  "5010": { parentGroup: "PURCHASE_OPERATIONS", receiptPolicy: "RECOMMENDED" }, // Packaging Material
+  "5230": { parentGroup: "OTHER" }, // Miscellaneous
+};
+
+// Idempotent (upsert-by-code, same pattern as seedDefaultChartOfAccounts) —
+// safe to call again after new categories are added to the lists above.
+export async function seedQuickEntryCategoryMaster(db: PrismaClient, actorId: string) {
+  await authorize(db, { actorId, permission: "coa:manage" });
+  for (const [code, grouping] of Object.entries(EXISTING_CATEGORY_GROUPING)) {
+    await db.seeraExpenseCategory.updateMany({ where: { code }, data: grouping });
+  }
+  const created = [];
+  for (const category of QUICK_ENTRY_CATEGORIES) {
+    created.push(
+      await db.seeraExpenseCategory.upsert({
+        where: { code: category.code },
+        update: { parentGroup: category.parentGroup, requiresParty: category.requiresParty ?? false, receiptPolicy: category.receiptPolicy ?? "OPTIONAL" },
+        create: { code: category.code, name: category.name, chartOfAccountId: category.accountCode, parentGroup: category.parentGroup, requiresParty: category.requiresParty ?? false, receiptPolicy: category.receiptPolicy ?? "OPTIONAL" },
+      }),
+    );
+  }
+  await recordAudit(db, { actorId, action: "finance.quick_entry_categories.seeded", entityType: "SeeraExpenseCategory", entityId: "bulk", afterState: { created: created.length, regrouped: Object.keys(EXISTING_CATEGORY_GROUPING).length } });
+  return created;
+}
 
 export async function seedDefaultChartOfAccounts(db: PrismaClient, actorId: string) {
   await authorize(db, { actorId, permission: "coa:manage" });
