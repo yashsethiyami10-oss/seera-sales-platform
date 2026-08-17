@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 import { executiveDashboard, executiveBeat, executiveDistributorFollowUp, executiveCheckIn, executiveCheckOut } from "../../lib/sales-distribution/field-portal-service";
 import { startFieldDay, endFieldDay, placeRetailerOrder } from "../../lib/sales-distribution/workflow-service";
+import { executiveAuthorizedDistributors } from "../../lib/sales-distribution/scope";
 
 // TEST-only performance baseline for the Sales Executive retailing journey
 // (SEERA RETAILING OS — EXTREME PERFORMANCE ACCELERATION, Phase 2/21).
@@ -52,6 +53,8 @@ async function main() {
   console.log(`[SEERA DB GUARD] role=${target.role} fingerprint=${target.fingerprint}`);
   const exec = await db.user.findUniqueOrThrow({ where: { normalizedEmail: "review-sales-executive-1@seera.test" } });
   const run = Date.now().toString(36);
+  const authorizedDistributors = await executiveAuthorizedDistributors(db, exec.id);
+  const workingDistributorId = authorizedDistributors[0]!.id;
 
   console.log(`\n=== 0. startFieldDay / endFieldDay (${ITERATIONS} full start->end cycles, real n=${ITERATIONS} instead of n=1 — a session can only be ended once, so each iteration starts a fresh one) ===`);
   {
@@ -60,7 +63,7 @@ async function main() {
   }
   for (let i = 0; i < ITERATIONS; i++) {
     const daySession = await time("start-day", () =>
-      startFieldDay(db, exec.id, { employeeRole: "SALES_EXECUTIVE", workingType: "RETAILING", latitude: 28.6139, longitude: 77.209 }),
+      startFieldDay(db, exec.id, { employeeRole: "SALES_EXECUTIVE", workingType: "RETAILING", workingDistributorId, latitude: 28.6139, longitude: 77.209 }),
     );
     await time("end-day", () => endFieldDay(db, exec.id, daySession.id, { outcome: "COMPLETED", latitude: 28.61, longitude: 77.21 }));
   }
@@ -68,7 +71,7 @@ async function main() {
   console.log(`\n=== Ensuring a clean active session for the executive (${ITERATIONS} iterations follow) ===`);
   let session = await db.seeraWorkSession.findFirst({ where: { employeeId: exec.id, status: "ACTIVE" } });
   if (!session) {
-    session = await startFieldDay(db, exec.id, { employeeRole: "SALES_EXECUTIVE", workingType: "RETAILING", latitude: 28.6139, longitude: 77.2090 });
+    session = await startFieldDay(db, exec.id, { employeeRole: "SALES_EXECUTIVE", workingType: "RETAILING", workingDistributorId, latitude: 28.6139, longitude: 77.2090 });
   }
   const retailer = await db.seeraRetailer.findFirstOrThrow({ where: { salespersonId: exec.id, lifecycle: "ACTIVE" } });
 

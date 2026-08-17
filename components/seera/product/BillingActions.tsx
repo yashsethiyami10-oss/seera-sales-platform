@@ -11,6 +11,19 @@ type Sku = { value: string; label: string; rate: number; taxRate: number | null;
 // Mirrors priceModeForBrand in lib/sales-distribution/document-lines.ts — see QuotationActions.tsx's
 // identical local copy for why this isn't imported from that module client-side.
 const isGstInclusiveBrand = (brand: string) => /^muv$/i.test(brand.trim());
+// Mirrors buildLineSnapshots' per-line math exactly (document-lines.ts) — see QuotationActions.tsx's
+// identical local copy for the full rationale.
+function taxBreakdownPreview(rate: number, quantity: number, discountPct: number, taxRate: number | null, inclusive: boolean) {
+  const gross = rate * quantity;
+  const grossAfterDiscount = gross - (gross * discountPct) / 100;
+  const rateNum = taxRate ?? 0;
+  if (inclusive) {
+    const taxableValue = grossAfterDiscount / (1 + rateNum / 100);
+    return { taxableValue, taxAmount: grossAfterDiscount - taxableValue, finalValue: grossAfterDiscount };
+  }
+  const taxAmount = grossAfterDiscount * (rateNum / 100);
+  return { taxableValue: grossAfterDiscount, taxAmount, finalValue: grossAfterDiscount + taxAmount };
+}
 type BillingDoc = {
   id: string;
   documentNumber: string;
@@ -283,6 +296,22 @@ export function BillingActions({
                 <input value={line.skuId ? `${line.taxRate}% · ${isGstInclusiveBrand(skus.find((s) => s.value === line.skuId)?.brand ?? "") ? (hi ? "GST शामिल" : "GST INCLUDED") : hi ? "GST अतिरिक्त" : "GST EXCLUDED"}` : "—"} disabled readOnly />
               )}
             </label>
+            {line.skuId && line.taxRate != null && line.quantity > 0 && (() => {
+              const sku = skus.find((s) => s.value === line.skuId);
+              const inclusive = isGstInclusiveBrand(sku?.brand ?? "");
+              const { taxableValue, taxAmount, finalValue } = taxBreakdownPreview(line.rate, line.quantity, line.discountPct, line.taxRate, inclusive);
+              return (
+                <p className={styles.emptyHint} style={{ gridColumn: "1/-1" }}>
+                  {inclusive
+                    ? hi
+                      ? `₹${line.rate.toFixed(2)} में GST @${line.taxRate}% शामिल है — कर योग्य ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, अंतिम ₹${finalValue.toFixed(2)} (कुल मात्रा ${line.quantity} के लिए)। कर योग्य दर स्वयं गणना करने की आवश्यकता नहीं।`
+                      : `₹${line.rate.toFixed(2)} includes GST @${line.taxRate}% — Taxable ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, Final ₹${finalValue.toFixed(2)} (for qty ${line.quantity}). You never need to work out the taxable rate yourself.`
+                    : hi
+                      ? `₹${line.rate.toFixed(2)} आधार दर पर GST @${line.taxRate}% जोड़ा जाएगा — कर योग्य ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, अंतिम ₹${finalValue.toFixed(2)} (कुल मात्रा ${line.quantity} के लिए)।`
+                      : `₹${line.rate.toFixed(2)} base rate + GST @${line.taxRate}% on top — Taxable ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, Final ₹${finalValue.toFixed(2)} (for qty ${line.quantity}).`}
+                </p>
+              );
+            })()}
             {lines.length > 1 && (
               <button
                 type="button"

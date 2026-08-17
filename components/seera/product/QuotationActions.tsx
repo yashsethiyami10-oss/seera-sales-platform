@@ -11,6 +11,22 @@ type Option = { value: string; label: string };
 // extracted from the typed rate); every other brand's rate is GST-exclusive (tax added on top) —
 // Founder correction, never make the Founder guess which applies to a given line.
 const isGstInclusiveBrand = (brand: string) => /^muv$/i.test(brand.trim());
+// Mirrors buildLineSnapshots' per-line math exactly (document-lines.ts) — live preview only, the
+// server remains the source of truth on submit. Founder directive: the S.S./Distributor user must
+// never have to work out the taxable/base figure themselves — the rate they type IS the final
+// commercial rate for GST-inclusive (MUV) lines, and this breakdown shows what that resolves to
+// without requiring any manual calculation.
+function taxBreakdownPreview(rate: number, quantity: number, discountPct: number, taxRate: number | null, inclusive: boolean) {
+  const gross = rate * quantity;
+  const grossAfterDiscount = gross - (gross * discountPct) / 100;
+  const rateNum = taxRate ?? 0;
+  if (inclusive) {
+    const taxableValue = grossAfterDiscount / (1 + rateNum / 100);
+    return { taxableValue, taxAmount: grossAfterDiscount - taxableValue, finalValue: grossAfterDiscount };
+  }
+  const taxAmount = grossAfterDiscount * (rateNum / 100);
+  return { taxableValue: grossAfterDiscount, taxAmount, finalValue: grossAfterDiscount + taxAmount };
+}
 // taxRate is null (not 0) when a SKU has no governed GST rate configured yet — kept distinct from a
 // legitimate 0%-rated SKU (Founder UAT fix: a coerced `?? 0` here made the server's
 // TAX_CONFIGURATION_REQUIRED gate unreachable, since a submitted line always looked "configured".
@@ -247,6 +263,22 @@ export function QuotationActions({
                 <input value={line.skuId ? `${line.taxRate}% · ${isGstInclusiveBrand(skus.find((s) => s.value === line.skuId)?.brand ?? "") ? (hi ? "GST शामिल" : "GST INCLUDED") : hi ? "GST अतिरिक्त" : "GST EXCLUDED"}` : "—"} disabled readOnly />
               )}
             </label>
+            {line.skuId && line.taxRate != null && line.quantity > 0 && (() => {
+              const sku = skus.find((s) => s.value === line.skuId);
+              const inclusive = isGstInclusiveBrand(sku?.brand ?? "");
+              const { taxableValue, taxAmount, finalValue } = taxBreakdownPreview(line.rate, line.quantity, line.discountPct, line.taxRate, inclusive);
+              return (
+                <p className={styles.emptyHint} style={{ gridColumn: "1/-1" }}>
+                  {inclusive
+                    ? hi
+                      ? `₹${line.rate.toFixed(2)} में GST @${line.taxRate}% शामिल है — कर योग्य ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, अंतिम ₹${finalValue.toFixed(2)} (कुल मात्रा ${line.quantity} के लिए)। कर योग्य दर स्वयं गणना करने की आवश्यकता नहीं।`
+                      : `₹${line.rate.toFixed(2)} includes GST @${line.taxRate}% — Taxable ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, Final ₹${finalValue.toFixed(2)} (for qty ${line.quantity}). You never need to work out the taxable rate yourself.`
+                    : hi
+                      ? `₹${line.rate.toFixed(2)} आधार दर पर GST @${line.taxRate}% जोड़ा जाएगा — कर योग्य ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, अंतिम ₹${finalValue.toFixed(2)} (कुल मात्रा ${line.quantity} के लिए)।`
+                      : `₹${line.rate.toFixed(2)} base rate + GST @${line.taxRate}% on top — Taxable ₹${taxableValue.toFixed(2)}, GST ₹${taxAmount.toFixed(2)}, Final ₹${finalValue.toFixed(2)} (for qty ${line.quantity}).`}
+                </p>
+              );
+            })()}
             {lines.length > 1 && (
               <button
                 type="button"

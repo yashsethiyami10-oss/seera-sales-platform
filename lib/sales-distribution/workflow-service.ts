@@ -719,6 +719,16 @@ export async function placeRetailerOrder(
       });
     timing.stage("tx_order_create");
     return order;
+  }, {
+    // PERFORMANCE / RELIABILITY: Prisma's interactive-transaction default (5000ms timeout, 2000ms
+    // maxWait) was measured to be too tight for this transaction's real work (idempotency check +
+    // SKU/price lookup + order+lines+audit+statusHistory create) under realistic connection-pool
+    // latency — observed failing outright with P2028 "Transaction already closed" at ~5.8s against
+    // TEST Neon under load. This was a genuine functional failure risk on the Executive's most
+    // frequent write action, not just a UX slowness complaint. Widened, not the work reduced further
+    // here — the queries themselves are already batched (see PERFORMANCE PHASE 2 comment above).
+    timeout: 10_000,
+    maxWait: 5_000,
   });
   timing.stage("transaction_commit");
   // PERFORMANCE: notifyPartyUsers previously ran INSIDE the interactive $transaction above, holding
