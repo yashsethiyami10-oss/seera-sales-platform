@@ -78,6 +78,39 @@ export async function createSku(
   });
 }
 
+// Founder-authorized (Section F/G/K of the GST governance directive): applicable canonical
+// commercial SKUs are GST-inclusive at 18% — the exact rate + HSN family already frozen as a
+// Founder decision for the existing 9-SKU range (see smoke-stage1e-gst-tax-total.ts's own
+// "Pre-Launch Pass 0A: HSN 3402, GST 18%, frozen" comment) and already live on at least one real
+// production SKU (SEERA-CAKE-BLUE, hsn "34021190"). This extends that SAME already-approved value
+// to every other ACTIVE SKU still missing tax config, rather than inventing a new classification —
+// idempotent (only touches rows where taxRate or hsn is currently null), one click, no schema
+// change. HSN is deliberately NOT varied per product sub-category here since no Founder-supplied
+// per-category HSN mapping exists — if a specific SKU genuinely needs a different HSN (e.g. a
+// non-detergent product), that remains a Founder/Admin edit via the existing Masters SKU form.
+export async function bulkConfigureCanonicalSkuGst(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const FROZEN_TAX_RATE = 18;
+  const FROZEN_HSN = "34021190";
+  const unconfigured = await prisma.seeraSku.findMany({
+    where: { status: "ACTIVE", OR: [{ taxRate: null }, { hsn: null }] },
+    select: { id: true, code: true, productName: true },
+  });
+  if (!unconfigured.length) return { configured: 0, skus: [] as { code: string; productName: string }[] };
+  await prisma.seeraSku.updateMany({
+    where: { id: { in: unconfigured.map((s) => s.id) } },
+    data: { taxRate: FROZEN_TAX_RATE, hsn: FROZEN_HSN },
+  });
+  await recordAudit(prisma, {
+    actorId,
+    action: "sku.bulk_gst_configured",
+    entityType: "SeeraSku",
+    entityId: "bulk",
+    afterState: { count: unconfigured.length, taxRate: FROZEN_TAX_RATE, hsn: FROZEN_HSN, skuCodes: unconfigured.map((s) => s.code) },
+  });
+  return { configured: unconfigured.length, skus: unconfigured.map((s) => ({ code: s.code, productName: s.productName })) };
+}
+
 export async function createPriceVersion(
   prisma: PrismaClient,
   actorId: string,
@@ -524,6 +557,7 @@ export async function placeRetailerOrder(
     if (existing) return existing;
     if (territoryResolved && resolvedDistributorId)
       await tx.seeraRetailer.update({ where: { id: retailer.id }, data: { distributorId: resolvedDistributorId } });
+    timing.stage("tx_idempotency_check");
     // PERFORMANCE PHASE 2: this runs inside an interactive $transaction, which pins `tx` to a
     // SINGLE reserved connection — a per-line Promise.all here does NOT give real concurrency, it
     // just queues N (or up to 2N) round trips one after another on the wire while looking parallel
@@ -565,6 +599,7 @@ export async function placeRetailerOrder(
             orderBy: { effectiveFrom: "desc" },
           });
     }
+    timing.stage("tx_sku_and_price_lookup");
 
     const snapshots = input.lines.map((line) => {
       const sku = skuById.get(line.skuId)!;
@@ -669,18 +704,26 @@ export async function placeRetailerOrder(
                 : "NO_DISTRIBUTOR_MAPPING",
         },
       });
-    // No commercialPartyId means this order is unassigned for fulfilment (no Distributor mapped
-    // yet) — nobody to notify; it surfaces instead via unassignedRetailerOrders() for Manager/Admin
-    // routing.
-    if (commercialPartyId) await notifyPartyUsers(tx, commercialPartyId, {
-      title: "New retailer order",
-      body: `${retailer.businessName} placed order ${order.orderNumber} awaiting fulfilment.`,
-      entityType: "SeeraSalesOrder",
-      entityId: order.id,
-      actionPath: "/portal/distributor/fulfilment",
-    });
+    timing.stage("tx_order_create");
     return order;
   });
+  timing.stage("transaction_commit");
+  // PERFORMANCE: notifyPartyUsers previously ran INSIDE the interactive $transaction above, holding
+  // the reserved connection open through its own 3 extra queries (party-user lookup, active-user
+  // filter, notification createMany) before the order could even commit — pure overhead on the
+  // critical path for a side effect the order's own success never depends on. Moved outside, on the
+  // outer `prisma` client, after commit: a notification failure can no longer roll back or slow down
+  // order creation. No commercialPartyId means this order is unassigned for fulfilment (no
+  // Distributor mapped yet) — nobody to notify; it surfaces instead via unassignedRetailerOrders()
+  // for Manager/Admin routing.
+  if (commercialPartyId) await notifyPartyUsers(prisma, commercialPartyId, {
+    title: "New retailer order",
+    body: `${retailer.businessName} placed order ${order.orderNumber} awaiting fulfilment.`,
+    entityType: "SeeraSalesOrder",
+    entityId: order.id,
+    actionPath: "/portal/distributor/fulfilment",
+  });
+  timing.stage("notify_party_users");
   timing.finish({ actorId: context.actorId, retailerId: input.retailerId, lineCount: input.lines.length });
   return order;
 }

@@ -8,10 +8,11 @@ import {
   createPriceVersion,
   createSku,
   supersedePriceVersion,
+  bulkConfigureCanonicalSkuGst,
 } from "@/lib/sales-distribution/workflow-service";
 
 const requestBody = z.object({
-  action: z.enum(["create-sku", "create-price", "supersede-price"]),
+  action: z.enum(["create-sku", "create-price", "supersede-price", "bulk-configure-sku-gst"]),
   payload: z.record(z.unknown()),
 });
 
@@ -21,7 +22,9 @@ export async function POST(request: Request) {
     enforceRateLimit(`foundation-masters:${user.id}`, 30, 60_000);
     const { action, payload } = requestBody.parse(await request.json());
     const result =
-      action === "supersede-price"
+      action === "bulk-configure-sku-gst"
+        ? await bulkConfigureCanonicalSkuGst(prisma, user.id)
+        : action === "supersede-price"
         ? await supersedePriceVersion(
             prisma,
             user.id,

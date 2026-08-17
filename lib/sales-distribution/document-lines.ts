@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { FoundationError } from "@/lib/foundation/errors";
 
@@ -9,8 +10,27 @@ export type CommercialLineInput = {
   quantity: number;
   rate: number;
   discountPct?: number;
-  taxRate?: number;
+  // Nullable, not just optional — a Draft may legitimately be saved before the SKU's GST rate is
+  // configured (see buildLineSnapshots's enforceTax:false), and the client sends an explicit
+  // `taxRate: null` for those lines (QuotationActions.tsx/BillingActions.tsx's line state defaults
+  // to null, not undefined) rather than omitting the key.
+  taxRate?: number | null;
 };
+
+// Single shared, testable source of truth for the zod shape backing every quotation/billing draft
+// create/update API action (app/api/distribution/operations/route.ts) — previously duplicated
+// inline 4 times, and the duplicated copies were the actual site of a real production bug: they
+// used `.optional()` (permits an omitted key) instead of `.nullable().optional()` (also permits an
+// explicit `null`), so a Save Draft request from the real UI — which always sends `taxRate: null`
+// explicitly for an unconfigured line, never omits the key — was rejected with "Expected number,
+// received null" even though the service layer underneath had already been relaxed to allow it.
+export const commercialLineInputSchema = z.object({
+  skuId: z.string(),
+  quantity: z.number().positive(),
+  rate: z.number().nonnegative(),
+  discountPct: z.number().min(0).max(100).optional(),
+  taxRate: z.number().min(0).max(100).nullable().optional(),
+});
 
 export type CommercialLineSnapshot = {
   skuId: string;
@@ -79,7 +99,7 @@ export function deriveInclusiveTax(grossValue: number, taxRatePct: number) {
 // blocks that silent path; it does not invent a rate. A caller MAY still pass an explicit
 // line.taxRate (e.g. a governed override), which bypasses this gate exactly like the existing
 // `taxRate ?? Number(sku.taxRate ?? 0)` fallback already did.
-export function assertTaxConfigured(sku: { code: string; taxRate: unknown; hsn: string | null }, explicitTaxRate?: number) {
+export function assertTaxConfigured(sku: { code: string; taxRate: unknown; hsn: string | null }, explicitTaxRate?: number | null) {
   if (explicitTaxRate != null) return;
   if (sku.taxRate == null || !sku.hsn)
     throw new FoundationError(

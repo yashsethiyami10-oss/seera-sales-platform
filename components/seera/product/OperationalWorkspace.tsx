@@ -3696,6 +3696,7 @@ export async function OperationalWorkspace({
           marginType: p.marginType,
           marginValue: p.marginValue ? Number(p.marginValue) : null,
         }))}
+        unconfiguredGstSkuCount={skus.filter((s) => s.status === "ACTIVE" && (s.taxRate == null || !s.hsn)).length}
       />
     );
   } else if (

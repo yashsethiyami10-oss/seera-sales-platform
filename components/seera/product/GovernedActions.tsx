@@ -125,10 +125,14 @@ export function MasterActions({
   language,
   skus,
   priceVersions = [],
+  unconfiguredGstSkuCount = 0,
 }: {
   language: "EN" | "HI";
   skus: Option[];
   priceVersions?: PriceVersionRow[];
+  // Founder-authorized one-time bulk GST configuration (18% inclusive, HSN matching the already-
+  // frozen precedent) — auto-hides once every active SKU has a governed tax rate + HSN.
+  unconfiguredGstSkuCount?: number;
 }) {
   const hi = language === "HI";
   const state = useAction(language);
@@ -136,6 +140,27 @@ export function MasterActions({
   const history = priceVersions.filter((p) => !p.isCurrentlyActive);
   return (
     <section className={styles.panel}>
+      {unconfiguredGstSkuCount > 0 && (
+        <div className={styles.panel} style={{ gridColumn: "1/-1" }}>
+          <div>
+            <small>{hi ? "GST मास्टर" : "GST MASTER"}</small>
+            <h2>{hi ? "SKU GST कॉन्फ़िगरेशन पूरा करें" : "Complete SKU GST Configuration"}</h2>
+          </div>
+          <p>
+            {hi
+              ? `${unconfiguredGstSkuCount} सक्रिय SKU में GST दर/HSN कॉन्फ़िगर नहीं है। एक क्लिक में सभी को 18% (समावेशी) पर सेट करें — पहले से कॉन्फ़िगर किए गए SKU अप्रभावित रहते हैं।`
+              : `${unconfiguredGstSkuCount} active SKU(s) have no GST rate/HSN configured. One click sets all of them to 18% (inclusive) — already-configured SKUs are left untouched.`}
+          </p>
+          <button
+            type="button"
+            className={styles.primaryBig}
+            disabled={state.busy}
+            onClick={() => void state.run(() => post("/api/foundation/masters", { action: "bulk-configure-sku-gst", payload: {} }))}
+          >
+            {hi ? "सभी SKU के लिए GST कॉन्फ़िगर करें (18% समावेशी)" : "CONFIGURE GST FOR ALL SKUs (18% INCLUSIVE)"}
+          </button>
+        </div>
+      )}
       <div>
         <small>{hi ? "मूल्य सूची" : "PRICE LIST"}</small>
         <h2>{hi ? "सक्रिय मूल्य" : "Active prices"}</h2>
