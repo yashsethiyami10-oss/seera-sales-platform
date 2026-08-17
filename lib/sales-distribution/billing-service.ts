@@ -6,11 +6,13 @@ import { documentNumber } from "./phase6-9-rules";
 import { requirePartyMembership } from "./scope";
 import {
   buildLineSnapshots,
+  assertLinesTaxConfigured,
   draftNumber,
   partySnapshot,
   totalsOf,
   taxSplit,
   type CommercialLineInput,
+  type CommercialLineSnapshot,
 } from "./document-lines";
 
 type BillingType =
@@ -86,7 +88,7 @@ export async function createBillingDraft(
   }
   const existing = await prisma.seeraCommercialDocument.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
   if (existing) return existing;
-  const lines = await buildLineSnapshots(prisma, input.lines);
+  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
   const totals = totalsOf(lines);
   const [issuerSnapshot, buyerSnapshot] = await Promise.all([
     partySnapshot(prisma, input.issuerType, input.issuerId),
@@ -143,7 +145,7 @@ export async function updateBillingDraft(
   await requireIssuerScope(prisma, actorId, document.issuerType, document.issuerId);
   if (document.status !== "DRAFT")
     throw new FoundationError("DOCUMENT_NOT_DRAFT", "Only a draft document can be edited", 409);
-  const lines = await buildLineSnapshots(prisma, input.lines);
+  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
   const totals = totalsOf(lines);
   const issuerGstin = (document.issuerSnapshot as { gstin?: string } | null)?.gstin;
   const buyerGstin = (document.buyerSnapshot as { gstin?: string } | null)?.gstin;
@@ -182,6 +184,11 @@ export async function issueBillingDraft(prisma: PrismaClient, actorId: string, d
   let issuerSnapshot = document.issuerSnapshot as Prisma.InputJsonValue;
   let profile: Awaited<ReturnType<PrismaClient["seeraBillingProfile"]["findFirst"]>> = null;
   if (LEDGER_TYPES.has(type)) {
+    // Same lifecycle point as issueQuotation — a tax-bearing document (Tax Invoice, Credit/Debit
+    // Note) can never be issued with a silently-unconfigured line, but a DRAFT is never blocked by
+    // this (see buildLineSnapshots's enforceTax:false above). Non-ledger types (challan/receipt/pro
+    // forma) don't carry legal GST liability, so they're not gated here.
+    assertLinesTaxConfigured(document.lineSnapshot as unknown as CommercialLineSnapshot[]);
     profile = await prisma.seeraBillingProfile.findFirst({
       where: {
         ownerType: document.issuerType,

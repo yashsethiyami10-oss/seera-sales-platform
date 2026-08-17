@@ -8,6 +8,7 @@ import { notifyPartyUsers, requirePartyMembership } from "./scope";
 import { numberFor } from "./workflow-service";
 import {
   buildLineSnapshots,
+  assertLinesTaxConfigured,
   draftNumber,
   partySnapshot,
   totalsOf,
@@ -46,7 +47,7 @@ export async function createQuotationDraft(
   await requireIssuerScope(prisma, actorId, input.issuerType, input.issuerId);
   const existing = await prisma.seeraCommercialDocument.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
   if (existing) return existing;
-  const lines = await buildLineSnapshots(prisma, input.lines);
+  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
   const totals = totalsOf(lines);
   const [issuerSnapshot, buyerSnapshot] = await Promise.all([
     partySnapshot(prisma, input.issuerType, input.issuerId),
@@ -117,7 +118,7 @@ export async function updateQuotationDraft(
   await requireIssuerScope(prisma, actorId, document.issuerType, document.issuerId);
   if (document.status !== "DRAFT")
     throw new FoundationError("QUOTATION_NOT_DRAFT", "Only a draft quotation can be edited", 409);
-  const lines = await buildLineSnapshots(prisma, input.lines);
+  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
   const totals = totalsOf(lines);
   const issuerGstin = (document.issuerSnapshot as { gstin?: string } | null)?.gstin;
   const buyerGstin = (document.buyerSnapshot as { gstin?: string } | null)?.gstin;
@@ -153,6 +154,7 @@ export async function issueQuotation(prisma: PrismaClient, actorId: string, quot
   await requireIssuerScope(prisma, actorId, document.issuerType, document.issuerId);
   if (document.status !== "DRAFT")
     throw new FoundationError("QUOTATION_NOT_DRAFT", "Only a draft quotation can be issued", 409);
+  assertLinesTaxConfigured(document.lineSnapshot as unknown as QuotationLineSnapshot[]);
   const now = new Date();
   const profile = await prisma.seeraBillingProfile.findFirst({
     where: {

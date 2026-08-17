@@ -26,6 +26,12 @@ export type CommercialLineSnapshot = {
   taxableValue: number;
   taxAmount: number;
   lineTotal: number;
+  // Whether this line's tax was taken from a real governed rate (explicit override or the SKU's
+  // own taxRate+hsn) rather than defaulted to 0 because neither was configured yet. See
+  // buildLineSnapshots's enforceTax parameter and assertLinesTaxConfigured below — a DRAFT may
+  // legitimately contain unconfigured lines (Founder/Admin hasn't set GST/HSN for that SKU yet);
+  // an ISSUED document must not.
+  taxConfigured: boolean;
 };
 
 // GSTIN's first 2 characters are the official GST state code (e.g. "27" = Maharashtra) — a
@@ -83,9 +89,19 @@ export function assertTaxConfigured(sku: { code: string; taxRate: unknown; hsn: 
     );
 }
 
+// Save/Update a draft passes enforceTax:false — draft persistence must not be blocked by missing
+// GST master data (Founder-reported P0: Save Draft silently failed for every SKU lacking a
+// governed tax rate/HSN, meaning not one commercial document could ever be saved in production). A
+// draft is explicitly "editable, recoverable, not posted prematurely" (spec) — an unconfigured
+// line is simply flagged (taxConfigured:false, taxRate defaults to 0) instead of rejected outright.
+// The real, still-strict gate moved to assertLinesTaxConfigured below, enforced once at
+// issueQuotation/issueBillingDraft — so an ISSUED document can never silently carry a zero tax
+// line, exactly preserving the governance intent assertTaxConfigured originally existed for, just
+// at the correct lifecycle point instead of blocking the draft that precedes it.
 export async function buildLineSnapshots(
   db: Db,
   lines: CommercialLineInput[],
+  options: { enforceTax: boolean },
 ): Promise<CommercialLineSnapshot[]> {
   if (!lines.length)
     throw new FoundationError("INVALID_DOCUMENT_LINES", "At least one line is required", 400);
@@ -94,7 +110,8 @@ export async function buildLineSnapshots(
       if (line.quantity <= 0 || line.rate < 0)
         throw new FoundationError("INVALID_DOCUMENT_LINES", "Invalid line values", 400);
       const sku = await db.seeraSku.findUniqueOrThrow({ where: { id: line.skuId } });
-      assertTaxConfigured(sku, line.taxRate);
+      const taxConfigured = line.taxRate != null || (sku.taxRate != null && Boolean(sku.hsn));
+      if (options.enforceTax) assertTaxConfigured(sku, line.taxRate);
       const discountPct = line.discountPct ?? 0;
       const taxRate = line.taxRate ?? Number(sku.taxRate ?? 0);
       const gross = line.rate * line.quantity;
@@ -114,9 +131,24 @@ export async function buildLineSnapshots(
         taxableValue,
         taxAmount,
         lineTotal: grossAfterDiscount,
+        taxConfigured,
       };
     }),
   );
+}
+
+// The actual governance choke point (moved from buildLineSnapshots, see its comment above) —
+// called once, right before a document transitions out of DRAFT, against whatever lineSnapshot is
+// already stored. Lists every offending SKU by code so the error is immediately actionable instead
+// of a generic failure.
+export function assertLinesTaxConfigured(lines: CommercialLineSnapshot[]) {
+  const unconfigured = lines.filter((l) => !l.taxConfigured);
+  if (unconfigured.length)
+    throw new FoundationError(
+      "TAX_CONFIGURATION_REQUIRED",
+      `The following product(s) have no governed GST rate/HSN configured and must be set by Founder/Admin under Masters before this document can be issued: ${unconfigured.map((l) => l.skuCodeSnapshot).join(", ")}`,
+      409,
+    );
 }
 
 export function totalsOf(lines: CommercialLineSnapshot[]) {
