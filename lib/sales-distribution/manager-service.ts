@@ -1036,7 +1036,12 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
   const lateCutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0);
   const [employees, todaySessions, todayVisits, todayOrders, targets, followUpsOpen, prospectsDue, offlineIssues, unassignedOrders] = await Promise.all([
     db.user.findMany({ where: { id: { in: employeeIds } }, select: { id: true, name: true, email: true } }),
-    db.seeraWorkSession.findMany({ where: { employeeId: { in: employeeIds }, startedAt: { gte: todayStart } } }),
+    // orderBy is load-bearing: sessionByEmployee (below) is built via `new Map(todaySessions.map(...))`,
+    // which keeps the LAST entry per employeeId — an employee can legitimately have more than one
+    // session today (e.g. an earlier Distributor Search day already ended, then Retailing started),
+    // and without this the map could resolve to a stale ended session instead of the current one,
+    // silently wrong-footing both the today.active/ended counters and teamToday's dayStatus.
+    db.seeraWorkSession.findMany({ where: { employeeId: { in: employeeIds }, startedAt: { gte: todayStart } }, orderBy: { startedAt: "asc" } }),
     db.seeraVisit.findMany({
       where: { workSession: { employeeId: { in: employeeIds } }, checkedInAt: { gte: todayStart } },
       select: { outcome: true, retailerId: true, retailer: { select: { source: true } } },

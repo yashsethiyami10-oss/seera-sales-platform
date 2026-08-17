@@ -86,19 +86,39 @@ export async function distributorsForEmployeeIds(prisma: PrismaClient, employeeI
 }
 
 // Start Day "Choose Working Distributor" scope for a Sales Executive (spec: day-context only, never
-// retailer-routing authority). An Executive's authorized set is their own retailer-mapped
-// distributors, widened to their Manager's whole team mapping when a Manager assignment exists — so
-// a brand-new Executive with zero retailers checked in yet still sees their team's distributors
-// instead of an empty list, without inventing any new assignment table.
+// retailer-routing authority). Two independent, additive sources, unioned:
+//   1. Retailer-derived: the Executive's own retailer-mapped distributors, widened to their
+//      Manager's whole team mapping when a Manager assignment exists.
+//   2. Direct governed assignment (SeeraAssignment{EXECUTIVE_DISTRIBUTOR}, see
+//      operational-service.ts's assignDistributorToExecutive) — closes the cold-start gap where a
+//      brand-new territory has zero retailers yet, so source 1 alone can never bootstrap the FIRST
+//      distributor a new Executive should be able to pick.
 export async function executiveAuthorizedDistributors(prisma: PrismaClient, executiveId: string) {
-  const managerAssignment = await prisma.seeraAssignment.findFirst({
-    where: {
-      assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
-      subjectId: executiveId,
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
-    },
-    orderBy: { effectiveFrom: "desc" },
-  });
+  const [managerAssignment, directAssignments] = await Promise.all([
+    prisma.seeraAssignment.findFirst({
+      where: {
+        assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
+        subjectId: executiveId,
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+      },
+      orderBy: { effectiveFrom: "desc" },
+    }),
+    prisma.seeraAssignment.findMany({
+      where: { assignmentType: "EXECUTIVE_DISTRIBUTOR", subjectId: executiveId, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+      select: { targetId: true },
+    }),
+  ]);
   const employeeIds = managerAssignment ? await teamEmployeeIdsForManager(prisma, managerAssignment.targetId) : [executiveId];
-  return distributorsForEmployeeIds(prisma, employeeIds);
+  const directDistributorIds = directAssignments.map((a) => a.targetId);
+  const [retailerDerived, directDerived] = await Promise.all([
+    distributorsForEmployeeIds(prisma, employeeIds),
+    directDistributorIds.length
+      ? prisma.seeraPartner.findMany({
+          where: { id: { in: directDistributorIds }, type: "DISTRIBUTOR", lifecycle: "ACTIVE" },
+          select: { id: true, legalName: true, tradeName: true, code: true, addresses: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const merged = new Map([...retailerDerived, ...directDerived].map((d) => [d.id, d]));
+  return [...merged.values()].sort((a, b) => a.legalName.localeCompare(b.legalName));
 }

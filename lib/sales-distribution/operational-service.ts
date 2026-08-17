@@ -172,6 +172,108 @@ export async function activeManagerTeamAssignments(prisma: PrismaClient, actorId
   };
 }
 
+// Start Day "Choose Working Distributor" scope gap (Founder-reported production issue): a brand
+// new Executive/territory has zero retailers yet, so executiveAuthorizedDistributors()'s
+// retailer-derived relation (scope.ts) can never bootstrap the FIRST distributor — there was no
+// application-code path to explicitly say "this Executive's working network includes these
+// Distributors" before any retailer exists. Reuses the same generic SeeraAssignment table
+// MANAGER_TEAM already relies on (assignmentType:"EXECUTIVE_DISTRIBUTOR", subject=User,
+// target=SeeraPartner) rather than a new table, and the same "Founder/Admin governance"
+// user:create gate as createManagerTeamAssignment above — deliberately many-to-many (an Executive
+// can legitimately work multiple Distributors' markets), so unlike Manager assignment this never
+// closes out a prior row, it only adds/removes individual links.
+export async function assignDistributorToExecutive(
+  prisma: PrismaClient,
+  actorId: string,
+  input: { executiveId: string; distributorId: string; reason: string },
+) {
+  await authorize(prisma, { actorId, permission: "user:create" });
+  if (!input.reason.trim()) throw new FoundationError("ASSIGNMENT_REASON_REQUIRED", "A reason is required", 400);
+  const executive = await prisma.user.findFirst({
+    where: { id: input.executiveId, status: "ACTIVE", roleAssignments: { some: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" } } } },
+  });
+  if (!executive) throw new FoundationError("EXECUTIVE_NOT_FOUND", "Sales Executive is unavailable", 404);
+  const distributor = await prisma.seeraPartner.findFirst({ where: { id: input.distributorId, type: "DISTRIBUTOR", lifecycle: "ACTIVE" } });
+  if (!distributor) throw new FoundationError("DISTRIBUTOR_NOT_FOUND", "Distributor is unavailable or inactive", 404);
+  const existing = await prisma.seeraAssignment.findFirst({
+    where: { assignmentType: "EXECUTIVE_DISTRIBUTOR", subjectId: input.executiveId, targetId: input.distributorId, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+  });
+  if (existing) return existing;
+  const assignment = await prisma.seeraAssignment.create({
+    data: {
+      assignmentType: "EXECUTIVE_DISTRIBUTOR",
+      subjectType: "USER",
+      subjectId: input.executiveId,
+      targetType: "SEERA_PARTNER",
+      targetId: input.distributorId,
+      effectiveFrom: new Date(),
+      reason: input.reason,
+      createdById: actorId,
+    },
+  });
+  await recordAudit(prisma, {
+    actorId,
+    action: "assignment.executive_distributor_created",
+    entityType: "SeeraAssignment",
+    entityId: assignment.id,
+    afterState: { executiveId: input.executiveId, distributorId: input.distributorId },
+  });
+  return assignment;
+}
+
+export async function removeExecutiveDistributorAssignment(prisma: PrismaClient, actorId: string, assignmentId: string, reason: string) {
+  await authorize(prisma, { actorId, permission: "user:create" });
+  if (!reason.trim()) throw new FoundationError("ASSIGNMENT_REASON_REQUIRED", "A reason is required", 400);
+  const assignment = await prisma.seeraAssignment.findFirst({ where: { id: assignmentId, assignmentType: "EXECUTIVE_DISTRIBUTOR" } });
+  if (!assignment) throw new FoundationError("ASSIGNMENT_NOT_FOUND", "Assignment is unavailable", 404);
+  if (assignment.effectiveTo) return assignment;
+  const updated = await prisma.seeraAssignment.update({ where: { id: assignmentId }, data: { effectiveTo: new Date() } });
+  await recordAudit(prisma, {
+    actorId,
+    action: "assignment.executive_distributor_removed",
+    entityType: "SeeraAssignment",
+    entityId: assignmentId,
+    reason,
+    afterState: { executiveId: assignment.subjectId, distributorId: assignment.targetId },
+  });
+  return updated;
+}
+
+export async function activeExecutiveDistributorAssignments(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "user:create" });
+  const now = new Date();
+  const [assignments, executiveUsers, distributors] = await Promise.all([
+    prisma.seeraAssignment.findMany({
+      where: { assignmentType: "EXECUTIVE_DISTRIBUTOR", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
+      orderBy: { effectiveFrom: "desc" },
+    }),
+    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
+    prisma.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" }, select: { id: true, legalName: true, tradeName: true, addresses: true } }),
+  ]);
+  const executiveById = new Map(executiveUsers.map((x) => [x.user.id, x.user]));
+  const distributorLabel = (d: { legalName: string; tradeName: string | null; addresses: unknown }) => {
+    const city = (d.addresses as { city?: string } | null)?.city;
+    const firm = d.tradeName ?? d.legalName;
+    return city ? `${firm} — ${city}` : firm;
+  };
+  const distributorById = new Map(distributors.map((d) => [d.id, d]));
+  return {
+    assignments: assignments
+      .filter((a) => executiveById.has(a.subjectId) && distributorById.has(a.targetId))
+      .map((a) => ({
+        id: a.id,
+        executiveId: a.subjectId,
+        executiveName: executiveById.get(a.subjectId)?.name ?? executiveById.get(a.subjectId)?.email ?? a.subjectId,
+        distributorId: a.targetId,
+        distributorLabel: distributorLabel(distributorById.get(a.targetId)!),
+        effectiveFrom: a.effectiveFrom,
+        reason: a.reason,
+      })),
+    executives: executiveUsers.map((x) => ({ value: x.user.id, label: x.user.name ?? x.user.email })),
+    distributors: distributors.map((d) => ({ value: d.id, label: distributorLabel(d) })),
+  };
+}
+
 export async function createBeatPlan(
   prisma: PrismaClient,
   actorId: string,

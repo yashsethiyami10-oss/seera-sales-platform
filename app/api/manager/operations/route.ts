@@ -33,6 +33,7 @@ import {
   reassignBeatPlan,
   cancelBeatPlan,
   createManagerTeamAssignment,
+  assignDistributorToExecutive,
   GEOGRAPHY_TYPES,
 } from "@/lib/sales-distribution/operational-service";
 import { submitTaClaim } from "@/lib/sales-distribution/travel-lifecycle-service";
@@ -69,6 +70,7 @@ const requestBody = z.object({
     "prospect-timeline",
     "assign-distributor",
     "assign-manager-team",
+    "assign-distributor-to-executive",
   ]),
   payload: z.record(z.unknown()).default({}),
 });
@@ -220,6 +222,9 @@ export async function POST(request: Request) {
     } else if (action === "assign-manager-team") {
       const v = z.object({ executiveId: z.string(), managerId: z.string(), effectiveFrom: z.coerce.date(), reason: z.string().min(3) }).parse(payload);
       result = await createManagerTeamAssignment(prisma, user.id, v);
+    } else if (action === "assign-distributor-to-executive") {
+      const v = z.object({ executiveId: z.string(), distributorId: z.string(), reason: z.string().min(3) }).parse(payload);
+      result = await assignDistributorToExecutive(prisma, user.id, v);
     } else if (action === "prospect-timeline")
       result = await prospectTimeline(prisma, user.id, z.object({ prospectId: z.string() }).parse(payload).prospectId);
     else if (action === "team-dashboard") result = await managerTeamReadModel(prisma, user.id);

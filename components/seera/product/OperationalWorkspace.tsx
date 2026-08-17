@@ -44,9 +44,10 @@ import { FinanceControlActions } from "./FinanceControlActions";
 import { ManagerFieldActions } from "./ManagerFieldActions";
 import { BeatPlannerActions } from "./BeatPlannerActions";
 import { FieldForceAssignmentPanel } from "./FieldForceAssignmentPanel";
+import { AssignDistributorToExecutivePanel } from "./AssignDistributorToExecutivePanel";
 import { MyTaClaimActions, TeamTaClaimsPanel } from "./ManagerTaClaimActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
-import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments } from "@/lib/sales-distribution/operational-service";
+import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments } from "@/lib/sales-distribution/operational-service";
 import { DeliveryActions } from "./DeliveryActions";
 import { documentSelectorData } from "@/lib/sales-distribution/document-portal-service";
 import { distributorCreditPosition, superStockistDistributorCreditOverview, superStockistCreditExtensionHistory, creditPositionFor, superStockistDistributorCollectionsSnapshot, founderDistributorCreditOversight } from "@/lib/sales-distribution/credit-service";
@@ -3830,14 +3831,25 @@ export async function OperationalWorkspace({
     // enough to place them under a Manager — see FieldForceAssignmentPanel's own comment for the
     // full chain of screens this was silently breaking.
     if (permissions.has("network:manage")) {
-      const teamData = await activeManagerTeamAssignments(db, userId);
+      const [teamData, distributorScopeData] = await Promise.all([
+        activeManagerTeamAssignments(db, userId),
+        activeExecutiveDistributorAssignments(db, userId),
+      ]);
       workflow = (
-        <FieldForceAssignmentPanel
-          language={language}
-          executives={teamData.executives}
-          managers={teamData.managers}
-          assignments={teamData.assignments.map((a) => ({ ...a, effectiveFrom: a.effectiveFrom.toISOString() }))}
-        />
+        <>
+          <FieldForceAssignmentPanel
+            language={language}
+            executives={teamData.executives}
+            managers={teamData.managers}
+            assignments={teamData.assignments.map((a) => ({ ...a, effectiveFrom: a.effectiveFrom.toISOString() }))}
+          />
+          <AssignDistributorToExecutivePanel
+            language={language}
+            executives={distributorScopeData.executives}
+            distributors={distributorScopeData.distributors}
+            assignments={distributorScopeData.assignments.map((a) => ({ ...a, effectiveFrom: a.effectiveFrom.toISOString() }))}
+          />
+        </>
       );
     }
   } else if (
