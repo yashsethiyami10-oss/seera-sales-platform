@@ -45,6 +45,7 @@ import { ManagerFieldActions } from "./ManagerFieldActions";
 import { BeatPlannerActions } from "./BeatPlannerActions";
 import { FieldForceAssignmentPanel } from "./FieldForceAssignmentPanel";
 import { AssignDistributorToExecutivePanel } from "./AssignDistributorToExecutivePanel";
+import { RatanBulkAssignDistributorsPanel } from "./RatanBulkAssignDistributorsPanel";
 import { MyTaClaimActions, TeamTaClaimsPanel } from "./ManagerTaClaimActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
 import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments } from "@/lib/sales-distribution/operational-service";
@@ -3835,6 +3836,18 @@ export async function OperationalWorkspace({
         activeManagerTeamAssignments(db, userId),
         activeExecutiveDistributorAssignments(db, userId),
       ]);
+      // Auto-hide gate for the one-time Ratan bulk-assign button (same self-hiding pattern as
+      // RatanBulkOnboardPanel) — only render it while the sole active Executive has fewer than all
+      // 10 Ratan Distributors assigned.
+      const ratanSuperStockist = await db.seeraPartner.findFirst({ where: { type: "SUPER_STOCKIST", legalName: "M/s Ratan Products & Traders", lifecycle: "ACTIVE" } });
+      const ratanDistributorIds = ratanSuperStockist
+        ? (await db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", assignedSuperStockistId: ratanSuperStockist.id, lifecycle: "ACTIVE" }, select: { id: true } })).map((d) => d.id)
+        : [];
+      const soleActiveExecutiveId = teamData.executives.length === 1 ? teamData.executives[0]!.value : null;
+      const alreadyAssignedRatanCount = soleActiveExecutiveId
+        ? distributorScopeData.assignments.filter((a) => a.executiveId === soleActiveExecutiveId && ratanDistributorIds.includes(a.distributorId)).length
+        : 0;
+      const showRatanBulkAssign = ratanDistributorIds.length === 10 && soleActiveExecutiveId && alreadyAssignedRatanCount < 10;
       workflow = (
         <>
           <FieldForceAssignmentPanel
@@ -3849,6 +3862,7 @@ export async function OperationalWorkspace({
             distributors={distributorScopeData.distributors}
             assignments={distributorScopeData.assignments.map((a) => ({ ...a, effectiveFrom: a.effectiveFrom.toISOString() }))}
           />
+          {showRatanBulkAssign && <RatanBulkAssignDistributorsPanel language={language} />}
         </>
       );
     }

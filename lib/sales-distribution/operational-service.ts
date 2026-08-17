@@ -274,6 +274,64 @@ export async function activeExecutiveDistributorAssignments(prisma: PrismaClient
   };
 }
 
+const RATAN_SUPER_STOCKIST_LEGAL_NAME = "M/s Ratan Products & Traders";
+
+// Founder-authorized, ONE-TIME bulk convenience over assignDistributorToExecutive (above) — reuses
+// that exact governed service per row rather than any new write path, purely to spare the Founder
+// 10 repetitive manual "+ ASSIGN DISTRIBUTOR" submissions for a known, bounded target: whichever
+// Distributors currently belong to M/s Ratan Products & Traders, assigned to whichever single
+// SALES_EXECUTIVE is currently active. Distributors are resolved by their real Partner
+// records (assignedSuperStockistId + type + lifecycle), never by matching "Sahu Kirana" as a bare
+// string — the two Mahroni/Madawra rows are distinguished by being genuinely separate Partner ids.
+export async function bulkAssignRatanDistributorsToSoleExecutive(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+
+  const superStockists = await prisma.seeraPartner.findMany({ where: { type: "SUPER_STOCKIST", legalName: RATAN_SUPER_STOCKIST_LEGAL_NAME, lifecycle: "ACTIVE" } });
+  if (superStockists.length === 0) throw new FoundationError("SUPER_STOCKIST_NOT_FOUND", `No active Super Stockist named "${RATAN_SUPER_STOCKIST_LEGAL_NAME}" was found`, 404);
+  if (superStockists.length > 1) throw new FoundationError("SUPER_STOCKIST_AMBIGUOUS", `${superStockists.length} active Super Stockist records match "${RATAN_SUPER_STOCKIST_LEGAL_NAME}"`, 409);
+  const superStockistId = superStockists[0]!.id;
+
+  const distributors = await prisma.seeraPartner.findMany({
+    where: { type: "DISTRIBUTOR", assignedSuperStockistId: superStockistId, lifecycle: "ACTIVE" },
+    select: { id: true, legalName: true, tradeName: true, addresses: true },
+    orderBy: { legalName: "asc" },
+  });
+  if (distributors.length !== 10)
+    throw new FoundationError("RATAN_DISTRIBUTOR_COUNT_MISMATCH", `Expected exactly 10 active Distributors under ${RATAN_SUPER_STOCKIST_LEGAL_NAME}, found ${distributors.length} — stopping before any write`, 409);
+
+  const executiveUsers = await prisma.userRoleAssignment.findMany({
+    where: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" } },
+    select: { userId: true, user: { select: { id: true, name: true, email: true, status: true } } },
+  });
+  const activeExecutives = executiveUsers.filter((x) => x.user.status === "ACTIVE");
+  if (activeExecutives.length === 0) throw new FoundationError("EXECUTIVE_NOT_FOUND", "No active Sales Executive was found", 404);
+  if (activeExecutives.length > 1) throw new FoundationError("EXECUTIVE_AMBIGUOUS", `${activeExecutives.length} active Sales Executives exist — cannot resolve a single target safely`, 409);
+  const executive = activeExecutives[0]!.user;
+
+  const distributorLabel = (d: { legalName: string; tradeName: string | null; addresses: unknown }) => {
+    const city = (d.addresses as { city?: string } | null)?.city;
+    const firm = d.tradeName ?? d.legalName;
+    return city ? `${firm} — ${city}` : firm;
+  };
+
+  const results = [];
+  for (const distributor of distributors) {
+    const before = await prisma.seeraAssignment.findFirst({
+      where: { assignmentType: "EXECUTIVE_DISTRIBUTOR", subjectId: executive.id, targetId: distributor.id, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+    });
+    const assignment = await assignDistributorToExecutive(prisma, actorId, { executiveId: executive.id, distributorId: distributor.id, reason: "Ratan network assignment" });
+    results.push({ distributorId: distributor.id, distributorLabel: distributorLabel(distributor), status: before ? ("ALREADY_EXISTED" as const) : ("CREATED" as const), assignmentId: assignment.id });
+  }
+
+  return {
+    executiveId: executive.id,
+    executiveName: executive.name ?? executive.email,
+    results,
+    created: results.filter((r) => r.status === "CREATED").length,
+    alreadyExisted: results.filter((r) => r.status === "ALREADY_EXISTED").length,
+  };
+}
+
 export async function createBeatPlan(
   prisma: PrismaClient,
   actorId: string,
