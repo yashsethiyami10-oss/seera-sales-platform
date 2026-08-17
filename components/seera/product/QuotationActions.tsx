@@ -273,20 +273,16 @@ export function QuotationActions({
           {hi ? "टिप्पणी" : "Notes"}
           <input name="notes" />
         </label>
-        <button
-          disabled={
-            busy ||
-            !issuers.length ||
-            !buyers.length ||
-            !skus.length ||
-            // Founder UAT fix: previously nothing stopped submitting a line whose SKU has no
-            // governed tax rate — it silently issued at 0% tax. Now blocked client-side, backed by
-            // the server's own TAX_CONFIGURATION_REQUIRED gate (document-lines.ts).
-            lines.some((l) => l.skuId && l.quantity > 0 && l.taxRate == null)
-          }
-        >
+        <button disabled={busy || !issuers.length || !buyers.length || !skus.length}>
           {hi ? "ड्राफ्ट सहेजें" : "Save draft"}
         </button>
+        {lines.some((l) => l.skuId && l.quantity > 0 && l.taxRate == null) && (
+          <p className={styles.emptyHint}>
+            {hi
+              ? "एक या अधिक उत्पादों में GST दर कॉन्फ़िगर नहीं है — ड्राफ्ट सहेजा जा सकता है, लेकिन Founder/Admin द्वारा दर सेट किए बिना जारी नहीं किया जा सकता।"
+              : "One or more products have no GST rate configured — the draft can still be saved, but cannot be issued until Founder/Admin sets a rate under Masters."}
+          </p>
+        )}
       </form>
       <div className={styles.tableWrap}>
         <table>
@@ -313,7 +309,8 @@ export function QuotationActions({
                     {q.status === "DRAFT" && (
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || q.lines.some((l) => l.taxRate == null)}
+                        title={q.lines.some((l) => l.taxRate == null) ? (hi ? "जारी करने से पहले सभी उत्पादों में GST दर कॉन्फ़िगर होनी चाहिए" : "All products need a configured GST rate before this can be issued") : undefined}
                         onClick={() => void run("issue-quotation", { quotationId: q.id })}
                       >
                         {hi ? "जारी करें" : "Issue"}

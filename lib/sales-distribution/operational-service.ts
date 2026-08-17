@@ -332,6 +332,52 @@ export async function bulkAssignRatanDistributorsToSoleExecutive(prisma: PrismaC
   };
 }
 
+// Founder-authorized, ONE-TIME composed action: the sole active Sales Executive currently has
+// neither a Manager assignment nor any Working Distributor scope, and both are unambiguous given
+// exactly one active Manager and one active Executive exist. Reuses the two ALREADY-GOVERNED
+// primitives directly (createManagerTeamAssignment, bulkAssignRatanDistributorsToSoleExecutive) —
+// no new write path, no duplicated resolution/authorization logic. A single click completes both;
+// each underlying primitive is independently idempotent, so a retry after a partial failure is safe.
+export async function completeSoleExecutiveFieldForceSetup(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+
+  const managerUsers = await prisma.userRoleAssignment.findMany({
+    where: { status: "ACTIVE", role: { code: { in: ["SALES_MANAGER", "SALES_HEAD"] } } },
+    select: { user: { select: { id: true, name: true, email: true, status: true } } },
+  });
+  const activeManagers = managerUsers.filter((x) => x.user.status === "ACTIVE");
+  if (activeManagers.length === 0) throw new FoundationError("MANAGER_NOT_FOUND", "No active Sales Manager was found", 404);
+  if (activeManagers.length > 1) throw new FoundationError("MANAGER_AMBIGUOUS", `${activeManagers.length} active Sales Managers exist — cannot resolve a single target safely`, 409);
+  const manager = activeManagers[0]!.user;
+
+  const executiveUsers = await prisma.userRoleAssignment.findMany({
+    where: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" } },
+    select: { user: { select: { id: true, name: true, email: true, status: true } } },
+  });
+  const activeExecutives = executiveUsers.filter((x) => x.user.status === "ACTIVE");
+  if (activeExecutives.length === 0) throw new FoundationError("EXECUTIVE_NOT_FOUND", "No active Sales Executive was found", 404);
+  if (activeExecutives.length > 1) throw new FoundationError("EXECUTIVE_AMBIGUOUS", `${activeExecutives.length} active Sales Executives exist — cannot resolve a single target safely`, 409);
+  const executive = activeExecutives[0]!.user;
+
+  const managerTeam = await createManagerTeamAssignment(prisma, actorId, {
+    executiveId: executive.id,
+    managerId: manager.id,
+    effectiveFrom: new Date(),
+    reason: "Founder-authorized field force completion",
+  });
+
+  const distributorAssignment = await bulkAssignRatanDistributorsToSoleExecutive(prisma, actorId);
+
+  return {
+    managerName: manager.name ?? manager.email,
+    executiveName: executive.name ?? executive.email,
+    managerTeamAssignmentId: managerTeam.id,
+    distributorsCreated: distributorAssignment.created,
+    distributorsAlreadyExisted: distributorAssignment.alreadyExisted,
+    distributorResults: distributorAssignment.results,
+  };
+}
+
 export async function createBeatPlan(
   prisma: PrismaClient,
   actorId: string,

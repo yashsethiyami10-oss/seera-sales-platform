@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 import { assignDistributorToExecutive, removeExecutiveDistributorAssignment, activeExecutiveDistributorAssignments } from "../../lib/sales-distribution/operational-service";
 import { executiveAuthorizedDistributors } from "../../lib/sales-distribution/scope";
-import { createDistributorForSuperStockist } from "../../lib/sales-distribution/distributor-management-service";
+import { createDistributorForSuperStockist, createSuperStockist } from "../../lib/sales-distribution/distributor-management-service";
 import { createUser, assignRole } from "../../lib/foundation/user-management-service";
 import { FoundationError } from "../../lib/foundation/errors";
 
@@ -49,24 +49,37 @@ async function expectError(fn: () => Promise<unknown>, code: string, label: stri
 
 async function main() {
   console.log(`[SEERA DB GUARD] role=${target.role} fingerprint=${target.fingerprint}\n`);
-  const suffix = Date.now();
   const founder = await db.user.findUniqueOrThrow({ where: { normalizedEmail: "review-founder@seera.test" } });
 
   // A brand-new Executive with ZERO retailers, ZERO manager assignment — the exact production
-  // cold-start scenario.
-  const freshExecutive = await createUser(db, founder.id, { email: `wd-fresh-exec-${suffix}@seera.test`, name: `Fresh Executive ${suffix}`, password: "TempPassword12345!" });
-  await assignRole(db, founder.id, freshExecutive.id, "SALES_EXECUTIVE", "Smoke test fixture");
+  // cold-start scenario. Deterministic fixture identity (find-or-create) so reruns reuse the same
+  // row instead of accumulating a new throwaway User every time — this script always cleans up its
+  // own EXECUTIVE_DISTRIBUTOR assignment in step [7], so reuse across runs is safe.
+  const freshExecutive =
+    (await db.user.findUnique({ where: { normalizedEmail: "zz-test-fixture-cold-start-executive@seera.test" } })) ??
+    (await createUser(db, founder.id, { email: "zz-test-fixture-cold-start-executive@seera.test", name: "ZZ TEST FIXTURE - Cold Start Executive", password: "TempPassword12345!" }));
+  const hasExecutiveRole = await db.userRoleAssignment.findFirst({ where: { userId: freshExecutive.id, status: "ACTIVE", role: { code: "SALES_EXECUTIVE" } } });
+  if (!hasExecutiveRole) await assignRole(db, founder.id, freshExecutive.id, "SALES_EXECUTIVE", "Smoke test fixture");
 
   const ss = await db.seeraPartner.findFirst({ where: { type: "SUPER_STOCKIST", legalName: "M/s Ratan Products & Traders" } });
   assert(ss, "Expected TEST 'M/s Ratan Products & Traders' fixture from an earlier smoke run");
   const mahroni = await db.seeraPartner.findFirst({ where: { type: "DISTRIBUTOR", assignedSuperStockistId: ss!.id, addresses: { path: ["city"], equals: "Mahroni" } } });
   assert(mahroni, "Expected Mahroni 'Sahu Kirana' fixture from an earlier smoke run");
-  const other = await createDistributorForSuperStockist(db, founder.id, ss!.id, {
-    firmName: `Unrelated Cold-Start Test Distributor ${suffix}`,
-    address: { line: "x", city: "Nowhere", state: "Uttar Pradesh" },
-    mobile: `6${String(suffix).slice(-9)}`,
+  // DEDICATED fixture S.S./Distributor (never Ratan's own — that was the actual cause of TEST
+  // Ratan drifting to 15 distributors) — same stable idempotencyKeys as
+  // smoke-working-distributor.ts, so both scripts converge on the same two rows, not a pair each.
+  const fixtureSS = await createSuperStockist(db, founder.id, {
+    firmName: "ZZ TEST FIXTURE - Unrelated Super Stockist",
+    address: { line: "fixture", city: "Nowhere", state: "Uttar Pradesh" },
+    mobile: "9000000001",
+    idempotencyKey: "zz-test-fixture-unrelated-ss",
+  });
+  const other = await createDistributorForSuperStockist(db, founder.id, fixtureSS.id, {
+    firmName: "ZZ TEST FIXTURE - Unrelated Distributor",
+    address: { line: "fixture", city: "Nowhere", state: "Uttar Pradesh" },
+    mobile: "9000000002",
     creditEnabled: false,
-    idempotencyKey: `cold-start-unrelated-${suffix}`,
+    idempotencyKey: "zz-test-fixture-unrelated-distributor",
   });
 
   console.log("[1] Before assignment: authorized distributors = 0 (true cold-start reproduction)");

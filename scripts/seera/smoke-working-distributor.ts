@@ -5,7 +5,7 @@ import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 import { startFieldDay, placeRetailerOrder } from "../../lib/sales-distribution/workflow-service";
 import { executiveAuthorizedDistributors } from "../../lib/sales-distribution/scope";
 import { managerDashboardSummary } from "../../lib/sales-distribution/manager-service";
-import { createDistributorForSuperStockist } from "../../lib/sales-distribution/distributor-management-service";
+import { createDistributorForSuperStockist, createSuperStockist } from "../../lib/sales-distribution/distributor-management-service";
 import { createRetailer } from "../../lib/sales-distribution/field-portal-service";
 import { FoundationError } from "../../lib/foundation/errors";
 
@@ -66,38 +66,51 @@ async function main() {
   const madawra = await db.seeraPartner.findFirst({ where: { type: "DISTRIBUTOR", assignedSuperStockistId: ss.id, addresses: { path: ["city"], equals: "Madawra" } } });
   assert(mahroni && madawra, "Expected Mahroni/Madawra 'Sahu Kirana' fixtures from an earlier smoke run — not found");
 
-  // A genuinely unrelated distributor under a fresh, different S.S. — used to prove unauthorized
-  // Partner IDs are rejected server-side, not just filtered out of the picker.
-  const otherSS = await createDistributorForSuperStockist(db, founder.id, ss.id, {
-    firmName: `Unrelated Test Distributor ${suffix}`,
-    address: { line: "x", city: "Nowhere", state: "Uttar Pradesh" },
-    mobile: `9${String(suffix).slice(-9)}`,
+  // A genuinely unrelated distributor under a DEDICATED fixture S.S. (never Ratan's own — that was
+  // the actual cause of TEST Ratan drifting to 15 distributors across earlier reruns of this exact
+  // script) — used to prove unauthorized Partner IDs are rejected server-side, not just filtered
+  // out of the picker. Both idempotencyKeys are deterministic (not suffix-based), so reruns reuse
+  // the same two rows instead of accumulating new ones.
+  const fixtureSS = await createSuperStockist(db, founder.id, {
+    firmName: "ZZ TEST FIXTURE - Unrelated Super Stockist",
+    address: { line: "fixture", city: "Nowhere", state: "Uttar Pradesh" },
+    mobile: "9000000001",
+    idempotencyKey: "zz-test-fixture-unrelated-ss",
+  });
+  const otherSS = await createDistributorForSuperStockist(db, founder.id, fixtureSS.id, {
+    firmName: "ZZ TEST FIXTURE - Unrelated Distributor",
+    address: { line: "fixture", city: "Nowhere", state: "Uttar Pradesh" },
+    mobile: "9000000002",
     creditEnabled: false,
-    idempotencyKey: `wd-unrelated-${suffix}`,
+    idempotencyKey: "zz-test-fixture-unrelated-distributor",
   });
   const unrelatedDistributorId = otherSS.partner.id;
 
   // Map the executive to Mahroni via a real retailer check-in trail (the canonical relation the
   // feature reuses) — create a retailer whose salesperson is this executive and distributor is
   // Mahroni, so executiveAuthorizedDistributors() picks it up without any parallel assignment table.
+  // Deterministic identity + notes (createRetailer's own idempotency dedups on
+  // notes containing idempotencyKey) so reruns reuse the same row instead of accumulating.
   const retailer = await createRetailer(db, executive.id, {
-    businessName: `WD Test Retailer ${suffix}`,
+    businessName: "ZZ TEST FIXTURE - WD Test Retailer",
     address: { area: "Test area" },
-    mobile: `8${String(suffix).slice(-9)}`,
+    mobile: "8000000001",
     distributorId: mahroni!.id,
     confirmDuplicate: true,
-    idempotencyKey: `wd-retailer-${suffix}`,
+    notes: "zz-test-fixture-wd-retailer",
+    idempotencyKey: "zz-test-fixture-wd-retailer",
   });
 
   // A second retailer with its OWN distributor (Madawra) — used later to prove order routing keeps
   // using retailer.distributorId regardless of what the executive picked for Start Day.
   const routingRetailer = await createRetailer(db, executive.id, {
-    businessName: `WD Routing Retailer ${suffix}`,
+    businessName: "ZZ TEST FIXTURE - WD Routing Retailer",
     address: { area: "Test area" },
-    mobile: `7${String(suffix).slice(-9)}`,
+    mobile: "7000000001",
     distributorId: madawra!.id,
+    notes: "zz-test-fixture-wd-routing-retailer",
     confirmDuplicate: true,
-    idempotencyKey: `wd-routing-retailer-${suffix}`,
+    idempotencyKey: "zz-test-fixture-wd-routing-retailer",
   });
 
   console.log("\n[1] Authorized distributor options + Firm+Town disambiguation");

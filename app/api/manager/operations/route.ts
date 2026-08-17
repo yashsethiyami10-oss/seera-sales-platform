@@ -35,6 +35,7 @@ import {
   createManagerTeamAssignment,
   assignDistributorToExecutive,
   bulkAssignRatanDistributorsToSoleExecutive,
+  completeSoleExecutiveFieldForceSetup,
   GEOGRAPHY_TYPES,
 } from "@/lib/sales-distribution/operational-service";
 import { submitTaClaim } from "@/lib/sales-distribution/travel-lifecycle-service";
@@ -73,6 +74,7 @@ const requestBody = z.object({
     "assign-manager-team",
     "assign-distributor-to-executive",
     "bulk-assign-ratan-distributors",
+    "complete-sole-executive-field-force-setup",
   ]),
   payload: z.record(z.unknown()).default({}),
 });
@@ -229,6 +231,8 @@ export async function POST(request: Request) {
       result = await assignDistributorToExecutive(prisma, user.id, v);
     } else if (action === "bulk-assign-ratan-distributors") {
       result = await bulkAssignRatanDistributorsToSoleExecutive(prisma, user.id);
+    } else if (action === "complete-sole-executive-field-force-setup") {
+      result = await completeSoleExecutiveFieldForceSetup(prisma, user.id);
     } else if (action === "prospect-timeline")
       result = await prospectTimeline(prisma, user.id, z.object({ prospectId: z.string() }).parse(payload).prospectId);
     else if (action === "team-dashboard") result = await managerTeamReadModel(prisma, user.id);
