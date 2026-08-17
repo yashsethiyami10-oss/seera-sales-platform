@@ -1095,8 +1095,34 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
   const targetValue = targets.reduce((s, t) => s + Number(t.targetValue), 0);
   const monthDay = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  // Manager visibility for the "Choose Working Distributor" Start Day context (Founder spec) —
+  // reuses the sessionByEmployee lookup already built above for the active/notStarted/ended
+  // counters, just also surfacing which Distributor (Firm — Town) each Executive picked today.
+  const workingDistributorIds = [...new Set(todaySessions.map((s) => s.workingDistributorId).filter((x): x is string => Boolean(x)))];
+  const workingDistributorPartners = workingDistributorIds.length
+    ? await db.seeraPartner.findMany({ where: { id: { in: workingDistributorIds } }, select: { id: true, legalName: true, tradeName: true, addresses: true } })
+    : [];
+  const workingDistributorLabelById = new Map(
+    workingDistributorPartners.map((d) => {
+      const city = (d.addresses as { city?: string } | null)?.city;
+      const firm = d.tradeName ?? d.legalName;
+      return [d.id, city ? `${firm} — ${city}` : firm];
+    }),
+  );
+  const teamToday = employees.map((e) => {
+    const session = sessionByEmployee.get(e.id);
+    return {
+      employeeId: e.id,
+      employeeName: e.name ?? e.email,
+      dayStatus: !session ? ("NOT_STARTED" as const) : session.status === "ENDED" ? ("ENDED" as const) : ("ACTIVE" as const),
+      workingType: session?.workingType ?? null,
+      workingDistributorId: session?.workingDistributorId ?? null,
+      workingDistributorLabel: session?.workingDistributorId ? (workingDistributorLabelById.get(session.workingDistributorId) ?? null) : null,
+    };
+  });
   return {
     today,
+    teamToday,
     // Dashboard reminder fix (cross-portal re-audit): a Manager with zero SeeraAssignment{
     // MANAGER_TEAM} links previously saw every team-scoped screen (Beat Planner, Distributor
     // Oversight, Retailing) go silently empty with no explanation on the landing dashboard itself —

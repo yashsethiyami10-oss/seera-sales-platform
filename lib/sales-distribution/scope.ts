@@ -50,3 +50,55 @@ export async function permittedPartnerIds(prisma: PrismaClient, userId: string, 
   const memberships = await prisma.seeraPartyUser.findMany({ where: { userId, active: true, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }], partner: { type: expectedType, lifecycle: "ACTIVE" } }, select: { partnerId: true } });
   return memberships.map((item) => item.partnerId);
 }
+
+// Mirrors manager-service.ts's own private managerTeamEmployeeIds() query exactly — kept as a
+// separate, self-contained copy here rather than refactoring that widely-used (13 call sites)
+// existing helper, to keep the Start Day Working Distributor feature's blast radius limited to new
+// code only. Used solely to resolve an Executive's own Manager-team scope below.
+async function teamEmployeeIdsForManager(prisma: PrismaClient, managerId: string) {
+  const assignments = await prisma.seeraAssignment.findMany({
+    where: {
+      assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
+      targetId: managerId,
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+    },
+    select: { subjectId: true },
+  });
+  return [managerId, ...assignments.map((a) => a.subjectId)];
+}
+
+// Same canonical "distributors these employees' retailers are actually mapped to" relation
+// manager-service.ts's mappedDistributorsFor() already uses for Manager Distributor Oversight — no
+// parallel assignment system, just the existing SeeraRetailer.salespersonId -> distributorId trail.
+export async function distributorsForEmployeeIds(prisma: PrismaClient, employeeIds: string[]) {
+  const mapped = await prisma.seeraRetailer.findMany({
+    where: { salespersonId: { in: employeeIds }, distributorId: { not: null } },
+    select: { distributorId: true },
+    distinct: ["distributorId"],
+  });
+  const distributorIds = mapped.map((r) => r.distributorId).filter((x): x is string => Boolean(x));
+  if (!distributorIds.length) return [];
+  return prisma.seeraPartner.findMany({
+    where: { id: { in: distributorIds }, type: "DISTRIBUTOR", lifecycle: "ACTIVE" },
+    select: { id: true, legalName: true, tradeName: true, code: true, addresses: true },
+    orderBy: { legalName: "asc" },
+  });
+}
+
+// Start Day "Choose Working Distributor" scope for a Sales Executive (spec: day-context only, never
+// retailer-routing authority). An Executive's authorized set is their own retailer-mapped
+// distributors, widened to their Manager's whole team mapping when a Manager assignment exists — so
+// a brand-new Executive with zero retailers checked in yet still sees their team's distributors
+// instead of an empty list, without inventing any new assignment table.
+export async function executiveAuthorizedDistributors(prisma: PrismaClient, executiveId: string) {
+  const managerAssignment = await prisma.seeraAssignment.findFirst({
+    where: {
+      assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
+      subjectId: executiveId,
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+    },
+    orderBy: { effectiveFrom: "desc" },
+  });
+  const employeeIds = managerAssignment ? await teamEmployeeIdsForManager(prisma, managerAssignment.targetId) : [executiveId];
+  return distributorsForEmployeeIds(prisma, employeeIds);
+}

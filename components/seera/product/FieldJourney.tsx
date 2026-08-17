@@ -33,6 +33,7 @@ type Dashboard = {
   employeeCode: string;
   manager: string | null;
   territory: string | null;
+  workingDistributorLabel: string | null;
   dayStatus: "NOT_STARTED" | "ACTIVE" | "ENDED";
   target: {
     value: number;
@@ -279,6 +280,11 @@ function DashboardHeader({
               {hi ? "क्षेत्र" : "Territory"}: {dashboard.territory}
             </span>
           )}
+          {dashboard.workingDistributorLabel && (
+            <span>
+              {hi ? "आज का कार्यरत वितरक" : "Today's Working Distributor"}: {dashboard.workingDistributorLabel}
+            </span>
+          )}
           <span className={styles.pill} data-status={dashboard.dayStatus === "ACTIVE" ? "PRODUCTIVE" : undefined}>
             {dashboard.dayStatus === "ACTIVE"
               ? hi
@@ -379,6 +385,12 @@ const WORK_TYPES = [
   ["OTHER", "Other Authorized Field Work", "अन्य अधिकृत फील्ड कार्य"],
 ] as const;
 
+// Mirrors workflow-service.ts's WORKING_TYPES_REQUIRING_DISTRIBUTOR exactly — this is UI-side
+// UX gating only (disable Start Day, show the required marker); the server independently
+// re-validates the same requirement, so this list drifting would only ever produce an extra
+// server-side rejection, never a security gap.
+const DISTRIBUTOR_REQUIRED_WORK_TYPES: readonly WorkingType[] = ["RETAILING", "DISTRIBUTOR_VISIT"];
+
 export function FieldJourney({
   language,
   dashboard,
@@ -387,14 +399,16 @@ export function FieldJourney({
   beatRetailers,
   hasPublishedPlan,
   skus,
+  distributorOptions,
 }: {
   language: "EN" | "HI";
   dashboard: Dashboard;
-  session?: { id: string; startedAt: string; workingType: string };
+  session?: { id: string; startedAt: string; workingType: string; workingDistributorId: string | null };
   visit?: Visit;
   beatRetailers: BeatRetailer[];
   hasPublishedPlan: boolean;
   skus: Sku[];
+  distributorOptions: { value: string; label: string }[];
 }) {
   const hi = language === "HI",
     router = useRouter(),
@@ -411,6 +425,7 @@ export function FieldJourney({
     [duplicateWarning, setDuplicateWarning] = useState<{ similar: { id: string; businessName: string; mobile: string | null }[] } | null>(null),
     [gpsStatus, setGpsStatus] = useState<GpsStatus>("IDLE"),
     [startWorkingType, setStartWorkingType] = useState<WorkingType>("RETAILING"),
+    [startWorkingDistributorId, setStartWorkingDistributorId] = useState(""),
     [pendingSyncCount, setPendingSyncCount] = useState(0),
     // Checkout already durably completes server-side before this ever gets set (see the checkout
     // handler below) — this is not an optimistic-before-success write, it's skipping an UNRELATED
@@ -571,12 +586,52 @@ export function FieldJourney({
               ))}
             </div>
           </div>
+          {(() => {
+            const distributorRequired = DISTRIBUTOR_REQUIRED_WORK_TYPES.includes(startWorkingType);
+            const distributorBlocked = distributorRequired && distributorOptions.length === 0;
+            return (
+              <div>
+                <strong>
+                  {hi ? "आज का कार्यरत वितरक" : "Today's working Distributor"}
+                  {distributorRequired ? " *" : hi ? " (वैकल्पिक)" : " (optional)"}
+                </strong>
+                {distributorOptions.length > 0 ? (
+                  <select
+                    value={startWorkingDistributorId}
+                    onChange={(e) => setStartWorkingDistributorId(e.target.value)}
+                    required={distributorRequired}
+                  >
+                    <option value="">{hi ? "चुनें…" : "Choose…"}</option>
+                    {distributorOptions.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className={styles.note}>
+                    {distributorRequired
+                      ? hi
+                        ? "आपके कार्य क्षेत्र में कोई वितरक असाइन नहीं है। कृपया अपने सेल्स मैनेजर/एडमिन से संपर्क करें।"
+                        : "No distributor is assigned to your working area. Please contact your Sales Manager/Admin."
+                      : hi
+                        ? "आपके कार्य क्षेत्र में अभी कोई वितरक असाइन नहीं है — इस कार्य प्रकार के लिए आवश्यक नहीं।"
+                        : "No distributor is assigned to your working area yet — not required for this work type."}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
           <div className={styles.gpsRow}>
             <GpsBadge language={language} status={gpsStatus} />
           </div>
           <button
             className={styles.primary}
-            disabled={busy}
+            disabled={
+              busy ||
+              (DISTRIBUTOR_REQUIRED_WORK_TYPES.includes(startWorkingType) &&
+                (distributorOptions.length === 0 || !startWorkingDistributorId))
+            }
             onClick={async () => {
               // Set busy synchronously, before the GPS await, so a second tap while the (often
               // slow, permission-prompting) location lookup is in flight can't fire a second,
@@ -610,6 +665,7 @@ export function FieldJourney({
                   accuracy: point.accuracy,
                   startExceptionReason,
                   remarks: "Started from field portal",
+                  workingDistributorId: startWorkingDistributorId || undefined,
                 },
                 null,
                 hi ? "दिन शुरू हुआ।" : "Day started.",

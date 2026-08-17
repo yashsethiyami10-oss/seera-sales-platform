@@ -23,6 +23,14 @@ type Summary = {
   prospectsDue: number;
   exceptions: { offlineSyncIssues: number };
   teamSize: number;
+  teamToday: {
+    employeeId: string;
+    employeeName: string;
+    dayStatus: "NOT_STARTED" | "ACTIVE" | "ENDED";
+    workingType: string | null;
+    workingDistributorId: string | null;
+    workingDistributorLabel: string | null;
+  }[];
   unassignedOrders: {
     id: string;
     orderNumber: string;
@@ -65,6 +73,28 @@ export function ManagerDashboardSummary({
         <div><dt>{hi ? "ऑर्डर" : "Orders"}</dt><dd>{summary.today.orders}</dd></div>
         <div><dt>{hi ? "नए ग्राहक" : "New customers"}</dt><dd>{summary.today.newCustomers}</dd></div>
       </dl>
+      {summary.teamToday.length > 0 && (
+        <>
+          <div>
+            <small>{hi ? "टीम — आज" : "TEAM — TODAY"}</small>
+            <h2>{hi ? "कार्यरत वितरक" : "Working Distributor"}</h2>
+          </div>
+          <ul style={{ gridColumn: "1/-1", display: "grid", gap: 6, margin: 0, padding: 0, listStyle: "none" }}>
+            {summary.teamToday.map((e) => (
+              <li key={e.employeeId} style={{ padding: 8, border: "1px solid #ead8d2", borderRadius: 9 }}>
+                <strong>{e.employeeName}</strong> ·{" "}
+                {e.dayStatus === "ACTIVE" ? (hi ? "सक्रिय" : "Active") : e.dayStatus === "ENDED" ? (hi ? "समाप्त" : "Ended") : hi ? "शुरू नहीं हुआ" : "Not started"}
+                {e.workingDistributorLabel && (
+                  <>
+                    {" "}
+                    · {hi ? "वितरक" : "Distributor"}: {e.workingDistributorLabel}
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div>
         <small>{hi ? "मासिक बिक्री (अलग)" : "MONTH-TO-DATE SALES (SEPARATED)"}</small>
       </div>

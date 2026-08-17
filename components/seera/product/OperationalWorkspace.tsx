@@ -64,6 +64,7 @@ import {
   executiveDsrHistory,
   executiveDistributorFollowUp,
 } from "@/lib/sales-distribution/field-portal-service";
+import { executiveAuthorizedDistributors } from "@/lib/sales-distribution/scope";
 import { managerDsrRollup, managerDsrDetail, managerTeamScorecard, managerAlerts, managerDeliveredSales, jointWorkLinkedActivity, managerSalesAttribution, managerDashboardSummary, managerEndDaySummary, prospectTimeline, teamSyncStatus, managerMappedDistributors, managerDistributorCollectionsSnapshot, managerDistributorSnapshot } from "@/lib/sales-distribution/manager-service";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { ManagerDistributorOversightPanel } from "./ManagerDistributorOversightPanel";
@@ -2349,13 +2350,28 @@ export async function OperationalWorkspace({
     // fallback to `mrp` here: a SKU with no approved governed price (e.g. Seera's field catalog,
     // pending a Founder-approved price list) pre-fills the Executive's Rate field with nothing
     // rather than a fabricated number — they type the real rate themselves.
-    const [dashboardData, beat, distributorFollowUp, skus] = await Promise.all([
+    const [dashboardData, beat, distributorFollowUp, skus, authorizedDistributors] = await Promise.all([
       executiveDashboard(db, userId, now),
       executiveBeat(db, userId, "today", now),
       executiveDistributorFollowUp(db, userId, now),
       activeRetailerCatalog(db, now),
+      executiveAuthorizedDistributors(db, userId),
     ]);
     const session = dashboardData.session;
+    // Firm Name — Town labels (spec: never show an ambiguous firm name alone — two of the Ratan
+    // distributors are both literally "Sahu Kirana", distinguishable only by town).
+    const distributorLabel = (d: { legalName: string; tradeName: string | null; addresses: unknown }) => {
+      const city = (d.addresses as { city?: string } | null)?.city;
+      const firm = d.tradeName ?? d.legalName;
+      return city ? `${firm} — ${city}` : firm;
+    };
+    const distributorOptions = authorizedDistributors.map((d) => ({ value: d.id, label: distributorLabel(d) }));
+    const workingDistributor = session?.workingDistributorId
+      ? await db.seeraPartner.findUnique({
+          where: { id: session.workingDistributorId },
+          select: { legalName: true, tradeName: true, addresses: true },
+        })
+      : null;
     const visit = session
       ? await db.seeraVisit.findFirst({
           where: { workSessionId: session.id, checkedOutAt: null },
@@ -2374,13 +2390,20 @@ export async function OperationalWorkspace({
           employeeCode: userId.slice(-8).toUpperCase(),
           manager: null,
           territory: null,
+          workingDistributorLabel: workingDistributor ? distributorLabel(workingDistributor) : null,
           dayStatus: dashboardData.dayStatus as "NOT_STARTED" | "ACTIVE" | "ENDED",
           target: dashboardData.target,
           today: dashboardData.today,
         }}
+        distributorOptions={distributorOptions}
         session={
           session
-            ? { id: session.id, startedAt: session.startedAt.toISOString(), workingType: session.workingType }
+            ? {
+                id: session.id,
+                startedAt: session.startedAt.toISOString(),
+                workingType: session.workingType,
+                workingDistributorId: session.workingDistributorId,
+              }
             : undefined
         }
         visit={

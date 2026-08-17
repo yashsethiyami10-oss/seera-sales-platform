@@ -74,6 +74,7 @@ export async function POST(request: Request) {
             accuracy: z.number().optional(),
             startExceptionReason: z.string().optional(),
             remarks: z.string().optional(),
+            workingDistributorId: z.string().optional(),
           })
           .parse(payload),
       });

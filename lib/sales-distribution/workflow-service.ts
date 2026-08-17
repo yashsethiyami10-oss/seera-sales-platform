@@ -13,7 +13,7 @@ import {
 } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, canonicalPiecesToWholesaleOrderUnit } from "./company-order-catalog";
-import { notifyPartyUsers, requirePartyMembership } from "./scope";
+import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors } from "./scope";
 import { deriveInclusiveTax } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
 import { queueRetailerCommunication } from "./retailer-communication-service";
@@ -188,6 +188,13 @@ export async function supersedePriceVersion(
   });
 }
 
+// Working types where the Founder's "Choose Working Distributor" requirement applies — this is
+// Start Day CONTEXT ONLY (which market the Executive is primarily working today), never retailer-
+// order routing authority. Retailer order routing (placeRetailerOrder) continues to resolve its own
+// commercialPartyId strictly from retailer.distributorId / territory / Manager assignment, exactly
+// as before this feature — it never reads SeeraWorkSession.workingDistributorId.
+const WORKING_TYPES_REQUIRING_DISTRIBUTOR = new Set(["RETAILING", "DISTRIBUTOR_VISIT"]);
+
 export async function startFieldDay(
   prisma: PrismaClient,
   actorId: string,
@@ -200,6 +207,7 @@ export async function startFieldDay(
     accuracy?: number;
     startExceptionReason?: string;
     remarks?: string;
+    workingDistributorId?: string;
   },
 ) {
   // PERFORMANCE PHASE 2: evaluateHqGeofence() only reads `input` (the GPS point already captured
@@ -216,6 +224,32 @@ export async function startFieldDay(
     }),
     evaluateHqGeofence(prisma, input, new Date()),
   ]);
+
+  // Only Sales Executives are in scope for this requirement (spec: "Sales Executive Start Day") —
+  // a Sales Manager's own Start Day is unaffected.
+  if (input.employeeRole === "SALES_EXECUTIVE") {
+    const distributorRequired = WORKING_TYPES_REQUIRING_DISTRIBUTOR.has(input.workingType);
+    if (distributorRequired && !input.workingDistributorId)
+      throw new FoundationError(
+        "WORKING_DISTRIBUTOR_REQUIRED",
+        "Choose a working Distributor before starting the day for this work type",
+        400,
+      );
+    if (input.workingDistributorId) {
+      // Never trust a client-supplied Partner ID alone — it must be an active Distributor the
+      // Executive is actually authorized for (their own retailer-mapped distributors, widened to
+      // their Manager's team mapping), the exact same canonical relation
+      // Manager Distributor Oversight already uses, not a parallel/looser check.
+      const authorized = await executiveAuthorizedDistributors(prisma, actorId);
+      if (!authorized.some((d) => d.id === input.workingDistributorId))
+        throw new FoundationError(
+          "DISTRIBUTOR_NOT_AUTHORIZED",
+          "That Distributor is not in your authorized working scope",
+          403,
+        );
+    }
+  }
+
   try {
     const session = await prisma.seeraWorkSession.create({
       data: {
@@ -223,6 +257,7 @@ export async function startFieldDay(
         employeeRole: input.employeeRole,
         workingType: input.workingType,
         plannedGeographyId: input.plannedGeographyId,
+        workingDistributorId: input.employeeRole === "SALES_EXECUTIVE" ? (input.workingDistributorId ?? null) : null,
         startLatitude: input.latitude,
         startLongitude: input.longitude,
         hqId: geofence.hqId,
