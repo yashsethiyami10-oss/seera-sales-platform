@@ -3,7 +3,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
-import { timeOperation } from "@/lib/foundation/logger";
+import { timeOperation, operationalLog } from "@/lib/foundation/logger";
 import {
   assertAssistedAction,
   assertPromisePreservesContract,
@@ -331,6 +331,18 @@ export async function startFieldDay(
   }
 }
 
+// P0 fix (Founder-reported repeated live failure): the previous version awaited
+// recomputeSessionDistance() — and, before that, recordGpsSample() bundled into the same
+// Promise.all as the session-close write — directly in the critical path, un-caught. Neither
+// operation is required for a day to be validly closed (GPS is already optional-with-exception,
+// see Test 12 in daily-working-end-day-proof.ts; distance is a derived TA-claim enrichment, not a
+// closure precondition). Because seeraWorkSession.updateMany() below is a single, independently-
+// committing statement (not wrapped in a $transaction with anything after it), the DB row could
+// already be durably status="ENDED" while a LATER secondary operation still throws — turning a
+// genuinely successful close into a user-visible "Action could not be completed" error. This is
+// the exact contradiction the Founder reported (session shows ENDED, UI shows failure). Fixed by
+// making the session-close write the sole determinant of success/failure; every operation after
+// it is wrapped so it can never propagate out of this function.
 export async function endFieldDay(
   prisma: PrismaClient,
   actorId: string,
@@ -344,7 +356,29 @@ export async function endFieldDay(
     outcome: string;
   },
 ) {
-  const timing = timeOperation("workflow.endFieldDay");
+  const operationId = timeOperation("workflow.endFieldDay").operationId;
+  const stageLog: Array<{ stage: string; ms: number }> = [];
+  const t0 = performance.now();
+  let tPrev = t0;
+  const mark = (stage: string) => {
+    const now = performance.now();
+    stageLog.push({ stage, ms: Math.round(now - tPrev) });
+    tPrev = now;
+  };
+  // Always-on structured log (not gated behind the >1000ms slow-operation threshold) — Section 3
+  // of the End Day P0 directive requires stage-by-stage visibility into every attempt, not just
+  // slow ones, since a fast failure is just as diagnostically important as a slow one.
+  const logOutcome = (outcome: "success" | "already_ended" | "failed", extra: Record<string, unknown> = {}) =>
+    operationalLog(outcome === "failed" ? "error" : "info", "workflow.endFieldDay.outcome", {
+      operationId,
+      actorId,
+      sessionId,
+      outcome,
+      totalMs: Math.round(performance.now() - t0),
+      stages: stageLog,
+      ...extra,
+    });
+
   // PERFORMANCE PHASE 2: evaluateHqGeofence() depends only on `input`/`now`, not on the session
   // lookup below — running them concurrently instead of sequentially removes one round trip from
   // End Day's critical path. The tiny amount of geofence work "wasted" on the rare
@@ -356,13 +390,15 @@ export async function endFieldDay(
     }),
     evaluateHqGeofence(prisma, input, new Date()),
   ]);
-  timing.stage("session_lookup_and_geofence");
-  if (!owned)
+  mark("END_DAY_02_LOAD_ACTIVE_SESSION");
+  if (!owned) {
+    logOutcome("failed", { code: "WORKDAY_NOT_ACTIVE", reason: "session_not_found_or_not_owned" });
     throw new FoundationError(
       "WORKDAY_NOT_ACTIVE",
       "Active workday not found",
       409,
     );
+  }
   await authorize(prisma, {
     actorId,
     permission:
@@ -370,41 +406,69 @@ export async function endFieldDay(
         ? "manager_field:operate"
         : "field_day:manage_self",
   });
-  timing.stage("authorize");
+  mark("END_DAY_01_AUTHORIZE");
   // Idempotency fix (P0, Founder UAT): "Confirm & end day" returned "Active workday not found"
   // for a session the dashboard clearly showed as active. Root cause: FieldJourney's End Day
   // handler unconditionally drains the offline queue right before firing an explicit end-day call
   // — if a PRIOR end-day attempt had hit a network hiccup, queued itself, and only got synced by
   // that drain (offline-sync-service.ts calls this same endFieldDay), the day is already ENDED by
   // the time the explicit call below runs against the same sessionId. Treat "already ended by this
-  // same actor" as a benign no-op success rather than an error — the day genuinely was ended.
-  if (owned.status === "ENDED") return;
-  if (owned.status !== "ACTIVE")
+  // same actor" as a benign no-op success rather than an error — the day genuinely was ended. This
+  // is also the governed response for a genuine double-submit (Section 7 of the P0 directive):
+  // never re-mutate, never report a generic failure for a day that is already durably closed.
+  if (owned.status === "ENDED") {
+    logOutcome("already_ended");
+    return { alreadyEnded: true as const };
+  }
+  if (owned.status !== "ACTIVE") {
+    logOutcome("failed", { code: "WORKDAY_NOT_ACTIVE", reason: "session_not_active", sessionStatus: owned.status });
     throw new FoundationError(
       "WORKDAY_NOT_ACTIVE",
       "Active workday not found",
       409,
     );
-  // PERFORMANCE: the session status update and the END_DAY GPS sample write touch different
-  // tables and neither depends on the other's result (recordGpsSample only needs workSessionId,
-  // already confirmed owned+ACTIVE above) — running them concurrently removes one round trip from
-  // End Day's critical path. Both still only run after authorize() has succeeded, so RBAC is
-  // unweakened.
-  const [result] = await Promise.all([
-    prisma.seeraWorkSession.updateMany({
-      where: { id: sessionId, employeeId: actorId, status: "ACTIVE" },
-      data: {
-        status: "ENDED",
-        endedAt: new Date(),
-        endLatitude: input.latitude,
-        endLongitude: input.longitude,
-        returnedToHq: geofence.inside,
-        endExceptionReason: geofence.inside === false ? input.endExceptionReason : undefined,
-        remarks: input.remarks,
-        outcome: input.outcome,
-      },
-    }),
-    recordGpsSample(prisma, {
+  }
+  mark("END_DAY_03_VALIDATE_SESSION");
+  mark("END_DAY_04_CAPTURE_END_GPS_AND_GEOFENCE");
+  // ================= CRITICAL PATH ENDS HERE =================
+  // This single, independently-committing write is the ENTIRE definition of "End Day succeeded".
+  // Everything after it is secondary/enrichment work — see the function-level comment above for
+  // why none of it may be allowed to throw out of this function once this write has landed.
+  const result = await prisma.seeraWorkSession.updateMany({
+    where: { id: sessionId, employeeId: actorId, status: "ACTIVE" },
+    data: {
+      status: "ENDED",
+      endedAt: new Date(),
+      endLatitude: input.latitude,
+      endLongitude: input.longitude,
+      returnedToHq: geofence.inside,
+      endExceptionReason: geofence.inside === false ? input.endExceptionReason : undefined,
+      remarks: input.remarks,
+      outcome: input.outcome,
+    },
+  });
+  mark("END_DAY_06_CLOSE_SESSION");
+  if (result.count !== 1) {
+    // Same race as above, closed at the point of a concurrent double-submit landing between the
+    // status read above and this write — re-check rather than assume failure.
+    const now = await prisma.seeraWorkSession.findFirst({ where: { id: sessionId, employeeId: actorId }, select: { status: true } });
+    if (now?.status === "ENDED") {
+      logOutcome("already_ended", { reason: "concurrent_close_race" });
+      return { alreadyEnded: true as const };
+    }
+    logOutcome("failed", { code: "WORKDAY_NOT_ACTIVE", reason: "close_write_matched_zero_rows" });
+    throw new FoundationError(
+      "WORKDAY_NOT_ACTIVE",
+      "Active workday not found",
+      409,
+    );
+  }
+  // ================= SECONDARY PATH: session is now durably ENDED =================
+  // Nothing below this line may throw out of endFieldDay. Each secondary step is independently
+  // wrapped: a failure here is logged for internal follow-up but the day the user just closed
+  // must never be reported back to them as failed.
+  try {
+    await recordGpsSample(prisma, {
       employeeId: actorId,
       workSessionId: sessionId,
       latitude: input.latitude,
@@ -412,25 +476,36 @@ export async function endFieldDay(
       accuracy: input.accuracy,
       source: "END_DAY",
       trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
-    }),
-  ]);
-  timing.stage("session_update_and_gps_sample");
-  if (result.count !== 1) {
-    // Same race as above, closed at the point of a concurrent double-submit landing between the
-    // status read above and this write — re-check rather than assume failure. The GPS sample
-    // recorded above is harmless even on this losing-race path (an extra sample on an already-
-    // ended session, not a correctness issue).
-    const now = await prisma.seeraWorkSession.findFirst({ where: { id: sessionId, employeeId: actorId }, select: { status: true } });
-    if (now?.status === "ENDED") return;
-    throw new FoundationError(
-      "WORKDAY_NOT_ACTIVE",
-      "Active workday not found",
-      409,
-    );
+    });
+    mark("END_DAY_07_RECORD_GPS_SAMPLE");
+  } catch (error) {
+    mark("END_DAY_07_RECORD_GPS_SAMPLE_FAILED");
+    operationalLog("error", "workflow.endFieldDay.secondary_failed", {
+      operationId,
+      actorId,
+      sessionId,
+      stage: "END_DAY_07_RECORD_GPS_SAMPLE",
+      errorName: error instanceof Error ? error.name : "unknown",
+      errorCode: error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : undefined,
+    });
   }
-  await recomputeSessionDistance(prisma, actorId, sessionId);
-  timing.stage("recompute_distance");
-  timing.finish({ actorId, sessionId });
+  try {
+    await recomputeSessionDistance(prisma, actorId, sessionId);
+    mark("END_DAY_08_DISTANCE_RECOMPUTE");
+  } catch (error) {
+    mark("END_DAY_08_DISTANCE_RECOMPUTE_FAILED");
+    operationalLog("error", "workflow.endFieldDay.secondary_failed", {
+      operationId,
+      actorId,
+      sessionId,
+      stage: "END_DAY_08_DISTANCE_RECOMPUTE",
+      errorName: error instanceof Error ? error.name : "unknown",
+      errorCode: error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : undefined,
+    });
+  }
+  mark("END_DAY_12_RESPONSE_BUILD");
+  logOutcome("success");
+  return { alreadyEnded: false as const };
 }
 
 export async function placeRetailerOrder(
