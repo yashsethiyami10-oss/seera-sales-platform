@@ -93,13 +93,35 @@ export function BillingActions({
   const setLine = (k: string, patch: Partial<(typeof lines)[number]>) =>
     setLines((current) => current.map((l) => (l.key === k ? { ...l, ...patch } : l)));
   const [shareLinks, setShareLinks] = useState<Record<string, { url: string; whatsapp: string }>>({});
-  const share = async (d: BillingDoc) => {
+  // "sent": the actual PDF file was delivered via WhatsApp (real document message).
+  // "unsupported": the active MESSAGING_PROVIDER can't send a raw file (no provider
+  // configured, or the provider only accepts media by public URL) — falls back to a
+  // link, but the UI below never calls that a "PDF" send, only a link share, per the
+  // Founder's hard requirement not to conflate the two.
+  const [docSendStatus, setDocSendStatus] = useState<Record<string, "sent" | "unsupported">>({});
+  const shareOrSend = async (d: BillingDoc) => {
     if (d.buyerType !== "DISTRIBUTOR" && d.buyerType !== "SUPER_STOCKIST") {
       setMessage(hi ? "इस प्राप्तकर्ता प्रकार के लिए साझा उपलब्ध नहीं है।" : "Share isn't available for this recipient type yet.");
       return;
     }
     setBusy(true);
     try {
+      const sendRes = await fetch(`/api/documents/${d.id}/whatsapp-send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientType: "PARTNER", recipientId: d.buyerId }),
+      });
+      if (sendRes.ok) {
+        setDocSendStatus((c) => ({ ...c, [d.id]: "sent" }));
+        setMessage(hi ? "PDF WhatsApp पर भेज दिया गया।" : "PDF sent via WhatsApp.");
+        return;
+      }
+      if (sendRes.status !== 422) {
+        const sendErr = await sendRes.json().catch(() => ({}));
+        throw new Error(sendErr?.error?.message ?? "Could not send PDF via WhatsApp");
+      }
+      // 422 = provider genuinely can't send a real file — fall back to an honest link share.
+      setDocSendStatus((c) => ({ ...c, [d.id]: "unsupported" }));
       const r = await fetch(`/api/documents/${d.id}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -389,17 +411,26 @@ export function BillingActions({
                     )}
                     {d.status !== "DRAFT" && (
                       <>
-                        <a href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">{hi ? "PDF / प्रिंट" : "PDF / Print"}</a>
-                        <button type="button" disabled={busy} onClick={() => void share(d)}>
-                          {hi ? "WhatsApp पर साझा करें" : "SHARE TO WHATSAPP"}
+                        <a href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">{hi ? "PDF डाउनलोड करें" : "Download PDF"}</a>
+                        <button type="button" disabled={busy} onClick={() => void shareOrSend(d)}>
+                          {hi ? "WhatsApp पर भेजें" : "Send via WhatsApp"}
                         </button>
                       </>
                     )}
                   </div>
+                  {docSendStatus[d.id] === "sent" && (
+                    <p className={styles.notice} data-ok="true">{hi ? "PDF WhatsApp पर भेजा गया ✓" : "PDF sent via WhatsApp ✓"}</p>
+                  )}
                   {shareLinks[d.id] && (
                     <p className={styles.notice} data-ok="true">
+                      {docSendStatus[d.id] === "unsupported" && (
+                        <>
+                          <small>{hi ? "यह प्रदाता सीधे फ़ाइल नहीं भेज सकता — केवल लिंक साझा किया जा सकता है।" : "This provider can't send the file directly — link only."}</small>
+                          <br />
+                        </>
+                      )}
                       <a href={shareLinks[d.id]!.whatsapp} target="_blank" rel="noreferrer">
-                        {hi ? "WhatsApp में खोलें →" : "Open in WhatsApp →"}
+                        {hi ? "लिंक WhatsApp पर शेयर करें →" : "Share Link on WhatsApp →"}
                       </a>{" "}
                       <small>{shareLinks[d.id]!.url}</small>
                     </p>

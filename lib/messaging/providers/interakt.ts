@@ -1,5 +1,6 @@
 import { retryWithBackoff } from "@/lib/retry";
 import type { MessagingProvider } from "@/lib/messaging/types";
+import { DocumentSendUnsupportedError } from "@/lib/messaging/types";
 
 /**
  * Interakt (https://www.interakt.shop) is WhatsApp-only — a common choice
@@ -39,5 +40,13 @@ export class InteraktProvider implements MessagingProvider {
       const data = await res.json();
       return { id: data.id ?? "" };
     });
+  }
+
+  // Interakt's public Message API only accepts media by publicly reachable URL
+  // (mediaUrl), not a raw-bytes upload endpoint — this app's document routes require
+  // an authenticated Seera session to fetch, so they cannot be handed to Interakt as
+  // a mediaUrl. Throws honestly rather than silently degrading to a link-only send.
+  async sendDocument(): Promise<{ id: string }> {
+    throw new DocumentSendUnsupportedError("Interakt only accepts documents by public media URL — this app's document routes require login and cannot be used as a mediaUrl");
   }
 }

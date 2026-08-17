@@ -7,6 +7,7 @@ import { documentNumber } from "./phase6-9-rules";
 import { documentPdfFilename, renderIssuedDocumentPdf, type IssuedDocumentSnapshot } from "./document-pdf";
 import { taxSplit, type CommercialLineSnapshot } from "./document-lines";
 import { postJournalForCompanyDocument } from "@/lib/finance/sales-integration-service";
+import type { MessagingProvider } from "@/lib/messaging/types";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -99,6 +100,77 @@ export async function downloadDocument(db: PrismaClient, actorId: string, docume
   if (!(await canAccessDocument(db, actorId, document))) throw new FoundationError("DOCUMENT_SCOPE_DENIED", "Document scope denied", 403);
   if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); const bytes = await renderIssuedDocumentPdf(snapshotForPdf(document)); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes, mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
   if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404); const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } }); if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes: new Uint8Array(file.contentBytes), mimeType: file.mimeType, filename: file.originalName };
+}
+
+async function recipientMobile(db: PrismaClient, recipientType: string, recipientId: string): Promise<string | null> {
+  if (recipientType === "PARTNER") {
+    const partner = await db.seeraPartner.findUnique({ where: { id: recipientId }, select: { primaryContact: true } });
+    return (partner?.primaryContact as { mobile?: string } | null)?.mobile ?? null;
+  }
+  if (recipientType === "RETAILER") {
+    const retailer = await db.seeraRetailer.findUnique({ where: { id: recipientId }, select: { mobile: true } });
+    return retailer?.mobile ?? null;
+  }
+  return null;
+}
+
+/**
+ * Sends the actual issued PDF as a real WhatsApp document message — not a link. Reuses
+ * the exact same authorization + scope check as downloadDocument (document:view_scoped
+ * + canAccessDocument), and the exact same PDF bytes downloadDocument would return, so
+ * this can never expose a document a caller couldn't otherwise download.
+ *
+ * `getProvider` is injected (same DI pattern as dispatchRetailerCommunications in
+ * retailer-communication-service.ts) rather than importing getMessagingProvider()
+ * directly, keeping this file free of a hard dependency on lib/messaging/index.ts.
+ * Throws DocumentSendUnsupportedError (from lib/messaging/types.ts) unchanged when the
+ * active provider genuinely cannot send a raw file — callers (the API route) map that
+ * specifically to a "fall back to link-share" response, never a fabricated success.
+ */
+export async function sendDocumentViaWhatsApp(
+  db: PrismaClient,
+  actorId: string,
+  documentId: string,
+  input: { recipientType: string; recipientId: string; getProvider: () => Pick<MessagingProvider, "sendDocument">; caption?: string },
+) {
+  await authorize(db, { actorId, permission: "document:share" });
+  const document = await db.seeraCommercialDocument.findUniqueOrThrow({ where: { id: documentId } });
+  if (!(await canAccessDocument(db, actorId, document))) throw new FoundationError("DOCUMENT_SCOPE_DENIED", "Document scope denied", 403);
+
+  let bytes: Uint8Array, mimeType: string, filename: string;
+  if (document.source === "SYSTEM_GENERATED") {
+    if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be shared", 409);
+    bytes = await renderIssuedDocumentPdf(snapshotForPdf(document));
+    mimeType = "application/pdf";
+    filename = documentPdfFilename({ type: document.type, documentNumber: document.documentNumber });
+  } else {
+    if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404);
+    const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } });
+    if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404);
+    bytes = new Uint8Array(file.contentBytes);
+    mimeType = file.mimeType;
+    filename = file.originalName;
+  }
+
+  const mobile = await recipientMobile(db, input.recipientType, input.recipientId);
+  if (!mobile) throw new FoundationError("RECIPIENT_MOBILE_UNAVAILABLE", "Recipient has no mobile number on file", 409);
+  const normalizedMobile = mobile.startsWith("+") ? mobile : `+91${mobile.replace(/\D/g, "")}`;
+
+  const provider = input.getProvider();
+  const result = await provider.sendDocument(normalizedMobile, {
+    bytes,
+    filename,
+    mimeType,
+    caption: input.caption ?? `${document.type.replace(/_/g, " ")} ${document.documentNumber}`,
+  });
+  await recordAudit(db, {
+    actorId,
+    action: "document.whatsapp_document_sent",
+    entityType: "SeeraCommercialDocument",
+    entityId: document.id,
+    details: { recipientType: input.recipientType, recipientId: input.recipientId, providerMessageId: result.id },
+  });
+  return { sent: true as const, messageId: result.id };
 }
 
 export async function uploadManualDocument(db: PrismaClient, actorId: string, input: { documentNumber: string; type: "EXTERNAL_BILL" | "SUPPORTING_DOCUMENT" | "CLAIM_RETURN_DOCUMENT" | "PAYMENT_PROOF" | "ADJUSTMENT_DOCUMENT"; issuerType: string; issuerId: string; buyerType: string; buyerId: string; sourcePortal: string; issueDate?: Date; amount: number; gstMetadata?: Record<string, unknown>; notes?: string; originalName: string; mimeType: string; bytes: Uint8Array; idempotencyKey: string }) {

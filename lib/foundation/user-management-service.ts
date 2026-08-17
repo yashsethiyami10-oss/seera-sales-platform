@@ -1,7 +1,7 @@
 import type { PrismaClient, UserStatus } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { authorize } from "./authorization-service";
+import { authorize, invalidateEffectivePermissionsCache } from "./authorization-service";
 import { hashPassword, revokeAllSessions } from "./auth-service";
 import { recordAudit } from "./audit-service";
 import { FoundationError } from "./errors";
@@ -31,6 +31,7 @@ export async function setUserStatus(prisma: PrismaClient, actorId: string, userI
   if (actorId === userId && status !== "ACTIVE") throw new FoundationError("SELF_LOCKOUT_DENIED", "Self lockout is prohibited", 409);
   const before = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const user = await prisma.user.update({ where: { id: userId }, data: { status, suspendedAt: status === "SUSPENDED" ? new Date() : null, suspensionReason: status === "SUSPENDED" ? reason : null, authorizationVersion: { increment: 1 } } });
+  invalidateEffectivePermissionsCache(userId);
   if (status !== "ACTIVE") await revokeAllSessions(prisma, userId, actorId, `USER_${status}`);
   await recordAudit(prisma, { actorId, action: "user.status_change", entityType: "User", entityId: userId, reason, beforeState: { status: before.status }, afterState: { status } });
   return user;
@@ -55,6 +56,7 @@ export async function assignRole(prisma: PrismaClient, actorId: string, userId: 
   // additional roles a user holds. No role-assignment restriction was actually needed to fix that.
   const assignment = await prisma.userRoleAssignment.create({ data: { userId, roleId: role.id, assignedById: actorId, assignmentReason: reason } });
   await prisma.user.update({ where: { id: userId }, data: { authorizationVersion: { increment: 1 } } });
+  invalidateEffectivePermissionsCache(userId);
   await revokeAllSessions(prisma, userId, actorId, "ROLE_ASSIGNED");
   await recordAudit(prisma, { actorId, action: "role.assign", entityType: "UserRoleAssignment", entityId: assignment.id, reason, afterState: { userId, roleCode } });
   return assignment;
@@ -187,6 +189,7 @@ export async function removeRole(prisma: PrismaClient, actorId: string, userId: 
   }
   const updated = await prisma.userRoleAssignment.update({ where: { id: assignment.id }, data: { status: "REVOKED", revokedById: actorId, revokedAt: new Date(), revocationReason: reason } });
   await prisma.user.update({ where: { id: userId }, data: { authorizationVersion: { increment: 1 } } });
+  invalidateEffectivePermissionsCache(userId);
   await revokeAllSessions(prisma, userId, actorId, "ROLE_REMOVED");
   await recordAudit(prisma, { actorId, action: "role.remove", entityType: "UserRoleAssignment", entityId: assignment.id, reason, beforeState: { roleCode, status: "ACTIVE" }, afterState: { status: "REVOKED" } });
   return updated;

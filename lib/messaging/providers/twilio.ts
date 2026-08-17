@@ -1,5 +1,6 @@
 import { retryWithBackoff } from "@/lib/retry";
 import type { MessagingProvider } from "@/lib/messaging/types";
+import { DocumentSendUnsupportedError } from "@/lib/messaging/types";
 
 /** Twilio (https://www.twilio.com/docs/sms and /whatsapp). Both SMS and
  * WhatsApp go through the same Messages API, just with a `whatsapp:` prefix
@@ -46,5 +47,13 @@ export class TwilioProvider implements MessagingProvider {
     if (!from) throw new Error("TWILIO_WHATSAPP_FROM is not set");
     const body = `Template ${templateName} params: ${params.join(", ")}`; // replace with Twilio Content API call once templates are approved
     return this.send(`whatsapp:${to}`, body, `whatsapp:${from}`);
+  }
+
+  // Twilio's Messages API accepts media only via a publicly reachable MediaUrl, not a
+  // raw-bytes upload endpoint — this app's document routes require an authenticated
+  // Seera session to fetch, so they cannot be handed to Twilio as a MediaUrl. Throws
+  // honestly rather than silently degrading to a link-only send.
+  async sendDocument(): Promise<{ id: string }> {
+    throw new DocumentSendUnsupportedError("Twilio only accepts media by public MediaUrl — this app's document routes require login and cannot be used as a MediaUrl");
   }
 }

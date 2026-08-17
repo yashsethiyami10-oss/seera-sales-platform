@@ -1,5 +1,6 @@
 import { retryWithBackoff } from "@/lib/retry";
 import type { MessagingProvider } from "@/lib/messaging/types";
+import { DocumentSendUnsupportedError } from "@/lib/messaging/types";
 
 /** MSG91 (https://docs.msg91.com) — widely used by Indian D2C brands for
  * SMS, OTP, and WhatsApp from one account. */
@@ -51,5 +52,14 @@ export class Msg91Provider implements MessagingProvider {
       const data = await res.json();
       return { id: data.message_id ?? "" };
     });
+  }
+
+  // MSG91's WhatsApp outbound API accepts document/media templates only by a publicly
+  // reachable URL, not a raw-bytes upload endpoint — this app's document routes
+  // require an authenticated Seera session to fetch, so they cannot be handed to
+  // MSG91 as a media URL. Throws honestly rather than silently degrading to a
+  // link-only send.
+  async sendDocument(): Promise<{ id: string }> {
+    throw new DocumentSendUnsupportedError("MSG91 only accepts documents by public media URL — this app's document routes require login and cannot be used as a media URL");
   }
 }

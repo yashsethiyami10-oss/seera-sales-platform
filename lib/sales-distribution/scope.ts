@@ -7,23 +7,27 @@ export async function notifyPartyUsers(
   input: { title: string; body: string; entityType: string; entityId: string; actionPath?: string },
 ) {
   const now = new Date();
-  const links = await db.seeraPartyUser.findMany({
-    where: { partnerId, active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
-    select: { userId: true },
-  });
-  if (!links.length) return;
   // SeeraPartyUser.userId is a plain string reference, not a DB-level FK (deliberately, so a
   // party-user link can outlive a user record) — so a stale link pointing at a deleted/deactivated
   // user is a real possibility, not just a TEST-fixture artifact. Notification.recipientId *is* a
   // hard FK, so creating one for a since-deleted user throws and previously rolled back the whole
   // enclosing order-placement transaction over what should only cost that one recipient their
   // notification. Filter to users that still exist and are ACTIVE before writing.
-  const validUsers = await db.user.findMany({
-    where: { id: { in: links.map((link) => link.userId) }, status: "ACTIVE" },
-    select: { id: true },
-  });
-  const validUserIds = new Set(validUsers.map((user) => user.id));
-  const recipients = links.filter((link) => validUserIds.has(link.userId));
+  //
+  // PERFORMANCE: the party-user lookup and the "still exists and ACTIVE" check used to be two
+  // sequential round trips (the second can only run once the first returns userIds) — measured as a
+  // real, avoidable contributor to placeRetailerOrder's post-commit latency (see
+  // scripts/seera/retailing-performance-baseline.ts). Merged into one query via a raw JOIN — there's
+  // no Prisma-level relation to join through (userId isn't a declared @relation), but the join is
+  // exactly the same filter logic, just executed server-side in one round trip instead of two.
+  const recipients = await db.$queryRaw<Array<{ userId: string }>>`
+    SELECT pu."userId" AS "userId"
+    FROM "seera_party_users" pu
+    JOIN "users" u ON u.id = pu."userId" AND u.status = 'ACTIVE'
+    WHERE pu."partnerId" = ${partnerId}
+      AND pu.active = true
+      AND (pu."effectiveTo" IS NULL OR pu."effectiveTo" > ${now})
+  `;
   if (!recipients.length) return;
   await db.notification.createMany({
     data: recipients.map((link) => ({
