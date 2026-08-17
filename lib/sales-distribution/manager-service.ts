@@ -1034,7 +1034,11 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const lateCutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0);
-  const [employees, todaySessions, todayVisits, todayOrders, targets, followUpsOpen, prospectsDue, offlineIssues, unassignedOrders] = await Promise.all([
+  // PERFORMANCE: managerSalesAttribution is independent of every other query in this batch (only
+  // needs managerId + the date range) but was previously awaited sequentially AFTER this Promise.all
+  // resolved — an extra full round trip added to every Manager Dashboard load for no reason other
+  // than call order. Running it concurrently here removes that wait.
+  const [employees, todaySessions, todayVisits, todayOrders, targets, followUpsOpen, prospectsDue, offlineIssues, unassignedOrders, attribution] = await Promise.all([
     db.user.findMany({ where: { id: { in: employeeIds } }, select: { id: true, name: true, email: true } }),
     // orderBy is load-bearing: sessionByEmployee (below) is built via `new Map(todaySessions.map(...))`,
     // which keeps the LAST entry per employeeId — an employee can legitimately have more than one
@@ -1060,6 +1064,7 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
+    managerSalesAttribution(db, managerId, { dateFrom: monthStart, dateTo: now }),
   ]);
   // Distinguish MULTIPLE_DISTRIBUTOR_CANDIDATES from NO_DISTRIBUTOR_MAPPING (Founder decision,
   // RUN 2 shared-foundation residual) via the routing reason placeRetailerOrder recorded — reusing
@@ -1096,7 +1101,6 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
     } else if (session.status === "ENDED") today.ended += 1;
     else today.active += 1;
   }
-  const attribution = await managerSalesAttribution(db, managerId, { dateFrom: monthStart, dateTo: now });
   const targetValue = targets.reduce((s, t) => s + Number(t.targetValue), 0);
   const monthDay = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();

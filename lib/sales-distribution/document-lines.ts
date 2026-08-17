@@ -32,6 +32,8 @@ export const commercialLineInputSchema = z.object({
   taxRate: z.number().min(0).max(100).nullable().optional(),
 });
 
+export type PriceMode = "GST_INCLUSIVE" | "GST_EXCLUSIVE";
+
 export type CommercialLineSnapshot = {
   skuId: string;
   skuCodeSnapshot: string;
@@ -43,6 +45,7 @@ export type CommercialLineSnapshot = {
   rate: number;
   discountPct: number;
   taxRate: number;
+  priceMode: PriceMode;
   taxableValue: number;
   taxAmount: number;
   lineTotal: number;
@@ -91,6 +94,31 @@ export function deriveInclusiveTax(grossValue: number, taxRatePct: number) {
   return { taxableValue, taxAmount };
 }
 
+// GST-exclusive rate: the rate typed IS the base/taxable value already — GST is added ON TOP, never
+// extracted from it. For a governed tax rate t (percent) and base unit rate b:
+//   taxableUnit = b
+//   taxUnit     = b * t/100
+// Founder correction (overrides the previous blanket assumption that every rate in this system was
+// GST-inclusive): MUV rates are the final GST-inclusive commercial price (deriveInclusiveTax above),
+// but Seera/Yuva/Shine Plus rates are supplied as BASE/GST-exclusive figures — using the inclusive
+// math on them would silently under-charge GST by extracting a tax portion from what is already the
+// pre-tax base. See priceModeForBrand below for which brands use which path.
+export function deriveExclusiveTax(baseValue: number, taxRatePct: number) {
+  const taxableValue = baseValue;
+  const taxAmount = baseValue * (taxRatePct / 100);
+  return { taxableValue, taxAmount };
+}
+
+// Founder-authoritative price mode per brand (not per-SKU, not a stored column — brand is already a
+// required, always-populated SeeraSku field, and the rule is a deterministic brand-level policy, not
+// a per-product exception): MUV quotes GST-inclusive rates; every other brand in this catalog (Seera,
+// Yuva, Shine Plus, and any future non-MUV brand) quotes GST-exclusive base rates. Do not special-case
+// individual SKUs here — if a genuine per-SKU exception is ever needed, that is a business-rule
+// decision for the Founder to make explicitly, not something to infer.
+export function priceModeForBrand(brand: string): PriceMode {
+  return /^muv$/i.test(brand.trim()) ? "GST_INCLUSIVE" : "GST_EXCLUSIVE";
+}
+
 // GST correctness fix (Founder UAT): issued documents were showing CGST=SGST=IGST=0 not because
 // the inclusive-tax math was wrong (deriveInclusiveTax/taxSplit above were already correct) but
 // because real SeeraSku rows carry taxRate=null/hsn=null — an earlier pass deliberately refused to
@@ -136,7 +164,15 @@ export async function buildLineSnapshots(
       const taxRate = line.taxRate ?? Number(sku.taxRate ?? 0);
       const gross = line.rate * line.quantity;
       const grossAfterDiscount = gross - (gross * discountPct) / 100;
-      const { taxableValue, taxAmount } = deriveInclusiveTax(grossAfterDiscount, taxRate);
+      // Do not use one math path for both price modes (Founder correction): MUV rates are already
+      // GST-inclusive (tax extracted from the gross); every other brand's rate is the GST-exclusive
+      // base (tax added on top) — see priceModeForBrand/deriveExclusiveTax above.
+      const priceMode = priceModeForBrand(sku.brand);
+      const { taxableValue, taxAmount } =
+        priceMode === "GST_INCLUSIVE"
+          ? deriveInclusiveTax(grossAfterDiscount, taxRate)
+          : deriveExclusiveTax(grossAfterDiscount, taxRate);
+      const lineTotal = priceMode === "GST_INCLUSIVE" ? grossAfterDiscount : taxableValue + taxAmount;
       return {
         skuId: sku.id,
         skuCodeSnapshot: sku.code,
@@ -148,9 +184,10 @@ export async function buildLineSnapshots(
         rate: line.rate,
         discountPct,
         taxRate,
+        priceMode,
         taxableValue,
         taxAmount,
-        lineTotal: grossAfterDiscount,
+        lineTotal,
         taxConfigured,
       };
     }),

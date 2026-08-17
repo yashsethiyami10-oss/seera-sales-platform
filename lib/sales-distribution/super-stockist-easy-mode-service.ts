@@ -164,7 +164,10 @@ export async function superStockistStockSummary(prisma: PrismaClient, actorId: s
 export async function superStockistDashboardSummary(prisma: PrismaClient, actorId: string, superStockistId: string, now = new Date()) {
   await authorize(prisma, { actorId, permission: "super_stockist_orders:view" });
   await requirePartyMembership(prisma, actorId, superStockistId, "SUPER_STOCKIST");
-  const [waitingOrders, dispatchReadyOrders, incomingCompanyOrders, mappedDistributors, pendingCompanyOrders, stock] = await Promise.all([
+  // PERFORMANCE: partyOutstanding below only needs superStockistId/now, not any of these query
+  // results — folding it into this same Promise.all removes a full extra sequential round trip
+  // from every S.S. Dashboard load.
+  const [waitingOrders, dispatchReadyOrders, incomingCompanyOrders, mappedDistributors, pendingCompanyOrders, stock, ownOutstanding] = await Promise.all([
     prisma.seeraSalesOrder.findMany({
       where: { sellerPartnerId: superStockistId, type: "DISTRIBUTOR_REPLENISHMENT", status: { in: ["SUBMITTED", "ACKNOWLEDGED", "HELD"] } },
       include: { buyerPartner: { select: { legalName: true, tradeName: true } } },
@@ -190,13 +193,14 @@ export async function superStockistDashboardSummary(prisma: PrismaClient, actorI
       take: 50,
     }),
     superStockistStockSummary(prisma, actorId, superStockistId),
+    // Pre-launch Pass 0E: the S.S. dashboard already surfaced its own COMPANY_REPLENISHMENT orders
+    // waiting on advance proof/verification (paymentMissingProof/paymentAwaitingVerification below),
+    // but never its own OVERDUE position against Company once an invoice is actually issued and past
+    // due — a real gap, since a S.S. could be overdue to Company with no visible signal on its own
+    // dashboard. Reuses the same partyOutstanding() ageing logic Accounts/Founder already rely on.
+    partyOutstanding(prisma, "SUPER_STOCKIST", superStockistId, now).catch(() => ({ outstanding: [], outstandingTotal: 0 })),
   ]);
-  // Pre-launch Pass 0E: the S.S. dashboard already surfaced its own COMPANY_REPLENISHMENT orders
-  // waiting on advance proof/verification (paymentMissingProof/paymentAwaitingVerification below),
-  // but never its own OVERDUE position against Company once an invoice is actually issued and past
-  // due — a real gap, since a S.S. could be overdue to Company with no visible signal on its own
-  // dashboard. Reuses the same partyOutstanding() ageing logic Accounts/Founder already rely on.
-  const { outstanding: ownOutstandingDocs, outstandingTotal: ownOutstandingTotal } = await partyOutstanding(prisma, "SUPER_STOCKIST", superStockistId, now).catch(() => ({ outstanding: [], outstandingTotal: 0 }));
+  const { outstanding: ownOutstandingDocs, outstandingTotal: ownOutstandingTotal } = ownOutstanding;
   const ownOverdueToCompany = ownOutstandingDocs.filter((o) => o.actualOverdue).reduce((s, o) => s + o.amount, 0);
   const creditAlerts = (
     await Promise.all(

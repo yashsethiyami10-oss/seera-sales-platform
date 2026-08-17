@@ -33,7 +33,7 @@ import { IncomingStockCards } from "./IncomingStockCards";
 import { OrderFromSSWizard } from "./OrderFromSSWizard";
 import { CompanyOrderWizard, type CompanyCatalogItem } from "./CompanyOrderWizard";
 import { COMPANY_ORDER_UNIT_OVERRIDES, DEFAULT_MUV_ORDER_UNIT, activeSchemeNotesForSkus, activeRetailerCatalog } from "@/lib/sales-distribution/company-order-catalog";
-import { formatAddress } from "@/lib/sales-distribution/document-lines";
+import { formatAddress, priceModeForBrand, deriveInclusiveTax, deriveExclusiveTax } from "@/lib/sales-distribution/document-lines";
 import { distributorOrderLineAvailability, superStockistStockSummary, distributorReceiptStatus } from "@/lib/sales-distribution/super-stockist-easy-mode-service";
 import { PaymentProofReviewActions } from "./PaymentProofReviewActions";
 import { PartnerFinanceActions } from "./PartnerFinanceActions";
@@ -3479,7 +3479,7 @@ export async function OperationalWorkspace({
           buyerId: q.buyerId,
           grandTotal: Number(q.grandTotal),
           validUntil: q.validUntil ? q.validUntil.toISOString().slice(0, 10) : undefined,
-          lines: (q.lineSnapshot as unknown as { productNameSnapshot?: string; hsnSnapshot?: string; quantity: number; rate: number; taxRate: number; lineTotal: number }[] | null ?? []).map((l) => ({
+          lines: (q.lineSnapshot as unknown as { productNameSnapshot?: string; hsnSnapshot?: string; quantity: number; rate: number; taxRate: number; lineTotal: number; priceMode?: "GST_INCLUSIVE" | "GST_EXCLUSIVE" }[] | null ?? []).map((l) => ({
             skuId: "",
             productNameSnapshot: l.productNameSnapshot ?? "",
             hsn: l.hsnSnapshot,
@@ -3488,6 +3488,7 @@ export async function OperationalWorkspace({
             discountPct: 0,
             taxRate: l.taxRate,
             lineTotal: l.lineTotal,
+            priceMode: l.priceMode ?? "GST_INCLUSIVE",
           })),
         }))}
       />
@@ -3535,6 +3536,7 @@ export async function OperationalWorkspace({
           label: `${x.code} · ${x.productName}`,
           rate: Number(x.prices[0]?.amount ?? x.mrp),
           taxRate: x.taxRate == null ? null : Number(x.taxRate),
+          brand: x.brand,
         }))}
         orders={recentOrders.map((o) => ({
           value: o.id,
@@ -3673,7 +3675,7 @@ export async function OperationalWorkspace({
     // first, so a Founder can actually see what they're about to change before submitting the form.
     const now = new Date();
     const priceVersions = await db.seeraPriceVersion.findMany({
-      include: { sku: { select: { code: true, productName: true } } },
+      include: { sku: { select: { code: true, productName: true, brand: true, taxRate: true } } },
       orderBy: [{ effectiveFrom: "desc" }],
       take: 100,
     });
@@ -3684,18 +3686,33 @@ export async function OperationalWorkspace({
           value: x.id,
           label: `${x.code} · ${x.productName}`,
         }))}
-        priceVersions={priceVersions.map((p) => ({
-          id: p.id,
-          skuLabel: `${p.sku.code} · ${p.sku.productName}`,
-          tier: p.tier,
-          amount: Number(p.amount),
-          status: p.status,
-          isCurrentlyActive: p.status === "ACTIVE" && p.effectiveFrom <= now && (!p.effectiveTo || p.effectiveTo > now),
-          effectiveFrom: p.effectiveFrom.toISOString().slice(0, 10),
-          effectiveTo: p.effectiveTo ? p.effectiveTo.toISOString().slice(0, 10) : null,
-          marginType: p.marginType,
-          marginValue: p.marginValue ? Number(p.marginValue) : null,
-        }))}
+        priceVersions={priceVersions.map((p) => {
+          const priceMode = priceModeForBrand(p.sku.brand);
+          const taxRate = p.sku.taxRate != null ? Number(p.sku.taxRate) : null;
+          const amount = Number(p.amount);
+          const { taxableValue, taxAmount } =
+            taxRate == null
+              ? { taxableValue: amount, taxAmount: 0 }
+              : priceMode === "GST_INCLUSIVE"
+                ? deriveInclusiveTax(amount, taxRate)
+                : deriveExclusiveTax(amount, taxRate);
+          return {
+            id: p.id,
+            skuLabel: `${p.sku.code} · ${p.sku.productName}`,
+            tier: p.tier,
+            amount,
+            status: p.status,
+            isCurrentlyActive: p.status === "ACTIVE" && p.effectiveFrom <= now && (!p.effectiveTo || p.effectiveTo > now),
+            effectiveFrom: p.effectiveFrom.toISOString().slice(0, 10),
+            effectiveTo: p.effectiveTo ? p.effectiveTo.toISOString().slice(0, 10) : null,
+            marginType: p.marginType,
+            marginValue: p.marginValue ? Number(p.marginValue) : null,
+            priceMode,
+            taxRate,
+            taxableValuePreview: taxableValue,
+            grossValuePreview: priceMode === "GST_INCLUSIVE" ? amount : taxableValue + taxAmount,
+          };
+        })}
         unconfiguredGstSkuCount={skus.filter((s) => s.status === "ACTIVE" && (s.taxRate == null || !s.hsn)).length}
       />
     );

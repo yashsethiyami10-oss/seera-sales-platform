@@ -119,6 +119,14 @@ type PriceVersionRow = {
   effectiveTo: string | null;
   marginType: string | null;
   marginValue: number | null;
+  // GST/price-mode correction (Founder directive): every price row must show, explicitly, whether
+  // its amount already includes GST (MUV) or is a base rate GST is added on top of (every other
+  // brand) — never make Founder guess. taxableValuePreview/grossValuePreview are pre-computed by
+  // the same governed math buildLineSnapshots uses (document-lines.ts), not re-derived here.
+  priceMode: "GST_INCLUSIVE" | "GST_EXCLUSIVE";
+  taxRate: number | null;
+  taxableValuePreview: number;
+  grossValuePreview: number;
 };
 
 export function MasterActions({
@@ -130,8 +138,13 @@ export function MasterActions({
   language: "EN" | "HI";
   skus: Option[];
   priceVersions?: PriceVersionRow[];
-  // Founder-authorized one-time bulk GST configuration (18% inclusive, HSN matching the already-
-  // frozen precedent) — auto-hides once every active SKU has a governed tax rate + HSN.
+  // Founder-authorized one-time bulk GST RATE configuration (18%, HSN matching the already-frozen
+  // precedent) — auto-hides once every active SKU has a governed tax rate + HSN. Sets only the
+  // rate/HSN, never a price mode: price mode (GST-inclusive vs GST-exclusive) is derived
+  // automatically per SKU from its brand (priceModeForBrand in document-lines.ts — MUV is
+  // inclusive, every other brand is exclusive/add-on-top), so this one rate applies correctly
+  // regardless of brand. Previously labeled "(18% INCLUSIVE)", which wrongly implied a single
+  // universal price-mode rule and was corrected once price mode became brand-derived.
   unconfiguredGstSkuCount?: number;
 }) {
   const hi = language === "HI";
@@ -148,8 +161,8 @@ export function MasterActions({
           </div>
           <p>
             {hi
-              ? `${unconfiguredGstSkuCount} सक्रिय SKU में GST दर/HSN कॉन्फ़िगर नहीं है। एक क्लिक में सभी को 18% (समावेशी) पर सेट करें — पहले से कॉन्फ़िगर किए गए SKU अप्रभावित रहते हैं।`
-              : `${unconfiguredGstSkuCount} active SKU(s) have no GST rate/HSN configured. One click sets all of them to 18% (inclusive) — already-configured SKUs are left untouched.`}
+              ? `${unconfiguredGstSkuCount} सक्रिय SKU में GST दर/HSN कॉन्फ़िगर नहीं है। एक क्लिक में सभी को 18% GST पर सेट करें — मूल्य मोड (समावेशी/अतिरिक्त) प्रत्येक SKU के ब्रांड से स्वतः तय होता है (MUV = समावेशी; अन्य सभी = आधार मूल्य पर GST जोड़ा जाता है)। पहले से कॉन्फ़िगर किए गए SKU अप्रभावित रहते हैं।`
+              : `${unconfiguredGstSkuCount} active SKU(s) have no GST rate/HSN configured. One click sets all of them to 18% GST — price mode (inclusive vs. added on top) is resolved automatically per SKU by brand (MUV = inclusive; every other brand = GST added on top of the base rate). Already-configured SKUs are left untouched.`}
           </p>
           <button
             type="button"
@@ -157,7 +170,7 @@ export function MasterActions({
             disabled={state.busy}
             onClick={() => void state.run(() => post("/api/foundation/masters", { action: "bulk-configure-sku-gst", payload: {} }))}
           >
-            {hi ? "सभी SKU के लिए GST कॉन्फ़िगर करें (18% समावेशी)" : "CONFIGURE GST FOR ALL SKUs (18% INCLUSIVE)"}
+            {hi ? "सभी SKU के लिए GST दर कॉन्फ़िगर करें (18%)" : "CONFIGURE GST RATE FOR ALL SKUs (18%)"}
           </button>
         </div>
       )}
@@ -172,6 +185,10 @@ export function MasterActions({
               <th>{hi ? "उत्पाद" : "Product"}</th>
               <th>{hi ? "स्तर" : "Tier"}</th>
               <th>{hi ? "राशि" : "Amount"}</th>
+              <th>{hi ? "GST दर" : "GST rate"}</th>
+              <th>{hi ? "मूल्य मोड" : "Price mode"}</th>
+              <th>{hi ? "कर योग्य मूल्य" : "Taxable value"}</th>
+              <th>{hi ? "सकल मूल्य" : "Gross value"}</th>
               <th>{hi ? "नीति" : "Policy"}</th>
               <th>{hi ? "प्रभावी से" : "Effective from"}</th>
             </tr>
@@ -179,7 +196,7 @@ export function MasterActions({
           <tbody>
             {active.length === 0 && (
               <tr>
-                <td colSpan={5}>{hi ? "कोई सक्रिय मूल्य नहीं।" : "No active prices yet."}</td>
+                <td colSpan={9}>{hi ? "कोई सक्रिय मूल्य नहीं।" : "No active prices yet."}</td>
               </tr>
             )}
             {active.map((p) => (
@@ -187,6 +204,14 @@ export function MasterActions({
                 <td>{p.skuLabel}</td>
                 <td>{p.tier}</td>
                 <td>₹{p.amount.toFixed(2)}</td>
+                <td>{p.taxRate != null ? `${p.taxRate}%` : hi ? "अकॉन्फ़िगर्ड" : "unconfigured"}</td>
+                <td>
+                  <span title={p.priceMode === "GST_INCLUSIVE" ? (hi ? "राशि में GST शामिल है" : "Amount already includes GST") : hi ? "GST आधार राशि पर अतिरिक्त जोड़ा जाता है" : "GST is added on top of this base amount"}>
+                    {p.priceMode === "GST_INCLUSIVE" ? (hi ? "GST शामिल" : "GST INCLUDED") : hi ? "GST अतिरिक्त" : "GST EXCLUDED"}
+                  </span>
+                </td>
+                <td>₹{p.taxableValuePreview.toFixed(2)}</td>
+                <td>₹{p.grossValuePreview.toFixed(2)}</td>
                 <td>{p.marginType ? `${p.marginType}${p.marginValue != null ? ` (${p.marginValue})` : ""}` : "—"}</td>
                 <td>{p.effectiveFrom}</td>
               </tr>

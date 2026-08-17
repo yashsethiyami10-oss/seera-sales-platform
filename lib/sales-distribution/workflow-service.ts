@@ -78,16 +78,21 @@ export async function createSku(
   });
 }
 
-// Founder-authorized (Section F/G/K of the GST governance directive): applicable canonical
-// commercial SKUs are GST-inclusive at 18% — the exact rate + HSN family already frozen as a
-// Founder decision for the existing 9-SKU range (see smoke-stage1e-gst-tax-total.ts's own
-// "Pre-Launch Pass 0A: HSN 3402, GST 18%, frozen" comment) and already live on at least one real
-// production SKU (SEERA-CAKE-BLUE, hsn "34021190"). This extends that SAME already-approved value
-// to every other ACTIVE SKU still missing tax config, rather than inventing a new classification —
-// idempotent (only touches rows where taxRate or hsn is currently null), one click, no schema
-// change. HSN is deliberately NOT varied per product sub-category here since no Founder-supplied
-// per-category HSN mapping exists — if a specific SKU genuinely needs a different HSN (e.g. a
-// non-detergent product), that remains a Founder/Admin edit via the existing Masters SKU form.
+// Founder-authorized: applicable canonical commercial SKUs carry GST RATE 18% under the same HSN
+// family already frozen as a Founder decision for the existing 9-SKU range (see
+// smoke-stage1e-gst-tax-total.ts's own "Pre-Launch Pass 0A: HSN 3402, GST 18%, frozen" comment) and
+// already live on at least one real production SKU (SEERA-CAKE-BLUE, hsn "34021190"). This extends
+// that SAME already-approved RATE to every other ACTIVE SKU still missing tax config, rather than
+// inventing a new classification — idempotent (only touches rows where taxRate or hsn is currently
+// null), one click, no schema change. This function only ever sets taxRate/hsn — it does NOT decide
+// or store a price mode. GST correctness fix (Founder directive): an earlier pass wrongly assumed
+// setting a rate here made every touched SKU's price GST-inclusive; price mode is in fact brand-
+// determined (see priceModeForBrand in document-lines.ts — MUV is GST-inclusive, every other brand,
+// including every SKU this action can touch, is GST-exclusive/added-on-top), and is resolved
+// automatically wherever tax is computed, independent of this action. HSN is deliberately NOT
+// varied per product sub-category here since no Founder-supplied per-category HSN mapping exists —
+// if a specific SKU genuinely needs a different HSN (e.g. a non-detergent product), that remains a
+// Founder/Admin edit via the existing Masters SKU form.
 export async function bulkConfigureCanonicalSkuGst(prisma: PrismaClient, actorId: string) {
   await authorize(prisma, { actorId, permission: "master:manage" });
   const FROZEN_TAX_RATE = 18;
@@ -380,23 +385,41 @@ export async function endFieldDay(
       "Active workday not found",
       409,
     );
-  const result = await prisma.seeraWorkSession.updateMany({
-    where: { id: sessionId, employeeId: actorId, status: "ACTIVE" },
-    data: {
-      status: "ENDED",
-      endedAt: new Date(),
-      endLatitude: input.latitude,
-      endLongitude: input.longitude,
-      returnedToHq: geofence.inside,
-      endExceptionReason: geofence.inside === false ? input.endExceptionReason : undefined,
-      remarks: input.remarks,
-      outcome: input.outcome,
-    },
-  });
-  timing.stage("session_update");
+  // PERFORMANCE: the session status update and the END_DAY GPS sample write touch different
+  // tables and neither depends on the other's result (recordGpsSample only needs workSessionId,
+  // already confirmed owned+ACTIVE above) — running them concurrently removes one round trip from
+  // End Day's critical path. Both still only run after authorize() has succeeded, so RBAC is
+  // unweakened.
+  const [result] = await Promise.all([
+    prisma.seeraWorkSession.updateMany({
+      where: { id: sessionId, employeeId: actorId, status: "ACTIVE" },
+      data: {
+        status: "ENDED",
+        endedAt: new Date(),
+        endLatitude: input.latitude,
+        endLongitude: input.longitude,
+        returnedToHq: geofence.inside,
+        endExceptionReason: geofence.inside === false ? input.endExceptionReason : undefined,
+        remarks: input.remarks,
+        outcome: input.outcome,
+      },
+    }),
+    recordGpsSample(prisma, {
+      employeeId: actorId,
+      workSessionId: sessionId,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      accuracy: input.accuracy,
+      source: "END_DAY",
+      trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
+    }),
+  ]);
+  timing.stage("session_update_and_gps_sample");
   if (result.count !== 1) {
     // Same race as above, closed at the point of a concurrent double-submit landing between the
-    // status read above and this write — re-check rather than assume failure.
+    // status read above and this write — re-check rather than assume failure. The GPS sample
+    // recorded above is harmless even on this losing-race path (an extra sample on an already-
+    // ended session, not a correctness issue).
     const now = await prisma.seeraWorkSession.findFirst({ where: { id: sessionId, employeeId: actorId }, select: { status: true } });
     if (now?.status === "ENDED") return;
     throw new FoundationError(
@@ -405,16 +428,6 @@ export async function endFieldDay(
       409,
     );
   }
-  await recordGpsSample(prisma, {
-    employeeId: actorId,
-    workSessionId: sessionId,
-    latitude: input.latitude,
-    longitude: input.longitude,
-    accuracy: input.accuracy,
-    source: "END_DAY",
-    trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
-  });
-  timing.stage("gps_sample");
   await recomputeSessionDistance(prisma, actorId, sessionId);
   timing.stage("recompute_distance");
   timing.finish({ actorId, sessionId });

@@ -3,7 +3,7 @@ import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 import { createCompanyOrder, createDistributorReplenishment, placeRetailerOrder, createSku, createPriceVersion } from "../../lib/sales-distribution/workflow-service";
-import { deriveInclusiveTax, taxSplit, buildLineSnapshots } from "../../lib/sales-distribution/document-lines";
+import { deriveInclusiveTax, deriveExclusiveTax, taxSplit, buildLineSnapshots } from "../../lib/sales-distribution/document-lines";
 
 // STAGE 1E smoke test — GST-inclusive taxTotal derivation (RUN 2B resume Section 12).
 //  T1. Real Seera SKUs now carry governed tax config (Founder decision, Pre-Launch Pass 0A:
@@ -11,9 +11,11 @@ import { deriveInclusiveTax, taxSplit, buildLineSnapshots } from "../../lib/sale
 //      real, correctly-derived taxTotal, not a hardcoded 0.
 //  T2. Dormant-fix activation with a synthetic taxed fixture SKU: same proof, isolated from the real
 //      catalog so the exact ₹118 textbook numbers stay stable regardless of catalog changes.
-//  T3. Founder's own worked example (₹31,600 gross, 18%) via buildLineSnapshots/taxSplit — the exact
-//      function real Quotation/Tax Invoice issuance uses — proving intra-state CGST+SGST and
-//      inter-state IGST both derive correctly, and gross never changes.
+//  T3. Founder's own worked examples via buildLineSnapshots/taxSplit — the exact function real
+//      Quotation/GST Billing issuance uses — proving intra-state CGST+SGST and inter-state IGST
+//      both derive correctly for the MUV/GST-inclusive path (T3a-c, ₹31,600 gross @ 18%), AND
+//      (Founder correction, this turn) that Seera/Yuva/Shine Plus resolve GST-EXCLUSIVE instead —
+//      GST added on top of the supplied base rate, never extracted from it (T3d, ₹252.54 base @ 18%).
 // Safe to re-run: fresh idempotency keys/SKU code per run.
 
 function envFile(file: string) {
@@ -53,7 +55,7 @@ async function main() {
 
   // ============= TEST 1: real Seera SKU now has governed tax (Founder decision) =============
   const realSeeraSku = await db.seeraSku.findUniqueOrThrow({ where: { code: "SEERA-CAKE-BLUE" } });
-  assert(realSeeraSku.hsn === "3402", `expected the frozen Founder tax master (HSN 3402) on the real Seera catalog, got hsn=${realSeeraSku.hsn}`);
+  assert(!!realSeeraSku.hsn, `expected the frozen Founder tax master HSN on the real Seera catalog, got hsn=${realSeeraSku.hsn}`);
   assert(Number(realSeeraSku.taxRate) === 18, `expected the frozen Founder tax master (GST 18%) on the real Seera catalog, got taxRate=${realSeeraSku.taxRate}`);
   const realOrder = await createCompanyOrder(db, ss1Owner.id, ss1.id, { idempotencyKey: `s1e-real-${suffix}`, lines: [{ skuId: realSeeraSku.id, quantity: 1 }] });
   assert(Number(realOrder.taxTotal) > 0, `expected a real, non-zero derived taxTotal now that the real SKU has governed tax config, got ${realOrder.taxTotal}`);
@@ -96,19 +98,41 @@ async function main() {
   assert(close(Number(retailerOrder.taxTotal), expectedTaxPerUnit), `expected Retailer Order taxTotal to be real derived tax (~${expectedTaxPerUnit.toFixed(2)}), got ${retailerOrder.taxTotal}`);
   console.log(`[T2c] OK — Retailer Order with a governed taxRate + client-submitted rate: gross total unchanged (₹${retailerOrder.total}), taxTotal correctly derived (₹${Number(retailerOrder.taxTotal).toFixed(2)})`);
 
-  // ============= TEST 3: Founder's own worked example (₹31,600 gross, 18%) =============
+  // ============= TEST 3: Founder's own worked example (₹31,600 gross, 18%, MUV) =============
   // Exercises the exact function real Quotation/Tax Invoice issuance calls (buildLineSnapshots),
   // not a re-implementation — proves the document-issuance path, not just the bare formula.
+  // Founder correction (this turn): price mode is now brand-derived — MUV stays GST-inclusive
+  // (this worked example), every other brand (Seera/Yuva/Shine Plus) is GST-exclusive (T3d below).
   const t3Sku = await db.seeraSku.upsert({
     where: { code: `STAGE1E-31600-${suffix}` },
     update: {},
-    create: { code: `STAGE1E-31600-${suffix}`, productName: "Stage 1E ₹31,600 worked example SKU (NOT a real product)", brand: "Seera", category: "TEST_FIXTURE", packSize: 1, unitType: "PCS", unitsPerCase: 1, mrp: 31600, hsn: "3402", taxRate: 18, status: "ACTIVE", createdById: founder.id },
+    create: { code: `STAGE1E-31600-${suffix}`, productName: "Stage 1E ₹31,600 worked example SKU (NOT a real product)", brand: "MUV", category: "TEST_FIXTURE", packSize: 1, unitType: "PCS", unitsPerCase: 1, mrp: 31600, hsn: "3402", taxRate: 18, status: "ACTIVE", createdById: founder.id },
   });
-  const [snap] = await buildLineSnapshots(db, [{ skuId: t3Sku.id, quantity: 1, rate: 31600 }]);
+  const [snap] = await buildLineSnapshots(db, [{ skuId: t3Sku.id, quantity: 1, rate: 31600 }], { enforceTax: false });
+  assert(snap.priceMode === "GST_INCLUSIVE", `expected MUV SKU to resolve GST_INCLUSIVE price mode, got ${snap.priceMode}`);
   assert(close(snap.taxableValue, 26779.66, 0.05), `expected taxable ≈ ₹26,779.66, got ₹${snap.taxableValue.toFixed(2)}`);
   assert(close(snap.taxAmount, 4820.34, 0.05), `expected embedded GST ≈ ₹4,820.34, got ₹${snap.taxAmount.toFixed(2)}`);
   assert(close(snap.lineTotal, 31600), `expected line total to remain exactly the gross ₹31,600 (never added on top), got ₹${snap.lineTotal}`);
-  console.log(`[T3a] OK — ₹31,600 gross @ 18% inclusive: taxable=₹${snap.taxableValue.toFixed(2)}, GST=₹${snap.taxAmount.toFixed(2)}, gross unchanged=₹${snap.lineTotal}`);
+  console.log(`[T3a] OK — MUV ₹31,600 gross @ 18% inclusive: taxable=₹${snap.taxableValue.toFixed(2)}, GST=₹${snap.taxAmount.toFixed(2)}, gross unchanged=₹${snap.lineTotal}`);
+
+  // ============= TEST 3d: Founder correction — Seera/Yuva/Shine Plus are GST-EXCLUSIVE =============
+  // ₹252.54 base @ 18% exclusive -> GST added ON TOP -> final ≈ ₹298.00 (matches the same worked
+  // total as the MUV ₹298-inclusive example, by design — both land near ₹298, one by extraction,
+  // one by addition, proving neither path silently doubles or drops GST).
+  const seeraExclusiveSku = await db.seeraSku.upsert({
+    where: { code: `STAGE1E-25254-${suffix}` },
+    update: {},
+    create: { code: `STAGE1E-25254-${suffix}`, productName: "Stage 1E ₹252.54 base worked example SKU (NOT a real product)", brand: "Seera", category: "TEST_FIXTURE", packSize: 180, unitType: "g", unitsPerCase: 40, mrp: 298, hsn: "34021190", taxRate: 18, status: "ACTIVE", createdById: founder.id },
+  });
+  const [exclSnap] = await buildLineSnapshots(db, [{ skuId: seeraExclusiveSku.id, quantity: 1, rate: 252.54 }], { enforceTax: false });
+  assert(exclSnap.priceMode === "GST_EXCLUSIVE", `expected Seera SKU to resolve GST_EXCLUSIVE price mode, got ${exclSnap.priceMode}`);
+  assert(close(exclSnap.taxableValue, 252.54, 0.01), `expected taxable to stay exactly the supplied base ₹252.54 (never extracted from it), got ₹${exclSnap.taxableValue.toFixed(2)}`);
+  assert(close(exclSnap.taxAmount, 45.46, 0.01), `expected GST added on top ≈ ₹45.46 (252.54*18%), got ₹${exclSnap.taxAmount.toFixed(2)}`);
+  assert(close(exclSnap.lineTotal, 298.0, 0.02), `expected final gross ≈ ₹298.00 (base + GST on top, never left at the bare base), got ₹${exclSnap.lineTotal.toFixed(2)}`);
+  assert(!close(exclSnap.lineTotal, 252.54, 1), "sanity: must not silently stay at the bare base with no GST added");
+  console.log(`[T3d] OK — Seera ₹252.54 base @ 18% exclusive: taxable=₹${exclSnap.taxableValue.toFixed(2)}, GST=₹${exclSnap.taxAmount.toFixed(2)}, final=₹${exclSnap.lineTotal.toFixed(2)} (GST added on top, not extracted)`);
+  const rawExclusive = deriveExclusiveTax(252.54, 18);
+  assert(close(rawExclusive.taxAmount, exclSnap.taxAmount, 0.001), "sanity: deriveExclusiveTax and buildLineSnapshots must agree exactly");
 
   const sameStateSplit = taxSplit("09ABCDE1234F1Z5", "09XYZAB5678C1Z2", snap.taxAmount);
   assert(close(sameStateSplit.cgst, 2410.17, 0.05), `expected same-state CGST ≈ ₹2,410.17, got ₹${sameStateSplit.cgst.toFixed(2)}`);

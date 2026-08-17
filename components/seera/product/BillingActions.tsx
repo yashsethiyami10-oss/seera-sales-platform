@@ -7,7 +7,10 @@ type Option = { value: string; label: string };
 // taxRate null (not 0) means "no governed GST rate configured yet" — kept distinct from a
 // legitimate 0%-rated SKU (Founder UAT fix, mirrors QuotationActions.tsx's own comment: a coerced
 // `?? 0` made the server's TAX_CONFIGURATION_REQUIRED gate unreachable from this UI).
-type Sku = { value: string; label: string; rate: number; taxRate: number | null };
+type Sku = { value: string; label: string; rate: number; taxRate: number | null; brand: string };
+// Mirrors priceModeForBrand in lib/sales-distribution/document-lines.ts — see QuotationActions.tsx's
+// identical local copy for why this isn't imported from that module client-side.
+const isGstInclusiveBrand = (brand: string) => /^muv$/i.test(brand.trim());
 type BillingDoc = {
   id: string;
   documentNumber: string;
@@ -277,7 +280,7 @@ export function BillingActions({
               {line.skuId && skus.find((s) => s.value === line.skuId)?.taxRate == null ? (
                 <input value={hi ? "कर कॉन्फ़िगरेशन आवश्यक" : "TAX CONFIGURATION REQUIRED"} disabled readOnly />
               ) : (
-                <input value={line.skuId ? `${line.taxRate}%` : "—"} disabled readOnly />
+                <input value={line.skuId ? `${line.taxRate}% · ${isGstInclusiveBrand(skus.find((s) => s.value === line.skuId)?.brand ?? "") ? (hi ? "GST शामिल" : "GST INCLUDED") : hi ? "GST अतिरिक्त" : "GST EXCLUDED"}` : "—"} disabled readOnly />
               )}
             </label>
             {lines.length > 1 && (

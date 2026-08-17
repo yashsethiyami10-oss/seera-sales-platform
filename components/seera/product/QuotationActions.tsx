@@ -5,6 +5,12 @@ import styles from "./WorkflowActions.module.css";
 import { SkuSelect } from "./SkuSelect";
 
 type Option = { value: string; label: string };
+// Mirrors priceModeForBrand in lib/sales-distribution/document-lines.ts — kept as a small local
+// copy rather than importing that module client-side (it pulls in node:crypto for an unrelated
+// export, unsafe to bundle into a "use client" component). MUV rates are GST-inclusive (tax
+// extracted from the typed rate); every other brand's rate is GST-exclusive (tax added on top) —
+// Founder correction, never make the Founder guess which applies to a given line.
+const isGstInclusiveBrand = (brand: string) => /^muv$/i.test(brand.trim());
 // taxRate is null (not 0) when a SKU has no governed GST rate configured yet — kept distinct from a
 // legitimate 0%-rated SKU (Founder UAT fix: a coerced `?? 0` here made the server's
 // TAX_CONFIGURATION_REQUIRED gate unreachable, since a submitted line always looked "configured".
@@ -19,6 +25,7 @@ type QuotationLine = {
   discountPct: number;
   taxRate: number | null;
   lineTotal: number;
+  priceMode: "GST_INCLUSIVE" | "GST_EXCLUSIVE";
 };
 type Quotation = {
   id: string;
@@ -237,7 +244,7 @@ export function QuotationActions({
               {line.skuId && skus.find((s) => s.value === line.skuId)?.taxRate == null ? (
                 <input value={hi ? "कर कॉन्फ़िगरेशन आवश्यक" : "TAX CONFIGURATION REQUIRED"} disabled readOnly />
               ) : (
-                <input value={line.skuId ? `${line.taxRate}%` : "—"} disabled readOnly />
+                <input value={line.skuId ? `${line.taxRate}% · ${isGstInclusiveBrand(skus.find((s) => s.value === line.skuId)?.brand ?? "") ? (hi ? "GST शामिल" : "GST INCLUDED") : hi ? "GST अतिरिक्त" : "GST EXCLUDED"}` : "—"} disabled readOnly />
               )}
             </label>
             {lines.length > 1 && (
@@ -404,6 +411,7 @@ export function QuotationActions({
                               <th>{hi ? "मात्रा" : "Qty"}</th>
                               <th>{hi ? "दर" : "Rate"}</th>
                               <th>{hi ? "कर %" : "Tax %"}</th>
+                              <th>{hi ? "मूल्य मोड" : "Price mode"}</th>
                               <th>{hi ? "कुल" : "Total"}</th>
                             </tr>
                           </thead>
@@ -415,6 +423,7 @@ export function QuotationActions({
                                 <td>{l.quantity}</td>
                                 <td>₹{l.rate.toFixed(2)}</td>
                                 <td>{l.taxRate}%</td>
+                                <td>{l.priceMode === "GST_INCLUSIVE" ? (hi ? "GST शामिल" : "GST INCLUDED") : hi ? "GST अतिरिक्त" : "GST EXCLUDED"}</td>
                                 <td>₹{l.lineTotal.toFixed(2)}</td>
                               </tr>
                             ))}

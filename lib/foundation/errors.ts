@@ -57,6 +57,13 @@ function classifyPrismaError(code: string): { code: string; status: number; user
     case "P2002": return { code: "DUPLICATE_RECORD", status: 409, userMessage: "This conflicts with an existing record." };
     case "P2003": return { code: "REFERENCE_CONFLICT", status: 409, userMessage: "This is linked to related data that must be handled first." };
     case "P2028": return { code: "OPERATION_TIMED_OUT", status: 503, userMessage: "The operation took too long and was cancelled." };
+    // P2024 (pooled-connection acquisition timeout) and P2034 (write-conflict/deadlock from
+    // concurrent transactions) are genuine, retryable infra conditions under Neon's serverless
+    // pooler — previously fell through to the generic "unexpected system error" fallback below,
+    // which is exactly the End Day P0 symptom pattern (a real, transient, retry-succeeds failure
+    // wearing the same "share this Error ID" message as a genuine unhandled bug).
+    case "P2024": return { code: "DATABASE_UNAVAILABLE", status: 503, userMessage: "The system is briefly unable to get a database connection." };
+    case "P2034": return { code: "OPERATION_TIMED_OUT", status: 503, userMessage: "This conflicted with another update in progress." };
     case "P1001": case "P1002": case "P1008": case "P1017": return { code: "DATABASE_UNAVAILABLE", status: 503, userMessage: "The system is temporarily unable to reach the database." };
     default: return null;
   }

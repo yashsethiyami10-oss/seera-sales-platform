@@ -241,7 +241,11 @@ export async function distributorStockSummary(prisma: PrismaClient, actorId: str
 export async function distributorDashboardSummary(prisma: PrismaClient, actorId: string, distributorId: string, now = new Date()) {
   await authorize(prisma, { actorId, permission: "distributor_orders:view" });
   await requirePartyMembership(prisma, actorId, distributorId, "DISTRIBUTOR");
-  const [newOrders, pendingDeliveries, incomingSsOrders, ssOrdersRequested, position, stock] = await Promise.all([
+  // PERFORMANCE: latestPayment below only needs distributorId, not any of these query results —
+  // folding it into this same Promise.all removes a full extra sequential round trip from every
+  // Distributor Dashboard load (the receipt lookup that depends on latestPayment.id stays
+  // sequential afterward, since that's a genuine dependency, not just call order).
+  const [newOrders, pendingDeliveries, incomingSsOrders, ssOrdersRequested, position, stock, latestPayment] = await Promise.all([
     prisma.seeraSalesOrder.findMany({
       where: { sellerPartnerId: distributorId, type: "RETAILER_ORDER", status: { in: ["SUBMITTED", "ACKNOWLEDGED", "HELD"] } },
       include: { retailer: { select: { businessName: true } } },
@@ -261,6 +265,10 @@ export async function distributorDashboardSummary(prisma: PrismaClient, actorId:
     }),
     creditPositionFor(prisma, distributorId, now).catch(() => null),
     distributorStockSummary(prisma, actorId, distributorId).catch(() => []),
+    prisma.seeraPaymentRecord.findFirst({
+      where: { payerType: "DISTRIBUTOR", payerId: distributorId },
+      orderBy: { paymentDate: "desc" },
+    }),
   ]);
   const lowStock = stock.filter((s) => s.available <= 0);
   const creditBlocked = position?.decision ? ["BLOCK", "HOLD", "OVERRIDE_REQUIRED"].includes(position.decision.decision) : false;
@@ -274,10 +282,6 @@ export async function distributorDashboardSummary(prisma: PrismaClient, actorId:
   // Final UI reachability audit fix: a payment Accounts already verified had no in-app signal for
   // the Distributor at all — surfaced here only while the receipt is still outstanding (once issued
   // it's visible on the Money screen itself with no ongoing action needed, see DistributorMoneyPanel).
-  const latestPayment = await prisma.seeraPaymentRecord.findFirst({
-    where: { payerType: "DISTRIBUTOR", payerId: distributorId },
-    orderBy: { paymentDate: "desc" },
-  });
   if (latestPayment && (["VERIFIED", "PARTIALLY_MATCHED"] as string[]).includes(latestPayment.status)) {
     const receipt = await prisma.seeraCommercialDocument.findFirst({ where: { idempotencyKey: `receipt-${latestPayment.id}` }, select: { id: true } });
     if (!receipt)

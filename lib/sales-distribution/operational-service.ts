@@ -150,8 +150,14 @@ export async function activeManagerTeamAssignments(prisma: PrismaClient, actorId
       where: { assignmentType: "MANAGER_TEAM", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
       orderBy: { effectiveFrom: "desc" },
     }),
-    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
-    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: { in: ["SALES_MANAGER", "SALES_HEAD"] } } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
+    // Selector-integrity fix: a userRoleAssignment can stay ACTIVE while the underlying User
+    // account has been disabled (e.g. a duplicate/bootstrap account superseded by a later real
+    // one) — without also requiring user.status:"ACTIVE" here, a disabled duplicate account still
+    // shows up in the Founder/Admin "Choose by Name" picker and assignment list, indistinguishable
+    // by name from the real active account. Matches the post-filter pattern already used by
+    // bulkAssignRatanDistributorsToSoleExecutive/completeSoleExecutiveFieldForceSetup below.
+    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" }, user: { status: "ACTIVE" } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
+    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: { in: ["SALES_MANAGER", "SALES_HEAD"] } }, user: { status: "ACTIVE" } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
   ]);
   const executiveById = new Map(executiveUsers.map((x) => [x.user.id, x.user]));
   const managerById = new Map(managerUsers.map((x) => [x.user.id, x.user]));
@@ -247,7 +253,9 @@ export async function activeExecutiveDistributorAssignments(prisma: PrismaClient
       where: { assignmentType: "EXECUTIVE_DISTRIBUTOR", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
       orderBy: { effectiveFrom: "desc" },
     }),
-    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
+    // Same selector-integrity fix as activeManagerTeamAssignments above — exclude disabled
+    // duplicate accounts from the Executive picker/assignment list.
+    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: "SALES_EXECUTIVE" }, user: { status: "ACTIVE" } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
     prisma.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" }, select: { id: true, legalName: true, tradeName: true, addresses: true } }),
   ]);
   const executiveById = new Map(executiveUsers.map((x) => [x.user.id, x.user]));
