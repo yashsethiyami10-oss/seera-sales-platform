@@ -13,9 +13,24 @@ import { authorize } from "@/lib/foundation/authorization-service";
  * so the token never has to leave Vercel. It never returns the token or any request PIN in its
  * response or logs.
  *
- * GET  — read-only: lists every phone number under the configured WABA (so a freshly-added
- *        number's Phone Number ID can be identified) plus a debug_token check of the configured
- *        system-user token's scopes/app/validity.
+ * GET  — read-only: discovers EVERY WhatsApp Business Account the configured system-user token
+ *        actually has access to (not just the one WABA ID currently sitting in Vercel — a fresh
+ *        number added in the Meta UI can live under a different WABA than the one this app was
+ *        originally configured for), then lists the phone numbers under each one. Candidate WABA
+ *        IDs come from three sources: the env-configured WHATSAPP_BUSINESS_ACCOUNT_ID, an optional
+ *        `?wabaId=` query param (for a WABA ID read directly off the Meta UI), and
+ *        debug_token's own `granular_scopes[].target_ids` — the exact set of asset IDs Meta
+ *        actually granted this token access to for whatsapp_business_management /
+ *        whatsapp_business_messaging, which is the authoritative way to find a WABA the token can
+ *        see without already knowing its ID. For each candidate: first fetches the node itself
+ *        (`GET /<id>?fields=id,name,...`) to distinguish "this ID isn't a WABA at all" from
+ *        "it's a WABA but the token lacks phone_numbers access", then fetches the
+ *        `/<id>/phone_numbers` edge (the correct, documented way to enumerate numbers under a
+ *        WABA — never `?fields=phone_numbers` on the WABA node itself, which is what produced the
+ *        earlier "(#100) Tried accessing nonexisting field (phone_numbers)" error: that error is
+ *        Graph API's generic response whenever an edge is requested as a field on a node that
+ *        doesn't expose it that way, which reliably happens when the ID being queried isn't
+ *        actually resolving as a real WABA under this token's access).
  * POST — { phoneNumberId, pin } — calls Meta's official phone-number registration endpoint
  *        (POST /<PHONE_NUMBER_ID>/register) once, does not retry, and returns Meta's own
  *        HTTP status / error.code / error.error_subcode / error.type / fbtrace_id / message
@@ -29,55 +44,82 @@ function digitsOnly(value: string): string {
   return value.replace(/\D/g, "");
 }
 
+async function fetchJson(url: string, accessToken: string) {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const body: any = await res.json().catch(() => null);
+  return { status: res.status, body };
+}
+
 export async function GET(request: Request) {
   try {
     const { user } = await resolveRequestIdentity();
     await authorize(prisma, { actorId: user.id, permission: "system:super_admin" });
 
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-    const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+    const configuredWabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
     const configuredPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    if (!accessToken || !wabaId) {
-      return NextResponse.json({ error: "WHATSAPP_ACCESS_TOKEN / WHATSAPP_BUSINESS_ACCOUNT_ID not configured in this environment" }, { status: 503 });
+    if (!accessToken) {
+      return NextResponse.json({ error: "WHATSAPP_ACCESS_TOKEN not configured in this environment" }, { status: 503 });
     }
 
-    const lookupDisplayNumber = new URL(request.url).searchParams.get("displayNumber");
+    const searchParams = new URL(request.url).searchParams;
+    const lookupDisplayNumber = searchParams.get("displayNumber");
+    const explicitWabaId = searchParams.get("wabaId");
     const matchLast10 = lookupDisplayNumber ? digitsOnly(lookupDisplayNumber).slice(-10) : null;
 
-    const [phonesRes, tokenDebugRes] = await Promise.all([
-      fetch(
-        `${GRAPH_BASE}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,platform_type,status,is_official_business_account`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      ),
-      fetch(`${GRAPH_BASE}/debug_token?input_token=${accessToken}`, { headers: { Authorization: `Bearer ${accessToken}` } }),
-    ]);
+    const tokenDebug = await fetchJson(`${GRAPH_BASE}/debug_token?input_token=${accessToken}`, accessToken);
+    const granularScopes: Array<{ scope?: string; target_ids?: string[] }> = Array.isArray(tokenDebug.body?.data?.granular_scopes)
+      ? tokenDebug.body.data.granular_scopes
+      : [];
+    const scopeTargetIds = granularScopes.flatMap((entry) => (Array.isArray(entry.target_ids) ? entry.target_ids : []));
 
-    const phonesBody: any = await phonesRes.json().catch(() => null);
-    const tokenDebugBody: any = await tokenDebugRes.json().catch(() => null);
-    const phones: any[] = Array.isArray(phonesBody?.data) ? phonesBody.data : [];
+    const candidateWabaIds = Array.from(new Set([configuredWabaId, explicitWabaId, ...scopeTargetIds].filter((id): id is string => Boolean(id))));
+
+    const wabaResults = await Promise.all(
+      candidateWabaIds.map(async (candidateId) => {
+        const [node, phoneNumbers] = await Promise.all([
+          fetchJson(`${GRAPH_BASE}/${candidateId}?fields=id,name,timezone_id,message_template_namespace`, accessToken),
+          fetchJson(
+            `${GRAPH_BASE}/${candidateId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,platform_type,status,is_official_business_account`,
+            accessToken,
+          ),
+        ]);
+        const phones: any[] = Array.isArray(phoneNumbers.body?.data) ? phoneNumbers.body.data : [];
+        return {
+          candidateWabaId: candidateId,
+          isCurrentlyConfiguredInVercel: candidateId === configuredWabaId,
+          discoveredVia: candidateId === configuredWabaId ? "env" : candidateId === explicitWabaId ? "query_param" : "token_granular_scopes",
+          nodeFetch: { status: node.status, resolvesAsWaba: node.status === 200 && Boolean(node.body?.id), body: node.status === 200 ? node.body : node.body?.error ?? node.body },
+          phoneNumbersFetch: {
+            status: phoneNumbers.status,
+            error: phoneNumbers.body?.error ?? null,
+            phoneNumbers: phones.map((phone) => ({
+              ...phone,
+              isCurrentlyConfiguredInVercel: phone.id === configuredPhoneNumberId,
+              matchesRequestedDisplayNumber: matchLast10 ? digitsOnly(phone.display_phone_number ?? "").slice(-10) === matchLast10 : undefined,
+            })),
+          },
+        };
+      }),
+    );
 
     return NextResponse.json({
-      httpStatusPhoneNumbersCall: phonesRes.status,
-      httpStatusTokenDebugCall: tokenDebugRes.status,
-      wabaId,
+      configuredWabaIdInVercel: configuredWabaId ?? null,
       configuredPhoneNumberIdInVercel: configuredPhoneNumberId ?? null,
-      phoneNumbers: phones.map((phone) => ({
-        ...phone,
-        isCurrentlyConfiguredInVercel: phone.id === configuredPhoneNumberId,
-        matchesRequestedDisplayNumber: matchLast10 ? digitsOnly(phone.display_phone_number ?? "").slice(-10) === matchLast10 : undefined,
-      })),
-      tokenDebug: tokenDebugBody?.data
+      candidateWabaIdsChecked: candidateWabaIds,
+      wabaResults,
+      tokenDebug: tokenDebug.body?.data
         ? {
-            appId: tokenDebugBody.data.app_id,
-            application: tokenDebugBody.data.application,
-            isValid: tokenDebugBody.data.is_valid,
-            scopes: tokenDebugBody.data.scopes,
-            expiresAt: tokenDebugBody.data.expires_at,
-            type: tokenDebugBody.data.type,
+            appId: tokenDebug.body.data.app_id,
+            application: tokenDebug.body.data.application,
+            isValid: tokenDebug.body.data.is_valid,
+            type: tokenDebug.body.data.type,
+            scopes: tokenDebug.body.data.scopes,
+            granularScopes: tokenDebug.body.data.granular_scopes ?? null,
+            expiresAt: tokenDebug.body.data.expires_at,
           }
         : null,
-      phonesCallError: phonesBody?.error ?? null,
-      tokenDebugCallError: tokenDebugBody?.error ?? null,
+      tokenDebugCallError: tokenDebug.status !== 200 ? tokenDebug.body?.error ?? tokenDebug.body : null,
     });
   } catch (error) {
     return apiFailure(error, request);
