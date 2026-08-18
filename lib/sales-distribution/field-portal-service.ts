@@ -7,7 +7,7 @@ import { timeOperation } from "@/lib/foundation/logger";
 import { eligibleDelivered } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { recordGpsSample } from "./field-travel-service";
-import { queueRetailerCommunication, type RetailerCommEventType } from "./retailer-communication-service";
+import { queueRetailerCommunicationSafe, type RetailerCommEventType } from "./retailer-communication-service";
 
 const numberFor = (prefix: string, key: string) =>
   `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
@@ -154,19 +154,8 @@ export async function executiveCheckOut(
         ? "FOLLOW_UP"
         : "PRODUCTIVE";
   // The visit update and the GPS sample write are independent (recordGpsSample only needs
-  // visit.workSessionId, already known) — one round trip instead of two. Retailer WhatsApp
-  // notification is fire-and-forget (never awaited inline): it was already documented as "never
-  // allowed to fail checkout" via try/catch, which only protected against errors, not latency —
-  // this closes the same gap for speed, since a governed communication/outbox concern was never
-  // something the field user needed to wait on. The visit is already durably updated (this same
-  // Promise.all) before the notification even starts, so there is no consistency risk.
-  const commEventType: RetailerCommEventType | null =
-    input.outcome === "ORDER_BOOKED" ? "ORDER_RECORDED" : input.outcome === "NO_ORDER" ? "REFUSED_OR_UNABLE" : input.outcome === "FOLLOW_UP" ? "FOLLOW_UP" : null;
-  if (commEventType && visit.retailerId) {
-    void queueRetailerCommunication(db, { eventType: commEventType, retailerId: visit.retailerId, visitId: visit.id, actorId }).catch((error) => {
-      console.error("retailer_communication.queue_failed", error);
-    });
-  }
+  // visit.workSessionId, already known) — one round trip instead of two, and both are the
+  // actual durable-success boundary for this checkout.
   const [updated] = await Promise.all([
     db.seeraVisit.update({
       where: { id: visit.id },
@@ -189,6 +178,23 @@ export async function executiveCheckOut(
       trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
     }),
   ]);
+  // Retailer WhatsApp notification is queued strictly AFTER the visit is durably checked out
+  // (this is a fast local outbox write, not the Meta network call, which only ever happens
+  // later from the separate dispatch worker) — never before/concurrent with the commit above,
+  // so a checkout that ultimately fails can never have already queued a message for it, and a
+  // queuing hiccup (queueRetailerCommunicationSafe never throws) can never turn an already-
+  // successful checkout into a user-visible failure.
+  const commEventType: RetailerCommEventType | null =
+    input.outcome === "ORDER_BOOKED" ? "ORDER_RECORDED" : input.outcome === "NO_ORDER" ? "REFUSED_OR_UNABLE" : input.outcome === "FOLLOW_UP" ? "FOLLOW_UP" : null;
+  if (commEventType && visit.retailerId) {
+    // Belt-and-suspenders (same posture as the End Day P0 fix): queueRetailerCommunicationSafe
+    // itself never throws, but the checkout must survive even a defect in that guarantee.
+    try {
+      await queueRetailerCommunicationSafe(db, { eventType: commEventType, retailerId: visit.retailerId, visitId: visit.id, actorId });
+    } catch (error) {
+      console.error("retailer_communication.queue_failed", error);
+    }
+  }
   return updated;
 }
 

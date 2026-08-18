@@ -8,6 +8,7 @@ import { documentPdfFilename, renderIssuedDocumentPdf, type IssuedDocumentSnapsh
 import { taxSplit, type CommercialLineSnapshot } from "./document-lines";
 import { postJournalForCompanyDocument } from "@/lib/finance/sales-integration-service";
 import type { MessagingProvider } from "@/lib/messaging/types";
+import { normalizeIndianMobile } from "@/lib/messaging/phone";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -154,7 +155,11 @@ export async function sendDocumentViaWhatsApp(
 
   const mobile = await recipientMobile(db, input.recipientType, input.recipientId);
   if (!mobile) throw new FoundationError("RECIPIENT_MOBILE_UNAVAILABLE", "Recipient has no mobile number on file", 409);
-  const normalizedMobile = mobile.startsWith("+") ? mobile : `+91${mobile.replace(/\D/g, "")}`;
+  // Canonical `91XXXXXXXXXX` (no `+`) — see lib/messaging/phone.ts. A stored number that
+  // doesn't confidently normalize to a real Indian mobile is a governed failure, not a
+  // best-effort guess sent to Meta malformed.
+  const normalizedMobile = normalizeIndianMobile(mobile);
+  if (!normalizedMobile) throw new FoundationError("RECIPIENT_MOBILE_INVALID", "Recipient mobile number on file is not a valid Indian mobile number", 409);
 
   const provider = input.getProvider();
   const result = await provider.sendDocument(normalizedMobile, {

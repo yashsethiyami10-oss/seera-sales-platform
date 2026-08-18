@@ -54,6 +54,12 @@ enum OutboxStatus {
   PENDING
   PROCESSING
   PUBLISHED
+  // Provider-confirmed delivery states, driven by inbound WhatsApp status webhooks
+  // (app/api/webhooks/whatsapp/route.ts) — only ever reached FROM PUBLISHED, never fabricated
+  // client-side. PUBLISHED keeps its existing meaning ("provider accepted the send call") for
+  // every pre-existing caller; these are strictly later stages in the same message's lifecycle.
+  DELIVERED
+  READ
   FAILED
   DEAD_LETTER
 }
@@ -659,6 +665,21 @@ model OutboxEvent {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
+  // WhatsApp message audit trail (Founder WhatsApp integration audit). These stay null for
+  // every non-WhatsApp/legacy outbox row (channel-agnostic model, reused rather than
+  // duplicated per the Founder's explicit "do not create duplicate architecture" directive).
+  // `channel` distinguishes WhatsApp rows from any future channel sharing this same table.
+  channel           String?
+  // Governed template key (lib/messaging/whatsapp-templates.ts), e.g. "RETAILER_ORDER_PLACED" —
+  // NOT the raw Meta template name, so the mapping can be re-pointed without rewriting history.
+  templateKey       String?
+  // Meta's `messages[0].id` (wamid...) from a successful send — the join key inbound status
+  // webhooks use to find this row again. Unique because Meta assigns one id per send attempt.
+  providerMessageId String?   @unique
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+
   @@index([status, availableAt])
   @@index([aggregateType, aggregateId, createdAt])
   @@map("outbox_events")
@@ -734,6 +755,19 @@ model NotificationDelivery {
   @@unique([notificationId, channel, attempt])
   @@index([status, createdAt])
   @@map("notification_deliveries")
+}
+
+// Idempotency ledger for inbound WhatsApp webhook deliveries (Meta redelivers on any
+// slow/ambiguous response). `dedupeKey` is `${messageId}:${statusOrEventKind}` — the same
+// status re-delivered twice produces the same key and the second insert is rejected by the
+// unique constraint, which the webhook route treats as "already processed, no-op" rather
+// than reapplying a status transition or re-writing DELIVERED/READ timestamps.
+model WhatsAppWebhookReceipt {
+  id         String   @id @default(cuid())
+  dedupeKey  String   @unique
+  receivedAt DateTime @default(now())
+
+  @@map("whatsapp_webhook_receipts")
 }
 
 model SeeraAutomationRule {

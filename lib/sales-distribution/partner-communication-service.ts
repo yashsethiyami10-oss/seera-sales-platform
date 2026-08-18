@@ -1,0 +1,108 @@
+import type { Prisma, PrismaClient } from "@prisma/client";
+import type { MessagingProvider } from "@/lib/messaging/types";
+import { normalizeIndianMobile } from "@/lib/messaging/phone";
+import { templateFor, sanitizeTemplateParam, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
+import { dispatchWhatsAppOutbox, type WhatsAppOutboxPayload } from "@/lib/messaging/outbox-dispatch";
+
+// Distributor / Super Stockist visit-completion WhatsApp trigger (Founder WhatsApp integration
+// audit, requirements 3-4). Mirrors lib/sales-distribution/retailer-communication-service.ts —
+// same OutboxEvent-based, non-blocking, governed-template architecture — but keyed off
+// aggregateType "SeeraPartner" so the two never collide and a partner-visit event can never be
+// misread as a retailer event (or vice versa) by the shared dispatcher.
+//
+// Only wired from lib/sales-distribution/manager-service.ts's managerPartnerCheckOut, the one
+// place in this codebase a Distributor/S.S. visit is actually completed today (see that file's
+// own comments — there is currently no separate Executive-facing partner-visit flow to wire).
+
+export const PARTNER_COMM_EVENT_TYPES = ["DISTRIBUTOR_VISIT_COMPLETED", "SUPER_STOCKIST_VISIT_COMPLETED"] as const;
+export type PartnerCommEventType = (typeof PARTNER_COMM_EVENT_TYPES)[number];
+
+export async function queuePartnerVisitCommunication(
+  db: PrismaClient,
+  input: { partnerId: string; partnerType: "DISTRIBUTOR" | "SUPER_STOCKIST"; visitId: string; actorId: string },
+): Promise<{ queued: boolean; reason?: string; outboxEventId?: string }> {
+  const partner = await db.seeraPartner.findUnique({ where: { id: input.partnerId } });
+  if (!partner) return { queued: false, reason: "PARTNER_NOT_FOUND" };
+
+  const eventType: PartnerCommEventType = input.partnerType === "DISTRIBUTOR" ? "DISTRIBUTOR_VISIT_COMPLETED" : "SUPER_STOCKIST_VISIT_COMPLETED";
+  const templateKey = eventType as WhatsAppTemplateKey; // registry keys intentionally match these event type names 1:1
+  const template = templateFor(templateKey);
+
+  // Business-contact number on the partner record (primaryContact.mobile), never the login
+  // mobile of whichever individual S.S./Distributor user happens to be signed in — per the
+  // Founder directive not to conflate the two unless the data model defines that as
+  // authoritative, which SeeraPartner.primaryContact does (it's the governed party-level
+  // contact, independent of any one user's own login credentials).
+  const contact = partner.primaryContact as { mobile?: string } | null;
+  const firmName = sanitizeTemplateParam(partner.tradeName ?? partner.legalName, input.partnerType === "DISTRIBUTOR" ? "Distributor" : "Super Stockist");
+  const mobile = normalizeIndianMobile(contact?.mobile);
+
+  if (!mobile) {
+    const event = await db.outboxEvent.create({
+      data: {
+        eventType,
+        aggregateType: "SeeraPartner",
+        aggregateId: input.partnerId,
+        payload: { partnerId: input.partnerId, visitId: input.visitId, reason: "MOBILE_UNAVAILABLE" },
+        status: "FAILED",
+        lastErrorCode: "MOBILE_UNAVAILABLE",
+        channel: "WHATSAPP",
+        templateKey,
+      },
+    });
+    return { queued: false, reason: "MOBILE_UNAVAILABLE", outboxEventId: event.id };
+  }
+
+  const rep = await db.user.findUnique({ where: { id: input.actorId }, select: { name: true } });
+  const repName = sanitizeTemplateParam(rep?.name, "Seera representative");
+  const visitDate = sanitizeTemplateParam(new Date().toLocaleDateString("en-IN"));
+
+  const payload: WhatsAppOutboxPayload = { mobile, templateName: template.metaTemplateName, templateParams: [firmName, repName, visitDate], templateKey };
+  const event = await db.outboxEvent.create({
+    data: {
+      eventType,
+      aggregateType: "SeeraPartner",
+      aggregateId: input.partnerId,
+      payload: payload as unknown as Prisma.InputJsonValue,
+      status: "PENDING",
+      channel: "WHATSAPP",
+      templateKey,
+    },
+  });
+  return { queued: true, outboxEventId: event.id };
+}
+
+/** Never-throws wrapper — see queueRetailerCommunicationSafe's header comment for why this
+ *  exists: a queuing hiccup must never fail an already-committed visit check-out. */
+export async function queuePartnerVisitCommunicationSafe(
+  db: PrismaClient,
+  input: Parameters<typeof queuePartnerVisitCommunication>[1],
+): Promise<{ queued: boolean; reason?: string; outboxEventId?: string }> {
+  try {
+    return await queuePartnerVisitCommunication(db, input);
+  } catch (error) {
+    console.error("partner_communication.queue_failed", error);
+    return { queued: false, reason: "QUEUE_ERROR" };
+  }
+}
+
+export async function listPartnerCommunications(db: PrismaClient, input: { partnerId?: string; skip?: number; take?: number } = {}) {
+  return db.outboxEvent.findMany({
+    where: {
+      aggregateType: "SeeraPartner",
+      eventType: { in: PARTNER_COMM_EVENT_TYPES as unknown as string[] },
+      ...(input.partnerId ? { aggregateId: input.partnerId } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    skip: input.skip ?? 0,
+    take: input.take ?? 50,
+  });
+}
+
+export async function dispatchPartnerCommunications(
+  db: PrismaClient,
+  getMessagingProvider: () => Pick<MessagingProvider, "sendWhatsApp">,
+  input: { limit?: number } = {},
+) {
+  return dispatchWhatsAppOutbox(db, getMessagingProvider, { aggregateType: "SeeraPartner", limit: input.limit });
+}

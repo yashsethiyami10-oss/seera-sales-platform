@@ -9,6 +9,7 @@ import { inventoryPosition } from "./business-rules";
 import { placeRetailerOrder } from "./workflow-service";
 import { recordGpsSample } from "./field-travel-service";
 import { wholesaleOrderUnitToCanonicalPieces } from "./company-order-catalog";
+import { queuePartnerVisitCommunicationSafe } from "./partner-communication-service";
 
 async function managerTeamEmployeeIds(db: PrismaClient, managerId: string) {
   const assignments = await db.seeraAssignment.findMany({
@@ -455,6 +456,24 @@ export async function managerPartnerCheckOut(
     source: "CHECK_OUT",
     trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
   });
+  // Distributor/S.S. visit-completed WhatsApp trigger (Founder WhatsApp integration audit,
+  // requirements 3-4) — queued strictly AFTER the visit is durably checked out above, never
+  // before/inside it, and via the never-throws Safe wrapper so a queuing hiccup can never turn
+  // an already-successful visit checkout into a user-visible failure. Only for a real Partner
+  // (visit.partnerId) — a prospect-only visit (visit.prospectId, no partnerId yet) has no
+  // WhatsApp-reachable business contact to notify.
+  if (visit.partnerId && (visit.partnerType === "DISTRIBUTOR" || visit.partnerType === "SUPER_STOCKIST")) {
+    try {
+      await queuePartnerVisitCommunicationSafe(db, {
+        partnerId: visit.partnerId,
+        partnerType: visit.partnerType,
+        visitId: visit.id,
+        actorId: managerId,
+      });
+    } catch (error) {
+      console.error("partner_communication.queue_failed", error);
+    }
+  }
   return updated;
 }
 

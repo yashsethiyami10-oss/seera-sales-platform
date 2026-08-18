@@ -1,19 +1,22 @@
-import type { PrismaClient } from "@prisma/client";
-import { recordAudit } from "@/lib/foundation/audit-service";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { MessagingProvider } from "@/lib/messaging/types";
+import { normalizeIndianMobile } from "@/lib/messaging/phone";
+import { templateFor, sanitizeTemplateParam, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
+import { dispatchWhatsAppOutbox, reclaimStaleOutboxLocks as reclaimStaleOutboxLocksGeneric, type WhatsAppOutboxPayload } from "@/lib/messaging/outbox-dispatch";
 
 // Provider-agnostic retailer communication event/outbox foundation (Founder-UAT closure pass,
-// section 10-14). Reuses the existing `OutboxEvent` model (prisma/schema.prisma) — a generic,
-// already-approved outbox pattern that was defined but never wired to a producer anywhere in this
-// codebase — rather than inventing a second, parallel event table.
+// section 10-14; re-governed for the Founder WhatsApp integration audit). Reuses the existing
+// `OutboxEvent` model (prisma/schema.prisma) — a generic, already-approved outbox pattern —
+// rather than inventing a second, parallel event table.
 //
-// Pre-launch Pass 0B: `dispatchRetailerCommunications` below is now wired to a real trigger —
-// app/api/outbox/dispatch/route.ts, an internal-secret-gated POST route any external scheduler
-// (cron, systemd timer, Vercel Cron, etc.) can call. It still never fakes delivery: with no
-// MESSAGING_PROVIDER credentials configured (the current state of every environment in this repo),
-// the real provider classes in lib/messaging/providers/* throw on their first network call (missing
-// API key), which this function catches and records as a real FAILED/DEAD_LETTER outcome — an
-// honest "queued, not yet deliverable" state, never a fabricated PUBLISHED/SENT status.
+// Every queued row now carries a real, governed Meta template name + ordered/sanitized
+// parameters (lib/messaging/whatsapp-templates.ts), not a free-text "preview" sent as a
+// single template parameter — WhatsApp template messages only ever carry pre-approved body
+// copy with numbered placeholders; a template literally named after the internal eventType
+// string was never something Meta would accept. Actual delivery still only ever happens from
+// the separate outbox worker (lib/messaging/outbox-dispatch.ts, triggered via
+// app/api/outbox/dispatch/route.ts) — queuing here is always a fast, local, non-blocking DB
+// write, never a network call to Meta.
 
 export const RETAILER_COMM_EVENT_TYPES = [
   "ORDER_RECORDED",
@@ -27,29 +30,20 @@ export const RETAILER_COMM_EVENT_TYPES = [
 ] as const;
 export type RetailerCommEventType = (typeof RETAILER_COMM_EVENT_TYPES)[number];
 
-function renderTemplate(
-  eventType: RetailerCommEventType,
-  language: "EN" | "HI",
-  vars: { retailerName: string; orderNumber?: string; orderValue?: number; paymentType?: string; followUpAt?: Date | null },
-): string {
-  const hi = language === "HI";
-  switch (eventType) {
-    case "ORDER_RECORDED":
-      return hi
-        ? `धन्यवाद! आपका ऑर्डर सफलतापूर्वक दर्ज हो गया है।\nऑर्डर: ${vars.orderNumber}\nमूल्य: ₹${vars.orderValue?.toLocaleString("en-IN")}\nभुगतान: ${vars.paymentType}\n— Seera | सर्व शक्तिमान`
-        : `Thank you for your order with Seera. Your order has been recorded successfully.\n\nOrder: ${vars.orderNumber}\nOrder Value: ₹${vars.orderValue?.toLocaleString("en-IN")}\nPayment Type: ${vars.paymentType}\n\nOur distribution team will process your order.\n\n— Seera | Sarv Shaktiman`;
-    case "REFUSED_OR_UNABLE":
-      return hi
-        ? `आपके समय के लिए धन्यवाद। हमारे Seera प्रतिनिधि ने आपकी दुकान का दौरा किया। हम आपकी सेवा करने के लिए तत्पर हैं।`
-        : `Thank you for your time today.\nOur Seera representative visited your outlet.\nWe look forward to serving you.`;
-    case "FOLLOW_UP":
-      return hi
-        ? `${vars.retailerName}, हम ${vars.followUpAt ? vars.followUpAt.toLocaleDateString("hi-IN") : "जल्द ही"} फिर से संपर्क करेंगे।`
-        : `Hi ${vars.retailerName}, we'll follow up with you ${vars.followUpAt ? `on ${vars.followUpAt.toLocaleDateString("en-IN")}` : "soon"}.`;
-    default:
-      return "";
-  }
-}
+// Governed event -> template mapping. `null` means no approved/governed template exists yet
+// for that event — queueRetailerCommunication returns NO_GOVERNED_TEMPLATE rather than
+// inventing ad hoc copy, per the Founder directive ("do not hardcode business copy in the
+// checkout service if template mapping can be governed/configured").
+const TEMPLATE_KEY_BY_EVENT: Record<RetailerCommEventType, WhatsAppTemplateKey | null> = {
+  ORDER_RECORDED: "RETAILER_ORDER_PLACED",
+  ORDER_ACCEPTED: "RETAILER_ORDER_ACCEPTED",
+  ORDER_PARTIAL: "RETAILER_ORDER_PARTIAL",
+  OUT_FOR_DELIVERY: "RETAILER_OUT_FOR_DELIVERY",
+  DELIVERED: "RETAILER_ORDER_DELIVERED",
+  REFUSED_OR_UNABLE: "RETAILER_NO_ORDER",
+  FOLLOW_UP: "RETAILER_FOLLOW_UP",
+  PERIODIC_ENGAGEMENT: null,
+};
 
 export async function queueRetailerCommunication(
   db: PrismaClient,
@@ -57,57 +51,25 @@ export async function queueRetailerCommunication(
     eventType: RetailerCommEventType;
     retailerId: string;
     visitId?: string;
+    /** Order this communication is about, when the caller already has it in scope (order
+     *  accepted/partial/out-for-delivery/delivered) — avoids re-deriving "most recent order"
+     *  heuristics that can pick the wrong order once staff other than the original salesperson
+     *  can trigger these events. */
+    orderId?: string;
     actorId: string;
     language?: "EN" | "HI";
   },
 ): Promise<{ queued: boolean; reason?: string; outboxEventId?: string }> {
   const retailer = await db.seeraRetailer.findUnique({ where: { id: input.retailerId } });
   if (!retailer) return { queued: false, reason: "RETAILER_NOT_FOUND" };
-  const language = input.language ?? "EN";
-  const mobile = retailer.mobile;
 
-  let orderNumber: string | undefined, orderValue: number | undefined, paymentType: string | undefined, followUpAt: Date | null = null;
-  if (input.eventType === "ORDER_RECORDED") {
-    const order = await db.seeraSalesOrder.findFirst({
-      where: { retailerId: input.retailerId, salespersonId: input.actorId },
-      orderBy: { createdAt: "desc" },
-    });
-    orderNumber = order?.orderNumber;
-    orderValue = order ? Number(order.total) : undefined;
-    paymentType = order?.commercialPaymentType ?? undefined;
-  }
-  if (input.eventType === "FOLLOW_UP" && input.visitId) {
-    const visit = await db.seeraVisit.findUnique({ where: { id: input.visitId }, select: { followUpAt: true } });
-    followUpAt = visit?.followUpAt ?? null;
-  }
+  const templateKey = TEMPLATE_KEY_BY_EVENT[input.eventType];
+  if (!templateKey) return { queued: false, reason: "NO_GOVERNED_TEMPLATE" };
+  const template = templateFor(templateKey);
 
-  const preview = renderTemplate(input.eventType, language, {
-    retailerName: retailer.businessName,
-    orderNumber,
-    orderValue,
-    paymentType,
-    followUpAt,
-  });
-
-  if (!mobile) {
-    // Checkout must still succeed with no mobile on file — this row exists purely as an honest,
-    // auditable record of *why* nothing was queued, never a silent drop.
-    const event = await db.outboxEvent.create({
-      data: {
-        eventType: input.eventType,
-        aggregateType: "SeeraRetailer",
-        aggregateId: input.retailerId,
-        payload: { retailerId: input.retailerId, visitId: input.visitId ?? null, language, templatePreview: preview },
-        status: "FAILED",
-        lastErrorCode: "MOBILE_UNAVAILABLE",
-      },
-    });
-    return { queued: false, reason: "MOBILE_UNAVAILABLE", outboxEventId: event.id };
-  }
-
-  // Non-spammy default for the low-signal "no order" outcome (REFUSED_OR_UNABLE here doubles as
-  // the visit-completed/no-order courtesy message): at most one per retailer per calendar day,
-  // rather than a per-policy engine this pass has no Founder-approved rules to build against yet.
+  // Non-spammy default for the low-signal "no order" outcome: at most one per retailer per
+  // calendar day, rather than a per-policy engine this pass has no Founder-approved rules to
+  // build against yet. Checked before any DB write so a duplicate never even creates a row.
   if (input.eventType === "REFUSED_OR_UNABLE") {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
@@ -117,16 +79,115 @@ export async function queueRetailerCommunication(
     if (already) return { queued: false, reason: "ALREADY_SENT_TODAY" };
   }
 
+  // WhatsApp-specific contact number takes priority over the general mobile field when set
+  // (SeeraRetailer.whatsapp) — falls back to the general mobile. Checkout must still succeed
+  // with no usable number on file; this row exists purely as an honest, auditable record of
+  // *why* nothing was queued, never a silent drop.
+  const mobile = normalizeIndianMobile(retailer.whatsapp || retailer.mobile);
+  if (!mobile) {
+    const event = await db.outboxEvent.create({
+      data: {
+        eventType: input.eventType,
+        aggregateType: "SeeraRetailer",
+        aggregateId: input.retailerId,
+        payload: { retailerId: input.retailerId, visitId: input.visitId ?? null, reason: "MOBILE_UNAVAILABLE" },
+        status: "FAILED",
+        lastErrorCode: "MOBILE_UNAVAILABLE",
+        channel: "WHATSAPP",
+        templateKey,
+      },
+    });
+    return { queued: false, reason: "MOBILE_UNAVAILABLE", outboxEventId: event.id };
+  }
+
+  const outletName = sanitizeTemplateParam(retailer.businessName, "Retailer");
+  const orderForEvent =
+    input.orderId
+      ? await db.seeraSalesOrder.findUnique({ where: { id: input.orderId } })
+      : input.eventType === "ORDER_RECORDED"
+        ? await db.seeraSalesOrder.findFirst({ where: { retailerId: input.retailerId, salespersonId: input.actorId }, orderBy: { createdAt: "desc" } })
+        : null;
+
+  let templateParams: string[];
+  switch (templateKey) {
+    case "RETAILER_ORDER_PLACED":
+      templateParams = [
+        outletName,
+        sanitizeTemplateParam(orderForEvent?.orderNumber),
+        sanitizeTemplateParam(orderForEvent ? `Rs ${Number(orderForEvent.total).toLocaleString("en-IN")}` : undefined),
+      ];
+      break;
+    case "RETAILER_ORDER_ACCEPTED":
+    case "RETAILER_ORDER_PARTIAL":
+    case "RETAILER_OUT_FOR_DELIVERY":
+      templateParams = [outletName, sanitizeTemplateParam(orderForEvent?.orderNumber)];
+      break;
+    case "RETAILER_ORDER_DELIVERED": {
+      let distributorName: string | undefined;
+      if (orderForEvent?.sellerPartnerId) {
+        const seller = await db.seeraPartner.findUnique({ where: { id: orderForEvent.sellerPartnerId }, select: { tradeName: true, legalName: true } });
+        distributorName = seller?.tradeName ?? seller?.legalName;
+      }
+      templateParams = [
+        outletName,
+        sanitizeTemplateParam(orderForEvent?.orderNumber),
+        sanitizeTemplateParam(distributorName),
+        sanitizeTemplateParam(new Date().toLocaleDateString("en-IN")),
+      ];
+      break;
+    }
+    case "RETAILER_NO_ORDER":
+      templateParams = [outletName];
+      break;
+    case "RETAILER_FOLLOW_UP": {
+      const followUpAt = input.visitId ? (await db.seeraVisit.findUnique({ where: { id: input.visitId }, select: { followUpAt: true } }))?.followUpAt ?? null : null;
+      // Governed fallback (Founder directive): never submit a follow-up template with a blank
+      // date parameter — if no follow-up date is on record, don't queue a malformed send.
+      if (!followUpAt) return { queued: false, reason: "FOLLOWUP_DATE_MISSING" };
+      templateParams = [outletName, sanitizeTemplateParam(followUpAt.toLocaleDateString("en-IN"))];
+      break;
+    }
+    default:
+      templateParams = [outletName];
+  }
+
+  const payload: WhatsAppOutboxPayload = {
+    mobile,
+    templateName: template.metaTemplateName,
+    templateParams,
+    templateKey,
+  };
   const event = await db.outboxEvent.create({
     data: {
       eventType: input.eventType,
       aggregateType: "SeeraRetailer",
       aggregateId: input.retailerId,
-      payload: { retailerId: input.retailerId, visitId: input.visitId ?? null, mobile, language, templatePreview: preview },
+      payload: payload as unknown as Prisma.InputJsonValue,
       status: "PENDING",
+      channel: "WHATSAPP",
+      templateKey,
     },
   });
   return { queued: true, outboxEventId: event.id };
+}
+
+/**
+ * Never-throws wrapper — the only call site checkout/order/delivery flows should ever use.
+ * Queuing is a fast local DB write (not the Meta network call, which only happens later from
+ * the separate dispatch worker), but per the Founder directive "WhatsApp failure must NEVER
+ * cause [the] transaction to fail," even a DB hiccup writing the outbox row itself must not
+ * surface as a failure of the already-committed business action that triggered it.
+ */
+export async function queueRetailerCommunicationSafe(
+  db: PrismaClient,
+  input: Parameters<typeof queueRetailerCommunication>[1],
+): Promise<{ queued: boolean; reason?: string; outboxEventId?: string }> {
+  try {
+    return await queueRetailerCommunication(db, input);
+  } catch (error) {
+    console.error("retailer_communication.queue_failed", error);
+    return { queued: false, reason: "QUEUE_ERROR" };
+  }
 }
 
 export async function listRetailerCommunications(db: PrismaClient, input: { retailerId?: string; skip?: number; take?: number } = {}) {
@@ -142,33 +203,11 @@ export async function listRetailerCommunications(db: PrismaClient, input: { reta
   });
 }
 
-// State model: PENDING -> PROCESSING -> PUBLISHED, or on failure PROCESSING -> FAILED, retried up
-// to MAX_ATTEMPTS with exponential backoff (via availableAt), then FAILED -> DEAD_LETTER once
-// exhausted (terminal, needs manual/operator attention). A worker that dies mid-send leaves a row
-// in PROCESSING — reclaimStaleLocks() below returns those to PENDING after STALE_LOCK_MINUTES so
-// they are never permanently stuck, without touching a row a still-running invocation genuinely
-// holds. Every row transition here is a guarded `updateMany` keyed on the state the row was read
-// in, so two overlapping dispatch runs (a retried trigger request, two overlapping cron firings)
-// can race for the same row and only one of them will ever win the claim — the other observes
-// `count !== 1` and skips it as SKIPPED_CONTENDED rather than double-sending.
-const MAX_ATTEMPTS = 5;
-const STALE_LOCK_MINUTES = 5;
-const backoffMinutes = (attempts: number) => Math.min(60, 2 ** attempts);
-
+// Retained for the pre-existing smoke scripts (scripts/seera/smoke-pass0b-outbox-worker.ts)
+// that import these two names directly from this module — both now just delegate to the
+// shared generic implementation in lib/messaging/outbox-dispatch.ts.
 export async function reclaimStaleOutboxLocks(db: PrismaClient, aggregateType = "SeeraRetailer") {
-  const staleCutoff = new Date(Date.now() - STALE_LOCK_MINUTES * 60_000);
-  const reclaimed = await db.outboxEvent.updateMany({
-    where: { aggregateType, status: "PROCESSING", lockedAt: { lt: staleCutoff } },
-    data: { status: "PENDING", lockedAt: null },
-  });
-  if (reclaimed.count > 0)
-    await recordAudit(db, {
-      actorId: null,
-      action: "outbox.stale_lock_reclaimed",
-      entityType: "OutboxEvent",
-      details: { aggregateType, count: reclaimed.count, staleCutoff: staleCutoff.toISOString() },
-    });
-  return reclaimed.count;
+  return reclaimStaleOutboxLocksGeneric(db, aggregateType);
 }
 
 export async function dispatchRetailerCommunications(
@@ -176,60 +215,5 @@ export async function dispatchRetailerCommunications(
   getMessagingProvider: () => Pick<MessagingProvider, "sendWhatsApp">,
   input: { limit?: number } = {},
 ) {
-  const now = new Date();
-  await reclaimStaleOutboxLocks(db, "SeeraRetailer");
-
-  // Eligible for a send attempt: never-tried PENDING rows, or FAILED rows still under the retry
-  // cap whose backoff window has elapsed. DEAD_LETTER and exhausted rows are never picked up again.
-  const candidates = await db.outboxEvent.findMany({
-    where: {
-      aggregateType: "SeeraRetailer",
-      status: { in: ["PENDING", "FAILED"] },
-      attempts: { lt: MAX_ATTEMPTS },
-      availableAt: { lte: now },
-    },
-    orderBy: { availableAt: "asc" },
-    take: input.limit ?? 20,
-  });
-
-  const provider = getMessagingProvider();
-  const results: Array<{ id: string; status: "PUBLISHED" | "FAILED" | "DEAD_LETTER" | "SKIPPED_CONTENDED" }> = [];
-
-  for (const event of candidates) {
-    const claim = await db.outboxEvent.updateMany({
-      where: { id: event.id, status: event.status },
-      data: { status: "PROCESSING", lockedAt: now },
-    });
-    if (claim.count !== 1) {
-      results.push({ id: event.id, status: "SKIPPED_CONTENDED" });
-      continue;
-    }
-    try {
-      const payload = event.payload as { mobile?: string; templatePreview?: string };
-      if (!payload.mobile) throw new Error("MOBILE_UNAVAILABLE");
-      // No Founder-approved WhatsApp template registry exists yet (a real provider account with
-      // pre-approved templates is a separate, not-yet-made decision) — eventType stands in as the
-      // template identifier and the rendered preview text as its sole parameter. This is a real,
-      // documented limitation, not a fabricated integration detail; PUBLISHED is only ever set
-      // after the provider call actually resolves without throwing — never assumed.
-      await provider.sendWhatsApp(payload.mobile, event.eventType, [payload.templatePreview ?? ""]);
-      await db.outboxEvent.update({ where: { id: event.id }, data: { status: "PUBLISHED", publishedAt: new Date() } });
-      results.push({ id: event.id, status: "PUBLISHED" });
-    } catch (error) {
-      const attempts = event.attempts + 1;
-      const errorCode = error instanceof Error ? error.message : "SEND_FAILED";
-      if (attempts >= MAX_ATTEMPTS) {
-        await db.outboxEvent.update({ where: { id: event.id }, data: { status: "DEAD_LETTER", attempts, lastErrorCode: errorCode } });
-        await recordAudit(db, { actorId: null, action: "outbox.dead_lettered", entityType: "OutboxEvent", entityId: event.id, outcome: "FAILURE", reason: errorCode, details: { attempts } });
-        results.push({ id: event.id, status: "DEAD_LETTER" });
-      } else {
-        await db.outboxEvent.update({
-          where: { id: event.id },
-          data: { status: "FAILED", attempts, lastErrorCode: errorCode, availableAt: new Date(now.getTime() + backoffMinutes(attempts) * 60_000) },
-        });
-        results.push({ id: event.id, status: "FAILED" });
-      }
-    }
-  }
-  return results;
+  return dispatchWhatsAppOutbox(db, getMessagingProvider, { aggregateType: "SeeraRetailer", limit: input.limit });
 }

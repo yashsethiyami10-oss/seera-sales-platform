@@ -16,7 +16,7 @@ import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, cano
 import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors } from "./scope";
 import { deriveInclusiveTax } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
-import { queueRetailerCommunication } from "./retailer-communication-service";
+import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
 import { assertCompanyDispatchAvailable, postCompanyDispatchStockAndCogs } from "@/lib/manufacturing/company-stock-service";
 
 type OrderLineInput = { skuId: string; quantity: number; rate?: number };
@@ -909,12 +909,18 @@ export async function fulfilRetailerOrder(
   // AFTER commit (never inside the transaction) so a message is never queued for a decision that
   // didn't actually save. REJECT/HOLD have no governed retailer-facing template, so they're
   // deliberately not queued rather than inventing one.
-  if (updated.retailerId && (updated.status === "ACCEPTED" || updated.status === "PARTIAL_ACCEPTED"))
-    await queueRetailerCommunication(prisma, {
-      eventType: updated.status === "ACCEPTED" ? "ORDER_ACCEPTED" : "ORDER_PARTIAL",
-      retailerId: updated.retailerId,
-      actorId,
-    });
+  if (updated.retailerId && (updated.status === "ACCEPTED" || updated.status === "PARTIAL_ACCEPTED")) {
+    try {
+      await queueRetailerCommunicationSafe(prisma, {
+        eventType: updated.status === "ACCEPTED" ? "ORDER_ACCEPTED" : "ORDER_PARTIAL",
+        retailerId: updated.retailerId,
+        orderId: updated.id,
+        actorId,
+      });
+    } catch (error) {
+      console.error("retailer_communication.queue_failed", error);
+    }
+  }
   return updated;
 }
 
@@ -1528,7 +1534,7 @@ export async function dispatchAllocatedOrder(
           "Order is not ready for dispatch",
           403,
         );
-      const dispatchedRetailerOrder = { retailerId: order.retailerId, type: order.type };
+      const dispatchedRetailerOrder = { retailerId: order.retailerId, type: order.type, orderId: order.id };
       for (const line of order.lines) {
         const quantity =
           Number(line.allocatedQuantity) - Number(line.dispatchedQuantity);
@@ -1630,12 +1636,18 @@ export async function dispatchAllocatedOrder(
   // AND S.S.->Distributor dispatch, so without this guard a Distributor/S.S. replenishment dispatch
   // would incorrectly queue a retailer-facing message.
   const { delivery, dispatchedRetailerOrder } = result;
-  if (dispatchedRetailerOrder && dispatchedRetailerOrder.type === "RETAILER_ORDER" && dispatchedRetailerOrder.retailerId)
-    await queueRetailerCommunication(prisma, {
-      eventType: "OUT_FOR_DELIVERY",
-      retailerId: dispatchedRetailerOrder.retailerId,
-      actorId,
-    });
+  if (dispatchedRetailerOrder && dispatchedRetailerOrder.type === "RETAILER_ORDER" && dispatchedRetailerOrder.retailerId) {
+    try {
+      await queueRetailerCommunicationSafe(prisma, {
+        eventType: "OUT_FOR_DELIVERY",
+        retailerId: dispatchedRetailerOrder.retailerId,
+        orderId: dispatchedRetailerOrder.orderId,
+        actorId,
+      });
+    } catch (error) {
+      console.error("retailer_communication.queue_failed", error);
+    }
+  }
   return delivery;
 }
 

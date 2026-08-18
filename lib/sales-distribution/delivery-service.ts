@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
-import { queueRetailerCommunication } from "./retailer-communication-service";
+import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
 function numberFor(prefix: string, key: string) {
   return `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
 }
@@ -236,6 +236,7 @@ export async function completeDelivery(
         delivery: await tx.seeraDelivery.findUniqueOrThrow({ where: { id: delivery.id } }),
         orderType: delivery.order.type,
         retailerId: delivery.order.retailerId,
+        orderId: delivery.orderId,
       };
     },
     { isolationLevel: "Serializable", timeout: 15000 },
@@ -243,7 +244,14 @@ export async function completeDelivery(
   // Stage 7 fix: DELIVERED was defined in the retailer-communication event matrix but never
   // triggered anywhere — queued AFTER commit, only for real retailer orders (this same function
   // also completes Distributor/S.S. replenishment deliveries, which have no retailer to notify).
-  if (completedDelivery.orderType === "RETAILER_ORDER" && completedDelivery.retailerId && input.status === "DELIVERED")
-    await queueRetailerCommunication(db, { eventType: "DELIVERED", retailerId: completedDelivery.retailerId, actorId });
+  // Never before the status is durably DELIVERED (input.status is the durably-committed status
+  // read back from completedDelivery's own transaction, not merely the caller's request).
+  if (completedDelivery.orderType === "RETAILER_ORDER" && completedDelivery.retailerId && input.status === "DELIVERED") {
+    try {
+      await queueRetailerCommunicationSafe(db, { eventType: "DELIVERED", retailerId: completedDelivery.retailerId, orderId: completedDelivery.orderId, actorId });
+    } catch (error) {
+      console.error("retailer_communication.queue_failed", error);
+    }
+  }
   return completedDelivery.delivery;
 }
