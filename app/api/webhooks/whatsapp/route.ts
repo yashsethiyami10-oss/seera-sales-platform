@@ -96,10 +96,18 @@ export async function POST(request: Request) {
   }
 
   const configuredPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const configuredWabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
 
   try {
     const entries: any[] = Array.isArray(body?.entry) ? body.entry : [];
     for (const entry of entries) {
+      // Second, independent isolation check — the WABA id itself (Meta's top-level `entry.id`),
+      // not just the phone number under it. A payload for a different WhatsApp Business Account
+      // is dropped here even before looking at its phone_number_id.
+      if (configuredWabaId && entry?.id && entry.id !== configuredWabaId) {
+        console.warn("whatsapp_webhook.waba_id_mismatch", { received: entry.id });
+        continue;
+      }
       const changes: any[] = Array.isArray(entry?.changes) ? entry.changes : [];
       for (const change of changes) {
         const value = change?.value ?? {};
