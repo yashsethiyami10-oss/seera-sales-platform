@@ -31,10 +31,19 @@ import { authorize } from "@/lib/foundation/authorization-service";
  *        Graph API's generic response whenever an edge is requested as a field on a node that
  *        doesn't expose it that way, which reliably happens when the ID being queried isn't
  *        actually resolving as a real WABA under this token's access).
- * POST — { phoneNumberId, pin } — calls Meta's official phone-number registration endpoint
- *        (POST /<PHONE_NUMBER_ID>/register) once, does not retry, and returns Meta's own
- *        HTTP status / error.code / error.error_subcode / error.type / fbtrace_id / message
- *        verbatim so the real root cause can be read off directly instead of guessed.
+ *        GET also fetches every message template actually created under each candidate WABA
+ *        (`/<id>/message_templates`) — name, Meta template id, status, category, language,
+ *        and full `components` (HEADER/BODY/FOOTER/BUTTONS), so the governed registry in
+ *        lib/messaging/whatsapp-templates.ts can be reconciled against what Meta actually has,
+ *        rather than guessed at.
+ * POST — two actions, both admin-session-gated, neither retried automatically:
+ *        { phoneNumberId, pin } — Meta's official phone-number registration endpoint
+ *        (POST /<PHONE_NUMBER_ID>/register). Returns Meta's own HTTP status / error.code /
+ *        error.error_subcode / error.type / fbtrace_id / message verbatim.
+ *        { action: "test_send", to, templateName, languageCode, params } — sends exactly ONE
+ *        real template message to a Founder-specified recipient, for controlled template
+ *        validation before any production trigger uses it. The recipient is never invented or
+ *        defaulted by this code — a caller must supply `to` explicitly every time.
  */
 
 const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v19.0";
@@ -77,14 +86,16 @@ export async function GET(request: Request) {
 
     const wabaResults = await Promise.all(
       candidateWabaIds.map(async (candidateId) => {
-        const [node, phoneNumbers] = await Promise.all([
+        const [node, phoneNumbers, templates] = await Promise.all([
           fetchJson(`${GRAPH_BASE}/${candidateId}?fields=id,name,timezone_id,message_template_namespace`, accessToken),
           fetchJson(
             `${GRAPH_BASE}/${candidateId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,platform_type,status,is_official_business_account`,
             accessToken,
           ),
+          fetchJson(`${GRAPH_BASE}/${candidateId}/message_templates?fields=id,name,status,category,language,components&limit=200`, accessToken),
         ]);
         const phones: any[] = Array.isArray(phoneNumbers.body?.data) ? phoneNumbers.body.data : [];
+        const templateRows: any[] = Array.isArray(templates.body?.data) ? templates.body.data : [];
         return {
           candidateWabaId: candidateId,
           isCurrentlyConfiguredInVercel: candidateId === configuredWabaId,
@@ -98,6 +109,25 @@ export async function GET(request: Request) {
               isCurrentlyConfiguredInVercel: phone.id === configuredPhoneNumberId,
               matchesRequestedDisplayNumber: matchLast10 ? digitsOnly(phone.display_phone_number ?? "").slice(-10) === matchLast10 : undefined,
             })),
+          },
+          messageTemplatesFetch: {
+            status: templates.status,
+            error: templates.body?.error ?? null,
+            templates: templateRows.map((t) => {
+              const bodyComponent = Array.isArray(t.components) ? t.components.find((c: any) => c.type === "BODY") : undefined;
+              const bodyText: string | undefined = bodyComponent?.text;
+              const placeholderNumbers = bodyText ? Array.from(new Set((bodyText.match(/\{\{\s*(\d+)\s*\}\}/g) ?? []).map((m: string) => Number(m.replace(/\D/g, ""))))) : [];
+              return {
+                id: t.id,
+                name: t.name,
+                status: t.status,
+                category: t.category,
+                language: t.language,
+                components: t.components ?? [],
+                inferredBodyParamCount: placeholderNumbers.length,
+                inferredBodyParamNumbers: placeholderNumbers.sort((a: number, b: number) => a - b),
+              };
+            }),
           },
         };
       }),
@@ -140,6 +170,52 @@ export async function POST(request: Request) {
     if (!accessToken) return NextResponse.json({ error: "WHATSAPP_ACCESS_TOKEN not configured in this environment" }, { status: 503 });
 
     const body: any = await request.json().catch(() => ({}));
+
+    if (body?.action === "test_send") {
+      // One-off, Founder-controlled template validation send — never inside any automatic
+      // business trigger. `to` and `templateName`/`languageCode` must be supplied explicitly by
+      // the caller every time; this route never defaults or infers a recipient.
+      const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      if (!phoneNumberId) return NextResponse.json({ error: "WHATSAPP_PHONE_NUMBER_ID not configured in this environment" }, { status: 503 });
+      const to: string | undefined = body?.to;
+      const templateName: string | undefined = body?.templateName;
+      const languageCode: string | undefined = body?.languageCode;
+      const params: unknown[] = Array.isArray(body?.params) ? body.params : [];
+      if (!to || !templateName || !languageCode) {
+        return NextResponse.json({ error: "Body must be { action: 'test_send', to, templateName, languageCode, params?: string[] }" }, { status: 400 });
+      }
+      const recipient = to.replace(/\D/g, "");
+      if (!/^91[6-9]\d{9}$/.test(recipient)) {
+        return NextResponse.json({ error: "`to` must be a valid Indian mobile number (91XXXXXXXXXX)" }, { status: 400 });
+      }
+      const sendRes = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: recipient,
+          type: "template",
+          template: {
+            name: templateName,
+            language: { code: languageCode },
+            ...(params.length ? { components: [{ type: "body", parameters: params.map((p) => ({ type: "text", text: String(p) })) }] } : {}),
+          },
+        }),
+      });
+      const sendBody: any = await sendRes.json().catch(() => null);
+      return NextResponse.json({
+        httpStatus: sendRes.status,
+        success: sendRes.ok,
+        messageId: sendBody?.messages?.[0]?.id ?? null,
+        messageStatus: sendBody?.messages?.[0]?.message_status ?? null,
+        metaErrorCode: sendBody?.error?.code ?? null,
+        metaErrorSubcode: sendBody?.error?.error_subcode ?? null,
+        metaErrorType: sendBody?.error?.type ?? null,
+        metaErrorMessage: sendBody?.error?.message ?? null,
+        fbtraceId: sendBody?.error?.fbtrace_id ?? null,
+      });
+    }
+
     const phoneNumberId: string | undefined = body?.phoneNumberId;
     const pin: string | undefined = body?.pin;
     if (!phoneNumberId || typeof pin !== "string" || !/^\d{6}$/.test(pin)) {
