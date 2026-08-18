@@ -1,8 +1,26 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/database/client";
 import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
 import { authorize } from "@/lib/foundation/authorization-service";
+
+/**
+ * GET-only secondary auth path: a `x-seera-diag-token` header checked against
+ * SEERA_WHATSAPP_DIAG_TOKEN (Production-only, self-generated, temporary — added with explicit
+ * Founder approval purely to verify live env-var staleness without needing the Founder's own
+ * admin session for a read-only check). Deliberately not honored on POST /register, which stays
+ * admin-session-only since it's a real mutating call against Meta. Safe to delete (env var + this
+ * check) once the WABA/phone-ID staleness investigation is closed out.
+ */
+function hasValidDiagToken(request: Request): boolean {
+  const configured = process.env.SEERA_WHATSAPP_DIAG_TOKEN;
+  const provided = request.headers.get("x-seera-diag-token");
+  if (!configured || !provided) return false;
+  const a = Buffer.from(configured);
+  const b = Buffer.from(provided);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 /**
  * Founder-only, read-mostly Meta Graph API diagnostics for WhatsApp phone-number registration
@@ -52,8 +70,10 @@ async function fetchJson(url: string, accessToken: string) {
 
 export async function GET(request: Request) {
   try {
-    const { user } = await resolveRequestIdentity();
-    await authorize(prisma, { actorId: user.id, permission: "system:super_admin" });
+    if (!hasValidDiagToken(request)) {
+      const { user } = await resolveRequestIdentity();
+      await authorize(prisma, { actorId: user.id, permission: "system:super_admin" });
+    }
 
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
     const configuredWabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
@@ -104,6 +124,11 @@ export async function GET(request: Request) {
     );
 
     return NextResponse.json({
+      // Lets a caller confirm this response actually came from the deployment they think it did
+      // — Vercel binds env vars per-deployment at build time, so a stale-looking env value here is
+      // diagnostic of "wrong/old deployment serving traffic", not necessarily "env var never
+      // updated". Both auto-populated by Vercel at build/runtime, not app-managed.
+      servingDeployment: { gitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null, vercelEnv: process.env.VERCEL_ENV ?? null, deploymentUrl: process.env.VERCEL_URL ?? null },
       configuredWabaIdInVercel: configuredWabaId ?? null,
       configuredPhoneNumberIdInVercel: configuredPhoneNumberId ?? null,
       candidateWabaIdsChecked: candidateWabaIds,
