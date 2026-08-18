@@ -18,7 +18,16 @@ import { FoundationError } from "@/lib/foundation/errors";
 //   GET, header `Authorization: Bearer <CRON_SECRET>` — Vercel's own native Cron Jobs feature only
 //     issues GET requests and automatically attaches this exact header/scheme when `CRON_SECRET` is
 //     set as a project env var (https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs)
-//     — see vercel.json for the schedule this project declares.
+//     — see vercel.json for the schedule this project declares. CONFIRMED CONSTRAINT (this
+//     project's Vercel account is on the Hobby plan): Hobby accounts reject any cron expression
+//     that would fire more than once per day — a `*/5 * * * *` schedule here made the ENTIRE
+//     production deployment fail outright with "Hobby accounts are limited to daily cron jobs."
+//     vercel.json is deliberately once-daily ("0 3 * * *") to stay deployable. Once-a-day WhatsApp
+//     dispatch is too slow for real business use — until the account is upgraded to Pro (which
+//     allows arbitrarily frequent cron), use the POST entry point above from a real external
+//     scheduler (cron-job.org, a GitHub Actions scheduled workflow, systemd timer, etc.) hitting
+//     this route every few minutes with the x-outbox-worker-secret header — that path has no
+//     Vercel-plan-imposed frequency limit at all.
 // Both fail CLOSED: if the relevant secret isn't configured at all, every request on that entry
 // point is denied — the alternative (allow unauthenticated access when unconfigured) would let any
 // anonymous caller drain/manipulate the outbox, exactly what this gate exists to prevent.

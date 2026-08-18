@@ -2,7 +2,8 @@
   "crons": [
     {
       "path": "/api/outbox/dispatch",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 3 * * *"
     }
   ]
 }
+
