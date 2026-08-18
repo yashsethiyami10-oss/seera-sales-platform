@@ -31,6 +31,9 @@ export type WhatsAppOutboxPayload = {
   templateParams: string[];
   /** Governed template key, stored on the OutboxEvent row for audit/reporting. */
   templateKey: string;
+  /** This specific template's own Meta-approved language code (e.g. "hi") — carried through
+   *  from lib/messaging/whatsapp-templates.ts at queue time, never a global default. */
+  languageCode: string;
 };
 
 export async function reclaimStaleOutboxLocks(db: PrismaClient, aggregateType: string) {
@@ -96,10 +99,10 @@ export async function dispatchWhatsAppOutbox(
     }
     try {
       const payload = event.payload as Partial<WhatsAppOutboxPayload>;
-      if (!payload.mobile || !payload.templateName || !Array.isArray(payload.templateParams)) {
+      if (!payload.mobile || !payload.templateName || !Array.isArray(payload.templateParams) || !payload.languageCode) {
         throw Object.assign(new Error("OUTBOX_PAYLOAD_MALFORMED"), { status: 400 }); // classified PERMANENT below
       }
-      const result = await provider.sendWhatsApp(payload.mobile, payload.templateName, payload.templateParams);
+      const result = await provider.sendWhatsApp(payload.mobile, payload.templateName, payload.templateParams, payload.languageCode);
       await db.outboxEvent.update({
         where: { id: event.id },
         data: {

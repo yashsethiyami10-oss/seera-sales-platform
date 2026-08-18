@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { MessagingProvider } from "@/lib/messaging/types";
 import { normalizeIndianMobile } from "@/lib/messaging/phone";
-import { templateFor, sanitizeTemplateParam, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
+import { templateFor, sanitizeTemplateParam, isTemplateSendable, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
 import { dispatchWhatsAppOutbox, reclaimStaleOutboxLocks as reclaimStaleOutboxLocksGeneric, type WhatsAppOutboxPayload } from "@/lib/messaging/outbox-dispatch";
 
 // Provider-agnostic retailer communication event/outbox foundation (Founder-UAT closure pass,
@@ -67,6 +67,29 @@ export async function queueRetailerCommunication(
   if (!templateKey) return { queued: false, reason: "NO_GOVERNED_TEMPLATE" };
   const template = templateFor(templateKey);
 
+  // Pre-queue validation (Founder directive: "before queueing a WhatsApp template, approval
+  // status must allow sending"). A template this codebase doesn't yet have a live, Meta-
+  // APPROVED record for (e.g. the three order-status templates the Founder hasn't created in
+  // Meta yet) must never even reach PENDING — it would only ever fail identically at send
+  // time. Recorded as an honest, auditable FAILED row for the same reason MOBILE_UNAVAILABLE
+  // is below, never a silent drop.
+  if (!isTemplateSendable(template)) {
+    const event = await db.outboxEvent.create({
+      data: {
+        eventType: input.eventType,
+        aggregateType: "SeeraRetailer",
+        aggregateId: input.retailerId,
+        payload: { retailerId: input.retailerId, visitId: input.visitId ?? null, reason: "TEMPLATE_NOT_APPROVED", templateName: template.metaTemplateName, approvalStatus: template.approvalStatus },
+        status: "FAILED",
+        lastErrorCode: "TEMPLATE_NOT_APPROVED",
+        channel: "WHATSAPP",
+        templateKey,
+      },
+    });
+    return { queued: false, reason: "TEMPLATE_NOT_APPROVED", outboxEventId: event.id };
+  }
+  const languageCode = template.languageCode;
+
   // Non-spammy default for the low-signal "no order" outcome: at most one per retailer per
   // calendar day, rather than a per-policy engine this pass has no Founder-approved rules to
   // build against yet. Checked before any DB write so a duplicate never even creates a row.
@@ -101,27 +124,46 @@ export async function queueRetailerCommunication(
   }
 
   const outletName = sanitizeTemplateParam(retailer.businessName, "Retailer");
+  // Retailer's own registered contact/owner name — falls back to the outlet name itself
+  // (never blank) when no owner name is on file, same governed-fallback posture as
+  // sanitizeTemplateParam's own default.
+  const contactName = sanitizeTemplateParam(retailer.ownerName, outletName);
+  const visitDate = sanitizeTemplateParam(new Date().toLocaleDateString("en-IN"));
   const orderForEvent =
     input.orderId
       ? await db.seeraSalesOrder.findUnique({ where: { id: input.orderId } })
       : input.eventType === "ORDER_RECORDED"
         ? await db.seeraSalesOrder.findFirst({ where: { retailerId: input.retailerId, salespersonId: input.actorId }, orderBy: { createdAt: "desc" } })
         : null;
+  // One shared visit lookup for the two events whose live Meta template needs a visit-level
+  // field (no-order update text / next follow-up date) — avoids two separate round trips.
+  const visitForEvent =
+    input.visitId && (templateKey === "RETAILER_NO_ORDER" || templateKey === "RETAILER_FOLLOW_UP")
+      ? await db.seeraVisit.findUnique({ where: { id: input.visitId }, select: { noOrderReason: true, followUpAt: true } })
+      : null;
+  // Representative (the Executive/Manager who ran the visit) — required by three of the live
+  // Meta templates; a single lookup, only performed when actually needed.
+  const repName =
+    templateKey === "RETAILER_ORDER_PLACED" || templateKey === "RETAILER_NO_ORDER" || templateKey === "RETAILER_FOLLOW_UP"
+      ? sanitizeTemplateParam((await db.user.findUnique({ where: { id: input.actorId }, select: { name: true } }))?.name, "Seera representative")
+      : undefined;
 
   let templateParams: string[];
   switch (templateKey) {
+    // Live Meta mapping (reconciled against the Founder's Seera WABA): contact name,
+    // representative name, outlet name, visit date, order number/status — in that exact order.
     case "RETAILER_ORDER_PLACED":
-      templateParams = [
-        outletName,
-        sanitizeTemplateParam(orderForEvent?.orderNumber),
-        sanitizeTemplateParam(orderForEvent ? `Rs ${Number(orderForEvent.total).toLocaleString("en-IN")}` : undefined),
-      ];
+      templateParams = [contactName, repName!, outletName, visitDate, sanitizeTemplateParam(orderForEvent?.orderNumber)];
       break;
+    // Not live in Meta yet (isTemplateSendable already refused to queue these above) — mapping
+    // left as previously documented so the Founder can create matching templates.
     case "RETAILER_ORDER_ACCEPTED":
     case "RETAILER_ORDER_PARTIAL":
     case "RETAILER_OUT_FOR_DELIVERY":
       templateParams = [outletName, sanitizeTemplateParam(orderForEvent?.orderNumber)];
       break;
+    // Live Meta mapping for the recreated seera_retailer_order_delivered_hi template: contact
+    // name, outlet/shop name, order number, distributor firm name, delivery date.
     case "RETAILER_ORDER_DELIVERED": {
       let distributorName: string | undefined;
       if (orderForEvent?.sellerPartnerId) {
@@ -129,6 +171,7 @@ export async function queueRetailerCommunication(
         distributorName = seller?.tradeName ?? seller?.legalName;
       }
       templateParams = [
+        contactName,
         outletName,
         sanitizeTemplateParam(orderForEvent?.orderNumber),
         sanitizeTemplateParam(distributorName),
@@ -136,15 +179,21 @@ export async function queueRetailerCommunication(
       ];
       break;
     }
+    // Live Meta mapping: contact name, representative name, outlet name, visit date, no-order
+    // update. `noOrderReason` is the same governed field the field-portal UI already collects
+    // (a short recorded reason, not free-text internal notes) — falls back to a neutral,
+    // non-blank phrase rather than exposing nothing or a raw "undefined".
     case "RETAILER_NO_ORDER":
-      templateParams = [outletName];
+      templateParams = [contactName, repName!, outletName, visitDate, sanitizeTemplateParam(visitForEvent?.noOrderReason, "जल्द मुलाकात करेंगे")];
       break;
+    // Live Meta mapping: contact name, representative name, outlet name, visit date, next
+    // follow-up date.
     case "RETAILER_FOLLOW_UP": {
-      const followUpAt = input.visitId ? (await db.seeraVisit.findUnique({ where: { id: input.visitId }, select: { followUpAt: true } }))?.followUpAt ?? null : null;
+      const followUpAt = visitForEvent?.followUpAt ?? null;
       // Governed fallback (Founder directive): never submit a follow-up template with a blank
       // date parameter — if no follow-up date is on record, don't queue a malformed send.
       if (!followUpAt) return { queued: false, reason: "FOLLOWUP_DATE_MISSING" };
-      templateParams = [outletName, sanitizeTemplateParam(followUpAt.toLocaleDateString("en-IN"))];
+      templateParams = [contactName, repName!, outletName, visitDate, sanitizeTemplateParam(followUpAt.toLocaleDateString("en-IN"))];
       break;
     }
     default:
@@ -156,6 +205,7 @@ export async function queueRetailerCommunication(
     templateName: template.metaTemplateName,
     templateParams,
     templateKey,
+    languageCode,
   };
   const event = await db.outboxEvent.create({
     data: {

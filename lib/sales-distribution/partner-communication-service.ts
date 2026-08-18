@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { MessagingProvider } from "@/lib/messaging/types";
 import { normalizeIndianMobile } from "@/lib/messaging/phone";
-import { templateFor, sanitizeTemplateParam, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
+import { templateFor, sanitizeTemplateParam, isTemplateSendable, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
 import { dispatchWhatsAppOutbox, type WhatsAppOutboxPayload } from "@/lib/messaging/outbox-dispatch";
 
 // Distributor / Super Stockist visit-completion WhatsApp trigger (Founder WhatsApp integration
@@ -28,13 +28,37 @@ export async function queuePartnerVisitCommunication(
   const templateKey = eventType as WhatsAppTemplateKey; // registry keys intentionally match these event type names 1:1
   const template = templateFor(templateKey);
 
+  // Pre-queue validation — same governed gate as retailer-communication-service.ts. Both
+  // partner-visit templates are currently live/APPROVED in Meta, but this must never silently
+  // start queuing a doomed send again if either is ever paused/rejected in Meta later.
+  if (!isTemplateSendable(template)) {
+    const event = await db.outboxEvent.create({
+      data: {
+        eventType,
+        aggregateType: "SeeraPartner",
+        aggregateId: input.partnerId,
+        payload: { partnerId: input.partnerId, visitId: input.visitId, reason: "TEMPLATE_NOT_APPROVED", templateName: template.metaTemplateName, approvalStatus: template.approvalStatus },
+        status: "FAILED",
+        lastErrorCode: "TEMPLATE_NOT_APPROVED",
+        channel: "WHATSAPP",
+        templateKey,
+      },
+    });
+    return { queued: false, reason: "TEMPLATE_NOT_APPROVED", outboxEventId: event.id };
+  }
+  const languageCode = template.languageCode;
+
   // Business-contact number on the partner record (primaryContact.mobile), never the login
   // mobile of whichever individual S.S./Distributor user happens to be signed in — per the
   // Founder directive not to conflate the two unless the data model defines that as
   // authoritative, which SeeraPartner.primaryContact does (it's the governed party-level
   // contact, independent of any one user's own login credentials).
-  const contact = partner.primaryContact as { mobile?: string } | null;
+  const contact = partner.primaryContact as { mobile?: string; ownerName?: string } | null;
   const firmName = sanitizeTemplateParam(partner.tradeName ?? partner.legalName, input.partnerType === "DISTRIBUTOR" ? "Distributor" : "Super Stockist");
+  // Contact person's own name on the party record — falls back to the firm name (never blank)
+  // when no individual contact name is on file, same governed-fallback posture used everywhere
+  // else in this file.
+  const contactName = sanitizeTemplateParam(contact?.ownerName, firmName);
   const mobile = normalizeIndianMobile(contact?.mobile);
 
   if (!mobile) {
@@ -56,8 +80,20 @@ export async function queuePartnerVisitCommunication(
   const rep = await db.user.findUnique({ where: { id: input.actorId }, select: { name: true } });
   const repName = sanitizeTemplateParam(rep?.name, "Seera representative");
   const visitDate = sanitizeTemplateParam(new Date().toLocaleDateString("en-IN"));
+  // Visit outcome/update — the governed purpose value captured at check-in (see SeeraVisit's
+  // partnerVisitPurpose), not free-text notes; falls back to a neutral, non-blank phrase when
+  // no purpose was recorded for this visit.
+  const visitOutcome = sanitizeTemplateParam((await db.seeraVisit.findUnique({ where: { id: input.visitId }, select: { partnerVisitPurpose: true } }))?.partnerVisitPurpose, "Business Visit");
 
-  const payload: WhatsAppOutboxPayload = { mobile, templateName: template.metaTemplateName, templateParams: [firmName, repName, visitDate], templateKey };
+  // Live Meta mapping (reconciled against the Founder's Seera WABA): contact name,
+  // representative name, firm name, visit date, visit outcome/update — in that exact order.
+  const payload: WhatsAppOutboxPayload = {
+    mobile,
+    templateName: template.metaTemplateName,
+    templateParams: [contactName, repName, firmName, visitDate, visitOutcome],
+    templateKey,
+    languageCode,
+  };
   const event = await db.outboxEvent.create({
     data: {
       eventType,

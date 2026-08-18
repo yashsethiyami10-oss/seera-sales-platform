@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeIndianMobile, isCanonicalIndianMobile } from "../../lib/messaging/phone";
-import { sanitizeTemplateParam, WHATSAPP_TEMPLATES, templateFor } from "../../lib/messaging/whatsapp-templates";
+import { sanitizeTemplateParam, WHATSAPP_TEMPLATES, templateFor, isTemplateSendable } from "../../lib/messaging/whatsapp-templates";
 import { classifyWhatsAppError } from "../../lib/messaging/error-classification";
 
 describe("normalizeIndianMobile", () => {
@@ -82,6 +82,56 @@ describe("WHATSAPP_TEMPLATES governed registry", () => {
   it("never uses the same Meta template name for two different governed events", () => {
     const names = Object.values(WHATSAPP_TEMPLATES).map((t) => t.metaTemplateName);
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+// Live Meta reconciliation (Founder-provided, read directly off the Seera WABA via
+// /api/founder/whatsapp-diagnostics — not guessed) — the six templates the Founder has
+// actually created and Meta reports APPROVED, each with 5 body parameters in a specific
+// business order, all in Hindi.
+describe("WHATSAPP_TEMPLATES live Meta reconciliation", () => {
+  const liveTemplateKeys = [
+    "RETAILER_ORDER_PLACED",
+    "RETAILER_NO_ORDER",
+    "RETAILER_FOLLOW_UP",
+    "DISTRIBUTOR_VISIT_COMPLETED",
+    "SUPER_STOCKIST_VISIT_COMPLETED",
+    "RETAILER_ORDER_DELIVERED",
+  ] as const;
+
+  it("marks exactly the six live templates APPROVED with Meta's own hi/MARKETING and 5 ordered params", () => {
+    for (const key of liveTemplateKeys) {
+      const def = templateFor(key);
+      expect(def.approvalStatus).toBe("APPROVED");
+      expect(def.languageCode).toBe("hi");
+      expect(def.category).toBe("MARKETING");
+      expect(def.paramLabels).toHaveLength(5);
+      expect(isTemplateSendable(def)).toBe(true);
+    }
+  });
+
+  it("the delivery template points at the recreated seera_retailer_order_delivered_hi, not the deleted old name", () => {
+    const delivered = templateFor("RETAILER_ORDER_DELIVERED");
+    expect(delivered.metaTemplateName).toBe("seera_retailer_order_delivered_hi");
+    expect(delivered.paramLabels).toEqual(["Retailer/contact name", "Outlet/shop name", "Order number", "Distributor firm name", "Delivery date"]);
+  });
+
+  it("keeps the three not-yet-created order-status templates unsendable (PENDING_META_APPROVAL, no language)", () => {
+    for (const key of ["RETAILER_ORDER_ACCEPTED", "RETAILER_ORDER_PARTIAL", "RETAILER_OUT_FOR_DELIVERY"] as const) {
+      const def = templateFor(key);
+      expect(def.approvalStatus).toBe("PENDING_META_APPROVAL");
+      expect(def.languageCode).toBeNull();
+      expect(isTemplateSendable(def)).toBe(false);
+    }
+  });
+});
+
+describe("isTemplateSendable", () => {
+  it("requires both APPROVED status and a real language code", () => {
+    expect(isTemplateSendable({ key: "RETAILER_NO_ORDER", metaTemplateName: "x", languageCode: "hi", category: "MARKETING", paramLabels: ["a"], approvalStatus: "APPROVED" })).toBe(true);
+    expect(isTemplateSendable({ key: "RETAILER_NO_ORDER", metaTemplateName: "x", languageCode: null, category: "MARKETING", paramLabels: ["a"], approvalStatus: "APPROVED" })).toBe(false);
+    expect(isTemplateSendable({ key: "RETAILER_NO_ORDER", metaTemplateName: "x", languageCode: "hi", category: "MARKETING", paramLabels: ["a"], approvalStatus: "PENDING_META_APPROVAL" })).toBe(false);
+    expect(isTemplateSendable({ key: "RETAILER_NO_ORDER", metaTemplateName: "x", languageCode: "hi", category: "MARKETING", paramLabels: ["a"], approvalStatus: "REJECTED" })).toBe(false);
   });
 });
 

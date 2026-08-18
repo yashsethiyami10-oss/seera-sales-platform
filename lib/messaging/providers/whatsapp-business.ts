@@ -14,10 +14,19 @@ import { normalizeIndianMobile } from "@/lib/messaging/phone";
 const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v19.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-/** Meta template language code for outbound template sends — must match the language each
- * template was actually approved in. Governed by env so it can be changed (e.g. to "hi")
- * without a code deploy once bilingual templates are approved; defaults to "en_US". */
-const TEMPLATE_LANGUAGE = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
+/**
+ * Fallback ONLY for callers outside Seera's own governed template registry
+ * (lib/messaging/whatsapp-templates.ts) that don't pass a `languageCode` — this provider is
+ * shared with the separate, unrelated Institutional Sales module (actions/inst-quotations.ts,
+ * lib/notify/send-messaging.ts), which is out of scope for this reconciliation and must keep
+ * working exactly as before. Seera's own call sites (lib/sales-distribution/
+ * retailer-communication-service.ts, partner-communication-service.ts) always pass their
+ * template's own Meta-approved language explicitly now and never rely on this default — see
+ * the per-template `languageCode` field in whatsapp-templates.ts, which replaced this as
+ * Seera's actual source of truth after a Hindi-approved template was found being sent as
+ * "en_US" by the old single-global-default design.
+ */
+const LEGACY_DEFAULT_TEMPLATE_LANGUAGE = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
 
 /** Builds an Error carrying `.status` (HTTP status) and, when Meta's JSON error body was
  * parseable, `.metaCode`/`.metaMessage` — read by lib/messaging/error-classification.ts to
@@ -52,10 +61,14 @@ export class WhatsAppBusinessProvider implements MessagingProvider {
     throw new Error("WhatsApp Business Cloud API does not support SMS — configure a separate SMS provider");
   }
 
-  async sendWhatsApp(to: string, templateName: string, params: string[]) {
+  async sendWhatsApp(to: string, templateName: string, params: string[], languageCode?: string) {
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
     if (!phoneNumberId || !accessToken) throw new Error("WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_ACCESS_TOKEN are not set");
+    // Seera's own governed call sites always pass their template's specific language explicitly
+    // (see lib/messaging/whatsapp-templates.ts) — this default only exists for the unrelated,
+    // out-of-scope Institutional Sales call sites that don't pass one.
+    const resolvedLanguageCode = languageCode ?? LEGACY_DEFAULT_TEMPLATE_LANGUAGE;
     // Canonical India send format is enforced here, at the actual Meta call boundary, so no
     // caller mistake upstream (double `+91`, dashes, a raw 10-digit number) can reach Meta
     // malformed — see lib/messaging/phone.ts. `to` may already be pre-normalized by the
@@ -76,7 +89,7 @@ export class WhatsAppBusinessProvider implements MessagingProvider {
           messaging_product: "whatsapp",
           to: recipient,
           type: "template",
-          template: { name: templateName, language: { code: TEMPLATE_LANGUAGE }, components: [{ type: "body", parameters: params.map((p) => ({ type: "text", text: p })) }] },
+          template: { name: templateName, language: { code: resolvedLanguageCode }, components: [{ type: "body", parameters: params.map((p) => ({ type: "text", text: p })) }] },
         }),
       });
       if (!res.ok) throw await graphApiError("WhatsApp Cloud API send failed", res);

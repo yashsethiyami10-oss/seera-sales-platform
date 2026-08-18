@@ -8,7 +8,15 @@
 export interface MessagingProvider {
   readonly name: "TWILIO" | "MSG91" | "INTERAKT" | "WHATSAPP_BUSINESS";
   sendSms(to: string, message: string): Promise<{ id: string }>;
-  sendWhatsApp(to: string, templateName: string, params: string[]): Promise<{ id: string }>;
+  /**
+   * `languageCode` is the exact Meta-approved language a specific template was created in
+   * (e.g. "hi" for a Hindi template) — governed per-template in
+   * lib/messaging/whatsapp-templates.ts, never a single global default, since Seera's live
+   * templates are Hindi while the historical default here was "en_US". Optional only for
+   * backward compatibility with any caller that hasn't been updated yet; a provider that
+   * receives no languageCode should fail loudly rather than silently guess one.
+   */
+  sendWhatsApp(to: string, templateName: string, params: string[], languageCode?: string): Promise<{ id: string }>;
   /**
    * Sends an actual file as a WhatsApp document message (not a text/template message
    * carrying a link) — used for real PDF sharing (Quotation/GST Invoice) so the
