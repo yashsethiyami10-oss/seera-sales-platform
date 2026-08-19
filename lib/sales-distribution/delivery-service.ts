@@ -143,7 +143,10 @@ export async function completeDelivery(
           if (quantity > 0)
             await tx.seeraInventoryMovement.create({
               data: {
-                partyType: delivery.order.sellerPartner.type,
+                // Company Direct (Part B) has no dedicated InventoryPartyType of its own — it maps
+                // onto the existing COMPANY value (Manufacturing's Company stock position), the
+                // same "infinite-supply root" the Company already is for every other order type.
+                partyType: delivery.order.sellerPartner.type === "COMPANY_DIRECT" ? "COMPANY" : delivery.order.sellerPartner.type,
                 partyId: delivery.order.sellerPartnerId,
                 skuId: line.skuId,
                 type: "RETURN",
@@ -155,7 +158,9 @@ export async function completeDelivery(
                 sourcePortal:
                   delivery.order.sellerPartner.type === "DISTRIBUTOR"
                     ? "distributor"
-                    : "super-stockist",
+                    : delivery.order.sellerPartner.type === "COMPANY_DIRECT"
+                      ? "company-direct"
+                      : "super-stockist",
                 reason: input.reason?.trim() || "Delivery refused — stock returned",
                 idempotencyKey: `${delivery.id}-return-${line.id}`,
               },

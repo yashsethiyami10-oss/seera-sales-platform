@@ -66,7 +66,10 @@ export async function POST(request: Request) {
         commercialPartyType: "DISTRIBUTOR",
         commercialPartyId: retailer.distributorId,
       },
-      input,
+      // Retailer self-service portal orders are never a field visit — explicit "OTHER" so new
+      // orders match the historical backfill (see the migration's data-migration comment) instead
+      // of silently defaulting to FIELD_VISIT.
+      { ...input, source: "OTHER" },
     );
     return NextResponse.json(order, { status: 201 });
   } catch (error) {

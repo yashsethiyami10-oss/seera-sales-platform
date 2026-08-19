@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { after } from "next/server";
+import type { Prisma, PrismaClient, OrderSource } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
@@ -467,44 +468,58 @@ export async function endFieldDay(
   // Nothing below this line may throw out of endFieldDay. Each secondary step is independently
   // wrapped: a failure here is logged for internal follow-up but the day the user just closed
   // must never be reported back to them as failed.
+  // PERFORMANCE PHASE 2 (P1 End Day SLO): both of these were previously AWAITED before the
+  // response, even though the session is already durably ENDED by this point and neither result
+  // is returned to the caller — pure latency for enrichment data (GPS sample, TA/DA distance
+  // recompute) the response doesn't need. Deferred via after(), same guarded pattern as
+  // placeRetailerOrder's post-commit notifications (throws synchronously outside a real request
+  // scope; falls back to running inline so non-request callers — scripts/tests — see identical
+  // end state, same stage marks and error logging either way).
+  const secondaryWork = async () => {
+    try {
+      await recordGpsSample(prisma, {
+        employeeId: actorId,
+        workSessionId: sessionId,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        accuracy: input.accuracy,
+        source: "END_DAY",
+        trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
+      });
+      mark("END_DAY_07_RECORD_GPS_SAMPLE");
+    } catch (error) {
+      mark("END_DAY_07_RECORD_GPS_SAMPLE_FAILED");
+      operationalLog("error", "workflow.endFieldDay.secondary_failed", {
+        operationId,
+        actorId,
+        sessionId,
+        stage: "END_DAY_07_RECORD_GPS_SAMPLE",
+        errorName: error instanceof Error ? error.name : "unknown",
+        errorCode: error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : undefined,
+      });
+    }
+    try {
+      await recomputeSessionDistance(prisma, actorId, sessionId);
+      mark("END_DAY_08_DISTANCE_RECOMPUTE");
+    } catch (error) {
+      mark("END_DAY_08_DISTANCE_RECOMPUTE_FAILED");
+      operationalLog("error", "workflow.endFieldDay.secondary_failed", {
+        operationId,
+        actorId,
+        sessionId,
+        stage: "END_DAY_08_DISTANCE_RECOMPUTE",
+        errorName: error instanceof Error ? error.name : "unknown",
+        errorCode: error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : undefined,
+      });
+    }
+    mark("END_DAY_12_RESPONSE_BUILD");
+    logOutcome("success");
+  };
   try {
-    await recordGpsSample(prisma, {
-      employeeId: actorId,
-      workSessionId: sessionId,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      accuracy: input.accuracy,
-      source: "END_DAY",
-      trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
-    });
-    mark("END_DAY_07_RECORD_GPS_SAMPLE");
-  } catch (error) {
-    mark("END_DAY_07_RECORD_GPS_SAMPLE_FAILED");
-    operationalLog("error", "workflow.endFieldDay.secondary_failed", {
-      operationId,
-      actorId,
-      sessionId,
-      stage: "END_DAY_07_RECORD_GPS_SAMPLE",
-      errorName: error instanceof Error ? error.name : "unknown",
-      errorCode: error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : undefined,
-    });
+    after(secondaryWork);
+  } catch {
+    await secondaryWork();
   }
-  try {
-    await recomputeSessionDistance(prisma, actorId, sessionId);
-    mark("END_DAY_08_DISTANCE_RECOMPUTE");
-  } catch (error) {
-    mark("END_DAY_08_DISTANCE_RECOMPUTE_FAILED");
-    operationalLog("error", "workflow.endFieldDay.secondary_failed", {
-      operationId,
-      actorId,
-      sessionId,
-      stage: "END_DAY_08_DISTANCE_RECOMPUTE",
-      errorName: error instanceof Error ? error.name : "unknown",
-      errorCode: error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : undefined,
-    });
-  }
-  mark("END_DAY_12_RESPONSE_BUILD");
-  logOutcome("success");
   return { alreadyEnded: false as const };
 }
 
@@ -518,13 +533,61 @@ export async function placeRetailerOrder(
     notes?: string;
     commercialPaymentType?: "CASH" | "CREDIT";
     lines: OrderLineInput[];
+    // Repeat-business / phone-order support (Part A): defaults to FIELD_VISIT so every existing
+    // caller (managerBookRetailerOrder, retailer self-service, scripts) is completely unaffected.
+    source?: OrderSource;
+    visitId?: string;
   },
 ) {
   const timing = timeOperation("workflow.placeRetailerOrder");
-  const retailer = await prisma.seeraRetailer.findUniqueOrThrow({
-    where: { id: input.retailerId },
-  });
-  timing.stage("retailer_lookup");
+  const source: OrderSource = input.source ?? "FIELD_VISIT";
+  if (source !== "FIELD_VISIT" && input.visitId)
+    throw new FoundationError("VISIT_NOT_ALLOWED_FOR_NON_FIELD_VISIT_SOURCE", "A non-field-visit order cannot reference a visit", 400);
+  // PERFORMANCE PHASE 2 (P0 place-order SLO): retailer_lookup, the visit-ownership check, and the
+  // portal-specific authorize()+scope query below were three SEQUENTIAL round trips even though
+  // none of them consumes another's result — visit ownership only needs input.retailerId (already
+  // known, not retailer.id), the sales-manager team query only needs context.actorId, and the
+  // retailer-portal assignment check only needs input.retailerId too. One round trip instead of
+  // three. authorize() itself still throws synchronously into this Promise.all on a denied
+  // permission, same as it always did.
+  const [retailer, visitCheck, scopeQuery] = await Promise.all([
+    prisma.seeraRetailer.findUniqueOrThrow({ where: { id: input.retailerId } }),
+    input.visitId
+      ? prisma.seeraVisit.findFirst({
+          where: { id: input.visitId, retailerId: input.retailerId, workSession: { employeeId: context.actorId } },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    context.sourcePortal === "sales-executive"
+      ? authorize(prisma, { actorId: context.actorId, permission: "retailer:order" }).then(() => null)
+      : context.sourcePortal === "sales-manager"
+        ? authorize(prisma, { actorId: context.actorId, permission: "retailer:order" }).then(() =>
+            prisma.seeraAssignment.findMany({
+              where: { assignmentType: { in: ["MANAGER_TEAM", "TEAM"] }, targetId: context.actorId, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+              select: { subjectId: true },
+            }),
+          )
+        : context.sourcePortal === "retailer"
+          ? authorize(prisma, { actorId: context.actorId, permission: "portal:retailer" }).then(() =>
+              prisma.seeraAssignment.findFirst({
+                where: {
+                  assignmentType: "RETAILER_USER",
+                  subjectType: "USER",
+                  subjectId: context.actorId,
+                  targetType: "RETAILER",
+                  targetId: input.retailerId,
+                  effectiveFrom: { lte: new Date() },
+                  OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+                },
+                select: { id: true },
+              }),
+            )
+          : Promise.reject(new FoundationError("INVALID_SOURCE_PORTAL", "Retailer order source denied", 403)),
+  ]);
+  timing.stage("retailer_lookup_authorize_scope");
+  if (input.visitId && !visitCheck)
+    throw new FoundationError("VISIT_SCOPE_DENIED", "Visit unavailable", 403);
+  timing.stage("source_and_visit_validation");
   // Executive→Distributor routing foundation (Founder decision, RUN 1 shared-foundation pass): a
   // retailer with no Distributor mapping must NEVER lose the order for ANY field-order source
   // portal — Executive included, not just Manager Own Retailing. Resolution order:
@@ -564,11 +627,11 @@ export async function placeRetailerOrder(
       routingOutcome = "NO_DISTRIBUTOR_MAPPING";
     }
   }
+  timing.stage("distributor_company_direct_routing_resolution");
+  // authorize() itself already ran (and would have thrown) inside the Promise.all above —
+  // everything below is a synchronous check against its already-resolved scope query, not a new
+  // round trip.
   if (context.sourcePortal === "sales-executive") {
-    await authorize(prisma, {
-      actorId: context.actorId,
-      permission: "retailer:order",
-    });
     // Only a retailer that ALREADY had a known distributorId can be tampered with — comparing
     // against a null/unresolved assignment would reject the very "book as unassigned" case this
     // routing foundation exists to support.
@@ -579,18 +642,7 @@ export async function placeRetailerOrder(
         403,
       );
   } else if (context.sourcePortal === "sales-manager") {
-    await authorize(prisma, {
-      actorId: context.actorId,
-      permission: "retailer:order",
-    });
-    const team = await prisma.seeraAssignment.findMany({
-      where: {
-        assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
-        targetId: context.actorId,
-        OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
-      },
-      select: { subjectId: true },
-    });
+    const team = scopeQuery as { subjectId: string }[];
     const scopedSalespeople = [context.actorId, ...team.map((x) => x.subjectId)];
     if (
       retailer.salespersonId &&
@@ -602,47 +654,26 @@ export async function placeRetailerOrder(
         403,
       );
   } else if (context.sourcePortal === "retailer") {
-    await authorize(prisma, {
-      actorId: context.actorId,
-      permission: "portal:retailer",
-    });
-    const assigned = await prisma.seeraAssignment.findFirst({
-      where: {
-        assignmentType: "RETAILER_USER",
-        subjectType: "USER",
-        subjectId: context.actorId,
-        targetType: "RETAILER",
-        targetId: retailer.id,
-        effectiveFrom: { lte: new Date() },
-        OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
-      },
-      select: { id: true },
-    });
-    if (!assigned)
+    if (!scopeQuery)
       throw new FoundationError(
         "RETAILER_SCOPE_DENIED",
         "Retailer account is not assigned to this business",
         403,
       );
-  } else
-    throw new FoundationError(
-      "INVALID_SOURCE_PORTAL",
-      "Retailer order source denied",
-      403,
-    );
+  }
+  timing.stage("authorize_and_scope_checks");
   // Empty-string sentinel for "no commercial party assigned yet" — the same convention
   // managerBookRetailerOrder already passes for this field; commercialPartyId itself is a
   // required (non-nullable) column, so this is the additive representation rather than a schema
   // change, matching the Founder's "minimum safe additive mechanism" instruction.
   const commercialPartyId = resolvedDistributorId ?? "";
   const commercialPartyType = "DISTRIBUTOR";
-  timing.stage("routing_and_authorize");
-  const order = await prisma.$transaction(async (tx) => {
+  const { order, isNew } = await prisma.$transaction(async (tx) => {
     const existing = await tx.seeraSalesOrder.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
       include: { lines: true },
     });
-    if (existing) return existing;
+    if (existing) return { order: existing, isNew: false };
     if (territoryResolved && resolvedDistributorId)
       await tx.seeraRetailer.update({ where: { id: retailer.id }, data: { distributorId: resolvedDistributorId } });
     timing.stage("tx_idempotency_check");
@@ -661,6 +692,7 @@ export async function placeRetailerOrder(
     // submitted skuId isn't a real SKU at all, so paying for an individual lookup here (to get the
     // identical P2025 error) costs nothing in the normal, all-valid-SKUs path.
     for (const id of skuIds) if (!skuById.has(id)) await tx.seeraSku.findUniqueOrThrow({ where: { id } });
+    timing.stage("tx_sku_lookup");
 
     const skuIdsNeedingGovernedPrice = Array.from(
       new Set(input.lines.filter((l) => !(typeof l.rate === "number" && l.rate > 0)).map((l) => l.skuId)),
@@ -687,8 +719,10 @@ export async function placeRetailerOrder(
             orderBy: { effectiveFrom: "desc" },
           });
     }
-    timing.stage("tx_sku_and_price_lookup");
+    timing.stage("tx_price_lookup");
 
+    // GST/tax is computed here purely in-memory from sku.taxRate (already fetched above via
+    // tx_sku_lookup) — no separate DB round trip, so it's not its own timing stage.
     const snapshots = input.lines.map((line) => {
       const sku = skuById.get(line.skuId)!;
       // Rate is editable by the Executive at field-order time (Founder decision — the field
@@ -731,6 +765,8 @@ export async function placeRetailerOrder(
         commercialPartyType,
         commercialPartyId,
         sourcePortal: context.sourcePortal,
+        source,
+        visitId: input.visitId,
         financialAcceptance: false,
         commercialPaymentType: input.commercialPaymentType,
         subtotal,
@@ -793,7 +829,7 @@ export async function placeRetailerOrder(
         },
       });
     timing.stage("tx_order_create");
-    return order;
+    return { order, isNew: true };
   }, {
     // PERFORMANCE / RELIABILITY: Prisma's interactive-transaction default (5000ms timeout, 2000ms
     // maxWait) was measured to be too tight for this transaction's real work (idempotency check +
@@ -806,23 +842,59 @@ export async function placeRetailerOrder(
     maxWait: 5_000,
   });
   timing.stage("transaction_commit");
-  // PERFORMANCE: notifyPartyUsers previously ran INSIDE the interactive $transaction above, holding
-  // the reserved connection open through its own 3 extra queries (party-user lookup, active-user
-  // filter, notification createMany) before the order could even commit — pure overhead on the
-  // critical path for a side effect the order's own success never depends on. Moved outside, on the
-  // outer `prisma` client, after commit: a notification failure can no longer roll back or slow down
-  // order creation. No commercialPartyId means this order is unassigned for fulfilment (no
-  // Distributor mapped yet) — nobody to notify; it surfaces instead via unassignedRetailerOrders()
-  // for Manager/Admin routing.
-  if (commercialPartyId) await notifyPartyUsers(prisma, commercialPartyId, {
-    title: "New retailer order",
-    body: `${retailer.businessName} placed order ${order.orderNumber} awaiting fulfilment.`,
-    entityType: "SeeraSalesOrder",
-    entityId: order.id,
-    actionPath: "/portal/distributor/fulfilment",
-  });
-  timing.stage("notify_party_users");
-  timing.finish({ actorId: context.actorId, retailerId: input.retailerId, lineCount: input.lines.length });
+  // PERFORMANCE PHASE 2 (P0 place-order SLO): both of these are side effects the order's own
+  // success never depends on (documented below), and were previously AWAITED before the client
+  // got a response — pure latency on the critical path. Deferred via Next.js's after() so they
+  // run once the response has already been sent, the same mechanism this codebase already uses
+  // for the WhatsApp dispatch-worker nudge (retailer-communication-service.ts). Both remain
+  // best-effort (never throw into the caller) exactly as before — only WHEN they run changed, not
+  // whether a failure here can affect the order's own committed state.
+  const deferredNotifications = async () => {
+    const notifyTiming = timeOperation("workflow.placeRetailerOrder.deferred");
+    // No commercialPartyId means this order is unassigned for fulfilment (no Distributor mapped
+    // yet) — nobody to notify; it surfaces instead via unassignedRetailerOrders() for Manager/
+    // Admin routing.
+    if (commercialPartyId) {
+      await notifyPartyUsers(prisma, commercialPartyId, {
+        title: "New retailer order",
+        body: `${retailer.businessName} placed order ${order.orderNumber} awaiting fulfilment.`,
+        entityType: "SeeraSalesOrder",
+        entityId: order.id,
+        actionPath: "/portal/distributor/fulfilment",
+      }).catch((error) => console.error("notify_party_users.failed", error));
+    }
+    notifyTiming.stage("notify_party_users");
+    // Retailer-facing "your order was recorded" WhatsApp — moved here from executiveCheckOut
+    // (Part A5: independent orders/day need independent notifications, not one tied to checkout
+    // outcome using a "most recent order" guess that breaks once multiple orders/day are normal).
+    // Always references THIS order's own id (never a lookup-by-recency), and only ever fires for a
+    // genuinely new order — `isNew` guards a retried idempotencyKey from re-queuing a duplicate
+    // send.
+    if (isNew) {
+      try {
+        await queueRetailerCommunicationSafe(prisma, {
+          eventType: "ORDER_RECORDED",
+          retailerId: retailer.id,
+          orderId: order.id,
+          visitId: input.visitId,
+          actorId: context.actorId,
+        });
+      } catch (error) {
+        console.error("retailer_communication.queue_failed", error);
+      }
+    }
+    notifyTiming.stage("queue_whatsapp");
+    notifyTiming.finish({ actorId: context.actorId, orderId: order.id });
+  };
+  // after() throws SYNCHRONOUSLY outside a real Next.js request scope (bare scripts/tests) — same
+  // guarded pattern already used by retailer-communication-service.ts's scheduleImmediateDispatchAttempt.
+  // Falls back to awaiting inline so non-request callers still observe the identical end state.
+  try {
+    after(deferredNotifications);
+  } catch {
+    await deferredNotifications();
+  }
+  timing.finish({ actorId: context.actorId, retailerId: input.retailerId, lineCount: input.lines.length, source, isNew });
   return order;
 }
 

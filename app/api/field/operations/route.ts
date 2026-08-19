@@ -18,6 +18,8 @@ import {
   skipRetailer,
   recordRouteDeviation,
   createRetailer,
+  createRetailerAndCheckIn,
+  executiveRetailerSearch,
   capturePhoto,
   recordPhotoException,
   deleteVisitPhoto,
@@ -38,6 +40,8 @@ const body = z.object({
     "skip-retailer",
     "route-deviation",
     "create-retailer",
+    "create-retailer-and-check-in",
+    "retailer-search",
     "capture-photo",
     "photo-exception",
     "delete-photo",
@@ -145,6 +149,8 @@ export async function POST(request: Request) {
               )
               .min(1),
             idempotencyKey: z.string(),
+            source: z.enum(["FIELD_VISIT", "PHONE_CALL", "WHATSAPP", "OTHER"]).optional(),
+            visitId: z.string().optional(),
           })
           .parse(payload),
         retailer = await prisma.seeraRetailer.findFirst({
@@ -245,7 +251,53 @@ export async function POST(request: Request) {
           })
           .parse(payload),
       );
-    else if (action === "capture-photo")
+    else if (action === "create-retailer-and-check-in")
+      result = await createRetailerAndCheckIn(
+        prisma,
+        user.id,
+        z
+          .object({
+            businessName: z.string().min(1),
+            address: z.record(z.unknown()),
+            ownerName: z.string().optional(),
+            mobile: z.string().optional(),
+            alternateMobile: z.string().optional(),
+            pincode: z.string().optional(),
+            shopType: z
+              .enum([
+                "KIRANA",
+                "GENERAL_STORE",
+                "SUPERMARKET",
+                "MINI_MART",
+                "DEPARTMENTAL_STORE",
+                "WHOLESALE_RETAILER",
+                "CHEMIST_PHARMACY",
+                "INSTITUTIONAL_COUNTER",
+                "OTHER",
+              ])
+              .optional(),
+            customerType: z
+              .enum(["RETAILER", "WHOLESALER", "DISTRIBUTOR_PROSPECT", "INSTITUTIONAL_OTHER"])
+              .optional(),
+            gstin: z.string().optional(),
+            distributorId: z.string().optional(),
+            beatId: z.string().optional(),
+            notes: z.string().optional(),
+            confirmDuplicate: z.boolean().optional(),
+            idempotencyKey: z.string(),
+            workSessionId: z.string(),
+            checkInIdempotencyKey: z.string(),
+            latitude: z.number().optional(),
+            longitude: z.number().optional(),
+            accuracy: z.number().optional(),
+            gpsExceptionReason: z.string().optional(),
+          })
+          .parse(payload),
+      );
+    else if (action === "retailer-search") {
+      const v = z.object({ q: z.string() }).parse(payload);
+      result = await executiveRetailerSearch(prisma, user.id, v.q);
+    } else if (action === "capture-photo")
       result = await capturePhoto(
         prisma,
         user.id,

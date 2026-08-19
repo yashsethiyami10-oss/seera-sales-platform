@@ -26,6 +26,7 @@ import { SuperStockistOrderCards } from "./SuperStockistOrderCards";
 import { AddDistributorPanel } from "./AddDistributorPanel";
 import { RatanBulkOnboardPanel } from "./RatanBulkOnboardPanel";
 import { CreateSuperStockistPanel } from "./CreateSuperStockistPanel";
+import { CreateCompanyDirectPartnerPanel } from "./CreateCompanyDirectPartnerPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { CompanyOrderDispatchPanel } from "./CompanyOrderDispatchPanel";
 import { DistributorMoneyPanel } from "./DistributorMoneyPanel";
@@ -2331,10 +2332,17 @@ export async function OperationalWorkspace({
 }) {
   const q = (query.q ?? "").trim(),
     page = Math.max(1, Number(query.page) || 1),
-    rows = await rowsFor(db, userId, portal, item, q, (page - 1) * 30),
     hi = language === "HI",
     base = `/portal/${portal}/${item.slug}`;
   let workflow: React.ReactNode = null;
+  // PERFORMANCE (P0, Add Customer / every router.refresh()): rowsFor("today") always ran here
+  // eagerly, unconditionally, even though the sales-executive "today" branch below never reads
+  // its result (FieldJourney is a fully self-contained UI for that page, built from
+  // dashboardData/beat/etc.) — a genuinely dead seeraWorkSession.findMany + analyticsScope() call
+  // on every single action (every action ends in router.refresh(), which re-runs this whole
+  // function). Computed lazily now, right before it's actually rendered, and skipped entirely for
+  // "today" — see the toolbar/table section near the end of this function.
+  let rows: Awaited<ReturnType<typeof rowsFor>> = [];
   // Founder visual UAT fix: a governed "+ Add X" creation panel used to render as a body block
   // below the page title — real and reachable once the nesting bug above was fixed, but not what
   // the Founder meant by "obvious + ADD action, top-right of the header". List-page create panels
@@ -2352,12 +2360,23 @@ export async function OperationalWorkspace({
     // fallback to `mrp` here: a SKU with no approved governed price (e.g. Seera's field catalog,
     // pending a Founder-approved price list) pre-fills the Executive's Rate field with nothing
     // rather than a fabricated number — they type the real rate themselves.
-    const [dashboardData, beat, distributorFollowUp, skus, authorizedDistributors] = await Promise.all([
+    // PERFORMANCE PHASE 3: workingDistributor/visit used to run as two MORE sequential awaits
+    // after this batch (3 stages total) even though neither depends on anything in it — only on
+    // the session, which dashboardData.session already carries but isn't known until this batch
+    // resolves. A small redundant session lookup (sessionForContext, cheap/indexed, same filter
+    // executiveDashboard already uses internally) is folded into THIS batch instead, so
+    // workingDistributor/visit can run in their own single follow-up Promise.all — 2 stages total.
+    const [dashboardData, beat, distributorFollowUp, skus, authorizedDistributors, sessionForContext] = await Promise.all([
       executiveDashboard(db, userId, now),
       executiveBeat(db, userId, "today", now),
       executiveDistributorFollowUp(db, userId, now),
       activeRetailerCatalog(db, now),
       executiveAuthorizedDistributors(db, userId),
+      db.seeraWorkSession.findFirst({
+        where: { employeeId: userId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
+        orderBy: { startedAt: "desc" },
+        select: { id: true, workingDistributorId: true },
+      }),
     ]);
     const session = dashboardData.session;
     // Firm Name — Town labels (spec: never show an ambiguous firm name alone — two of the Ratan
@@ -2368,21 +2387,23 @@ export async function OperationalWorkspace({
       return city ? `${firm} — ${city}` : firm;
     };
     const distributorOptions = authorizedDistributors.map((d) => ({ value: d.id, label: distributorLabel(d) }));
-    const workingDistributor = session?.workingDistributorId
-      ? await db.seeraPartner.findUnique({
-          where: { id: session.workingDistributorId },
-          select: { legalName: true, tradeName: true, addresses: true },
-        })
-      : null;
-    const visit = session
-      ? await db.seeraVisit.findFirst({
-          where: { workSessionId: session.id, checkedOutAt: null },
-          include: {
-            retailer: { select: { businessName: true, mobile: true, distributorId: true, address: true } },
-            photos: { where: { deletedAt: null }, orderBy: { capturedAt: "desc" } },
-          },
-        })
-      : null;
+    const [workingDistributor, visit] = await Promise.all([
+      sessionForContext?.workingDistributorId
+        ? db.seeraPartner.findUnique({
+            where: { id: sessionForContext.workingDistributorId },
+            select: { legalName: true, tradeName: true, addresses: true },
+          })
+        : Promise.resolve(null),
+      sessionForContext
+        ? db.seeraVisit.findFirst({
+            where: { workSessionId: sessionForContext.id, checkedOutAt: null },
+            include: {
+              retailer: { select: { businessName: true, mobile: true, distributorId: true, address: true } },
+              photos: { where: { deletedAt: null }, orderBy: { capturedAt: "desc" } },
+            },
+          })
+        : Promise.resolve(null),
+    ]);
     workflow = (
       <>
       <FieldJourney
@@ -3829,6 +3850,10 @@ export async function OperationalWorkspace({
           }))}
           redirectBase={base}
         />
+        {/* Part B (Manoj hybrid territory): same slot as "+ Add Distributor" — Company Direct is
+            just another supplying entity, created once (singleton, safe to re-render this button
+            forever). */}
+        <CreateCompanyDirectPartnerPanel language={language} />
       </>
     );
   } else if (
@@ -5010,10 +5035,19 @@ export async function OperationalWorkspace({
     : hi
       ? "अधिकृत व्यावसायिक रिकॉर्ड, स्थिति और संबंधित कार्रवाई।"
       : "Authorized business records, status and related actions.";
+  // The Executive's "today" page is a fully self-contained UI (FieldJourney, built from
+  // dashboardData/beat/etc. above) — the generic search-toolbar + rows table below it was always
+  // rendered anyway despite never having anything to show, and its rowsFor() call was a genuinely
+  // wasted query on every action (every action ends in router.refresh()). Every other slug keeps
+  // its existing behavior unchanged.
+  const isExecutiveTodayPage = portal === "sales-executive" && item.slug === "today";
+  if (!isExecutiveTodayPage) rows = await rowsFor(db, userId, portal, item, q, (page - 1) * 30);
   return (
     <>
       <PageHeading title={surfaceLabel(item, language)} description={description} action={headerAction || undefined} />
       {workflow}
+      {!isExecutiveTodayPage && (
+      <>
       <section className={styles.toolbar}>
         <form method="get">
           <label>
@@ -5105,6 +5139,8 @@ export async function OperationalWorkspace({
           </Link>
         )}
       </nav>
+      </>
+      )}
     </>
   );
 }

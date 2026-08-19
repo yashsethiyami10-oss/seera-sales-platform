@@ -1022,7 +1022,10 @@ export async function assignDistributorToOrder(
     include: { retailer: true },
   });
   if (!order) throw new FoundationError("ORDER_SCOPE_OR_STATE_DENIED", "Order is not an unassigned order in your team's scope", 403);
-  const distributor = await db.seeraPartner.findFirst({ where: { id: input.distributorId, type: "DISTRIBUTOR", lifecycle: "ACTIVE" } });
+  // Widened to include COMPANY_DIRECT (Part B) — a Manager resolving an unassigned order in a
+  // hybrid territory (e.g. Manoj Kumar's) must be able to route it to the Founder's own Company
+  // Direct party, not only a normal Distributor.
+  const distributor = await db.seeraPartner.findFirst({ where: { id: input.distributorId, type: { in: ["DISTRIBUTOR", "COMPANY_DIRECT"] }, lifecycle: "ACTIVE" } });
   if (!distributor) throw new FoundationError("DISTRIBUTOR_NOT_FOUND", "Distributor is unavailable", 404);
   return db.$transaction(async (tx) => {
     const updated = await tx.seeraSalesOrder.update({
@@ -1040,6 +1043,43 @@ export async function assignDistributorToOrder(
     });
     return updated;
   });
+}
+
+// Part B (Manoj Kumar hybrid territory): the actual per-retailer mechanism — lets a Manager flip
+// one retailer between its normal Distributor and the Company Direct partner, at any time (not
+// just reactively off an unassigned order, unlike assignDistributorToOrder above), since
+// requirement B is explicitly "this can vary per retailer." Team-scoped the same way as every
+// other Manager action in this file.
+export async function assignRetailerCommercialParty(
+  db: PrismaClient,
+  managerId: string,
+  input: { retailerId: string; partnerId: string; reason: string },
+) {
+  await authorize(db, { actorId: managerId, permission: "network:manage" });
+  if (!input.reason.trim())
+    throw new FoundationError("ASSIGNMENT_REASON_REQUIRED", "A reason is required to reassign a retailer's supplying party", 400);
+  const employeeIds = await managerTeamEmployeeIds(db, managerId);
+  const retailer = await db.seeraRetailer.findFirst({
+    where: { id: input.retailerId, salespersonId: { in: employeeIds } },
+  });
+  if (!retailer) throw new FoundationError("RETAILER_SCOPE_DENIED", "Retailer is outside your team's scope", 403);
+  const partner = await db.seeraPartner.findFirst({
+    where: { id: input.partnerId, type: { in: ["DISTRIBUTOR", "COMPANY_DIRECT"] }, lifecycle: "ACTIVE" },
+  });
+  if (!partner) throw new FoundationError("PARTNER_NOT_FOUND", "Supplying party is unavailable", 404);
+  const updated = await db.seeraRetailer.update({
+    where: { id: retailer.id },
+    data: { distributorId: partner.id },
+  });
+  await recordAudit(db, {
+    actorId: managerId,
+    action: "retailer.commercial_party_reassigned",
+    entityType: "SeeraRetailer",
+    entityId: retailer.id,
+    beforeState: { distributorId: retailer.distributorId },
+    afterState: { partnerId: partner.id, partnerType: partner.type, reason: input.reason },
+  });
+  return updated;
 }
 
 // Command-center summary for the Manager's own landing page: Team/Own/Territory sales (never
@@ -1085,6 +1125,19 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
     }),
     managerSalesAttribution(db, managerId, { dateFrom: monthStart, dateTo: now }),
   ]);
+  // Part B reporting split (COMPANY_DIRECT vs DISTRIBUTOR) — small lookup, only the distinct
+  // seller partner ids already present on today's orders.
+  const todaySellerPartnerIds = [...new Set(todayOrders.map((o) => o.sellerPartnerId).filter((id): id is string => Boolean(id)))];
+  const todaySellerPartners = todaySellerPartnerIds.length
+    ? await db.seeraPartner.findMany({ where: { id: { in: todaySellerPartnerIds } }, select: { id: true, type: true } })
+    : [];
+  const partnerTypeById = new Map(todaySellerPartners.map((p) => [p.id, p.type]));
+  const companyDirectValue = todayOrders
+    .filter((o) => o.sellerPartnerId && partnerTypeById.get(o.sellerPartnerId) === "COMPANY_DIRECT")
+    .reduce((sum, o) => sum + Number(o.total), 0);
+  const distributorValue = todayOrders
+    .filter((o) => o.sellerPartnerId && partnerTypeById.get(o.sellerPartnerId) === "DISTRIBUTOR")
+    .reduce((sum, o) => sum + Number(o.total), 0);
   // Distinguish MULTIPLE_DISTRIBUTOR_CANDIDATES from NO_DISTRIBUTOR_MAPPING (Founder decision,
   // RUN 2 shared-foundation residual) via the routing reason placeRetailerOrder recorded — reusing
   // the existing SeeraStatusHistory table rather than a new schema column.
@@ -1110,6 +1163,8 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
     visited: todayVisits.filter((v) => v.outcome !== "SKIPPED").length,
     productive: todayVisits.filter((v) => v.outcome === "PRODUCTIVE").length,
     orders: todayOrders.length,
+    companyDirectValue,
+    distributorValue,
     newCustomers: todayVisits.filter((v) => v.retailer?.source === "UNPLANNED_FIELD_ADDED").length,
   };
   for (const e of employees) {
@@ -2347,7 +2402,7 @@ export async function managerSalesAttribution(
     },
     include: { lines: true },
   });
-  return salesAttribution(
+  const attribution = salesAttribution(
     orders.map((o) => ({
       id: o.id,
       salespersonId: o.salespersonId,
@@ -2370,4 +2425,22 @@ export async function managerSalesAttribution(
     managerId,
     employeeIds.filter((id) => id !== managerId),
   );
+  // Part B reporting split (COMPANY_DIRECT vs DISTRIBUTOR) — additive field alongside
+  // team/managerOwn/territory, computed independently here rather than inside salesAttribution
+  // itself (that function's team/own/territory disjointness guarantee is unit-tested and stays
+  // untouched). Territory-wide (team + manager-own combined), matching territory.bookedValue.
+  const territorySellerPartnerIds = [...new Set(orders.map((o) => o.sellerPartnerId).filter((id): id is string => Boolean(id)))];
+  const territorySellerPartners = territorySellerPartnerIds.length
+    ? await db.seeraPartner.findMany({ where: { id: { in: territorySellerPartnerIds } }, select: { id: true, type: true } })
+    : [];
+  const partnerTypeById = new Map(territorySellerPartners.map((p) => [p.id, p.type]));
+  const supplySplit = {
+    companyDirectValue: orders
+      .filter((o) => o.sellerPartnerId && partnerTypeById.get(o.sellerPartnerId) === "COMPANY_DIRECT")
+      .reduce((sum, o) => sum + Number(o.total), 0),
+    distributorValue: orders
+      .filter((o) => o.sellerPartnerId && partnerTypeById.get(o.sellerPartnerId) === "DISTRIBUTOR")
+      .reduce((sum, o) => sum + Number(o.total), 0),
+  };
+  return { ...attribution, supplySplit };
 }

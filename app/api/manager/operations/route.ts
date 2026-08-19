@@ -22,6 +22,7 @@ import {
   managerPartnerCheckIn,
   managerPartnerCheckOut,
   assignDistributorToOrder,
+  assignRetailerCommercialParty,
 } from "@/lib/sales-distribution/manager-service";
 import { capturePhoto } from "@/lib/sales-distribution/field-portal-service";
 import { assistedDistributorOperation, endFieldDay, startFieldDay, recordPaymentPromise } from "@/lib/sales-distribution/workflow-service";
@@ -71,6 +72,7 @@ const requestBody = z.object({
     "capture-photo-manager",
     "prospect-timeline",
     "assign-distributor",
+    "assign-retailer-commercial-party",
     "assign-manager-team",
     "assign-distributor-to-executive",
     "bulk-assign-ratan-distributors",
@@ -223,6 +225,9 @@ export async function POST(request: Request) {
     } else if (action === "assign-distributor") {
       const v = z.object({ orderId: z.string(), distributorId: z.string(), reason: z.string().min(3) }).parse(payload);
       result = await assignDistributorToOrder(prisma, user.id, v);
+    } else if (action === "assign-retailer-commercial-party") {
+      const v = z.object({ retailerId: z.string(), partnerId: z.string(), reason: z.string().min(3) }).parse(payload);
+      result = await assignRetailerCommercialParty(prisma, user.id, v);
     } else if (action === "assign-manager-team") {
       const v = z.object({ executiveId: z.string(), managerId: z.string(), effectiveFrom: z.coerce.date(), reason: z.string().min(3) }).parse(payload);
       result = await createManagerTeamAssignment(prisma, user.id, v);

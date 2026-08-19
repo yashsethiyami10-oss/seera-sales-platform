@@ -186,6 +186,145 @@ const key = () => crypto.randomUUID();
 // useEffect/event handler, never during SSR, so they carry no hydration risk and keeping them
 // random preserves correct React list-reconciliation identity across visits.
 const blankOrderLine = (fixedKey?: string): OrderLine => ({ key: fixedKey ?? key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "" });
+
+// Part A (repeat business / phone orders): extracted so the SAME brand/search/product/qty/rate
+// line-item editor can be reused by both the in-visit ORDER tab and the new no-visit order panel
+// (My Route "New Order" / top-level "+ New order") — the two previously-identical JSX blocks this
+// replaces were never allowed to drift, per this codebase's "extraction, not duplication" convention.
+function OrderLineItemsEditor({
+  hi,
+  lines,
+  setLines,
+  skus,
+}: {
+  hi: boolean;
+  lines: OrderLine[];
+  setLines: (updater: (current: OrderLine[]) => OrderLine[]) => void;
+  skus: Sku[];
+}) {
+  const skuById = new Map(skus.map((s) => [s.id, s]));
+  const brands = Array.from(new Set(skus.map((s) => s.brand))).sort();
+  const total = lines.reduce((sum, line) => sum + (line.rate || 0) * (line.quantity || 0), 0);
+  return (
+    <div className={styles.lineItems}>
+      <strong>{hi ? "ऑर्डर उत्पाद" : "Order products"}</strong>
+      {lines.map((line, index) => {
+        const sku = skuById.get(line.skuId);
+        const lineTotal = (line.rate || 0) * (line.quantity || 0);
+        const searchText = line.search.trim().toLowerCase();
+        const visibleSkus = skus.filter(
+          (s) =>
+            (line.brandFilter === "ALL" || s.brand === line.brandFilter) &&
+            (!searchText ||
+              s.productName.toLowerCase().includes(searchText) ||
+              s.brand.toLowerCase().includes(searchText) ||
+              s.packLabel.toLowerCase().includes(searchText)),
+        );
+        const visibleBrands = Array.from(new Set(visibleSkus.map((s) => s.brand)));
+        return (
+          <div className={styles.lineItem} key={line.key}>
+            <label>
+              {hi ? "ब्रांड" : "Brand"}
+              <div className={styles.workTypeGrid}>
+                {["ALL", ...brands].map((b) => (
+                  <label key={b} className={styles.workTypeOption} data-active={line.brandFilter === b}>
+                    <input
+                      type="radio"
+                      name={`brand-${line.key}`}
+                      checked={line.brandFilter === b}
+                      onChange={() => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, brandFilter: b } : item)))}
+                    />
+                    {b === "ALL" ? (hi ? "सभी" : "All") : b}
+                  </label>
+                ))}
+              </div>
+            </label>
+            <label>
+              {hi ? "खोजें (नाम / पैक)" : "Search (name / pack)"}
+              <input
+                type="search"
+                value={line.search}
+                placeholder={hi ? "उदा. डिटर्जेंट, 1 kg" : "e.g. Detergent, 1 kg"}
+                onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, search: event.target.value } : item)))}
+              />
+            </label>
+            <label>
+              {hi ? "उत्पाद / वेरिएंट" : "Product / Variant"}
+              <select
+                data-testid="order-line-product-select"
+                value={line.skuId}
+                onChange={(event) => {
+                  const chosen = skuById.get(event.target.value);
+                  setLines((current) =>
+                    current.map((item) => (item.key === line.key ? { ...item, skuId: event.target.value, rate: chosen?.rate || item.rate } : item)),
+                  );
+                }}
+                required
+              >
+                <option value="">{hi ? "उत्पाद चुनें" : "Choose product"}</option>
+                {visibleBrands.map((b) => (
+                  <optgroup key={b} label={b}>
+                    {visibleSkus
+                      .filter((s) => s.brand === b)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.productName} — {s.packLabel}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+            <label>
+              {hi ? "मात्रा" : "Quantity"}
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={line.quantity}
+                onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, quantity: Number(event.target.value) } : item)))}
+                required
+              />
+            </label>
+            <label>
+              {hi ? "दर (GST सहित)" : "Rate (Incl. GST)"}
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={line.rate || ""}
+                placeholder={hi ? "दर दर्ज करें" : "Enter rate"}
+                onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, rate: Number(event.target.value) } : item)))}
+                required
+              />
+            </label>
+            <label>
+              {hi ? "कुल" : "Total"}
+              <input value={sku ? `₹${lineTotal.toFixed(2)}` : "—"} readOnly />
+            </label>
+            {lines.length > 1 && (
+              <button
+                className={styles.removeLine}
+                type="button"
+                onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}
+                aria-label={`${hi ? "उत्पाद हटाएँ" : "Remove product"} ${index + 1}`}
+              >
+                {hi ? "हटाएँ" : "Remove"}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <button className={styles.addLine} type="button" onClick={() => setLines((current) => [...current, blankOrderLine()])}>
+        {hi ? "+ उत्पाद जोड़ें" : "+ Add product"}
+      </button>
+      <div className={styles.orderTotalRow}>
+        <strong>{hi ? "ऑर्डर कुल" : "Order total"}</strong>
+        <span>₹{total.toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
 // The offline sync API rejects any queued operation whose sessionContext.sessionId doesn't match
 // the server-side Session row that's live at sync time (a deliberate staleness/identity check —
 // see app/api/offline/sync/route.ts's STALE_DEVICE_SESSION check) — this used to be hardcoded to
@@ -449,7 +588,17 @@ export function FieldJourney({
     // fake result, it's just not waiting for the background router.refresh() to deliver the same
     // photo list back through `visit.photos` before the count/grid/checkout-gate reflect it.
     [localAddedPhotos, setLocalAddedPhotos] = useState<Photo[]>([]),
-    [locallyDeletedPhotoIds, setLocallyDeletedPhotoIds] = useState<Set<string>>(new Set());
+    [locallyDeletedPhotoIds, setLocallyDeletedPhotoIds] = useState<Set<string>>(new Set()),
+    // Part A (repeat business / phone orders): a brand-new, independent order against an EXISTING
+    // retailer that needs no physical check-in — "My Route" row action or the top-level launcher
+    // below both just set this, no fake visit/GPS/SeeraVisit involved at any point.
+    [noVisitOrder, setNoVisitOrder] = useState<{ retailerId: string; retailerName: string } | null>(null),
+    [noVisitOrderLines, setNoVisitOrderLines] = useState<OrderLine[]>([blankOrderLine()]),
+    [noVisitSource, setNoVisitSource] = useState<"PHONE_CALL" | "WHATSAPP" | "OTHER">("PHONE_CALL"),
+    [noVisitPaymentType, setNoVisitPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
+    [retailerSearchOpen, setRetailerSearchOpen] = useState(false),
+    [retailerSearchQuery, setRetailerSearchQuery] = useState(""),
+    [retailerSearchResults, setRetailerSearchResults] = useState<{ id: string; businessName: string; mobile: string | null; code: string }[]>([]);
 
   const visit = optimisticVisitCleared ? undefined : (rawVisit ?? localOptimisticVisit ?? undefined);
   const effectivePhotos = visit ? [...visit.photos, ...localAddedPhotos].filter((p) => !locallyDeletedPhotoIds.has(p.id)) : [];
@@ -495,6 +644,23 @@ export function FieldJourney({
     if (session?.id) scrollToJourneyTop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
+
+  // Part A: debounced typeahead for the top-level "+ New order" launcher (an existing retailer
+  // that may not even be in today's beat) — executiveRetailerSearch already scopes to the
+  // Executive's own retailer book server-side, this is just a light debounce so every keystroke
+  // doesn't fire its own request.
+  useEffect(() => {
+    if (!retailerSearchOpen || retailerSearchQuery.trim().length < 2) {
+      setRetailerSearchResults([]);
+      return;
+    }
+    const handle = setTimeout(() => {
+      void send("retailer-search", { q: retailerSearchQuery.trim() }).then((result) => {
+        if (result.success) setRetailerSearchResults(result.data as { id: string; businessName: string; mobile: string | null; code: string }[]);
+      });
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [retailerSearchOpen, retailerSearchQuery]);
 
   const skuById = new Map(skus.map((s) => [s.id, s]));
   const brands = Array.from(new Set(skus.map((s) => s.brand))).sort();
@@ -840,6 +1006,11 @@ export function FieldJourney({
     </section>
   );
 
+  // PERFORMANCE PHASE 3 (P0 Add Customer latency): previously 2 SEQUENTIAL server round trips
+  // (create-retailer, then check-in only after it resolved) — collapsed into the single
+  // create-retailer-and-check-in action (createRetailerAndCheckIn, field-portal-service.ts),
+  // which composes both writes in one transaction server-side. Duplicate-warning handling is
+  // unchanged (same SIMILAR_RETAILER_EXISTS shape, same confirmDuplicate re-submit path).
   async function submitAddCustomer(f: FormData, confirmDuplicate: boolean) {
     setBusy(true);
     setBusyLabel(hi ? "ग्राहक जोड़ा जा रहा है…" : "Adding customer…");
@@ -848,8 +1019,7 @@ export function FieldJourney({
     await yieldToPaint();
     const { status, point } = await captureGps();
     setGpsStatus(status);
-    const idempotencyKey = key();
-    const createResult = await send("create-retailer", {
+    const result = await send("create-retailer-and-check-in", {
       businessName: String(f.get("businessName")),
       address: { area: String(f.get("area")) },
       ownerName: String(f.get("ownerName") ?? "") || undefined,
@@ -861,59 +1031,89 @@ export function FieldJourney({
       notes: String(f.get("notes") ?? "") || undefined,
       latitude: point.latitude,
       longitude: point.longitude,
+      accuracy: point.accuracy,
       confirmDuplicate,
-      idempotencyKey,
+      idempotencyKey: key(),
+      workSessionId: session!.id,
+      checkInIdempotencyKey: key(),
     });
-    if (!createResult.success) {
-      setBusy(false);
-      setBusyLabel(null);
-      const similar = createResult.details?.similar as { id: string; businessName: string; mobile: string | null }[] | undefined;
+    setBusy(false);
+    setBusyLabel(null);
+    if (!result.success) {
+      const similar = result.details?.similar as { id: string; businessName: string; mobile: string | null }[] | undefined;
       if (similar?.length) setDuplicateWarning({ similar });
       else
         setMessage({
           ok: false,
           text:
-            createResult.code === "SIMILAR_RETAILER_EXISTS"
+            result.code === "SIMILAR_RETAILER_EXISTS"
               ? hi
                 ? "मिलती-जुलती दुकान पहले से मौजूद है। उसे खोलें या फिर भी सहेजें।"
                 : "A similar customer already exists. Open it or save anyway."
-              : createResult.message,
+              : result.message,
         });
       return;
     }
     setDuplicateWarning(null);
     setShowAddCustomer(false);
-    setBusyLabel(hi ? "चेक-इन हो रहा है…" : "Checking in…");
-    const checkinResult = await send("check-in", {
-      workSessionId: session!.id,
-      retailerId: createResult.data.id,
-      latitude: point.latitude,
-      longitude: point.longitude,
-      accuracy: point.accuracy,
-      idempotencyKey: key(),
-    });
-    setBusy(false);
-    setBusyLabel(null);
-    if (!checkinResult.success) {
-      setMessage({ ok: false, text: checkinResult.message });
-      return;
-    }
     setMessage({ ok: true, text: hi ? "ग्राहक जोड़ा गया — विज़िट शुरू।" : "Customer added successfully — visit started." });
-    // Same durable-success-gated optimistic transition as the main check-in flow — both writes
+    // Same durable-success-gated optimistic transition as the main check-in flow — the write
     // above already completed successfully server-side before this runs.
-    const newRetailer = createResult.data as { id: string; businessName: string; mobile: string | null; distributorId: string | null };
-    const newVisit = checkinResult.data as { id: string; checkedInAt: string };
+    const data = result.data as {
+      retailer: { id: string; businessName: string; mobile: string | null; distributorId: string | null };
+      visit: { id: string; checkedInAt: string };
+    };
     setLocalOptimisticVisit({
-      id: newVisit.id,
-      retailerId: newRetailer.id,
-      retailerName: newRetailer.businessName,
-      retailerMobile: newRetailer.mobile,
+      id: data.visit.id,
+      retailerId: data.retailer.id,
+      retailerName: data.retailer.businessName,
+      retailerMobile: data.retailer.mobile,
       retailerArea: null,
-      distributorId: newRetailer.distributorId,
-      checkedInAt: newVisit.checkedInAt,
+      distributorId: data.retailer.distributorId,
+      checkedInAt: data.visit.checkedInAt,
       photos: [],
     });
     router.refresh();
+  }
+
+  // Part A (repeat business / phone orders): reuses the SAME governed place-order action every
+  // field-visit order already goes through — no fake visit, no second "phone order" system, just
+  // an explicit non-FIELD_VISIT source and no visitId. placeRetailerOrder resolves the retailer's
+  // own distributor/Company-Direct entity server-side exactly as it always has.
+  async function submitNoVisitOrder(notes: string) {
+    if (!noVisitOrder) return;
+    const lines = noVisitOrderLines
+      .filter((line) => line.skuId && line.quantity > 0)
+      .map(({ skuId, quantity, rate }) => ({ skuId, quantity, rate }));
+    if (!lines.length) {
+      setMessage({ ok: false, text: hi ? "कम से कम एक उत्पाद और मात्रा चुनें।" : "Choose at least one product and quantity." });
+      return;
+    }
+    if (lines.some((line) => !(line.rate > 0))) {
+      setMessage({ ok: false, text: hi ? "हर उत्पाद के लिए दर (₹0 से अधिक) दर्ज करें।" : "Enter a rate greater than ₹0 for every product." });
+      return;
+    }
+    const outcome = await run(
+      "place-order",
+      {
+        retailerId: noVisitOrder.retailerId,
+        idempotencyKey: key(),
+        notes,
+        commercialPaymentType: noVisitPaymentType,
+        lines,
+        source: noVisitSource,
+      },
+      null,
+      hi ? "ऑर्डर सहेजा गया।" : "Order saved.",
+      hi ? "ऑर्डर सहेजा जा रहा है…" : "Saving order…",
+    );
+    if ("queued" in outcome || outcome.success) {
+      setNoVisitOrder(null);
+      setNoVisitOrderLines([blankOrderLine()]);
+      setNoVisitSource("PHONE_CALL");
+      setRetailerSearchOpen(false);
+      setRetailerSearchQuery("");
+    }
   }
 
   // ---------------------------------------------------------------- Next customer ----
@@ -960,6 +1160,20 @@ export function FieldJourney({
               <Link href="/portal/sales-executive/prospects">
                 {hi ? "+ वितरक / संभावना विज़िट" : "+ Distributor / prospect visit"}
               </Link>
+              {/* Part A4 (phone/WhatsApp order): existing retailer, no fake check-in. Opens a
+                  typeahead scoped to the Executive's own retailer book (executiveRetailerSearch) —
+                  works for ANY existing retailer, not only today's planned beat. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMessage(null);
+                  setNoVisitOrder(null);
+                  setRetailerSearchOpen(true);
+                  scrollToJourneyTop();
+                }}
+              >
+                {hi ? "+ नया ऑर्डर" : "+ New order"}
+              </button>
             </div>
             {isProspectMode && (
               <p className={styles.note}>
@@ -967,6 +1181,83 @@ export function FieldJourney({
                   ? "आज का कार्य प्रकार वितरक खोज/विज़िट है। ऊपर 'वितरक / संभावना विज़िट' खोलें, या किसी वास्तविक दुकान पर रुकने के लिए ग्राहक जोड़ें।"
                   : "Today's work type is Distributor Search/Visit. Open “Distributor / prospect visit” above, or Add customer if you stop at an actual shop."}
               </p>
+            )}
+            {retailerSearchOpen && !noVisitOrder && (
+              <div className={styles.note}>
+                <strong>{hi ? "मौजूदा रिटेलर खोजें" : "Search an existing retailer"}</strong>
+                <input
+                  autoFocus
+                  type="search"
+                  value={retailerSearchQuery}
+                  placeholder={hi ? "दुकान का नाम, कोड या मोबाइल" : "Shop name, code, or mobile"}
+                  onChange={(e) => setRetailerSearchQuery(e.target.value)}
+                />
+                {retailerSearchResults.map((r) => (
+                  <button
+                    type="button"
+                    key={r.id}
+                    onClick={() => {
+                      setNoVisitOrder({ retailerId: r.id, retailerName: r.businessName });
+                      setNoVisitOrderLines([blankOrderLine()]);
+                    }}
+                  >
+                    {r.businessName} · {r.code} · {r.mobile ?? (hi ? "मोबाइल नहीं" : "no mobile")}
+                  </button>
+                ))}
+                <button type="button" className={styles.secondary} onClick={() => { setRetailerSearchOpen(false); setRetailerSearchQuery(""); }}>
+                  {hi ? "रद्द करें" : "Cancel"}
+                </button>
+              </div>
+            )}
+            {noVisitOrder && (
+              <form
+                className={styles.note}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  void submitNoVisitOrder(String(f.get("notes") ?? ""));
+                }}
+              >
+                <strong>
+                  {hi ? "नया ऑर्डर — " : "New order — "}
+                  {noVisitOrder.retailerName}
+                </strong>
+                <label>
+                  {hi ? "स्रोत" : "Source"}
+                  <select value={noVisitSource} onChange={(e) => setNoVisitSource(e.target.value as "PHONE_CALL" | "WHATSAPP" | "OTHER")}>
+                    <option value="PHONE_CALL">{hi ? "फ़ोन कॉल" : "Phone call"}</option>
+                    <option value="WHATSAPP">{hi ? "व्हाट्सएप" : "WhatsApp"}</option>
+                    <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+                  </select>
+                </label>
+                <OrderLineItemsEditor hi={hi} lines={noVisitOrderLines} setLines={setNoVisitOrderLines} skus={skus} />
+                <label>
+                  {hi ? "भुगतान प्रकार" : "Payment type"}
+                  <select value={noVisitPaymentType} onChange={(e) => setNoVisitPaymentType(e.target.value as "CASH" | "CREDIT")}>
+                    <option value="CREDIT">{hi ? "उधार" : "CREDIT"}</option>
+                    <option value="CASH">{hi ? "नकद" : "CASH"}</option>
+                  </select>
+                </label>
+                <label>
+                  {hi ? "ऑर्डर टिप्पणी" : "Order note"}
+                  <input name="notes" />
+                </label>
+                <button className={styles.primary} disabled={busy || !skus.length}>
+                  {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "ऑर्डर सहेजें" : "Save order"}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  disabled={busy}
+                  onClick={() => {
+                    setNoVisitOrder(null);
+                    setRetailerSearchOpen(false);
+                    setRetailerSearchQuery("");
+                  }}
+                >
+                  {hi ? "रद्द करें" : "Cancel"}
+                </button>
+              </form>
             )}
             {beatRetailers.length > 0 && (
               <>
@@ -1021,12 +1312,38 @@ export function FieldJourney({
                           >
                             {hi ? "छोड़ें" : "Skip"}
                           </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setMessage(null);
+                              setRetailerSearchOpen(false);
+                              setNoVisitOrder({ retailerId: retailer.id, retailerName: retailer.businessName });
+                              setNoVisitOrderLines([blankOrderLine()]);
+                              scrollToJourneyTop();
+                            }}
+                          >
+                            {hi ? "नया ऑर्डर" : "New Order"}
+                          </button>
                         </div>
                       )}
                       {retailer.visitStatus && retailer.visitStatus !== "PENDING" && (
                         <div className="rowActions">
                           <button disabled={busy} onClick={() => startVisitFor(retailer)}>
                             {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "फिर से चेक-इन करें" : "Check In Again"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setMessage(null);
+                              setRetailerSearchOpen(false);
+                              setNoVisitOrder({ retailerId: retailer.id, retailerName: retailer.businessName });
+                              setNoVisitOrderLines([blankOrderLine()]);
+                              scrollToJourneyTop();
+                            }}
+                          >
+                            {hi ? "नया ऑर्डर" : "New Order"}
                           </button>
                         </div>
                       )}
@@ -1246,6 +1563,8 @@ export function FieldJourney({
                     notes: String(f.get("notes") ?? ""),
                     commercialPaymentType: paymentType,
                     lines,
+                    source: "FIELD_VISIT",
+                    visitId: visit.id,
                   },
                   {
                     entityType: "SeeraSalesOrder",
@@ -1261,151 +1580,7 @@ export function FieldJourney({
               })();
             }}
           >
-            <div className={styles.lineItems}>
-              <strong>{hi ? "ऑर्डर उत्पाद" : "Order products"}</strong>
-              {orderLines.map((line, index) => {
-                const sku = skuById.get(line.skuId);
-                const lineTotal = (line.rate || 0) * (line.quantity || 0);
-                const searchText = line.search.trim().toLowerCase();
-                const visibleSkus = skus.filter(
-                  (s) =>
-                    (line.brandFilter === "ALL" || s.brand === line.brandFilter) &&
-                    (!searchText ||
-                      s.productName.toLowerCase().includes(searchText) ||
-                      s.brand.toLowerCase().includes(searchText) ||
-                      s.packLabel.toLowerCase().includes(searchText)),
-                );
-                const visibleBrands = Array.from(new Set(visibleSkus.map((s) => s.brand)));
-                return (
-                  <div className={styles.lineItem} key={line.key}>
-                    <label>
-                      {hi ? "ब्रांड" : "Brand"}
-                      <div className={styles.workTypeGrid}>
-                        {["ALL", ...brands].map((b) => (
-                          <label key={b} className={styles.workTypeOption} data-active={line.brandFilter === b}>
-                            <input
-                              type="radio"
-                              name={`brand-${line.key}`}
-                              checked={line.brandFilter === b}
-                              onChange={() =>
-                                setOrderLines((current) =>
-                                  current.map((item) => (item.key === line.key ? { ...item, brandFilter: b } : item)),
-                                )
-                              }
-                            />
-                            {b === "ALL" ? (hi ? "सभी" : "All") : b}
-                          </label>
-                        ))}
-                      </div>
-                    </label>
-                    <label>
-                      {hi ? "खोजें (नाम / पैक)" : "Search (name / pack)"}
-                      <input
-                        type="search"
-                        value={line.search}
-                        placeholder={hi ? "उदा. डिटर्जेंट, 1 kg" : "e.g. Detergent, 1 kg"}
-                        onChange={(event) =>
-                          setOrderLines((current) =>
-                            current.map((item) => (item.key === line.key ? { ...item, search: event.target.value } : item)),
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      {hi ? "उत्पाद / वेरिएंट" : "Product / Variant"}
-                      <select
-                        data-testid="order-line-product-select"
-                        value={line.skuId}
-                        onChange={(event) => {
-                          const chosen = skuById.get(event.target.value);
-                          setOrderLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? { ...item, skuId: event.target.value, rate: chosen?.rate || item.rate }
-                                : item,
-                            ),
-                          );
-                        }}
-                        required
-                      >
-                        <option value="">{hi ? "उत्पाद चुनें" : "Choose product"}</option>
-                        {visibleBrands.map((b) => (
-                          <optgroup key={b} label={b}>
-                            {visibleSkus
-                              .filter((s) => s.brand === b)
-                              .map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.productName} — {s.packLabel}
-                                </option>
-                              ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      {hi ? "मात्रा" : "Quantity"}
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={line.quantity}
-                        onChange={(event) =>
-                          setOrderLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key ? { ...item, quantity: Number(event.target.value) } : item,
-                            ),
-                          )
-                        }
-                        required
-                      />
-                    </label>
-                    <label>
-                      {hi ? "दर (GST सहित)" : "Rate (Incl. GST)"}
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={line.rate || ""}
-                        placeholder={hi ? "दर दर्ज करें" : "Enter rate"}
-                        onChange={(event) =>
-                          setOrderLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key ? { ...item, rate: Number(event.target.value) } : item,
-                            ),
-                          )
-                        }
-                        required
-                      />
-                    </label>
-                    <label>
-                      {hi ? "कुल" : "Total"}
-                      <input value={sku ? `₹${lineTotal.toFixed(2)}` : "—"} readOnly />
-                    </label>
-                    {orderLines.length > 1 && (
-                      <button
-                        className={styles.removeLine}
-                        type="button"
-                        onClick={() => setOrderLines((current) => current.filter((item) => item.key !== line.key))}
-                        aria-label={`${hi ? "उत्पाद हटाएँ" : "Remove product"} ${index + 1}`}
-                      >
-                        {hi ? "हटाएँ" : "Remove"}
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-              <button
-                className={styles.addLine}
-                type="button"
-                onClick={() => setOrderLines((current) => [...current, blankOrderLine()])}
-              >
-                {hi ? "+ उत्पाद जोड़ें" : "+ Add product"}
-              </button>
-              <div className={styles.orderTotalRow}>
-                <strong>{hi ? "ऑर्डर कुल" : "Order total"}</strong>
-                <span>₹{orderTotal.toFixed(2)}</span>
-              </div>
-            </div>
+            <OrderLineItemsEditor hi={hi} lines={orderLines} setLines={setOrderLines} skus={skus} />
             <label>
               {hi ? "भुगतान प्रकार" : "Payment type"}
               <select value={paymentType} onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT")}>

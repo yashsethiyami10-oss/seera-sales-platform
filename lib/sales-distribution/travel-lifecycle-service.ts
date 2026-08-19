@@ -38,7 +38,9 @@ export async function partnerObligationsPreview(db: PrismaClient, actorId: strin
   const [openOrders, entries, stockMovements, advanceRecords, pendingClaims] = await Promise.all([
     db.seeraSalesOrder.count({ where: { OR: [{ buyerPartnerId: partnerId }, { sellerPartnerId: partnerId }], status: { notIn: ["CLOSED", "CANCELLED", "REJECTED"] } } }),
     db.seeraFinancialEntry.findMany({ where: { status: "POSTED", OR: [{ debitPartyId: partnerId }, { creditPartyId: partnerId }] } }),
-    db.seeraInventoryMovement.groupBy({ by: ["direction"], where: { partyType: partner.type, partyId: partnerId }, _sum: { quantity: true } }),
+    // Company Direct (Part B) has no dedicated InventoryPartyType — maps onto the existing
+    // COMPANY value, same as delivery-service.ts's refused-delivery return movement.
+    db.seeraInventoryMovement.groupBy({ by: ["direction"], where: { partyType: partner.type === "COMPANY_DIRECT" ? "COMPANY" : partner.type, partyId: partnerId }, _sum: { quantity: true } }),
     db.seeraPaymentRecord.aggregate({ where: { payerType: partner.type, payerId: partnerId }, _sum: { unappliedAmount: true } }),
     db.seeraClaim.count({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "APPROVED"] }, OR: [{ claimantId: partnerId }, { againstPartyId: partnerId }] } }),
   ]);
@@ -56,7 +58,7 @@ export async function transitionPartnerLifecycle(db: PrismaClient, actorId: stri
     // IN/OUT ledger every stock screen already reads (see distributor-management-service.ts's
     // distributorClosureStockPosition/settleDistributorClosureStock for the governed take-back flow
     // this is meant to force a Founder through before CLOSE can succeed without FORCE_CLOSE).
-    const stockMovements = await tx.seeraInventoryMovement.groupBy({ by: ["direction"], where: { partyType: partner.type, partyId: partnerId }, _sum: { quantity: true } });
+    const stockMovements = await tx.seeraInventoryMovement.groupBy({ by: ["direction"], where: { partyType: partner.type === "COMPANY_DIRECT" ? "COMPANY" : partner.type, partyId: partnerId }, _sum: { quantity: true } });
     const stock = Math.max(0, Number(stockMovements.find((m) => m.direction === "IN")?._sum.quantity ?? 0) - Number(stockMovements.find((m) => m.direction === "OUT")?._sum.quantity ?? 0));
     const advanceRecords = await tx.seeraPaymentRecord.aggregate({ where: { payerType: partner.type, payerId: partnerId }, _sum: { unappliedAmount: true } });
     const advances = Number(advanceRecords._sum.unappliedAmount ?? 0);

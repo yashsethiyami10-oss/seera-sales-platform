@@ -406,7 +406,9 @@ export async function OperationalDetail({
             }
           />
         )}
-        {canManageAccess && (
+        {canManageAccess && (x.type === "DISTRIBUTOR" || x.type === "SUPER_STOCKIST") && (
+          // Company Direct is the Founder's own internal entity, not an external partner with its
+          // own portal login — no user-access management needed for it.
           <PartnerAccessPanel language={language} partnerId={x.id} partnerType={x.type} members={members} />
         )}
         {canManageAccess && x.type === "DISTRIBUTOR" && (

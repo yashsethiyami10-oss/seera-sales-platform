@@ -169,6 +169,7 @@ enum MasterStatus {
 enum PartnerType {
   DISTRIBUTOR
   SUPER_STOCKIST
+  COMPANY_DIRECT
 }
 
 enum PartnerLifecycle {
@@ -213,6 +214,13 @@ enum SalesOrderType {
   RETAILER_ORDER
   DISTRIBUTOR_REPLENISHMENT
   COMPANY_REPLENISHMENT
+}
+
+enum OrderSource {
+  FIELD_VISIT
+  PHONE_CALL
+  WHATSAPP
+  OTHER
 }
 
 enum SalesOrderStatus {
@@ -1052,6 +1060,7 @@ model SeeraRetailer {
   source             String            @default("PLANNED")
   notes              String?
   photoMetadata      Json?
+  idempotencyKey     String?           @unique
   createdById        String
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
@@ -1231,6 +1240,7 @@ model SeeraVisit {
   workSession          SeeraWorkSession  @relation(fields: [workSessionId], references: [id], onDelete: Restrict)
   retailer             SeeraRetailer?    @relation(fields: [retailerId], references: [id], onDelete: Restrict)
   photos               SeeraVisitPhoto[]
+  orders               SeeraSalesOrder[]
 
   @@index([workSessionId, outcome])
   @@index([checkedInAt])
@@ -1311,6 +1321,8 @@ model SeeraSalesOrder {
   commercialPartyType   String
   commercialPartyId     String
   sourcePortal          String
+  source                OrderSource           @default(FIELD_VISIT)
+  visitId               String?
   onBehalfOfPartyId     String?
   commercialPaymentType String?
   financialAcceptance   Boolean               @default(false)
@@ -1336,6 +1348,7 @@ model SeeraSalesOrder {
   retailer              SeeraRetailer?        @relation(fields: [retailerId], references: [id], onDelete: Restrict)
   buyerPartner          SeeraPartner?         @relation("OrderBuyerPartner", fields: [buyerPartnerId], references: [id], onDelete: Restrict)
   sellerPartner         SeeraPartner?         @relation("OrderSellerPartner", fields: [sellerPartnerId], references: [id], onDelete: Restrict)
+  visit                 SeeraVisit?           @relation(fields: [visitId], references: [id], onDelete: SetNull)
   lines                 SeeraOrderLine[]
   deliveries            SeeraDelivery[]
   promises              SeeraPaymentPromise[]
@@ -1348,6 +1361,7 @@ model SeeraSalesOrder {
   @@index([salespersonId, createdAt])
   @@index([buyerPartnerId, createdAt])
   @@index([sellerPartnerId, createdAt])
+  @@index([source, createdAt])
   @@map("seera_sales_orders")
 }
 

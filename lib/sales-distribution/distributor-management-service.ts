@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
@@ -188,6 +188,60 @@ export async function createSuperStockist(
       entityType: "SeeraPartner",
       entityId: created.id,
       afterState: { legalName: created.legalName, code: created.code, billingProfileCreated: Boolean(input.billingProfile) },
+    });
+    return created;
+  });
+  return partner;
+}
+
+// Part B (Manoj Kumar hybrid territory): "Company Direct" supply, represented as a real
+// SeeraPartner{type:COMPANY_DIRECT} row so the existing distributor-resolution architecture
+// (SeeraRetailer.distributorId, placeRetailerOrder's routing) can be reused unchanged rather than
+// building a parallel supply engine. There is only ever ONE Company Direct partner — this is a
+// true singleton (returns the existing row rather than erroring on a second call), unlike
+// createSuperStockist's idempotency-key-scoped dedup, since "the Founder's own firm" is not a
+// per-call concept.
+export async function createCompanyDirectPartner(
+  prisma: PrismaClient,
+  actorId: string,
+  input: {
+    legalName?: string;
+    tradeName?: string;
+    address: Record<string, unknown>;
+    notes?: string;
+    idempotencyKey: string;
+  },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const existing = await prisma.seeraPartner.findFirst({ where: { type: "COMPANY_DIRECT" } });
+  if (existing) return existing;
+  const now = new Date();
+  const partner = await prisma.$transaction(async (tx) => {
+    const created = await tx.seeraPartner.create({
+      data: {
+        type: "COMPANY_DIRECT",
+        code: numberFor("CD", input.idempotencyKey),
+        legalName: input.legalName?.trim() || "Company Direct",
+        tradeName: input.tradeName?.trim() || undefined,
+        primaryContact: {},
+        addresses: input.address as Prisma.InputJsonValue,
+        // Deliberately empty — territoryIds only ever feeds placeRetailerOrder's
+        // type:"DISTRIBUTOR" auto-resolution query, which structurally excludes COMPANY_DIRECT by
+        // its type filter alone. Populating this would risk a future reader assuming it plays a
+        // routing role it never does.
+        territoryIds: [],
+        lifecycle: "ACTIVE",
+        appointmentDate: now,
+        remarks: input.notes,
+        createdById: actorId,
+      },
+    });
+    await recordAudit(tx, {
+      actorId,
+      action: "company_direct_partner.created",
+      entityType: "SeeraPartner",
+      entityId: created.id,
+      afterState: { legalName: created.legalName, code: created.code },
     });
     return created;
   });

@@ -26,7 +26,10 @@ export function timeOperation(operation: string) {
     },
     finish(context: Record<string, unknown> = {}) {
       const totalMs = Math.round(performance.now() - start);
-      if (totalMs > 1000) operationalLog("warn", "performance.slow_operation", { operationId, operation, totalMs, stages, ...context });
+      // PERF_TRACE_ALL=1 is a measurement-only override (never set in normal prod/dev) that logs
+      // every call regardless of the 1000ms budget, for driving p50/p95/p98/max baselines with
+      // scripts/seera/perf-baseline-*.ts — never enabled by default.
+      if (totalMs > 1000 || process.env.PERF_TRACE_ALL === "1") operationalLog("warn", "performance.slow_operation", { operationId, operation, totalMs, stages, ...context });
       return totalMs;
     },
   };

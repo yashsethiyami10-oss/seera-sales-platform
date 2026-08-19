@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { after } from "next/server";
 import type { Prisma, PrismaClient, VisitOutcome } from "@prisma/client";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
@@ -25,7 +26,9 @@ export async function executiveCheckIn(
     idempotencyKey: string;
   },
 ) {
+  const timing = timeOperation("field_portal.executiveCheckIn");
   await authorize(db, { actorId, permission: "retailer:visit" });
+  timing.stage("authorize");
   // These three reads are independent of each other (none consumes another's result, only the
   // validation logic below combines them) — one round trip instead of three.
   const [session, retailer, open] = await Promise.all([
@@ -66,22 +69,26 @@ export async function executiveCheckIn(
       "Checkout the current retailer first",
       409,
     );
-  // The visit upsert and the GPS sample write are independent (recordGpsSample only needs
-  // session.id, already known) — one round trip instead of two.
-  const [visit] = await Promise.all([
-    db.seeraVisit.upsert({
-      where: { idempotencyKey: input.idempotencyKey },
-      update: {},
-      create: {
-        workSessionId: session.id,
-        retailerId: retailer.id,
-        checkedInAt: new Date(),
-        checkInLatitude: input.latitude,
-        checkInLongitude: input.longitude,
-        gpsExceptionReason: input.gpsExceptionReason,
-        idempotencyKey: input.idempotencyKey,
-      },
-    }),
+  timing.stage("scope_checks");
+  const visit = await db.seeraVisit.upsert({
+    where: { idempotencyKey: input.idempotencyKey },
+    update: {},
+    create: {
+      workSessionId: session.id,
+      retailerId: retailer.id,
+      checkedInAt: new Date(),
+      checkInLatitude: input.latitude,
+      checkInLongitude: input.longitude,
+      gpsExceptionReason: input.gpsExceptionReason,
+      idempotencyKey: input.idempotencyKey,
+    },
+  });
+  timing.stage("visit_upsert");
+  // PERFORMANCE PHASE 2 (P1 check-in SLO): the visit is already durably created above — the GPS
+  // sample is a secondary tracking record the client never waits on for correctness, so it's
+  // deferred via after() rather than merely parallelized. Same guarded pattern as
+  // placeRetailerOrder/executiveCheckOut/endFieldDay.
+  const gpsSample = () =>
     recordGpsSample(db, {
       employeeId: actorId,
       workSessionId: session.id,
@@ -89,13 +96,14 @@ export async function executiveCheckIn(
       longitude: input.longitude,
       accuracy: input.accuracy,
       source: "CHECK_IN",
-      trackingStatus: input.gpsExceptionReason
-        ? "EXCEPTION"
-        : input.latitude != null
-          ? "OK"
-          : "UNAVAILABLE",
-    }),
-  ]);
+      trackingStatus: input.gpsExceptionReason ? "EXCEPTION" : input.latitude != null ? "OK" : "UNAVAILABLE",
+    }).catch((error) => console.error("record_gps_sample.failed", error));
+  try {
+    after(gpsSample);
+  } catch {
+    await gpsSample();
+  }
+  timing.finish({ actorId, retailerId: input.retailerId });
   return visit;
 }
 
@@ -119,7 +127,9 @@ export async function executiveCheckOut(
     accuracy?: number;
   },
 ) {
+  const timing = timeOperation("field_portal.executiveCheckOut");
   await authorize(db, { actorId, permission: "retailer:visit" });
+  timing.stage("authorize");
   // Photo count folded into the same query as a relation count instead of a second round trip.
   const visit = await db.seeraVisit.findFirst({
     where: {
@@ -129,6 +139,7 @@ export async function executiveCheckOut(
     },
     include: { _count: { select: { photos: { where: { deletedAt: null } } } } },
   });
+  timing.stage("visit_lookup");
   if (!visit)
     throw new FoundationError(
       "VISIT_SCOPE_DENIED",
@@ -178,23 +189,38 @@ export async function executiveCheckOut(
       trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
     }),
   ]);
+  timing.stage("visit_update_and_gps");
   // Retailer WhatsApp notification is queued strictly AFTER the visit is durably checked out
   // (this is a fast local outbox write, not the Meta network call, which only ever happens
   // later from the separate dispatch worker) — never before/concurrent with the commit above,
   // so a checkout that ultimately fails can never have already queued a message for it, and a
   // queuing hiccup (queueRetailerCommunicationSafe never throws) can never turn an already-
   // successful checkout into a user-visible failure.
+  // NOTE: ORDER_RECORDED is deliberately NOT triggered here anymore (Part A5) — it now fires
+  // from placeRetailerOrder itself, once per order, referencing that order's own id, instead of
+  // this checkout-outcome-driven trigger with a "most recent order" guess that breaks once
+  // multiple orders/day are normal. Only the genuinely checkout-outcome-driven events remain.
   const commEventType: RetailerCommEventType | null =
-    input.outcome === "ORDER_BOOKED" ? "ORDER_RECORDED" : input.outcome === "NO_ORDER" ? "REFUSED_OR_UNABLE" : input.outcome === "FOLLOW_UP" ? "FOLLOW_UP" : null;
+    input.outcome === "NO_ORDER" ? "REFUSED_OR_UNABLE" : input.outcome === "FOLLOW_UP" ? "FOLLOW_UP" : null;
+  // PERFORMANCE PHASE 2 (P1 checkout SLO): deferred via after() — the visit is already durably
+  // checked out above, so the client doesn't need to wait for this best-effort queue write. Same
+  // guarded pattern as placeRetailerOrder/endFieldDay (throws synchronously outside a request
+  // scope; falls back to running inline for non-request callers).
   if (commEventType && visit.retailerId) {
-    // Belt-and-suspenders (same posture as the End Day P0 fix): queueRetailerCommunicationSafe
-    // itself never throws, but the checkout must survive even a defect in that guarantee.
+    const queueComm = async () => {
+      try {
+        await queueRetailerCommunicationSafe(db, { eventType: commEventType, retailerId: visit.retailerId!, visitId: visit.id, actorId });
+      } catch (error) {
+        console.error("retailer_communication.queue_failed", error);
+      }
+    };
     try {
-      await queueRetailerCommunicationSafe(db, { eventType: commEventType, retailerId: visit.retailerId, visitId: visit.id, actorId });
-    } catch (error) {
-      console.error("retailer_communication.queue_failed", error);
+      after(queueComm);
+    } catch {
+      await queueComm();
     }
   }
+  timing.finish({ actorId, visitId });
   return updated;
 }
 
@@ -306,6 +332,31 @@ export async function findSimilarRetailers(
   });
 }
 
+// Typeahead for placing a non-visit (phone/WhatsApp) order against an existing retailer without
+// forcing "+ Add customer" — scoped to the Executive's own retailer book only.
+export async function executiveRetailerSearch(
+  db: PrismaClient,
+  actorId: string,
+  q: string,
+  limit = 10,
+) {
+  await authorize(db, { actorId, permission: "retailer:order" });
+  if (q.trim().length < 2) return [];
+  return db.seeraRetailer.findMany({
+    where: {
+      salespersonId: actorId,
+      lifecycle: "ACTIVE",
+      OR: [
+        { businessName: { contains: q, mode: "insensitive" as const } },
+        { code: { contains: q, mode: "insensitive" as const } },
+        { mobile: { contains: q } },
+      ],
+    },
+    select: { id: true, businessName: true, mobile: true, code: true },
+    take: limit,
+  });
+}
+
 // Only Shop/Firm Name and Area/Address are mandatory — every other field is optional, and a new
 // retailer must be usable in the current visit/order immediately (lifecycle ACTIVE right away);
 // Manager review happens after the fact via the audit trail, it never blocks first use.
@@ -338,40 +389,45 @@ export async function createRetailer(
     idempotencyKey: string;
   },
 ) {
+  const timing = timeOperation("field_portal.createRetailer");
   await authorize(db, { actorId, permission: "retailer:visit" });
+  timing.stage("authorize");
   if (!input.businessName.trim())
     throw new FoundationError("SHOP_NAME_REQUIRED", "Shop/Firm name is required", 400);
   if (!input.address || Object.keys(input.address).length === 0)
     throw new FoundationError("AREA_ADDRESS_REQUIRED", "Area/Address is required", 400);
   const normalizedMobile = input.mobile?.replace(/\D/g, "") ?? "";
-  if (!input.confirmDuplicate) {
-    const similar = await findSimilarRetailers(db, {
-      businessName: input.businessName,
-      mobile: input.mobile,
-    });
-    if (similar.length)
-      throw new FoundationError(
-        "SIMILAR_RETAILER_EXISTS",
-        "A similar retailer already exists — confirm to save anyway",
-        409,
-        { similar },
-      );
-  }
-  let distributorId = input.distributorId;
-  if (!distributorId) {
-    const anyOwn = await db.seeraRetailer.findFirst({
-      where: { salespersonId: actorId, distributorId: { not: null } },
-      select: { distributorId: true },
-      orderBy: { createdAt: "desc" },
-    });
-    distributorId = anyOwn?.distributorId ?? undefined;
-  }
-  return db.$transaction(async (tx) => {
-    const existing = await tx.seeraRetailer.findFirst({
-      where: { salespersonId: actorId, notes: { contains: input.idempotencyKey } },
+  // The duplicate check and the distributor-fallback lookup are independent reads (neither
+  // consumes the other's result) — one round trip instead of two.
+  const [similar, anyOwn] = await Promise.all([
+    input.confirmDuplicate
+      ? Promise.resolve([])
+      : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile }),
+    input.distributorId
+      ? Promise.resolve(null)
+      : db.seeraRetailer.findFirst({
+          where: { salespersonId: actorId, distributorId: { not: null } },
+          select: { distributorId: true },
+          orderBy: { createdAt: "desc" },
+        }),
+  ]);
+  timing.stage("duplicate_and_distributor_lookup");
+  if (similar.length)
+    throw new FoundationError(
+      "SIMILAR_RETAILER_EXISTS",
+      "A similar retailer already exists — confirm to save anyway",
+      409,
+      { similar },
+    );
+  const distributorId = input.distributorId ?? anyOwn?.distributorId ?? undefined;
+  const retailer = await db.$transaction(async (tx) => {
+    // Real unique-indexed lookup (SeeraRetailer.idempotencyKey), not the previous unindexed
+    // notes:{contains} LIKE scan — matches the SeeraVisit/SeeraFollowUp idempotency precedent.
+    const existing = await tx.seeraRetailer.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
     });
     if (existing) return existing;
-    const retailer = await tx.seeraRetailer.create({
+    const created = await tx.seeraRetailer.create({
       data: {
         code: numberFor("RT", input.idempotencyKey),
         businessName: input.businessName.trim(),
@@ -392,6 +448,7 @@ export async function createRetailer(
         lifecycle: "ACTIVE",
         source: "UNPLANNED_FIELD_ADDED",
         notes: input.notes,
+        idempotencyKey: input.idempotencyKey,
         createdById: actorId,
       },
     });
@@ -399,11 +456,178 @@ export async function createRetailer(
       actorId,
       action: "retailer.created_by_executive",
       entityType: "SeeraRetailer",
-      entityId: retailer.id,
-      afterState: { businessName: retailer.businessName, distributorId, source: "UNPLANNED_FIELD_ADDED" },
+      entityId: created.id,
+      afterState: { businessName: created.businessName, distributorId, source: "UNPLANNED_FIELD_ADDED" },
     });
-    return retailer;
+    return created;
   });
+  timing.stage("transaction");
+  timing.finish({ actorId });
+  return retailer;
+}
+
+// PERFORMANCE PHASE 3 (P0 Add Customer latency): "Add Customer" was 2 sequential client round
+// trips (create-retailer, then check-in) plus GPS acquisition. Composes createRetailer's and
+// executiveCheckIn's own validation/write logic into ONE transaction so the client only pays for
+// one round trip — createRetailer/executiveCheckIn themselves are left exported and unchanged for
+// every other existing caller.
+export async function createRetailerAndCheckIn(
+  db: PrismaClient,
+  actorId: string,
+  input: {
+    businessName: string;
+    address: Record<string, unknown>;
+    ownerName?: string;
+    mobile?: string;
+    alternateMobile?: string;
+    pincode?: string;
+    shopType?: (typeof SHOP_TYPES)[number];
+    customerType?: (typeof CUSTOMER_TYPES)[number];
+    gstin?: string;
+    distributorId?: string;
+    beatId?: string;
+    notes?: string;
+    confirmDuplicate?: boolean;
+    idempotencyKey: string;
+    workSessionId: string;
+    checkInIdempotencyKey: string;
+    latitude?: number;
+    longitude?: number;
+    accuracy?: number;
+    gpsExceptionReason?: string;
+  },
+) {
+  const timing = timeOperation("field_portal.createRetailerAndCheckIn");
+  await authorize(db, { actorId, permission: "retailer:visit" });
+  timing.stage("authorize");
+  if (!input.businessName.trim())
+    throw new FoundationError("SHOP_NAME_REQUIRED", "Shop/Firm name is required", 400);
+  if (!input.address || Object.keys(input.address).length === 0)
+    throw new FoundationError("AREA_ADDRESS_REQUIRED", "Area/Address is required", 400);
+  const normalizedMobile = input.mobile?.replace(/\D/g, "") ?? "";
+  // All five reads are independent of each other — one round trip instead of five.
+  // existingByKey (idempotencyKey lookup) is fetched here too, not only inside the transaction:
+  // a genuine RETRY of this same call (same idempotencyKey) already has an open visit from its
+  // first, successful attempt — the OPEN_VISIT_EXISTS check below needs to know that visit
+  // belongs to the SAME retailer this retry resolves to, or every retry would wrongly self-block.
+  const [similar, anyOwn, session, open, existingByKey] = await Promise.all([
+    input.confirmDuplicate
+      ? Promise.resolve([])
+      : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile }),
+    input.distributorId
+      ? Promise.resolve(null)
+      : db.seeraRetailer.findFirst({
+          where: { salespersonId: actorId, distributorId: { not: null } },
+          select: { distributorId: true },
+          orderBy: { createdAt: "desc" },
+        }),
+    db.seeraWorkSession.findFirst({
+      where: { id: input.workSessionId, employeeId: actorId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
+    }),
+    db.seeraVisit.findFirst({
+      where: { workSession: { employeeId: actorId }, checkedOutAt: null },
+    }),
+    db.seeraRetailer.findUnique({ where: { idempotencyKey: input.idempotencyKey } }),
+  ]);
+  timing.stage("duplicate_distributor_session_openvisit_lookup");
+  if (!existingByKey && similar.length)
+    throw new FoundationError(
+      "SIMILAR_RETAILER_EXISTS",
+      "A similar retailer already exists — confirm to save anyway",
+      409,
+      { similar },
+    );
+  if (!session)
+    throw new FoundationError("ACTIVE_WORKDAY_REQUIRED", "Start Day before checking in", 409);
+  // Same OPEN_VISIT_EXISTS governance as the standalone executiveCheckIn: only blocks when the
+  // open visit belongs to a DIFFERENT retailer. For a brand-new retailer (existingByKey is null)
+  // that's any open visit at all; for a retry of this same call, it's correctly a no-op once the
+  // open visit is this retry's own prior visit.
+  if (open && open.retailerId !== existingByKey?.id)
+    throw new FoundationError("OPEN_VISIT_EXISTS", "Checkout the current retailer first", 409);
+  const distributorId = input.distributorId ?? anyOwn?.distributorId ?? undefined;
+  timing.stage("pre_transaction_validation");
+  // PERFORMANCE PHASE 2 (P0 Add Customer SLO): existingByKey was ALREADY fetched above (as part
+  // of the same batched Promise.all) — re-querying it again inside the transaction was a genuinely
+  // redundant round trip on the same pinned connection. Reused directly instead.
+  const { retailer, visit } = await db.$transaction(async (tx) => {
+    const existingRetailer = existingByKey;
+    const retailer =
+      existingRetailer ??
+      (await tx.seeraRetailer.create({
+        data: {
+          code: numberFor("RT", input.idempotencyKey),
+          businessName: input.businessName.trim(),
+          ownerName: input.ownerName,
+          mobile: input.mobile,
+          alternateMobile: input.alternateMobile,
+          pincode: input.pincode,
+          normalizedMobile,
+          address: input.address as Prisma.InputJsonValue,
+          latitude: input.latitude,
+          longitude: input.longitude,
+          gstin: input.gstin,
+          shopType: input.shopType,
+          customerType: input.customerType,
+          distributorId,
+          beatId: input.beatId,
+          salespersonId: actorId,
+          lifecycle: "ACTIVE",
+          source: "UNPLANNED_FIELD_ADDED",
+          notes: input.notes,
+          idempotencyKey: input.idempotencyKey,
+          createdById: actorId,
+        },
+      }));
+    if (!existingRetailer) {
+      await recordAudit(tx, {
+        actorId,
+        action: "retailer.created_by_executive",
+        entityType: "SeeraRetailer",
+        entityId: retailer.id,
+        afterState: { businessName: retailer.businessName, distributorId, source: "UNPLANNED_FIELD_ADDED" },
+      });
+    }
+    timing.stage("tx_retailer_create_and_audit");
+    const visit = await tx.seeraVisit.upsert({
+      where: { idempotencyKey: input.checkInIdempotencyKey },
+      update: {},
+      create: {
+        workSessionId: session.id,
+        retailerId: retailer.id,
+        checkedInAt: new Date(),
+        checkInLatitude: input.latitude,
+        checkInLongitude: input.longitude,
+        gpsExceptionReason: input.gpsExceptionReason,
+        idempotencyKey: input.checkInIdempotencyKey,
+      },
+    });
+    timing.stage("tx_visit_upsert");
+    return { retailer, visit };
+  });
+  timing.stage("transaction");
+  // PERFORMANCE PHASE 2 (P0 Add Customer SLO): the GPS sample is a secondary tracking record —
+  // the retailer+visit are already durably created above, so the client doesn't need to wait for
+  // this write. Deferred via after() (same mechanism as placeRetailerOrder's post-commit
+  // notifications); a no-op fallback outside request scope (bare scripts/tests) still runs it
+  // inline so those callers see the same end state.
+  const gpsSample = () =>
+    recordGpsSample(db, {
+      employeeId: actorId,
+      workSessionId: session.id,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      accuracy: input.accuracy,
+      source: "CHECK_IN",
+      trackingStatus: input.gpsExceptionReason ? "EXCEPTION" : input.latitude != null ? "OK" : "UNAVAILABLE",
+    }).catch((error) => console.error("record_gps_sample.failed", error));
+  try {
+    after(gpsSample);
+  } catch {
+    await gpsSample();
+  }
+  timing.finish({ actorId });
+  return { retailer, visit };
 }
 
 export async function retailer360(db: PrismaClient, actorId: string, retailerId: string) {
@@ -626,7 +850,9 @@ export async function executiveBeat(
   range: "today" | "tomorrow" | "week",
   now = new Date(),
 ) {
+  const timing = timeOperation("field_portal.executiveBeat");
   await authorize(db, { actorId, permission: "field_day:manage_self" });
+  timing.stage("authorize");
   const days =
     range === "today"
       ? [now.getDay()]
@@ -642,6 +868,7 @@ export async function executiveBeat(
     },
     orderBy: { effectiveFrom: "desc" },
   });
+  timing.stage("plans");
   const geographyIds = [...new Set(plans.map((plan) => plan.geographyId))];
   const [visitsToday, retailers] = await Promise.all([
     db.seeraVisit.findMany({
@@ -673,6 +900,7 @@ export async function executiveBeat(
           })
         : Promise.resolve([]),
   ]);
+  timing.stage("visits_and_retailers");
   const visitStatus = new Map(visitsToday.map((v) => [v.retailerId, v.outcome]));
   const openFollowUps = retailers.length
     ? await db.seeraFollowUp.findMany({
@@ -680,9 +908,11 @@ export async function executiveBeat(
         orderBy: { dueDate: "asc" },
       })
     : [];
+  timing.stage("open_follow_ups");
   const followUpAt = new Map<string, Date>();
   for (const f of openFollowUps)
     if (f.retailerId && !followUpAt.has(f.retailerId)) followUpAt.set(f.retailerId, f.dueDate);
+  timing.finish({ actorId, range });
   return {
     plans,
     hasPublishedPlan: plans.length > 0,
@@ -732,7 +962,7 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
       }),
       db.seeraSalesOrder.findMany({
         where: { salespersonId: actorId, createdAt: { gte: startOfDay } },
-        select: { total: true },
+        select: { total: true, sellerPartnerId: true },
       }),
       db.seeraFollowUp.count({
         where: { ownerId: actorId, status: "OPEN", dueDate: { lte: new Date(startOfDay.getTime() + 86_400_000) } },
@@ -755,10 +985,11 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
       }),
     ]);
   timing.stage("batch1_independent_reads");
-  // Only these two genuinely depend on the batch above (monthDelivered needs target's period;
-  // plannedCount needs plannedToday's geography) — they don't depend on each other, so still one
-  // round trip, not two.
-  const [monthDelivered, plannedCount] = await Promise.all([
+  // Only these three genuinely depend on the batch above (monthDelivered needs target's period;
+  // plannedCount needs plannedToday's geography; the partner-type lookup needs todayOrders'
+  // sellerPartnerIds) — none depend on each other, so still one round trip, not three.
+  const todaySellerPartnerIds = [...new Set(todayOrders.map((o) => o.sellerPartnerId).filter((id): id is string => Boolean(id)))];
+  const [monthDelivered, plannedCount, todaySellerPartners] = await Promise.all([
     deliveredValueForPeriod(
       db,
       actorId,
@@ -778,8 +1009,21 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
           },
         })
       : Promise.resolve(retailers),
+    // Part B reporting split (COMPANY_DIRECT vs DISTRIBUTOR) — small lookup, only the distinct
+    // seller partner ids already present on today's orders, batched here rather than a per-order
+    // query.
+    todaySellerPartnerIds.length
+      ? db.seeraPartner.findMany({ where: { id: { in: todaySellerPartnerIds } }, select: { id: true, type: true } })
+      : Promise.resolve([]),
   ]);
   timing.stage("batch2_dependent_reads");
+  const partnerTypeById = new Map(todaySellerPartners.map((p) => [p.id, p.type]));
+  const companyDirectValue = todayOrders
+    .filter((o) => o.sellerPartnerId && partnerTypeById.get(o.sellerPartnerId) === "COMPANY_DIRECT")
+    .reduce((sum, o) => sum + Number(o.total), 0);
+  const distributorValue = todayOrders
+    .filter((o) => o.sellerPartnerId && partnerTypeById.get(o.sellerPartnerId) === "DISTRIBUTOR")
+    .reduce((sum, o) => sum + Number(o.total), 0);
   const targetValue = Number(target?.targetValue ?? 0);
   const achieved = monthDelivered;
   const remaining = Math.max(0, targetValue - achieved);
@@ -806,6 +1050,8 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
       skipped: todayVisits.filter((v) => v.outcome === "SKIPPED").length,
       orders: todayOrders.length,
       bookedValue: todayOrders.reduce((sum, o) => sum + Number(o.total), 0),
+      companyDirectValue,
+      distributorValue,
       followUpsDue,
       newRetailers: newRetailersToday,
       distributorProspects: prospects,
