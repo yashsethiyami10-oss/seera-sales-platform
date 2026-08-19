@@ -13,6 +13,7 @@ import { PartnerAccessPanel } from "./PartnerAccessPanel";
 import { ReassignDistributorPanel } from "./ReassignDistributorPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { DistributorClosureSettlementPanel } from "./DistributorClosureSettlementPanel";
+import { AssignRetailerCommercialPartyPanel } from "./AssignRetailerCommercialPartyPanel";
 import { canonicalDistributorExposure, superStockistDistributorCollectionsSnapshot } from "@/lib/sales-distribution/credit-service";
 import { companyOrderNextStep } from "@/lib/sales-distribution/business-rules";
 import { partnerObligationsPreview } from "@/lib/sales-distribution/travel-lifecycle-service";
@@ -50,6 +51,7 @@ export async function OperationalDetail({
   canShareDocument = false,
   canManageAccess = false,
   canManageCredit = false,
+  canManageCommercialParty = false,
 }: {
   db: PrismaClient;
   userId: string;
@@ -63,6 +65,7 @@ export async function OperationalDetail({
   canShareDocument?: boolean;
   canManageAccess?: boolean;
   canManageCredit?: boolean;
+  canManageCommercialParty?: boolean;
 }) {
   const hi = language === "HI",
     back = `/portal/${portal}/${item.slug}`,
@@ -636,19 +639,31 @@ export async function OperationalDetail({
     const totalCollected = Number(collections._sum.amount ?? 0);
     const outstanding = Math.max(0, totalOrdered - totalCollected);
     const showRetailerActions = portal === "sales-executive" && canManageFollowUp && x.salespersonId === userId;
-    const [followUps, photos] = showRetailerActions
-      ? await Promise.all([
-          db.seeraFollowUp.findMany({
+    // Part B (Manoj hybrid territory): only the Manager portal, only with network:manage — same
+    // gate as assignRetailerCommercialParty's own server-side authorize() call.
+    const showCommercialPartyPanel = portal === "sales-manager" && canManageCommercialParty;
+    const [followUps, photos, commercialParties] = await Promise.all([
+      showRetailerActions
+        ? db.seeraFollowUp.findMany({
             where: { retailerId: x.id, ownerId: userId, status: "OPEN" },
             orderBy: { dueDate: "asc" },
-          }),
-          db.seeraVisitPhoto.findMany({
+          })
+        : Promise.resolve([]),
+      showRetailerActions
+        ? db.seeraVisitPhoto.findMany({
             where: { retailerId: x.id, deletedAt: null },
             orderBy: { capturedAt: "desc" },
             take: 12,
-          }),
-        ])
-      : [[], []];
+          })
+        : Promise.resolve([]),
+      showCommercialPartyPanel
+        ? db.seeraPartner.findMany({
+            where: { type: { in: ["DISTRIBUTOR", "COMPANY_DIRECT"] }, lifecycle: "ACTIVE" },
+            select: { id: true, legalName: true, tradeName: true, type: true },
+            orderBy: { legalName: "asc" },
+          })
+        : Promise.resolve([]),
+    ]);
     return (
       <>
         {head(x.businessName)}
@@ -683,6 +698,14 @@ export async function OperationalDetail({
               photoType: p.photoType,
               capturedAt: p.capturedAt.toISOString(),
             }))}
+          />
+        )}
+        {showCommercialPartyPanel && (
+          <AssignRetailerCommercialPartyPanel
+            language={language}
+            retailerId={x.id}
+            currentPartnerId={x.distributorId}
+            parties={commercialParties.map((p) => ({ id: p.id, label: p.tradeName ?? p.legalName, type: p.type as "DISTRIBUTOR" | "COMPANY_DIRECT" }))}
           />
         )}
         <section className={styles.panel}>

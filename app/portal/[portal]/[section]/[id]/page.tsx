@@ -304,6 +304,7 @@ export default async function WorkspaceDetail({
         canShareDocument={allowed("document:share")}
         canManageAccess={allowed("master:manage")}
         canManageCredit={allowed("distributor_credit:manage")}
+        canManageCommercialParty={allowed("network:manage")}
       />
     );
   notFound();
