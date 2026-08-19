@@ -545,6 +545,63 @@ export function FieldJourney({
     return result;
   };
 
+  // Shared by both the primary "Start visit" button (retailer not yet visited today) and the
+  // secondary "Check In Again" button (retailer already has a completed visit today) — same
+  // governed check-in action/API either way, so every backend rule (authorization, retailer
+  // scope, and the OPEN_VISIT_EXISTS guard against a DIFFERENT retailer already being open)
+  // applies identically regardless of which button was clicked. A fresh crypto.randomUUID()
+  // idempotencyKey (key()) on every call means a same-day revisit always creates a genuinely
+  // new, independent SeeraVisit row — the earlier completed visit is never reopened or touched.
+  const startVisitFor = async (retailer: BeatRetailer) => {
+    if (!session) return;
+    setBusy(true);
+    setGpsStatus("LOCATING");
+    await yieldToPaint();
+    const { status, point } = await captureGps();
+    setGpsStatus(status);
+    let gpsExceptionReason: string | undefined;
+    if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
+      gpsExceptionReason = window.prompt(hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason") ?? undefined;
+      if (!gpsExceptionReason) {
+        setBusy(false);
+        return;
+      }
+    }
+    const result = await run(
+      "check-in",
+      {
+        workSessionId: session.id,
+        retailerId: retailer.id,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        accuracy: point.accuracy,
+        gpsExceptionReason,
+        idempotencyKey: key(),
+      },
+      { entityType: "SeeraVisit", actionType: "VISIT_DRAFT" },
+      hi ? "विज़िट शुरू हुई।" : "Visit started.",
+      hi ? "चेक-इन हो रहा है…" : "Checking in…",
+    );
+    // Only on a REAL server response confirming the durable write — never on the offline-queued
+    // path, which has no durable confirmation yet. Jump straight to the active-visit workspace
+    // using the response's own authoritative id/checkedInAt plus retailer fields already in
+    // props, instead of waiting for the unrelated full-portal router.refresh() to deliver the
+    // same visit back through props.
+    if (!("queued" in result) && result.success) {
+      const data = result.data as { id: string; checkedInAt: string };
+      setLocalOptimisticVisit({
+        id: data.id,
+        retailerId: retailer.id,
+        retailerName: retailer.businessName,
+        retailerMobile: retailer.mobile,
+        retailerArea: null,
+        distributorId: retailer.distributorId,
+        checkedInAt: data.checkedInAt,
+        photos: [],
+      });
+    }
+  };
+
   const header = <DashboardHeader language={language} dashboard={dashboard} />;
 
   // ---------------------------------------------------------------- Start Day ----
@@ -937,62 +994,7 @@ export function FieldJourney({
                       </header>
                       {(!retailer.visitStatus || retailer.visitStatus === "PENDING") && (
                         <div className="rowActions">
-                          <button
-                            data-primary="true"
-                            disabled={busy}
-                            onClick={async () => {
-                              setBusy(true);
-                              setGpsStatus("LOCATING");
-                              await yieldToPaint();
-                              const { status, point } = await captureGps();
-                              setGpsStatus(status);
-                              let gpsExceptionReason: string | undefined;
-                              if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
-                                gpsExceptionReason =
-                                  window.prompt(
-                                    hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason",
-                                  ) ?? undefined;
-                                if (!gpsExceptionReason) {
-                                  setBusy(false);
-                                  return;
-                                }
-                              }
-                              const result = await run(
-                                "check-in",
-                                {
-                                  workSessionId: session.id,
-                                  retailerId: retailer.id,
-                                  latitude: point.latitude,
-                                  longitude: point.longitude,
-                                  accuracy: point.accuracy,
-                                  gpsExceptionReason,
-                                  idempotencyKey: key(),
-                                },
-                                { entityType: "SeeraVisit", actionType: "VISIT_DRAFT" },
-                                hi ? "विज़िट शुरू हुई।" : "Visit started.",
-                                hi ? "चेक-इन हो रहा है…" : "Checking in…",
-                              );
-                              // Only on a REAL server response confirming the durable write — never
-                              // on the offline-queued path, which has no durable confirmation yet.
-                              // Jump straight to the active-visit workspace using the response's own
-                              // authoritative id/checkedInAt plus retailer fields already in props,
-                              // instead of waiting for the unrelated full-portal router.refresh() to
-                              // deliver the same visit back through props.
-                              if (!("queued" in result) && result.success) {
-                                const data = result.data as { id: string; checkedInAt: string };
-                                setLocalOptimisticVisit({
-                                  id: data.id,
-                                  retailerId: retailer.id,
-                                  retailerName: retailer.businessName,
-                                  retailerMobile: retailer.mobile,
-                                  retailerArea: null,
-                                  distributorId: retailer.distributorId,
-                                  checkedInAt: data.checkedInAt,
-                                  photos: [],
-                                });
-                              }
-                            }}
-                          >
+                          <button data-primary="true" disabled={busy} onClick={() => startVisitFor(retailer)}>
                             {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "विज़िट शुरू करें" : "Start visit"}
                           </button>
                           <button
@@ -1018,6 +1020,13 @@ export function FieldJourney({
                             }}
                           >
                             {hi ? "छोड़ें" : "Skip"}
+                          </button>
+                        </div>
+                      )}
+                      {retailer.visitStatus && retailer.visitStatus !== "PENDING" && (
+                        <div className="rowActions">
+                          <button disabled={busy} onClick={() => startVisitFor(retailer)}>
+                            {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "फिर से चेक-इन करें" : "Check In Again"}
                           </button>
                         </div>
                       )}
