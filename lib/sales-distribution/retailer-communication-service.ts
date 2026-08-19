@@ -1,8 +1,10 @@
+import { after } from "next/server";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { MessagingProvider } from "@/lib/messaging/types";
 import { normalizeIndianMobile } from "@/lib/messaging/phone";
 import { templateFor, sanitizeTemplateParam, isTemplateSendable, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
 import { dispatchWhatsAppOutbox, reclaimStaleOutboxLocks as reclaimStaleOutboxLocksGeneric, type WhatsAppOutboxPayload } from "@/lib/messaging/outbox-dispatch";
+import { getMessagingProvider } from "@/lib/messaging";
 
 // Provider-agnostic retailer communication event/outbox foundation (Founder-UAT closure pass,
 // section 10-14; re-governed for the Founder WhatsApp integration audit). Reuses the existing
@@ -233,10 +235,34 @@ export async function queueRetailerCommunicationSafe(
   input: Parameters<typeof queueRetailerCommunication>[1],
 ): Promise<{ queued: boolean; reason?: string; outboxEventId?: string }> {
   try {
-    return await queueRetailerCommunication(db, input);
+    const result = await queueRetailerCommunication(db, input);
+    if (result.queued) scheduleImmediateDispatchAttempt(db);
+    return result;
   } catch (error) {
     console.error("retailer_communication.queue_failed", error);
     return { queued: false, reason: "QUEUE_ERROR" };
+  }
+}
+
+/**
+ * Root cause of a real production incident: nothing was ever actually invoking the outbox
+ * dispatch worker (Vercel Hobby-plan native Cron only fires once daily; no external scheduler
+ * was ever configured to hit POST /api/outbox/dispatch), so every queued row sat PENDING
+ * indefinitely — a real Executive checkout produced a fully correct, fully governed OutboxEvent
+ * that Meta simply never received. `after()` (stable in Next.js 15) runs this attempt AFTER the
+ * response has already been sent to the client, so it adds zero latency to the checkout/visit
+ * response itself and can never turn a WhatsApp problem into a business-action failure — this is
+ * a best-effort nudge, not a replacement for the dispatch worker (a genuinely down/rate-limited
+ * Meta API still leaves the row correctly PENDING/FAILED for the worker to retry later).
+ * Swallows a call outside an active Next.js request scope (e.g. a standalone script or a test
+ * invoking these functions directly) rather than throwing — the queued row is durable either
+ * way and will still be picked up whenever the dispatch worker next runs.
+ */
+function scheduleImmediateDispatchAttempt(db: PrismaClient) {
+  try {
+    after(() => dispatchRetailerCommunications(db, getMessagingProvider, { limit: 1 }).catch((error) => console.error("retailer_communication.immediate_dispatch_failed", error)));
+  } catch (error) {
+    console.error("retailer_communication.immediate_dispatch_schedule_failed", error);
   }
 }
 

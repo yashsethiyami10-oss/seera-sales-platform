@@ -1,8 +1,10 @@
+import { after } from "next/server";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { MessagingProvider } from "@/lib/messaging/types";
 import { normalizeIndianMobile } from "@/lib/messaging/phone";
 import { templateFor, sanitizeTemplateParam, isTemplateSendable, type WhatsAppTemplateKey } from "@/lib/messaging/whatsapp-templates";
 import { dispatchWhatsAppOutbox, type WhatsAppOutboxPayload } from "@/lib/messaging/outbox-dispatch";
+import { getMessagingProvider } from "@/lib/messaging";
 
 // Distributor / Super Stockist visit-completion WhatsApp trigger (Founder WhatsApp integration
 // audit, requirements 3-4). Mirrors lib/sales-distribution/retailer-communication-service.ts —
@@ -115,10 +117,23 @@ export async function queuePartnerVisitCommunicationSafe(
   input: Parameters<typeof queuePartnerVisitCommunication>[1],
 ): Promise<{ queued: boolean; reason?: string; outboxEventId?: string }> {
   try {
-    return await queuePartnerVisitCommunication(db, input);
+    const result = await queuePartnerVisitCommunication(db, input);
+    if (result.queued) scheduleImmediateDispatchAttempt(db);
+    return result;
   } catch (error) {
     console.error("partner_communication.queue_failed", error);
     return { queued: false, reason: "QUEUE_ERROR" };
+  }
+}
+
+/** Same production root cause and fix as retailer-communication-service.ts's identical helper:
+ *  nothing was ever actually invoking the outbox dispatch worker, so queued rows sat PENDING
+ *  indefinitely. See that file's header comment for the full explanation. */
+function scheduleImmediateDispatchAttempt(db: PrismaClient) {
+  try {
+    after(() => dispatchPartnerCommunications(db, getMessagingProvider, { limit: 1 }).catch((error) => console.error("partner_communication.immediate_dispatch_failed", error)));
+  } catch (error) {
+    console.error("partner_communication.immediate_dispatch_schedule_failed", error);
   }
 }
 
