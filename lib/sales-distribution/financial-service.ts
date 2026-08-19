@@ -150,7 +150,24 @@ export async function partyOutstanding(db: PrismaClient, partyType: string, part
 }
 
 export async function ledgerReadModel(db: PrismaClient, actorId: string, input: { partyType: string; partyId: string; asOf?: Date }) {
-  await authorize(db, { actorId, permission: "ledger:view" }); const asOf = input.asOf ?? new Date();
+  const { permissions } = await authorize(db, { actorId, permission: "ledger:view" });
+  // P0 SECURITY FIX (full-system audit): `ledger:view` alone was treated as "may view ANY
+  // party's ledger" — but DISTRIBUTOR_OWNER/SUPER_STOCKIST_OWNER hold this permission scoped to
+  // their OWN party only, and the caller-supplied `partyId` was never checked against the
+  // caller's own membership. A Distributor could read another Distributor's full financial
+  // entries/balance/outstanding via GET /api/finance/ledger?partyType=DISTRIBUTOR&partyId=<any>.
+  // Only a broad Finance/Founder oversight permission (finance_dashboard:view — held by Accounts
+  // roles; Founder already passes via authorize()'s own system:super_admin bypass, which also
+  // implies this permission) may view an arbitrary party's ledger; everyone else must be an
+  // active member of the exact party they're asking about.
+  if (!permissions.has("finance_dashboard:view")) {
+    const now = new Date();
+    const membership = await db.seeraPartyUser.findFirst({
+      where: { userId: actorId, partnerId: input.partyId, active: true, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
+    });
+    if (!membership) throw new FoundationError("PARTY_SCOPE_DENIED", "Ledger access denied for this party", 403);
+  }
+  const asOf = input.asOf ?? new Date();
   const entries = await db.seeraFinancialEntry.findMany({ where: { status: "POSTED", OR: [{ debitPartyType: input.partyType, debitPartyId: input.partyId }, { creditPartyType: input.partyType, creditPartyId: input.partyId }] }, orderBy: [{ postedAt: "asc" }, { createdAt: "asc" }] });
   const debit = entries.filter((e) => e.debitPartyId === input.partyId && e.debitPartyType === input.partyType).reduce((s, e) => s + Number(e.amount), 0); const credit = entries.filter((e) => e.creditPartyId === input.partyId && e.creditPartyType === input.partyType).reduce((s, e) => s + Number(e.amount), 0);
   const { outstanding, outstandingTotal, advancesAndUnapplied, allocations } = await partyOutstanding(db, input.partyType, input.partyId, asOf);

@@ -284,8 +284,11 @@ export async function recordRouteDeviation(
   input: { visitId: string; reason: string },
 ) {
   await authorize(db, { actorId, permission: "retailer:visit" });
+  // Full-system audit fix: closed history is immutable (matches deleteVisitPhoto's own stated
+  // convention below) — a route deviation is reported DURING travel/the visit itself, never
+  // added retroactively to an already-checked-out visit.
   const visit = await db.seeraVisit.findFirst({
-    where: { id: input.visitId, workSession: { employeeId: actorId } },
+    where: { id: input.visitId, checkedOutAt: null, workSession: { employeeId: actorId } },
   });
   if (!visit)
     throw new FoundationError("VISIT_SCOPE_DENIED", "Visit unavailable", 403);
@@ -737,15 +740,25 @@ export async function recordPhotoException(
   input: { visitId: string; reason: string },
 ) {
   await authorize(db, { actorId, permission: "retailer:visit" });
+  // Full-system audit fix: same closed-history immutability as recordRouteDeviation above, and
+  // this write previously had no audit trail at all despite mutating governed checkout-gate data.
   const visit = await db.seeraVisit.findFirst({
-    where: { id: input.visitId, workSession: { employeeId: actorId } },
+    where: { id: input.visitId, checkedOutAt: null, workSession: { employeeId: actorId } },
   });
   if (!visit)
     throw new FoundationError("VISIT_SCOPE_DENIED", "Visit unavailable", 403);
-  return db.seeraVisit.update({
+  const updated = await db.seeraVisit.update({
     where: { id: visit.id },
     data: { photoExceptionReason: input.reason },
   });
+  await recordAudit(db, {
+    actorId,
+    action: "visit.photo_exception",
+    entityType: "SeeraVisit",
+    entityId: visit.id,
+    afterState: { reason: input.reason },
+  });
+  return updated;
 }
 
 // Deletion is only ever allowed on your own photo, before you've checked out — after that the
