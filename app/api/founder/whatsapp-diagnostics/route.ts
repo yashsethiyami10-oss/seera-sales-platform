@@ -86,16 +86,24 @@ export async function GET(request: Request) {
 
     const wabaResults = await Promise.all(
       candidateWabaIds.map(async (candidateId) => {
-        const [node, phoneNumbers, templates] = await Promise.all([
+        const [node, phoneNumbers, templates, subscribedApps] = await Promise.all([
           fetchJson(`${GRAPH_BASE}/${candidateId}?fields=id,name,timezone_id,message_template_namespace`, accessToken),
           fetchJson(
             `${GRAPH_BASE}/${candidateId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,platform_type,status,is_official_business_account`,
             accessToken,
           ),
           fetchJson(`${GRAPH_BASE}/${candidateId}/message_templates?fields=id,name,status,category,language,components&limit=200`, accessToken),
+          // The actual webhook-delivery gate: an app can have full whatsapp_business_management
+          // access to a WABA's phone numbers/templates and still receive ZERO webhook events for
+          // it if it was never subscribed via POST /<WABA_ID>/subscribed_apps — those are two
+          // independent permissions in Meta's model. This is the one live read that can prove or
+          // disprove "Meta should have called our webhook for this WABA" directly, instead of
+          // inferring it from the absence of a receipt.
+          fetchJson(`${GRAPH_BASE}/${candidateId}/subscribed_apps`, accessToken),
         ]);
         const phones: any[] = Array.isArray(phoneNumbers.body?.data) ? phoneNumbers.body.data : [];
         const templateRows: any[] = Array.isArray(templates.body?.data) ? templates.body.data : [];
+        const subscribedAppRows: any[] = Array.isArray(subscribedApps.body?.data) ? subscribedApps.body.data : [];
         return {
           candidateWabaId: candidateId,
           isCurrentlyConfiguredInVercel: candidateId === configuredWabaId,
@@ -128,6 +136,15 @@ export async function GET(request: Request) {
                 inferredBodyParamNumbers: placeholderNumbers.sort((a: number, b: number) => a - b),
               };
             }),
+          },
+          subscribedAppsFetch: {
+            status: subscribedApps.status,
+            error: subscribedApps.body?.error ?? null,
+            subscribedApps: subscribedAppRows.map((a) => ({ whatsappBusinessApiDataId: a.whatsapp_business_api_data?.id, name: a.whatsapp_business_api_data?.name, link: a.whatsapp_business_api_data?.link })),
+            // Compared against the app id the token itself belongs to (from debug_token below),
+            // not an env var — this repo has no WHATSAPP_APP_ID configured, and the token's own
+            // app_id is the authoritative "which app are we asking about" answer regardless.
+            configuredAppIsSubscribed: subscribedAppRows.some((a) => a.whatsapp_business_api_data?.id === tokenDebug.body?.data?.app_id),
           },
         };
       }),
@@ -170,6 +187,29 @@ export async function POST(request: Request) {
     if (!accessToken) return NextResponse.json({ error: "WHATSAPP_ACCESS_TOKEN not configured in this environment" }, { status: 503 });
 
     const body: any = await request.json().catch(() => ({}));
+
+    if (body?.action === "subscribe_app") {
+      // The standard, documented, reversible Meta operation for "make our app actually receive
+      // webhook events for this WABA" — POST /<WABA_ID>/subscribed_apps. This is a genuinely
+      // different permission from whatsapp_business_management (which is what already lets the
+      // rest of this route read phone numbers/templates) — an app can have full management
+      // access to a WABA and still receive zero webhook events until this call is made. Requires
+      // an explicit wabaId so this route never guesses/defaults which WABA to subscribe.
+      const wabaId: string | undefined = body?.wabaId;
+      if (!wabaId) return NextResponse.json({ error: "Body must be { action: 'subscribe_app', wabaId: string }" }, { status: 400 });
+      const subscribeRes = await fetch(`${GRAPH_BASE}/${wabaId}/subscribed_apps`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const subscribeBody: any = await subscribeRes.json().catch(() => null);
+      return NextResponse.json({
+        httpStatus: subscribeRes.status,
+        success: subscribeRes.ok && subscribeBody?.success === true,
+        metaErrorCode: subscribeBody?.error?.code ?? null,
+        metaErrorMessage: subscribeBody?.error?.message ?? null,
+        rawResponse: subscribeBody,
+      });
+    }
 
     if (body?.action === "test_send") {
       // One-off, Founder-controlled template validation send — never inside any automatic
