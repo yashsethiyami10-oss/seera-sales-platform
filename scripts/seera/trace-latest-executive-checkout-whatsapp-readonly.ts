@@ -3,9 +3,11 @@ import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 
-// STRICTLY READ-ONLY. Traces the latest Sales Executive retailer checkout (post whatsapp_audit_trail
-// migration) end-to-end through the WhatsApp trigger/queue/outbox pipeline in PRODUCTION. Never
-// writes/updates/deletes any row.
+// STRICTLY READ-ONLY. Traces the latest Sales Executive retailer checkout after a given cutoff
+// timestamp (defaults to now-2h if not given) through the WhatsApp trigger/queue/outbox pipeline
+// in PRODUCTION, and separately reports the full PENDING backlog for SeeraRetailer so a
+// limit-starvation theory (an old backlog item always winning a limit:1 dispatch over the newest
+// event) can be proven or ruled out from real data. Never writes/updates/deletes any row.
 
 function envFile(file: string) {
   const values: Record<string, string> = {};
@@ -28,20 +30,28 @@ function maskPhone(v: string | null | undefined): string {
   return `${"*".repeat(digits.length - 4)}${digits.slice(-4)}`;
 }
 
+const cutoffArg = process.argv[2];
+const cutoff = cutoffArg ? new Date(cutoffArg) : new Date(Date.now() - 2 * 3600_000);
+
 async function main() {
   console.log(`[SEERA DB GUARD] role=${target.role} fingerprint=${target.fingerprint} (READ-ONLY)`);
+  console.log(`Cutoff: ${cutoff.toISOString()}\n`);
 
-  const migration = await prisma.$queryRawUnsafe<Array<{ finished_at: Date }>>(
-    `select finished_at from _prisma_migrations where migration_name = '20260818120000_whatsapp_audit_trail'`,
-  );
-  const migratedAt = migration[0]?.finished_at;
-  console.log(`Migration applied at: ${migratedAt?.toISOString() ?? "NOT FOUND"}\n`);
+  // Full current PENDING/FAILED backlog for SeeraRetailer, oldest first — this is the exact
+  // order dispatchWhatsAppOutbox's own query would process them in.
+  const backlog = await prisma.outboxEvent.findMany({
+    where: { aggregateType: "SeeraRetailer", status: { in: ["PENDING", "FAILED"] } },
+    orderBy: { availableAt: "asc" },
+  });
+  console.log(`0. CURRENT SeeraRetailer PENDING/FAILED BACKLOG (oldest first, dispatch order): ${backlog.length} row(s)`);
+  for (const b of backlog) {
+    console.log(`   id=${b.id} status=${b.status} attempts=${b.attempts} availableAt=${b.availableAt.toISOString()} createdAt=${b.createdAt.toISOString()} templateKey=${b.templateKey}`);
+  }
 
-  // 1. Latest Executive retailer checkout after the migration.
   const visit = await prisma.seeraVisit.findFirst({
     where: {
       retailerId: { not: null },
-      checkedOutAt: { not: null, gt: migratedAt },
+      checkedOutAt: { not: null, gt: cutoff },
       workSession: { employeeRole: "SALES_EXECUTIVE" },
     },
     orderBy: { checkedOutAt: "desc" },
@@ -49,36 +59,18 @@ async function main() {
   });
 
   if (!visit) {
-    console.log("No Executive retailer checkout found after the migration timestamp yet.");
+    console.log("\nNo Executive retailer checkout found after the cutoff yet.");
     return;
   }
   const executive = await prisma.user.findUnique({ where: { id: visit.workSession.employeeId }, select: { name: true, normalizedEmail: true } });
 
-  console.log("1. LATEST EXECUTIVE CHECKOUT");
-  console.log(`  visitId=${visit.id}`);
+  console.log("\n1. LATEST EXECUTIVE CHECKOUT");
+  console.log(`  visitId=${visit.id}  workSessionId=${visit.workSessionId}`);
   console.log(`  executive=${executive?.name} (${executive?.normalizedEmail})`);
-  console.log(`  retailer=${visit.retailer?.businessName} (id=${visit.retailerId})`);
+  console.log(`  retailer=${visit.retailer?.businessName} (id=${visit.retailerId})  phone=${maskPhone(visit.retailer?.whatsapp || visit.retailer?.mobile)}`);
   console.log(`  checkedOutAt=${visit.checkedOutAt?.toISOString()}`);
   console.log(`  outcome=${visit.outcome}`);
-  console.log(`  noOrderReason=${visit.noOrderReason ?? "(none)"}  followUpAt=${visit.followUpAt?.toISOString() ?? "(none)"}`);
 
-  // 2. Recipient resolution — replicate the exact precedence queueRetailerCommunication uses.
-  const retailer = visit.retailer!;
-  const rawUsed = retailer.whatsapp || retailer.mobile;
-  const fieldUsed = retailer.whatsapp ? "whatsapp" : retailer.mobile ? "mobile" : "(none)";
-  console.log("\n2. RECIPIENT RESOLUTION");
-  console.log(`  field used=${fieldUsed}  masked raw=${maskPhone(rawUsed)}`);
-  const digits = (rawUsed ?? "").replace(/\D/g, "");
-  const normalized = /^[6-9]\d{9}$/.test(digits) ? `91${digits}` : /^91[6-9]\d{9}$/.test(digits) ? digits : null;
-  console.log(`  normalized=${normalized ? maskPhone(normalized) : "INVALID/NONE"}  valid=${normalized ? "YES" : "NO"}`);
-
-  // 3. Trigger branch.
-  const branch = visit.outcome === "PRODUCTIVE" ? "ORDER_PLACED" : visit.outcome === "NO_ORDER" ? "NO_ORDER" : visit.outcome === "FOLLOW_UP" ? "FOLLOW_UP" : "NONE";
-  console.log(`\n3. TRIGGER BRANCH: ${branch}`);
-
-  // 5. OutboxEvent lookup — matched by aggregateId + a payload.visitId match, since that's the
-  // only durable link between a visit and its queued row (no direct FK by design, per this
-  // codebase's existing convention of not FK-enforcing party/event references).
   const candidates = await prisma.outboxEvent.findMany({
     where: { aggregateType: "SeeraRetailer", aggregateId: visit.retailerId!, createdAt: { gte: visit.checkedOutAt! } },
     orderBy: { createdAt: "asc" },
@@ -86,37 +78,31 @@ async function main() {
   });
   const match = candidates.find((c) => (c.payload as any)?.visitId === visit.id) ?? candidates[0];
 
-  console.log("\n5. OUTBOX");
+  console.log("\n2. OUTBOX FOR THIS CHECKOUT");
   if (!match) {
     console.log("  OUTBOX CREATED: NO");
-    console.log(`  (${candidates.length} other OutboxEvent row(s) exist for this retailer since checkout, none reference this visitId)`);
   } else {
     console.log("  OUTBOX CREATED: YES");
     console.log(`  id=${match.id}`);
-    console.log(`  channel=${match.channel}`);
+    console.log(`  createdAt=${match.createdAt.toISOString()}  updatedAt=${match.updatedAt.toISOString()}`);
     console.log(`  templateKey=${match.templateKey}`);
     console.log(`  status=${match.status}`);
     console.log(`  attempts=${match.attempts}`);
-    console.log(`  lastErrorCode=${match.lastErrorCode ?? "(none)"}`);
     console.log(`  providerMessageId=${match.providerMessageId ?? "(none)"}`);
-    console.log(`  createdAt=${match.createdAt.toISOString()}`);
-    console.log(`  updatedAt=${match.updatedAt.toISOString()}`);
-    console.log(`  publishedAt=${match.publishedAt?.toISOString() ?? "(none)"}  sentAt=${(match as any).sentAt?.toISOString() ?? "(none)"}`);
-    const payload: any = match.payload;
-    console.log(`  templateName=${payload?.templateName}  languageCode=${payload?.languageCode}`);
-    console.log(`  templateParams (count=${payload?.templateParams?.length ?? 0}): ${JSON.stringify(payload?.templateParams)}`);
+    console.log(`  lastErrorCode=${match.lastErrorCode ?? "(none)"}`);
+
+    const position = backlog.findIndex((b) => b.id === match.id);
+    console.log(`\n  Position in the current oldest-first PENDING/FAILED queue: ${position === -1 ? "not in backlog (already resolved or not queued)" : `#${position + 1} of ${backlog.length}`}`);
+    if (position > 0) {
+      console.log(`  >>> ${position} older row(s) sit ahead of this one — a dispatch call with a small limit would process those first, not this row.`);
+    }
 
     if (match.providerMessageId) {
       const receipts = await prisma.whatsAppWebhookReceipt.findMany({ where: { dedupeKey: { startsWith: `${match.providerMessageId}:` } }, orderBy: { receivedAt: "asc" } });
-      console.log(`\n9. WEBHOOK RECEIPTS for providerMessageId: ${receipts.length}`);
-      for (const r of receipts) console.log(`  ${r.dedupeKey} receivedAt=${r.receivedAt.toISOString()}`);
-    } else {
-      console.log("\n9. No providerMessageId on this row — Meta was never actually called for it yet.");
+      console.log(`\n  Webhook receipts for providerMessageId: ${receipts.length}`);
+      for (const r of receipts) console.log(`    ${r.dedupeKey} receivedAt=${r.receivedAt.toISOString()}`);
     }
   }
-
-  console.log("\nOther recent OutboxEvent rows for this retailer (context):");
-  for (const c of candidates) console.log(`  id=${c.id} status=${c.status} createdAt=${c.createdAt.toISOString()} payload.visitId=${(c.payload as any)?.visitId}`);
 }
 
 main()
