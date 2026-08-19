@@ -3,20 +3,20 @@ import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 
-// TEST-only HTTP-runtime performance benchmark (Performance Phase 2, section 7B): the bare-script
-// benchmarks (retailing-performance-baseline.ts, perf-baseline-add-customer.ts) call service
-// functions directly — real DB latency, but they never exercise Next.js's own request pipeline
-// (middleware, resolveRequestIdentity, effectivePermissions per-request cache(), SSR render for
-// page loads) and can never observe after()-deferred work actually being deferred, since after()
-// throws synchronously outside a request scope and those scripts fall back to awaiting inline.
-// This script drives a REAL `next start` (production build) server over real HTTP, authenticated
-// via a real login, so the measured numbers include the full request path a browser click
-// actually pays for. Still run locally (not on Vercel) — see the report's infrastructure caveats
-// for what that does and doesn't change relative to a true Vercel deployment.
+// TEST-only HTTP-runtime performance benchmark (Performance Phase 2, section 7B/staging pass): the
+// bare-script benchmarks (retailing-performance-baseline.ts, perf-baseline-add-customer.ts) call
+// service functions directly — real DB latency, but they never exercise Next.js's own request
+// pipeline (middleware, resolveRequestIdentity, effectivePermissions per-request cache(), SSR
+// render for page loads) and can never observe after()-deferred work actually being deferred,
+// since after() throws synchronously outside a request scope and those scripts fall back to
+// awaiting inline. This script drives a REAL deployed runtime (local `next start` or an actual
+// Vercel Preview deployment) over real HTTP, authenticated via a real login, so the measured
+// numbers include the full request path a browser click actually pays for.
 //
-// Requires: `PORT=<port> npm run start` already running locally, pointed at TEST DB via
-// .env.local (confirmed identical to .env.test's TEST_DATABASE_URL, never production).
-// Usage: PERF_BASE_URL=http://localhost:3011 npx tsx scripts/seera/perf-baseline-http-runtime.ts
+// Usage (local): PERF_BASE_URL=http://localhost:3011 npx tsx scripts/seera/perf-baseline-http-runtime.ts
+// Usage (Vercel Preview, protected): PERF_BASE_URL=https://<preview>.vercel.app
+//   PERF_BYPASS=<automation-bypass-secret> npx tsx scripts/seera/perf-baseline-http-runtime.ts
+// The bypass secret comes from the project's "Protection Bypass for Automation" — never printed.
 
 function envFile(file: string) {
   const values: Record<string, string> = {};
@@ -33,6 +33,7 @@ const target = authorizeDatabaseCommand({ intendedRole: "test", write: false, ta
 const db = new PrismaClient({ datasourceUrl: test });
 
 const BASE_URL = process.env.PERF_BASE_URL ?? "http://localhost:3011";
+const BYPASS = process.env.PERF_BYPASS;
 const ITERATIONS = Number(process.env.PERF_ITERATIONS ?? 20);
 
 type Sample = { label: string; ms: number };
@@ -50,32 +51,41 @@ function stats(label: string) {
   return { n: vals.length, p50: Math.round(pct(0.5)!), p90: Math.round(pct(0.9)!), p95: Math.round(pct(0.95)!), p98: Math.round(pct(0.98)!), max: Math.round(vals[vals.length - 1]!) };
 }
 
+function headers(extra: Record<string, string> = {}) {
+  return { ...extra, ...(BYPASS ? { "x-vercel-protection-bypass": BYPASS } : {}) };
+}
+
 let cookie = "";
 async function apiCall(action: string, payload: Record<string, unknown>) {
   const r = await fetch(`${BASE_URL}/api/field/operations`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
+    headers: headers({ "Content-Type": "application/json", Cookie: cookie }),
     body: JSON.stringify({ action, payload }),
   });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`${action} failed: ${r.status} ${JSON.stringify(body)}`);
   return body;
 }
+async function getPage(pagePath: string) {
+  const r = await fetch(`${BASE_URL}${pagePath}`, { headers: headers({ Cookie: cookie }) });
+  if (!r.ok) throw new Error(`${pagePath} failed: ${r.status}`);
+  await r.text();
+}
 
 async function main() {
   console.log(`[SEERA DB GUARD] role=${target.role} fingerprint=${target.fingerprint} (READ-ONLY prep against TEST DB)`);
-  console.log(`Benchmarking against ${BASE_URL} — confirm this points at TEST DB via .env.local before trusting results.`);
+  console.log(`Benchmarking against ${BASE_URL} — confirm this points at TEST DB before trusting results.`);
 
   const loginRes = await fetch(`${BASE_URL}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers({ "Content-Type": "application/json" }),
     body: JSON.stringify({ email: "review-sales-executive-1@seera.test", password: "SeeraReview!2026" }),
   });
   if (!loginRes.ok) throw new Error(`login failed: ${loginRes.status} ${await loginRes.text()}`);
   const setCookie = loginRes.headers.get("set-cookie");
   if (!setCookie) throw new Error("no set-cookie header on login response");
   cookie = setCookie.split(";")[0]!;
-  console.log("Logged in as review-sales-executive-1@seera.test");
+  console.log("Logged in as review-sales-executive-1@seera.test (TEST-only fixture — proves TEST DB, not production)");
 
   const exec = await db.user.findUniqueOrThrow({ where: { normalizedEmail: "review-sales-executive-1@seera.test" } });
   const skus = await db.seeraSku.findMany({ where: { code: { startsWith: "IV26-" } }, orderBy: { code: "asc" }, take: 2 });
@@ -102,15 +112,13 @@ async function main() {
   const sessionId = (startResp as { id: string }).id;
 
   console.log(`=== dashboard page load: GET /portal/sales-executive/today (n=${ITERATIONS}) ===`);
-  for (let i = 0; i < ITERATIONS; i++) {
-    await time("dashboard-page", async () => {
-      const r = await fetch(`${BASE_URL}/portal/sales-executive/today`, { headers: { Cookie: cookie } });
-      if (!r.ok) throw new Error(`dashboard page failed: ${r.status}`);
-      await r.text();
-    });
-  }
+  for (let i = 0; i < ITERATIONS; i++) await time("dashboard-page", () => getPage("/portal/sales-executive/today"));
+
+  console.log(`=== My Retailers page load: GET /portal/sales-executive/retailers (n=${ITERATIONS}) ===`);
+  for (let i = 0; i < ITERATIONS; i++) await time("my-retailers-page", () => getPage("/portal/sales-executive/retailers"));
 
   console.log(`=== add-customer (create-retailer-and-check-in) + check-out pairs (n=${ITERATIONS}) ===`);
+  let lastNewRetailerId = "";
   for (let i = 0; i < ITERATIONS; i++) {
     const created = await time("add-customer-http", () =>
       apiCall("create-retailer-and-check-in", {
@@ -124,8 +132,9 @@ async function main() {
         checkInIdempotencyKey: `http-perf-checkin-${run}-${i}`,
       }),
     );
-    const visitId = (created as { visit: { id: string } }).visit.id;
-    await apiCall("check-out", { visitId, outcome: "NO_ORDER", noOrderReason: "http-perf-test", photoExceptionReason: "http-perf-test" });
+    const data = created as { retailer: { id: string }; visit: { id: string } };
+    lastNewRetailerId = data.retailer.id;
+    await apiCall("check-out", { visitId: data.visit.id, outcome: "NO_ORDER", noOrderReason: "http-perf-test", photoExceptionReason: "http-perf-test" });
   }
 
   console.log(`=== place-order (n=${ITERATIONS}, phone-call source — no visit required) ===`);
@@ -151,11 +160,23 @@ async function main() {
     );
   }
 
+  console.log(`=== revisit (Check In Again on an already-visited-today retailer) (n=${ITERATIONS}) ===`);
+  // Same retailer as the check-in/check-out loop above — it's already been visited (and checked
+  // out) multiple times today by this point, so this genuinely exercises the "Check In Again"
+  // path (OPEN_VISIT_EXISTS only blocks a DIFFERENT retailer, same retailer is always allowed).
+  for (let i = 0; i < ITERATIONS; i++) {
+    const visit = await time("revisit-http", () =>
+      apiCall("check-in", { workSessionId: sessionId, retailerId: retailer.id, latitude: 28.6139, longitude: 77.209, idempotencyKey: `http-perf-revisit-${run}-${i}` }),
+    );
+    await apiCall("check-out", { visitId: (visit as { id: string }).id, outcome: "NO_ORDER", noOrderReason: "http-perf-test", photoExceptionReason: "http-perf-test" });
+  }
+
   console.log(`=== end-day (n=1) ===`);
   await time("end-day", () => apiCall("end-day", { sessionId, outcome: "COMPLETED" }));
 
-  console.log("\n\n========== HTTP RUNTIME BASELINE RESULTS (ms, real HTTP over local `next start`, TEST DB) ==========");
-  for (const label of ["dashboard-page", "add-customer-http", "place-order-http", "check-in-http", "check-out-http"]) {
+  console.log("\n\n========== HTTP RUNTIME BASELINE RESULTS (ms) ==========");
+  console.log(`Target: ${BASE_URL}`);
+  for (const label of ["dashboard-page", "my-retailers-page", "add-customer-http", "place-order-http", "check-in-http", "revisit-http", "check-out-http", "start-day", "end-day"]) {
     const s = stats(label);
     if (s) console.log(`  ${label.padEnd(20)} n=${s.n}  p50=${s.p50}ms  p90=${s.p90}ms  p95=${s.p95}ms  p98=${s.p98}ms  max=${s.max}ms`);
   }

@@ -1,0 +1,8 @@
+node_modules
+.next
+out
+build
+coverage
+.tmp-phase2-services
+.verification
+*.tsbuildinfo
