@@ -67,6 +67,9 @@ const PORTALS: PortalSpec[] = [
       { slug: "/team-review", label: "manager-team-review" },
       { slug: "/approvals", label: "manager-approvals" },
       { slug: "/beat-planner", label: "manager-beat-planner" },
+      { slug: "/new-retailers", label: "manager-retailers" },
+      { slug: "/delivered-sales", label: "manager-orders" },
+      { slug: "/distributor-oversight", label: "manager-distributors" },
     ],
   },
   {
@@ -79,6 +82,8 @@ const PORTALS: PortalSpec[] = [
       { slug: "/inventory", label: "distributor-stock" },
       { slug: "/retailers", label: "distributor-retailers" },
       { slug: "/ledgers", label: "distributor-ledger" },
+      { slug: "/deliveries", label: "distributor-delivery" },
+      { slug: "/documents", label: "distributor-documents" },
     ],
   },
   {
@@ -90,6 +95,7 @@ const PORTALS: PortalSpec[] = [
       { slug: "/distributor-orders", label: "ss-distributor-orders" },
       { slug: "/inventory", label: "ss-stock" },
       { slug: "/distributors", label: "ss-distributors" },
+      { slug: "/reports", label: "ss-reports" },
     ],
   },
   {
@@ -101,6 +107,8 @@ const PORTALS: PortalSpec[] = [
       { slug: "/orders", label: "founder-orders" },
       { slug: "/distributors", label: "founder-distributors" },
       { slug: "/retailers", label: "founder-retailers" },
+      { slug: "/users", label: "founder-users" },
+      { slug: "/territories", label: "founder-territories" },
     ],
   },
   {
@@ -111,6 +119,8 @@ const PORTALS: PortalSpec[] = [
       { slug: "", label: "accounts-dashboard" },
       { slug: "/ledgers", label: "accounts-ledgers" },
       { slug: "/payments", label: "accounts-payments" },
+      { slug: "/outstanding", label: "accounts-receivables" },
+      { slug: "/receipts", label: "accounts-invoices" },
     ],
   },
 ];
