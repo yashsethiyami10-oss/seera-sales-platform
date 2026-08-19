@@ -55,8 +55,15 @@ function headers(extra: Record<string, string> = {}) {
   return { ...extra, ...(BYPASS ? { "x-vercel-protection-bypass": BYPASS } : {}) };
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 let cookie = "";
 async function apiCall(action: string, payload: Record<string, unknown>) {
+  // `app/api/field/operations/route.ts` enforces a real, correct 60-req/60s-per-actor rate limit
+  // (enforceRateLimit) — this benchmark must respect it, not treat it as noise. A fixed pacing
+  // delay between calls (not counted in the measured latency itself) keeps this script well
+  // under that budget regardless of how many measurement phases run back to back.
+  await sleep(1100);
   const r = await fetch(`${BASE_URL}/api/field/operations`, {
     method: "POST",
     headers: headers({ "Content-Type": "application/json", Cookie: cookie }),
