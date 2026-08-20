@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
+import { executiveAuthorizedDistributors } from "../../lib/sales-distribution/scope";
 
 // STRICTLY READ-ONLY. Traces Manoj Vijayvargiya's exact current production state before the
 // Company Direct Start Day fix — no name/id hardcoded logic anywhere in the actual fix, this
@@ -65,5 +66,13 @@ async function main() {
   console.log(`  Own retailer-derived distributorIds: ${ownRetailerDistributors.length}`);
   const totalAuthorizedToday = directAssignments.length + ownRetailerDistributors.length;
   console.log(`  => Authorized (type=DISTRIBUTOR only) count: ${totalAuthorizedToday} ${totalAuthorizedToday === 0 ? "<-- THIS IS WHY distributorOptions IS EMPTY, WHICH IS THE BLOCKING CONDITION" : ""}`);
+
+  // AFTER FIX — the actual, currently-deployed executiveAuthorizedDistributors() function itself,
+  // live against real production data. This is the exact function Start Day's distributorOptions
+  // and startFieldDay's own server-side authorization both read.
+  const liveAuthorized = await executiveAuthorizedDistributors(prisma, manoj.id);
+  console.log(`\nAFTER FIX — live executiveAuthorizedDistributors(prisma, manoj.id) result:`);
+  console.log(`  count: ${liveAuthorized.length}`);
+  for (const d of liveAuthorized) console.log(`    ${d.id} | ${d.legalName}${d.id === cdPartner?.id ? "  <-- Company Direct" : ""}`);
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; }).finally(() => prisma.$disconnect());
