@@ -29,6 +29,7 @@ import { CreateSuperStockistPanel } from "./CreateSuperStockistPanel";
 import { CreateCompanyDirectPartnerPanel } from "./CreateCompanyDirectPartnerPanel";
 import { CompanyDirectEligibilityPanel } from "./CompanyDirectEligibilityPanel";
 import { MoneyDeskPanel } from "./MoneyDeskPanel";
+import { TerritoryBeatManagementPanel } from "./TerritoryBeatManagementPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { CompanyOrderDispatchPanel } from "./CompanyOrderDispatchPanel";
 import { DistributorMoneyPanel } from "./DistributorMoneyPanel";
@@ -51,7 +52,7 @@ import { AssignDistributorToExecutivePanel } from "./AssignDistributorToExecutiv
 import { CompleteFieldForceSetupPanel } from "./CompleteFieldForceSetupPanel";
 import { MyTaClaimActions, TeamTaClaimsPanel } from "./ManagerTaClaimActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
-import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments } from "@/lib/sales-distribution/operational-service";
+import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments, territoriesAndBeats, activeExecutiveTerritoryAssignments } from "@/lib/sales-distribution/operational-service";
 import { companyDirectEligibilityRoster } from "@/lib/sales-distribution/distributor-management-service";
 import { moneyDeskHome, moneyDeskSupportingData } from "@/lib/finance/money-desk-service";
 import { MONEY_DESK_PURPOSE_CODES, purposeDefinition } from "@/lib/finance/money-desk-registry";
@@ -3861,6 +3862,44 @@ export async function OperationalWorkspace({
         <CreateCompanyDirectPartnerPanel language={language} />
       </>
     );
+  } else if (
+    portal === "founder-admin" &&
+    item.slug === "territories" &&
+    (permissions.has("master:manage") || permissions.has("system:super_admin"))
+  ) {
+    // Bhilwara/Manoj onboarding gap fix: the read path (rowsFor above) and the underlying
+    // SeeraGeographyNode model already existed — what was missing was a direct Founder/Admin
+    // create action; the only prior write path (createBeatPlan) buries Territory/Beat creation
+    // inside a full Sales Manager journey-plan flow. Same governed-error pattern as finance-os/
+    // money-desk above.
+    try {
+      const [territoryData, assignmentData] = await Promise.all([territoriesAndBeats(db, userId), activeExecutiveTerritoryAssignments(db, userId)]);
+      workflow = (
+        <TerritoryBeatManagementPanel
+          language={language}
+          territories={territoryData.map((t) => ({
+            id: t.territory.id,
+            name: t.territory.name,
+            code: t.territory.code,
+            status: t.territory.status,
+            headquarters: (t.territory.metadata as { headquarters?: string } | null)?.headquarters ?? "",
+            state: (t.territory.metadata as { state?: string } | null)?.state ?? "",
+            beats: t.beats.map((b) => ({ id: b.id, name: b.name, code: b.code, status: b.status })),
+          }))}
+          fieldUsers={assignmentData.fieldUsers}
+          assignments={assignmentData.assignments.map((a) => ({ ...a, effectiveFrom: a.effectiveFrom.toISOString() }))}
+        />
+      );
+    } catch (error) {
+      const incidentId = crypto.randomUUID();
+      operationalLog("error", "territories.load_failed", { incidentId, actorId: userId, errorName: error instanceof Error ? error.name : "unknown" });
+      workflow = (
+        <EmptyState
+          title="Territories data is temporarily unavailable"
+          description={`Something went wrong loading this screen. Please try again. If this keeps happening, share Error ID ${incidentId} with your Admin.`}
+        />
+      );
+    }
   } else if (
     portal === "founder-admin" &&
     item.slug === "field-force" &&

@@ -41,6 +41,160 @@ export async function geographySuggestions(prisma: PrismaClient, actorId: string
   });
 }
 
+// Founder/Admin Territory & Beat master-data management (Bhilwara/Manoj onboarding gap):
+// resolveOrCreateGeography above already creates SeeraGeographyNode{TERRITORY/BEAT} rows, but only
+// as a SIDE EFFECT of a Sales Manager's full Beat Plan (requires an assigned field employee, a
+// day-of-week, a place name/type) — there was no direct, minimal Founder/Admin path to create a
+// bare Territory/Beat master record on its own, which is why "Territories & beats" showed "No
+// records" with no visible create action even though the read path and the underlying model both
+// already existed. Deliberately master:manage-gated (Founder/Admin only, narrower than
+// createBeatPlan's network:manage which Sales Managers also hold) — matches the Founder's own
+// instruction that Sales Manager/Executive must not gain master territory-creation rights here.
+// headquarters/state/description live in `metadata` (JSON) since the model has no dedicated
+// columns for them — `code`/`name`/`level`/`status` are real columns.
+export async function createTerritory(
+  prisma: PrismaClient,
+  actorId: string,
+  input: { name: string; headquarters?: string; state?: string; description?: string; code?: string; status?: "DRAFT" | "ACTIVE" | "INACTIVE" | "DISCONTINUED" },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const name = input.name.trim();
+  if (!name) throw new FoundationError("TERRITORY_NAME_REQUIRED", "Territory name is required", 400);
+  const existing = await prisma.seeraGeographyNode.findFirst({ where: { name: { equals: name, mode: "insensitive" }, level: "TERRITORY" } });
+  if (existing) return existing;
+  const code = input.code?.trim() || businessNumber("TERR", `TERRITORY-${name}-${Date.now()}-${Math.random()}`);
+  const territory = await prisma.seeraGeographyNode.create({
+    data: {
+      code,
+      name,
+      level: "TERRITORY",
+      status: input.status ?? "ACTIVE",
+      metadata: { headquarters: input.headquarters?.trim() || undefined, state: input.state?.trim() || undefined, description: input.description?.trim() || undefined },
+    },
+  });
+  await recordAudit(prisma, { actorId, action: "territory.created", entityType: "SeeraGeographyNode", entityId: territory.id, afterState: { name, headquarters: input.headquarters, state: input.state } });
+  return territory;
+}
+
+export async function createBeat(
+  prisma: PrismaClient,
+  actorId: string,
+  input: { name: string; territoryId: string; description?: string; code?: string; status?: "DRAFT" | "ACTIVE" | "INACTIVE" | "DISCONTINUED" },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const name = input.name.trim();
+  if (!name) throw new FoundationError("BEAT_NAME_REQUIRED", "Beat name is required", 400);
+  const territory = await prisma.seeraGeographyNode.findFirst({ where: { id: input.territoryId, level: "TERRITORY" } });
+  if (!territory) throw new FoundationError("TERRITORY_NOT_FOUND", "Territory is unavailable", 404);
+  const existing = await prisma.seeraGeographyNode.findFirst({ where: { name: { equals: name, mode: "insensitive" }, level: "BEAT", parentId: territory.id } });
+  if (existing) return existing;
+  const code = input.code?.trim() || businessNumber("BEAT", `BEAT-${name}-${Date.now()}-${Math.random()}`);
+  const beat = await prisma.seeraGeographyNode.create({
+    data: { code, name, level: "BEAT", parentId: territory.id, status: input.status ?? "ACTIVE", metadata: input.description?.trim() ? { description: input.description.trim() } : undefined },
+  });
+  await recordAudit(prisma, { actorId, action: "beat.created", entityType: "SeeraGeographyNode", entityId: beat.id, afterState: { name, territoryId: territory.id } });
+  return beat;
+}
+
+export async function updateGeographyNode(
+  prisma: PrismaClient,
+  actorId: string,
+  nodeId: string,
+  input: { name?: string; headquarters?: string; state?: string; description?: string; status?: "DRAFT" | "ACTIVE" | "INACTIVE" | "DISCONTINUED" },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const node = await prisma.seeraGeographyNode.findUniqueOrThrow({ where: { id: nodeId } });
+  const metadata = { ...(node.metadata as Record<string, unknown> | null), ...(input.headquarters !== undefined ? { headquarters: input.headquarters.trim() || undefined } : {}), ...(input.state !== undefined ? { state: input.state.trim() || undefined } : {}), ...(input.description !== undefined ? { description: input.description.trim() || undefined } : {}) };
+  const updated = await prisma.seeraGeographyNode.update({
+    where: { id: nodeId },
+    data: { name: input.name?.trim() || node.name, status: input.status ?? node.status, metadata },
+  });
+  await recordAudit(prisma, { actorId, action: `${node.level.toLowerCase()}.updated`, entityType: "SeeraGeographyNode", entityId: nodeId, beforeState: { name: node.name, status: node.status }, afterState: { name: updated.name, status: updated.status } });
+  return updated;
+}
+
+export async function territoriesAndBeats(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const nodes = await prisma.seeraGeographyNode.findMany({ where: { level: { in: ["TERRITORY", "BEAT"] } }, orderBy: { name: "asc" } });
+  const territories = nodes.filter((n) => n.level === "TERRITORY");
+  const beatsByTerritory = new Map<string, typeof nodes>();
+  for (const beat of nodes.filter((n) => n.level === "BEAT")) {
+    const list = beatsByTerritory.get(beat.parentId ?? "") ?? [];
+    list.push(beat);
+    beatsByTerritory.set(beat.parentId ?? "", list);
+  }
+  return territories.map((t) => ({ territory: t, beats: beatsByTerritory.get(t.id) ?? [] }));
+}
+
+// Executive/Manager <-> Territory assignment (Bhilwara/Manoj): mirrors assignDistributorToExecutive's
+// exact pattern (many-to-many, never closes a prior row, effectiveTo-based removal) but accepts
+// either SALES_EXECUTIVE or SALES_MANAGER (Manoj holds both) and is master:manage-gated per the
+// Founder's explicit instruction that only Founder/Admin may assign field users to a territory.
+// Purely additive record-keeping — never touches the user's role assignments, Company Direct
+// eligibility, or any other existing governance.
+export async function assignExecutiveTerritory(
+  prisma: PrismaClient,
+  actorId: string,
+  input: { userId: string; territoryId: string; reason: string },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  if (!input.reason.trim()) throw new FoundationError("ASSIGNMENT_REASON_REQUIRED", "A reason is required", 400);
+  const user = await prisma.user.findFirst({
+    where: { id: input.userId, status: "ACTIVE", roleAssignments: { some: { status: "ACTIVE", role: { code: { in: ["SALES_EXECUTIVE", "SALES_MANAGER", "SALES_HEAD"] } } } } },
+  });
+  if (!user) throw new FoundationError("FIELD_FORCE_USER_NOT_FOUND", "User is not an active Sales Manager/Executive", 404);
+  const territory = await prisma.seeraGeographyNode.findFirst({ where: { id: input.territoryId, level: "TERRITORY" } });
+  if (!territory) throw new FoundationError("TERRITORY_NOT_FOUND", "Territory is unavailable", 404);
+  const existing = await prisma.seeraAssignment.findFirst({
+    where: { assignmentType: "EXECUTIVE_TERRITORY", subjectId: input.userId, targetId: input.territoryId, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+  });
+  if (existing) return existing;
+  const assignment = await prisma.seeraAssignment.create({
+    data: {
+      assignmentType: "EXECUTIVE_TERRITORY",
+      subjectType: "USER",
+      subjectId: input.userId,
+      targetType: "SEERA_GEOGRAPHY_NODE",
+      targetId: input.territoryId,
+      effectiveFrom: new Date(),
+      reason: input.reason,
+      createdById: actorId,
+    },
+  });
+  await recordAudit(prisma, { actorId, action: "assignment.executive_territory_created", entityType: "SeeraAssignment", entityId: assignment.id, afterState: { userId: input.userId, territoryId: input.territoryId } });
+  return assignment;
+}
+
+export async function removeExecutiveTerritoryAssignment(prisma: PrismaClient, actorId: string, assignmentId: string, reason: string) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  if (!reason.trim()) throw new FoundationError("ASSIGNMENT_REASON_REQUIRED", "A reason is required", 400);
+  const assignment = await prisma.seeraAssignment.findFirst({ where: { id: assignmentId, assignmentType: "EXECUTIVE_TERRITORY" } });
+  if (!assignment) throw new FoundationError("ASSIGNMENT_NOT_FOUND", "Assignment is unavailable", 404);
+  if (assignment.effectiveTo) return assignment;
+  const updated = await prisma.seeraAssignment.update({ where: { id: assignmentId }, data: { effectiveTo: new Date() } });
+  await recordAudit(prisma, { actorId, action: "assignment.executive_territory_removed", entityType: "SeeraAssignment", entityId: assignmentId, reason, afterState: { userId: assignment.subjectId, territoryId: assignment.targetId } });
+  return updated;
+}
+
+export async function activeExecutiveTerritoryAssignments(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const now = new Date();
+  const [assignments, fieldUsers, territories] = await Promise.all([
+    prisma.seeraAssignment.findMany({ where: { assignmentType: "EXECUTIVE_TERRITORY", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, orderBy: { effectiveFrom: "desc" } }),
+    prisma.userRoleAssignment.findMany({ where: { status: "ACTIVE", role: { code: { in: ["SALES_EXECUTIVE", "SALES_MANAGER", "SALES_HEAD"] } }, user: { status: "ACTIVE" } }, select: { userId: true, user: { select: { id: true, name: true, email: true } } } }),
+    prisma.seeraGeographyNode.findMany({ where: { level: "TERRITORY" }, select: { id: true, name: true } }),
+  ]);
+  const userById = new Map(fieldUsers.map((x) => [x.user.id, x.user]));
+  const territoryById = new Map(territories.map((t) => [t.id, t.name]));
+  return {
+    fieldUsers: fieldUsers.map((x) => ({ value: x.user.id, label: x.user.name ?? x.user.email })),
+    territories: territories.map((t) => ({ value: t.id, label: t.name })),
+    assignments: assignments
+      .filter((a) => userById.has(a.subjectId))
+      .map((a) => ({ id: a.id, userId: a.subjectId, userName: userById.get(a.subjectId)?.name ?? a.subjectId, territoryId: a.targetId, territoryName: territoryById.get(a.targetId) ?? a.targetId, effectiveFrom: a.effectiveFrom, reason: a.reason })),
+  };
+}
+
 // Distributor (optional) on a Beat Plan is free text, NOT another auto-create-on-first-use master
 // like Territory/Beat/place: a Distributor is a full commercial Partner (billing profile, credit
 // terms, GSTIN) and fabricating one from a planning screen would be a real business-rule risk (see

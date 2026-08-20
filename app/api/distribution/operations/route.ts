@@ -21,7 +21,7 @@ import {
 } from "@/lib/sales-distribution/workflow-service";
 import { requestCreditExtension } from "@/lib/sales-distribution/credit-service";
 import { completeDelivery } from "@/lib/sales-distribution/delivery-service";
-import { submitPartnerClaim, submitPartnerPayment, submitPaymentProof } from "@/lib/sales-distribution/operational-service";
+import { submitPartnerClaim, submitPartnerPayment, submitPaymentProof, createTerritory, createBeat, updateGeographyNode, assignExecutiveTerritory, removeExecutiveTerritoryAssignment } from "@/lib/sales-distribution/operational-service";
 import { generateDistributorPaymentReceipt } from "@/lib/sales-distribution/financial-service";
 import {
   createQuotationDraft,
@@ -87,6 +87,11 @@ const body = z.object({
     "create-super-stockist",
     "create-company-direct-partner",
     "set-company-direct-eligibility",
+    "create-territory",
+    "create-beat",
+    "update-geography-node",
+    "assign-executive-territory",
+    "remove-executive-territory-assignment",
     "reassign-distributor",
     "settle-closure-stock",
     "bulk-onboard-ratan-distributors",
@@ -121,6 +126,11 @@ export async function POST(request: Request) {
     else if(action==="create-super-stockist") result=await createSuperStockist(prisma,user.id,z.object({firmName:z.string().min(1),tradeName:z.string().optional(),address:z.record(z.unknown()),mobile:z.string().min(10),ownerName:z.string().optional(),alternateMobile:z.string().optional(),email:z.string().email().optional(),gstin:z.string().optional(),pincode:z.string().optional(),territoryIds:z.array(z.string()).optional(),notes:z.string().optional(),billingProfile:z.object({state:z.string().min(1),stateCode:z.string().min(1),invoicePrefix:z.string().min(1)}).optional(),idempotencyKey:z.string()}).parse(payload));
     else if(action==="create-company-direct-partner") result=await createCompanyDirectPartner(prisma,user.id,z.object({legalName:z.string().optional(),tradeName:z.string().optional(),address:z.record(z.unknown()),notes:z.string().optional(),idempotencyKey:z.string()}).parse(payload));
     else if(action==="set-company-direct-eligibility") result=await setCompanyDirectEligibility(prisma,user.id,z.object({userId:z.string(),eligible:z.boolean(),reason:z.string().min(3)}).parse(payload));
+    else if(action==="create-territory") result=await createTerritory(prisma,user.id,z.object({name:z.string().min(1),headquarters:z.string().optional(),state:z.string().optional(),description:z.string().optional(),code:z.string().optional(),status:z.enum(["DRAFT","ACTIVE","INACTIVE","DISCONTINUED"]).optional()}).parse(payload));
+    else if(action==="create-beat") result=await createBeat(prisma,user.id,z.object({name:z.string().min(1),territoryId:z.string(),description:z.string().optional(),code:z.string().optional(),status:z.enum(["DRAFT","ACTIVE","INACTIVE","DISCONTINUED"]).optional()}).parse(payload));
+    else if(action==="update-geography-node"){const v=z.object({nodeId:z.string(),name:z.string().optional(),headquarters:z.string().optional(),state:z.string().optional(),description:z.string().optional(),status:z.enum(["DRAFT","ACTIVE","INACTIVE","DISCONTINUED"]).optional()}).parse(payload);result=await updateGeographyNode(prisma,user.id,v.nodeId,v);}
+    else if(action==="assign-executive-territory") result=await assignExecutiveTerritory(prisma,user.id,z.object({userId:z.string(),territoryId:z.string(),reason:z.string().min(3)}).parse(payload));
+    else if(action==="remove-executive-territory-assignment"){const v=z.object({assignmentId:z.string(),reason:z.string().min(3)}).parse(payload);result=await removeExecutiveTerritoryAssignment(prisma,user.id,v.assignmentId,v.reason);}
     else if(action==="bulk-onboard-ratan-distributors") result=await bulkOnboardRatanDistributors(prisma,user.id);
     else if(action==="reassign-distributor") result=await reassignDistributorToSuperStockist(prisma,user.id,z.object({distributorId:z.string()}).parse(payload).distributorId,z.object({distributorId:z.string(),newSuperStockistId:z.string(),effectiveFrom:z.coerce.date(),reason:z.string().min(3),idempotencyKey:z.string()}).parse(payload));
     else if(action==="settle-closure-stock") result=await settleDistributorClosureStock(prisma,user.id,z.object({distributorId:z.string(),receivingSuperStockistId:z.string(),reason:z.string().min(3),idempotencyKey:z.string()}).parse(payload));
