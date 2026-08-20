@@ -154,25 +154,28 @@ async function prepareImageForUpload(
   maxDimension = 1920,
   quality = 0.82,
 ): Promise<{ base64: string; mimeType: string; originalName: string }> {
-  const original = { base64: await blobToBase64(file), mimeType: file.type, originalName: file.name };
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined") return original;
+  const original = async () => ({ base64: await blobToBase64(file), mimeType: file.type, originalName: file.name });
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined") return original();
+  let bitmap: ImageBitmap | null = null;
   try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
-    if (scale >= 1) return original; // already within target size — don't reprocess an optimal image
+    if (scale >= 1) return original(); // already within target size — don't reprocess an optimal image
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return original;
+    if (!ctx) return original();
     ctx.drawImage(bitmap, 0, 0, width, height);
     const resizedBlob: Blob | null = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", quality));
-    if (!resizedBlob || resizedBlob.size >= file.size) return original;
+    if (!resizedBlob || resizedBlob.size >= file.size) return original();
     return { base64: await blobToBase64(resizedBlob), mimeType: "image/jpeg", originalName: file.name.replace(/\.\w+$/, ".jpg") };
   } catch {
-    return original; // resize is a pure optimization — never block the actual upload on it
+    return original(); // resize is a pure optimization — never block the actual upload on it
+  } finally {
+    bitmap?.close?.();
   }
 }
 const key = () => crypto.randomUUID();
@@ -552,6 +555,7 @@ export function FieldJourney({
   const hi = language === "HI",
     router = useRouter(),
     fileRef = useRef<HTMLInputElement>(null),
+    photoPreviewUrlRef = useRef<string | null>(null),
     [busy, setBusy] = useState(false),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
@@ -603,6 +607,16 @@ export function FieldJourney({
   const visit = optimisticVisitCleared ? undefined : (rawVisit ?? localOptimisticVisit ?? undefined);
   const effectivePhotos = visit ? [...visit.photos, ...localAddedPhotos].filter((p) => !locallyDeletedPhotoIds.has(p.id)) : [];
 
+  const revokePhotoPreview = () => {
+    if (!photoPreviewUrlRef.current) return;
+    URL.revokeObjectURL(photoPreviewUrlRef.current);
+    photoPreviewUrlRef.current = null;
+  };
+
+  useEffect(() => () => {
+    if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
+  }, []);
+
   // FieldJourney stays mounted as the SAME component instance across the whole day — moving from
   // an active visit to "Next customer", or from one customer's visit to the next, only changes
   // props (visit goes from defined -> undefined -> a new id), it never remounts the component. Without
@@ -624,6 +638,7 @@ export function FieldJourney({
     setMode("ORDER");
     setOrderLines([blankOrderLine()]);
     setPaymentType("CREDIT");
+    revokePhotoPreview();
     setPhotoPreview(null);
     setDuplicateWarning(null);
     setBusy(false);
@@ -849,6 +864,7 @@ export function FieldJourney({
             <GpsBadge language={language} status={gpsStatus} />
           </div>
           <button
+            type="button"
             className={styles.primary}
             disabled={
               busy ||
@@ -931,6 +947,7 @@ export function FieldJourney({
           </ul>
           <div className={styles.quickActions}>
             <button
+              type="button"
               className={styles.primary}
               disabled={busy}
               onClick={async () => {
@@ -941,7 +958,7 @@ export function FieldJourney({
             >
               {hi ? "फिर भी सहेजें" : "Save anyway"}
             </button>
-            <button onClick={() => setDuplicateWarning(null)}>{hi ? "वापस" : "Back"}</button>
+            <button type="button" onClick={() => setDuplicateWarning(null)}>{hi ? "वापस" : "Back"}</button>
           </div>
         </div>
       ) : (
@@ -1144,6 +1161,7 @@ export function FieldJourney({
             )}
             <div className={styles.quickActions}>
               <button
+                type="button"
                 className={styles.addCustomerCta}
                 onClick={() => {
                   setMessage(null);
@@ -1285,10 +1303,11 @@ export function FieldJourney({
                       </header>
                       {(!retailer.visitStatus || retailer.visitStatus === "PENDING") && (
                         <div className="rowActions">
-                          <button data-primary="true" disabled={busy} onClick={() => startVisitFor(retailer)}>
+                          <button type="button" data-primary="true" disabled={busy} onClick={() => startVisitFor(retailer)}>
                             {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "विज़िट शुरू करें" : "Start visit"}
                           </button>
                           <button
+                            type="button"
                             disabled={busy}
                             onClick={() => {
                               const reason = window.prompt(
@@ -1329,7 +1348,7 @@ export function FieldJourney({
                       )}
                       {retailer.visitStatus && retailer.visitStatus !== "PENDING" && (
                         <div className="rowActions">
-                          <button disabled={busy} onClick={() => startVisitFor(retailer)}>
+                          <button type="button" disabled={busy} onClick={() => startVisitFor(retailer)}>
                             {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "फिर से चेक-इन करें" : "Check In Again"}
                           </button>
                           <button
@@ -1353,6 +1372,7 @@ export function FieldJourney({
               </>
             )}
             <button
+              type="button"
               className={styles.secondary}
               disabled={busy}
               onClick={() => {
@@ -1427,6 +1447,7 @@ export function FieldJourney({
                 )}
                 <div className={styles.quickActions}>
                   <button
+                    type="button"
                     className={styles.primary}
                     disabled={busy}
                     onClick={async () => {
@@ -1475,7 +1496,7 @@ export function FieldJourney({
                   >
                     {busy ? (busyLabel ?? (hi ? "दिन समाप्त हो रहा है…" : "Ending day…")) : hi ? "पुष्टि करें और समाप्त करें" : "Confirm & end day"}
                   </button>
-                  <button disabled={busy} onClick={() => setShowEndDayPreview(false)}>{hi ? "वापस" : "Back"}</button>
+                  <button type="button" disabled={busy} onClick={() => setShowEndDayPreview(false)}>{hi ? "वापस" : "Back"}</button>
                 </div>
               </div>
             )}
@@ -1516,7 +1537,7 @@ export function FieldJourney({
         </header>
         <div className={styles.tabs}>
           {(["ORDER", "PHOTO", "FOLLOW_UP"] as const).map((x) => (
-            <button key={x} data-active={mode === x} onClick={() => setMode(x)}>
+            <button type="button" key={x} data-active={mode === x} onClick={() => setMode(x)}>
               {x === "ORDER"
                 ? hi
                   ? "ऑर्डर"
@@ -1630,9 +1651,10 @@ export function FieldJourney({
                 setMessage(null);
                 const file = event.target.files?.[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => setPhotoPreview(String(reader.result));
-                reader.readAsDataURL(file);
+                revokePhotoPreview();
+                const previewUrl = URL.createObjectURL(file);
+                photoPreviewUrlRef.current = previewUrl;
+                setPhotoPreview(previewUrl);
               }}
             />
             {photoPreview && (
@@ -1685,6 +1707,7 @@ export function FieldJourney({
                   // "Add photo" again without re-picking anything, and the inline error from
                   // `message` explains exactly why it didn't go through.
                   if ("queued" in result || result.success) {
+                    revokePhotoPreview();
                     setPhotoPreview(null);
                     if (fileRef.current) fileRef.current.value = "";
                   }
