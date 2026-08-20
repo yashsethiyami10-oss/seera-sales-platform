@@ -152,6 +152,10 @@ const founder: SurfaceItem[] = [
   // Ledgers/Outstanding/Payments items above (which remain the Company<->S.S./
   // Distributor/Retailer commercial subledger and are untouched).
   item("finance-os", "Finance", "वित्त", "₹", "finance", "financial_statements:view"),
+  // MONEY DESK — guided transaction entry built on top of Finance OS above,
+  // not a replacement. Separate nav slot, separate (narrower) permission —
+  // an operator with only money_desk:view never needs financial_statements:view.
+  item("money-desk", "Money Desk", "मनी डेस्क", "▣", "finance", "money_desk:view"),
   // SEERA MANUFACTURING OS — first-class module inside the existing
   // Founder/Admin portal (spec §2), sharing the same panel component the
   // dedicated Manufacturing portal below uses, permission-scoped identically.
@@ -218,6 +222,10 @@ const founder: SurfaceItem[] = [
 
 const accounts: SurfaceItem[] = [
   item("finance-os", "Finance", "वित्त", "₹", "finance", "financial_statements:view"),
+  // MONEY DESK — guided transaction entry built on top of Finance OS above,
+  // not a replacement. Separate nav slot, separate (narrower) permission —
+  // an operator with only money_desk:view never needs financial_statements:view.
+  item("money-desk", "Money Desk", "मनी डेस्क", "▣", "finance", "money_desk:view"),
   item("payments", "Payments", "भुगतान", "₹", "finance", "payment:review"),
   item(
     "receipts",

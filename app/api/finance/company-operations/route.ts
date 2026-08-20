@@ -19,6 +19,8 @@ import { postOpeningBalances } from "@/lib/finance/opening-balance-service";
 import { lockPeriod, reopenPeriod } from "@/lib/finance/period-service";
 import { createPayrollEntry, accruePayrollEntry, paySalary } from "@/lib/finance/payroll-service";
 import { updateFinanceApprovalPolicy, seedDefaultFinanceApprovalPolicies, decideApproval } from "@/lib/finance/approval-policy-service";
+import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
+import { MONEY_DESK_PURPOSE_CODES } from "@/lib/finance/money-desk-registry";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
 
@@ -39,6 +41,7 @@ const ACTIONS = [
   "lock-period", "reopen-period",
   "create-payroll-entry", "accrue-payroll-entry", "pay-salary",
   "update-finance-approval-policy", "decide-finance-approval",
+  "money-desk-create", "money-desk-decide-approval", "money-desk-void",
 ] as const;
 
 const body = z.object({ action: z.enum(ACTIONS), payload: z.record(z.unknown()) });
@@ -248,6 +251,38 @@ export async function POST(request: Request) {
       case "seed-quick-entry-categories":
         result = await seedQuickEntryCategoryMaster(prisma, user.id);
         break;
+      case "money-desk-create":
+        result = await createMoneyDeskTransaction(
+          prisma,
+          user.id,
+          z
+            .object({
+              purposeCode: z.enum(MONEY_DESK_PURPOSE_CODES as [string, ...string[]]),
+              direction: z.enum(["CASH_IN", "CASH_OUT", "BANK_IN", "BANK_OUT", "ADJUSTMENT"]),
+              amount: z.number(),
+              date: z.coerce.date(),
+              treasuryAccountId: z.string().optional(),
+              counterpartyType: z.string().optional(),
+              counterpartyId: z.string().optional(),
+              counterpartyName: z.string().optional(),
+              description: z.string().optional(),
+              documentFileId: z.string().optional(),
+              formData: z.record(z.unknown()),
+              idempotencyKey: z.string(),
+            })
+            .parse(payload),
+        );
+        break;
+      case "money-desk-decide-approval": {
+        const v = z.object({ transactionId: z.string(), decision: z.enum(["APPROVED", "REJECTED"]), reason: z.string() }).parse(payload);
+        result = await decideMoneyDeskApproval(prisma, user.id, v.transactionId, v);
+        break;
+      }
+      case "money-desk-void": {
+        const v = z.object({ transactionId: z.string(), reason: z.string() }).parse(payload);
+        result = await voidMoneyDeskTransaction(prisma, user.id, v.transactionId, v);
+        break;
+      }
     }
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

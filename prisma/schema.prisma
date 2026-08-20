@@ -1619,6 +1619,12 @@ model SeeraReturnRequest {
   sourcePortal        String
   idempotencyKey      String              @unique
   createdAt           DateTime            @default(now())
+  // Money Desk REFUND linkage (additive) — set once the requested credit
+  // note/refund has actually been paid out, so "creditNoteRequested" can
+  // never silently mean "and it was paid" when it wasn't. Loose reference to
+  // SeeraJournalEntry, same convention as every other cross-domain link in
+  // this schema (e.g. SeeraGrn.vendorId) — no hard FK across module boundaries.
+  refundJournalId     String?
 
   @@index([partyType, partyId, status])
   @@index([retailerId, status])
@@ -2359,6 +2365,13 @@ model SeeraVendorBill {
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   vendor               SeeraVendor      @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  // Money Desk Raw Material Purchase linkage (additive) — the Manufacturing
+  // GRN this bill was raised against, when the purchase flowed through Money
+  // Desk's guided raw-material-purchase orchestration. Loose reference (same
+  // convention as SeeraGrn.vendorId itself) — Manufacturing and Finance stay
+  // deliberately separate domains; this is the trace between them, not a
+  // merge of the two.
+  sourceGrnId          String?
 
   @@unique([vendorId, vendorInvoiceNumber])
   @@index([status, dueDate])
@@ -2603,6 +2616,72 @@ model SeeraFinanceApprovalPolicy {
   updatedAt        DateTime                 @updatedAt
 
   @@map("seera_finance_approval_policies")
+}
+
+// ============================================================================
+// SEERA MONEY DESK — a guided, plain-language transaction-entry layer BUILT ON
+// TOP OF (never replacing) the Finance OS above. Core principle: the operator
+// enters the business event ("paid the diesel bill", "received an
+// institutional cheque"); the system decides the accounting by calling the
+// REAL, already-governed services (expense-service/vendor-service/treasury-
+// service/journal-service/loan-asset-service, and — for raw material purchase
+// and offline sale — the real Manufacturing/Sales services) rather than
+// reproducing their effects. This model is Money Desk's OWN durable
+// audit/lifecycle/idempotency/traceability record — it never carries
+// accounting weight itself; `downstreamRefs` is the trace back to whichever
+// real ledger rows a transaction actually caused.
+enum MoneyDeskDirection {
+  CASH_IN
+  CASH_OUT
+  BANK_IN
+  BANK_OUT
+  ADJUSTMENT
+}
+
+enum MoneyDeskStatus {
+  DRAFT
+  PENDING_APPROVAL
+  POSTING
+  POSTED
+  REJECTED
+  VOIDED
+}
+
+model SeeraMoneyDeskTransaction {
+  id                String             @id @default(cuid())
+  transactionNumber String             @unique
+  purposeCode       String
+  direction         MoneyDeskDirection
+  status            MoneyDeskStatus    @default(DRAFT)
+  amount            Decimal            @db.Decimal(16, 2)
+  date              DateTime
+  treasuryAccountId String?
+  counterpartyType  String?
+  counterpartyId    String?
+  counterpartyName  String?
+  description       String?
+  documentFileId    String?
+  formData          Json
+  // Trace of every real downstream record this transaction caused — e.g.
+  // {expenseId}, {vendorId,billId,paymentId}, {grnId,billId,paymentId},
+  // {journalId}, {fixedAssetId}, {orderId} — shape depends on purposeCode,
+  // deliberately untyped here (the Transaction Definition Registry in
+  // application code owns the real shape per purpose).
+  downstreamRefs    Json?
+  failureReason     String?
+  requestedById     String
+  approvedById      String?
+  approvedAt        DateTime?
+  voidedById        String?
+  voidedAt          DateTime?
+  voidReason        String?
+  idempotencyKey    String             @unique
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([status, createdAt])
+  @@index([purposeCode, createdAt])
+  @@map("seera_money_desk_transactions")
 }
 
 // ============================================================================

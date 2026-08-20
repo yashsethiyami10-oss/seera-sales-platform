@@ -28,6 +28,7 @@ import { RatanBulkOnboardPanel } from "./RatanBulkOnboardPanel";
 import { CreateSuperStockistPanel } from "./CreateSuperStockistPanel";
 import { CreateCompanyDirectPartnerPanel } from "./CreateCompanyDirectPartnerPanel";
 import { CompanyDirectEligibilityPanel } from "./CompanyDirectEligibilityPanel";
+import { MoneyDeskPanel } from "./MoneyDeskPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { CompanyOrderDispatchPanel } from "./CompanyOrderDispatchPanel";
 import { DistributorMoneyPanel } from "./DistributorMoneyPanel";
@@ -52,6 +53,8 @@ import { MyTaClaimActions, TeamTaClaimsPanel } from "./ManagerTaClaimActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
 import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments } from "@/lib/sales-distribution/operational-service";
 import { companyDirectEligibilityRoster } from "@/lib/sales-distribution/distributor-management-service";
+import { moneyDeskHome, moneyDeskSupportingData } from "@/lib/finance/money-desk-service";
+import { MONEY_DESK_PURPOSE_CODES, purposeDefinition } from "@/lib/finance/money-desk-registry";
 import { DeliveryActions } from "./DeliveryActions";
 import { documentSelectorData } from "@/lib/sales-distribution/document-portal-service";
 import { distributorCreditPosition, superStockistDistributorCreditOverview, superStockistCreditExtensionHistory, creditPositionFor, superStockistDistributorCollectionsSnapshot, founderDistributorCreditOversight } from "@/lib/sales-distribution/credit-service";
@@ -3969,6 +3972,26 @@ export async function OperationalWorkspace({
       workflow = (
         <EmptyState
           title="Finance data is temporarily unavailable"
+          description={`Something went wrong loading this screen. Please try again. If this keeps happening, share Error ID ${incidentId} with your Admin.`}
+        />
+      );
+    }
+  } else if ((portal === "founder-admin" || portal === "accounts") && item.slug === "money-desk") {
+    // Same governed-error pattern as finance-os above — Money Desk's own reads must never fall
+    // through to the generic, contextless error boundary either.
+    try {
+      const [home, supporting] = await Promise.all([moneyDeskHome(db, userId), moneyDeskSupportingData(db, userId)]);
+      const purposes = MONEY_DESK_PURPOSE_CODES.map((code) => {
+        const def = purposeDefinition(code);
+        return { code: def.code, label: def.label, hindiLabel: def.hindiLabel, allowedDirections: def.allowedDirections, requiredFields: def.requiredFields, optionalFields: def.optionalFields, documentPolicy: def.documentPolicy, description: def.description };
+      });
+      workflow = <MoneyDeskPanel language={language} purposes={purposes} supporting={supporting} home={home as never} />;
+    } catch (error) {
+      const incidentId = crypto.randomUUID();
+      operationalLog("error", "money_desk.load_failed", { incidentId, actorId: userId, errorName: error instanceof Error ? error.name : "unknown" });
+      workflow = (
+        <EmptyState
+          title="Money Desk data is temporarily unavailable"
           description={`Something went wrong loading this screen. Please try again. If this keeps happening, share Error ID ${incidentId} with your Admin.`}
         />
       );
