@@ -1253,7 +1253,16 @@ model SeeraVisitPhoto {
   retailerId   String?
   actorId      String
   photoType    String
-  fileId       String
+  // Legacy rows point at StoredFile and may contain database-backed bytes. New rows use the
+  // additive Cloudinary metadata below and deliberately leave fileId null.
+  fileId       String?
+  storageProvider String?
+  publicId     String?     @unique
+  secureUrl    String?
+  sizeBytes    BigInt?
+  width        Int?
+  height       Int?
+  format       String?
   latitude     Decimal?   @db.Decimal(10, 7)
   longitude    Decimal?   @db.Decimal(10, 7)
   capturedAt   DateTime   @default(now())

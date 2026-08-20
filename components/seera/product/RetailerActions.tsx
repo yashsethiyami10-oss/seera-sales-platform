@@ -11,7 +11,7 @@ type FollowUp = {
   priority: string;
   note: string;
 };
-type Photo = { id: string; photoType: string; capturedAt: string };
+type Photo = { id: string; photoType: string; capturedAt: string; secureUrl?: string | null };
 
 async function send(action: string, payload: Record<string, unknown>) {
   const response = await fetch("/api/field/operations", {
@@ -137,7 +137,7 @@ export function RetailerActions({
           <div className={styles.photoGrid}>
             {photos.map((photo) => (
               <figure key={photo.id}>
-                <img src={`/api/field/photos/${photo.id}`} alt={photo.photoType} />
+                <img src={photo.secureUrl ?? `/api/field/photos/${photo.id}`} alt={photo.photoType} />
                 <figcaption>
                   {photo.photoType} · {new Date(photo.capturedAt).toLocaleDateString(hi ? "hi-IN" : "en-IN")}
                 </figcaption>

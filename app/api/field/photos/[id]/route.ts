@@ -17,6 +17,10 @@ export async function GET(
     });
     if (!photo || photo.visit.workSession.employeeId !== user.id)
       throw new FoundationError("PHOTO_SCOPE_DENIED", "Photo unavailable", 403);
+    if (photo.storageProvider === "CLOUDINARY" && photo.secureUrl)
+      return NextResponse.redirect(photo.secureUrl, 307);
+    if (!photo.fileId)
+      throw new FoundationError("PHOTO_CONTENT_UNAVAILABLE", "Photo content unavailable", 404);
     const file = await prisma.storedFile.findUniqueOrThrow({ where: { id: photo.fileId } });
     if (!file.contentBytes)
       throw new FoundationError("PHOTO_CONTENT_UNAVAILABLE", "Photo content unavailable", 404);

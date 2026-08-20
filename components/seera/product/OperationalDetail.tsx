@@ -697,6 +697,7 @@ export async function OperationalDetail({
               id: p.id,
               photoType: p.photoType,
               capturedAt: p.capturedAt.toISOString(),
+              secureUrl: p.secureUrl,
             }))}
           />
         )}

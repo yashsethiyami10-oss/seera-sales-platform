@@ -2406,6 +2406,7 @@ export async function OperationalWorkspace({
             include: {
               retailer: { select: { businessName: true, mobile: true, distributorId: true, address: true } },
               photos: { where: { deletedAt: null }, orderBy: { capturedAt: "desc" } },
+              _count: { select: { orders: true } },
             },
           })
         : Promise.resolve(null),
@@ -2449,10 +2450,12 @@ export async function OperationalWorkspace({
                   })(),
                 distributorId: visit.retailer?.distributorId ?? null,
                 checkedInAt: visit.checkedInAt.toISOString(),
+                orderCount: visit._count.orders,
                 photos: visit.photos.map((p) => ({
                   id: p.id,
                   photoType: p.photoType,
                   capturedAt: p.capturedAt.toISOString(),
+                  secureUrl: p.secureUrl,
                 })),
               }
             : undefined

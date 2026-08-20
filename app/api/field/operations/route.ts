@@ -20,7 +20,6 @@ import {
   createRetailer,
   createRetailerAndCheckIn,
   executiveRetailerSearch,
-  capturePhoto,
   recordPhotoException,
   deleteVisitPhoto,
   createFollowUp,
@@ -42,7 +41,6 @@ const body = z.object({
     "create-retailer",
     "create-retailer-and-check-in",
     "retailer-search",
-    "capture-photo",
     "photo-exception",
     "delete-photo",
     "create-follow-up",
@@ -297,31 +295,7 @@ export async function POST(request: Request) {
     else if (action === "retailer-search") {
       const v = z.object({ q: z.string() }).parse(payload);
       result = await executiveRetailerSearch(prisma, user.id, v.q);
-    } else if (action === "capture-photo")
-      result = await capturePhoto(
-        prisma,
-        user.id,
-        z
-          .object({
-            visitId: z.string(),
-            photoType: z.enum([
-              "SHOPFRONT",
-              "COUNTER",
-              "PRODUCT_DISPLAY",
-              "BANNER_BRANDING",
-              "MERCHANDISING",
-              "OTHER",
-            ]),
-            fileBase64: z.string().min(1),
-            mimeType: z.string(),
-            originalName: z.string(),
-            latitude: z.number().optional(),
-            longitude: z.number().optional(),
-            idempotencyKey: z.string(),
-          })
-          .parse(payload),
-      );
-    else if (action === "photo-exception")
+    } else if (action === "photo-exception")
       result = await recordPhotoException(
         prisma,
         user.id,

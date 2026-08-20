@@ -17,7 +17,7 @@ type BeatRetailer = {
   visitStatus: string | null;
 };
 type Sku = { id: string; brand: string; productName: string; packLabel: string; price: string; rate: number };
-type Photo = { id: string; photoType: string; capturedAt: string };
+type Photo = { id: string; photoType: string; capturedAt: string; secureUrl?: string | null };
 type Visit = {
   id: string;
   retailerId: string;
@@ -27,6 +27,7 @@ type Visit = {
   distributorId: string | null;
   checkedInAt: string;
   photos: Photo[];
+  orderCount: number;
 };
 type Dashboard = {
   employeeName: string;
@@ -128,55 +129,107 @@ function yieldToPaint(): Promise<void> {
   if (typeof requestAnimationFrame === "undefined") return Promise.resolve();
   return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
-    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
-    reader.readAsDataURL(blob);
-  });
-}
-// FINAL PERFORMANCE PASS — photo pipeline root cause: unresized camera photos (routinely 3-8MB)
-// were base64-encoded whole (~33% larger again) and written directly into a Postgres `bytea`
-// column in one request — this, not any client-side wait-on-refresh pattern, was the real source
-// of "adding a photo takes too long". Field evidence photos don't need full camera resolution to
-// stay legible, so this resizes to a reasonable long edge and re-encodes as JPEG before upload —
-// the ORIGINAL file is still what's shown in the instant local preview (unchanged, still instant),
-// this only changes what actually gets uploaded. `imageOrientation: "from-image"` makes
-// createImageBitmap apply the source's EXIF rotation itself, since re-encoding through a canvas
-// otherwise silently drops EXIF (a classic "photo comes out sideways" bug this avoids introducing).
-// HEIC/HEIF (common on iPhones) can't be decoded by canvas in most browsers, so those upload
-// as-is, same as before — no regression for that case, just no size reduction. Any resize failure
-// falls back to the original file rather than ever blocking a photo submission on this being
-// safe/available; a photo that fails to upload is worse than one that uploads a bit larger than ideal.
-async function prepareImageForUpload(
-  file: File,
-  maxDimension = 1920,
-  quality = 0.82,
-): Promise<{ base64: string; mimeType: string; originalName: string }> {
-  const original = async () => ({ base64: await blobToBase64(file), mimeType: file.type, originalName: file.name });
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined") return original();
-  let bitmap: ImageBitmap | null = null;
+// P0 mobile-memory path: the original camera File is never assigned to an <img>. Preview and
+// upload each use a bounded JPEG derivative. The full metadata bitmap is closed before the browser
+// decodes the resized bitmap, the resized bitmap is closed immediately after drawing, and the small
+// canvas is reset after encoding so a camera return cannot leave multiple decoded copies resident.
+const PREVIEW_MAX_DIMENSION = 800;
+const PREVIEW_QUALITY = 0.7;
+const UPLOAD_MAX_DIMENSION = 1280;
+const UPLOAD_QUALITY = 0.74;
+// Vercel Functions cap the whole JSON request at 4.5 MB. Base64 adds roughly one third, and the
+// request also carries JSON metadata, so 3 MB is the hard final-blob ceiling. Only originals at or
+// below 1 MB are safe fallback candidates when a browser cannot resize; a multi-megabyte camera
+// file must fail closed instead of recreating the memory spike this path exists to prevent.
+const MAX_FINAL_UPLOAD_BYTES = 3_000_000;
+const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 1_000_000;
+const PHOTO_TOO_LARGE_MESSAGE = "Photo is too large for this device. Please retake the photo.";
+
+async function resizeImageToJpeg(file: File, maxDimension: number, quality: number): Promise<Blob> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined")
+    throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+
+  let metadataBitmap: ImageBitmap | null = null;
+  let resizedBitmap: ImageBitmap | null = null;
+  let canvas: HTMLCanvasElement | null = null;
   try {
-    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    if (scale >= 1) return original(); // already within target size — don't reprocess an optimal image
-    const canvas = document.createElement("canvas");
+    metadataBitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, maxDimension / Math.max(metadataBitmap.width, metadataBitmap.height));
+    const width = Math.max(1, Math.round(metadataBitmap.width * scale));
+    const height = Math.max(1, Math.round(metadataBitmap.height * scale));
+    metadataBitmap.close?.();
+    metadataBitmap = null;
+
+    resizedBitmap = await createImageBitmap(file, {
+      imageOrientation: "from-image",
+      resizeWidth: width,
+      resizeHeight: height,
+      resizeQuality: "high",
+    });
+    canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return original();
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    const resizedBlob: Blob | null = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", quality));
-    if (!resizedBlob || resizedBlob.size >= file.size) return original();
-    return { base64: await blobToBase64(resizedBlob), mimeType: "image/jpeg", originalName: file.name.replace(/\.\w+$/, ".jpg") };
+    if (!ctx) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+    ctx.drawImage(resizedBitmap, 0, 0, width, height);
+    resizedBitmap.close?.();
+    resizedBitmap = null;
+    const blob = await new Promise<Blob | null>((resolve) => canvas!.toBlob(resolve, "image/jpeg", quality));
+    if (!blob) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+    return blob;
   } catch {
-    return original(); // resize is a pure optimization — never block the actual upload on it
+    throw new Error(PHOTO_TOO_LARGE_MESSAGE);
   } finally {
-    bitmap?.close?.();
+    metadataBitmap?.close?.();
+    resizedBitmap?.close?.();
+    if (canvas) {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
   }
+}
+
+async function preparePreview(file: File): Promise<Blob> {
+  return resizeImageToJpeg(file, PREVIEW_MAX_DIMENSION, PREVIEW_QUALITY);
+}
+
+async function prepareImageForUpload(file: File): Promise<Blob> {
+  let uploadBlob: Blob;
+  try {
+    uploadBlob = await resizeImageToJpeg(file, UPLOAD_MAX_DIMENSION, UPLOAD_QUALITY);
+  } catch {
+    if (file.size > MAX_SAFE_ORIGINAL_FALLBACK_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+    uploadBlob = file;
+  }
+  if (uploadBlob.size > MAX_FINAL_UPLOAD_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+  if (uploadBlob.type !== "image/jpeg") throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+  return uploadBlob;
+}
+
+type SignedPhotoUpload = {
+  cloudName: string; apiKey: string; signature: string; timestamp: number; expiresAt: number;
+  folder: string; public_id: string; overwrite: false; resource_type: "image"; type: "upload";
+  unique_filename: false; allowed_formats: string; transformation: string;
+};
+
+async function postPhotoJson<T>(url: string, payload: Record<string, unknown>): Promise<T> {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error?.message ?? "Photo upload failed. Please retry.");
+  return data as T;
+}
+
+async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: Blob) {
+  const signed = await postPhotoJson<SignedPhotoUpload>("/api/field/photos/upload-signature", { visitId });
+  if (signed.expiresAt <= Math.floor(Date.now() / 1000)) throw new Error("Photo upload authorization expired. Please retry.");
+  const form = new FormData();
+  form.set("file", blob, "field-visit.jpg");
+  for (const [name, value] of Object.entries({ api_key: signed.apiKey, timestamp: signed.timestamp, signature: signed.signature, folder: signed.folder, public_id: signed.public_id, overwrite: signed.overwrite, resource_type: signed.resource_type, type: signed.type, unique_filename: signed.unique_filename, allowed_formats: signed.allowed_formats, transformation: signed.transformation }))
+    form.set(name, String(value));
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
+  const uploaded = await response.json().catch(() => ({}));
+  if (!response.ok || typeof uploaded.public_id !== "string") throw new Error(uploaded?.error?.message ?? "Photo upload failed. Please retry.");
+  return postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", { visitId, photoType, publicId: uploaded.public_id });
 }
 const key = () => crypto.randomUUID();
 // PERFORMANCE PHASE 3 (hydration mismatch fix): `key()` is genuinely random, so calling it as the
@@ -559,7 +612,9 @@ export function FieldJourney({
     [busy, setBusy] = useState(false),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
-    [mode, setMode] = useState<"ORDER" | "PHOTO" | "FOLLOW_UP">("ORDER"),
+    [mode, setMode] = useState<"ORDER" | "PHOTO" | "FOLLOW_UP">(
+      rawVisit && (rawVisit.orderCount > 0 || rawVisit.photos.length > 0) ? "PHOTO" : "ORDER",
+    ),
     [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine("initial")]),
     [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
     [photoPreview, setPhotoPreview] = useState<string | null>(null),
@@ -635,7 +690,15 @@ export function FieldJourney({
   // cases this reset is meant to catch.
   useEffect(() => {
     setMessage(null);
-    setMode("ORDER");
+    const storageKey = visit ? `seera:field-visit:${visit.id}:mode` : null;
+    const storedMode = storageKey ? sessionStorage.getItem(storageKey) : null;
+    setMode(
+      visit && (visit.orderCount > 0 || visit.photos.length > 0)
+        ? "PHOTO"
+        : storedMode === "PHOTO" || storedMode === "FOLLOW_UP"
+          ? storedMode
+          : "ORDER",
+    );
     setOrderLines([blankOrderLine()]);
     setPaymentType("CREDIT");
     revokePhotoPreview();
@@ -651,6 +714,10 @@ export function FieldJourney({
     scrollToJourneyTop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visit?.id]);
+
+  useEffect(() => {
+    if (visit) sessionStorage.setItem(`seera:field-visit:${visit.id}:mode`, mode);
+  }, [visit, mode]);
 
   // Same reasoning as above, for the transition into today's very first screen once Start Day
   // succeeds (session goes from undefined to defined) — the Start Day button can sit low on the
@@ -779,6 +846,7 @@ export function FieldJourney({
         distributorId: retailer.distributorId,
         checkedInAt: data.checkedInAt,
         photos: [],
+        orderCount: 0,
       });
     }
   };
@@ -1089,6 +1157,7 @@ export function FieldJourney({
       distributorId: data.retailer.distributorId,
       checkedInAt: data.visit.checkedInAt,
       photos: [],
+      orderCount: 0,
     });
     router.refresh();
   }
@@ -1623,7 +1692,7 @@ export function FieldJourney({
             <div className={styles.photoGrid}>
               {effectivePhotos.map((photo) => (
                 <div className={styles.photoThumb} key={photo.id}>
-                  <img src={`/api/field/photos/${photo.id}`} alt={photo.photoType} />
+                  <img src={photo.secureUrl ?? `/api/field/photos/${photo.id}`} alt={photo.photoType} />
                   <button
                     type="button"
                     disabled={busy}
@@ -1652,9 +1721,19 @@ export function FieldJourney({
                 const file = event.target.files?.[0];
                 if (!file) return;
                 revokePhotoPreview();
-                const previewUrl = URL.createObjectURL(file);
-                photoPreviewUrlRef.current = previewUrl;
-                setPhotoPreview(previewUrl);
+                setPhotoPreview(null);
+                void preparePreview(file)
+                  .then((previewBlob) => {
+                    if (fileRef.current?.files?.[0] !== file) return;
+                    const previewUrl = URL.createObjectURL(previewBlob);
+                    photoPreviewUrlRef.current = previewUrl;
+                    setPhotoPreview(previewUrl);
+                  })
+                  .catch(() => {
+                    if (fileRef.current?.files?.[0] !== file) return;
+                    if (fileRef.current) fileRef.current.value = "";
+                    setMessage({ ok: false, text: PHOTO_TOO_LARGE_MESSAGE });
+                  });
               }}
             />
             {photoPreview && (
@@ -1686,38 +1765,22 @@ export function FieldJourney({
                   setBusy(true);
                   setBusyLabel(hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…");
                   await yieldToPaint();
-                  const { base64, mimeType, originalName } = await prepareImageForUpload(file);
-                  const result = await run(
-                    "capture-photo",
-                    {
-                      visitId: visit.id,
-                      photoType,
-                      fileBase64: base64,
-                      mimeType,
-                      originalName,
-                      idempotencyKey: key(),
-                    },
-                    null,
-                    hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓",
-                    hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…",
-                  );
-                  // Only clear the preview/selected file once it's actually persisted — on
-                  // failure (unsupported format, too large, network) the preview and the
-                  // selected file stay exactly as they were so the user can just press
-                  // "Add photo" again without re-picking anything, and the inline error from
-                  // `message` explains exactly why it didn't go through.
-                  if ("queued" in result || result.success) {
+                  try {
+                    const uploadBlob = await prepareImageForUpload(file);
+                    const data = await uploadFieldPhotoDirect(visit.id, photoType, uploadBlob);
+                    setLocalAddedPhotos((current) => [...current, data]);
                     revokePhotoPreview();
                     setPhotoPreview(null);
                     if (fileRef.current) fileRef.current.value = "";
+                    setMessage({ ok: true, text: hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓" });
+                  } catch (error) {
+                    setBusy(false);
+                    setBusyLabel(null);
+                    setMessage({ ok: false, text: error instanceof Error ? error.message : "Photo upload failed. Please retry." });
+                    return;
                   }
-                  // Only on a REAL server response (never the offline-queued path, which has no
-                  // durable id yet) — merge the new photo into the visible count/grid immediately
-                  // instead of waiting for the background router.refresh() to deliver it.
-                  if (!("queued" in result) && result.success) {
-                    const data = result.data as { id: string; photoType: string; capturedAt: string };
-                    setLocalAddedPhotos((current) => [...current, { id: data.id, photoType: data.photoType, capturedAt: data.capturedAt }]);
-                  }
+                  setBusy(false);
+                  setBusyLabel(null);
                 })();
               }}
             >
