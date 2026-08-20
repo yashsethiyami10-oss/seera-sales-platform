@@ -10,6 +10,7 @@ import { placeRetailerOrder } from "./workflow-service";
 import { recordGpsSample } from "./field-travel-service";
 import { wholesaleOrderUnitToCanonicalPieces } from "./company-order-catalog";
 import { queuePartnerVisitCommunicationSafe } from "./partner-communication-service";
+import { isCompanyDirectEligible } from "./scope";
 
 async function managerTeamEmployeeIds(db: PrismaClient, managerId: string) {
   const assignments = await db.seeraAssignment.findMany({
@@ -1067,6 +1068,11 @@ export async function assignRetailerCommercialParty(
     where: { id: input.partnerId, type: { in: ["DISTRIBUTOR", "COMPANY_DIRECT"] }, lifecycle: "ACTIVE" },
   });
   if (!partner) throw new FoundationError("PARTNER_NOT_FOUND", "Supplying party is unavailable", 404);
+  // Company Direct governance (GAP-004 addendum): the acting Manager's own eligibility gates this
+  // reassignment — a Founder-approved-eligible Manager may route any retailer in their own team's
+  // scope to Company Direct; an ineligible Manager cannot, regardless of who owns the retailer.
+  if (partner.type === "COMPANY_DIRECT" && !(await isCompanyDirectEligible(db, managerId)))
+    throw new FoundationError("COMPANY_DIRECT_NOT_ELIGIBLE", "You are not authorized to assign retailers to Company Direct", 403);
   const updated = await db.seeraRetailer.update({
     where: { id: retailer.id },
     data: { distributorId: partner.id },

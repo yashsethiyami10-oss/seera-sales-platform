@@ -9,6 +9,7 @@ import { eligibleDelivered } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { recordGpsSample } from "./field-travel-service";
 import { queueRetailerCommunicationSafe, type RetailerCommEventType } from "./retailer-communication-service";
+import { companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
 
 const numberFor = (prefix: string, key: string) =>
   `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
@@ -400,9 +401,13 @@ export async function createRetailer(
   if (!input.address || Object.keys(input.address).length === 0)
     throw new FoundationError("AREA_ADDRESS_REQUIRED", "Area/Address is required", 400);
   const normalizedMobile = input.mobile?.replace(/\D/g, "") ?? "";
-  // The duplicate check and the distributor-fallback lookup are independent reads (neither
-  // consumes the other's result) — one round trip instead of two.
-  const [similar, anyOwn] = await Promise.all([
+  // The duplicate check, the distributor-fallback lookup, and (only when a distributorId is
+  // explicitly supplied by the caller) the Company Direct governance check are independent reads —
+  // one round trip instead of up to three. Company Direct eligibility is only ever checked here for
+  // an EXPLICIT input.distributorId — the fallback (anyOwn) path can never newly point at Company
+  // Direct unless it already did, and setCompanyDirectEligibility() blocks disabling eligibility
+  // while any such retailer still exists, so the fallback can't smuggle in a stale grant.
+  const [similar, anyOwn, cdPartnerId] = await Promise.all([
     input.confirmDuplicate
       ? Promise.resolve([])
       : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile }),
@@ -413,6 +418,7 @@ export async function createRetailer(
           select: { distributorId: true },
           orderBy: { createdAt: "desc" },
         }),
+    input.distributorId ? companyDirectPartnerId(db) : Promise.resolve(null),
   ]);
   timing.stage("duplicate_and_distributor_lookup");
   if (similar.length)
@@ -422,6 +428,8 @@ export async function createRetailer(
       409,
       { similar },
     );
+  if (input.distributorId && cdPartnerId && input.distributorId === cdPartnerId && !(await isCompanyDirectEligible(db, actorId)))
+    throw new FoundationError("COMPANY_DIRECT_NOT_ELIGIBLE", "You are not authorized to assign retailers to Company Direct", 403);
   const distributorId = input.distributorId ?? anyOwn?.distributorId ?? undefined;
   const retailer = await db.$transaction(async (tx) => {
     // Real unique-indexed lookup (SeeraRetailer.idempotencyKey), not the previous unindexed
@@ -513,7 +521,7 @@ export async function createRetailerAndCheckIn(
   // a genuine RETRY of this same call (same idempotencyKey) already has an open visit from its
   // first, successful attempt — the OPEN_VISIT_EXISTS check below needs to know that visit
   // belongs to the SAME retailer this retry resolves to, or every retry would wrongly self-block.
-  const [similar, anyOwn, session, open, existingByKey] = await Promise.all([
+  const [similar, anyOwn, session, open, existingByKey, cdPartnerId] = await Promise.all([
     input.confirmDuplicate
       ? Promise.resolve([])
       : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile }),
@@ -531,6 +539,9 @@ export async function createRetailerAndCheckIn(
       where: { workSession: { employeeId: actorId }, checkedOutAt: null },
     }),
     db.seeraRetailer.findUnique({ where: { idempotencyKey: input.idempotencyKey } }),
+    // Company Direct governance (GAP-004 addendum) — same explicit-input-only scoping as
+    // createRetailer, so the busy default path (no distributorId passed) never pays this cost.
+    input.distributorId ? companyDirectPartnerId(db) : Promise.resolve(null),
   ]);
   timing.stage("duplicate_distributor_session_openvisit_lookup");
   if (!existingByKey && similar.length)
@@ -542,6 +553,8 @@ export async function createRetailerAndCheckIn(
     );
   if (!session)
     throw new FoundationError("ACTIVE_WORKDAY_REQUIRED", "Start Day before checking in", 409);
+  if (input.distributorId && cdPartnerId && input.distributorId === cdPartnerId && !existingByKey && !(await isCompanyDirectEligible(db, actorId)))
+    throw new FoundationError("COMPANY_DIRECT_NOT_ELIGIBLE", "You are not authorized to assign retailers to Company Direct", 403);
   // Same OPEN_VISIT_EXISTS governance as the standalone executiveCheckIn: only blocks when the
   // open visit belongs to a DIFFERENT retailer. For a brand-new retailer (existingByKey is null)
   // that's any open visit at all; for a retry of this same call, it's correctly a no-op once the

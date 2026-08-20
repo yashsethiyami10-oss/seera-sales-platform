@@ -5,7 +5,7 @@ import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 import { placeRetailerOrder } from "../../lib/sales-distribution/workflow-service";
 import { executiveCheckIn, executiveCheckOut, createRetailerAndCheckIn } from "../../lib/sales-distribution/field-portal-service";
 import { assignRetailerCommercialParty } from "../../lib/sales-distribution/manager-service";
-import { createCompanyDirectPartner } from "../../lib/sales-distribution/distributor-management-service";
+import { createCompanyDirectPartner, setCompanyDirectEligibility } from "../../lib/sales-distribution/distributor-management-service";
 import { executiveAuthorizedDistributors } from "../../lib/sales-distribution/scope";
 import { FoundationError } from "../../lib/foundation/errors";
 
@@ -173,6 +173,17 @@ async function main() {
   console.log("[7/9] Company Direct singleton OK —", cd1.id, cd1.legalName);
 
   // ============= 8) assignRetailerCommercialParty + Company Direct order routing/reporting split =============
+  // Company Direct governance (GAP-004 addendum, post-dates this script's original authoring):
+  // Company Direct is now a Founder-approved exception, not a default — the acting Manager must be
+  // explicitly made eligible first. Dedicated coverage for the eligibility mechanism itself
+  // (grant/revoke/enforcement/audit) lives in smoke-company-direct-eligibility-governance.ts; this
+  // script only needs the manager fixture to be eligible so its own routing/reporting assertions
+  // below still exercise a legitimate, governed assignment.
+  // Both the assigning Manager AND the field executive who will place the order need their own
+  // eligibility grant — placeRetailerOrder checks the ACTING user, not just whoever assigned the
+  // retailer to Company Direct (spec: "operate retailers supplied by Company Direct" is per-user).
+  await setCompanyDirectEligibility(db, founder.id, { userId: manager.id, eligible: true, reason: "Smoke test: hybrid territory fixture setup" }).catch(() => {});
+  await setCompanyDirectEligibility(db, founder.id, { userId: exec.id, eligible: true, reason: "Smoke test: hybrid territory fixture setup" }).catch(() => {});
   const reassigned = await assignRetailerCommercialParty(db, manager.id, { retailerId: retailer.id, partnerId: cd1.id, reason: "Smoke test: hybrid territory Company Direct assignment" });
   assert(reassigned.distributorId === cd1.id, "expected retailer.distributorId to now point at the Company Direct partner");
   const thirdVisit = await executiveCheckIn(db, exec.id, { workSessionId: session.id, retailerId: retailer.id, idempotencyKey: `smoke-revisit3-${suffix}` });

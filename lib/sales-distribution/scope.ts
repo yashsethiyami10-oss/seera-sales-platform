@@ -126,3 +126,36 @@ export async function executiveAuthorizedDistributors(prisma: PrismaClient, exec
   const merged = new Map([...retailerDerived, ...directDerived].map((d) => [d.id, d]));
   return [...merged.values()].sort((a, b) => a.legalName.localeCompare(b.legalName));
 }
+
+// Company Direct governance (Founder decision, GAP-004 addendum): the default supply model stays
+// Company -> Super Stockist -> Distributor -> Retailer. Company Direct is a Founder-approved
+// EXCEPTION per Manager/Executive, never inferred from territory/name. Reuses the same generic
+// SeeraAssignment table every other scoped fact in this file relies on (assignmentType:
+// "COMPANY_DIRECT_ELIGIBLE", subject=User, target=a fixed "COMPANY_DIRECT" capability sentinel —
+// this is a global yes/no capability, not scoped to a specific partner/territory row) instead of a
+// new table or a hardcoded name/role check.
+export const COMPANY_DIRECT_ELIGIBLE_ASSIGNMENT_TYPE = "COMPANY_DIRECT_ELIGIBLE";
+const COMPANY_DIRECT_CAPABILITY_TARGET_ID = "COMPANY_DIRECT";
+
+export async function isCompanyDirectEligible(prisma: PrismaClient, userId: string): Promise<boolean> {
+  const now = new Date();
+  const row = await prisma.seeraAssignment.findFirst({
+    where: {
+      assignmentType: COMPANY_DIRECT_ELIGIBLE_ASSIGNMENT_TYPE,
+      subjectId: userId,
+      effectiveFrom: { lte: now },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+    },
+    select: { id: true },
+  });
+  return !!row;
+}
+
+// Resolves the singleton Company Direct SeeraPartner's id, or null if it has never been set up
+// (createCompanyDirectPartner not yet called) — used by every enforcement point below to detect
+// "is this retailer/order actually routed through Company Direct" without a name/type string
+// comparison scattered across call sites.
+export async function companyDirectPartnerId(prisma: PrismaClient): Promise<string | null> {
+  const partner = await prisma.seeraPartner.findFirst({ where: { type: "COMPANY_DIRECT" }, select: { id: true } });
+  return partner?.id ?? null;
+}

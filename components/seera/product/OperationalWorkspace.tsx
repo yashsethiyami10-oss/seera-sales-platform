@@ -27,6 +27,7 @@ import { AddDistributorPanel } from "./AddDistributorPanel";
 import { RatanBulkOnboardPanel } from "./RatanBulkOnboardPanel";
 import { CreateSuperStockistPanel } from "./CreateSuperStockistPanel";
 import { CreateCompanyDirectPartnerPanel } from "./CreateCompanyDirectPartnerPanel";
+import { CompanyDirectEligibilityPanel } from "./CompanyDirectEligibilityPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { CompanyOrderDispatchPanel } from "./CompanyOrderDispatchPanel";
 import { DistributorMoneyPanel } from "./DistributorMoneyPanel";
@@ -50,6 +51,7 @@ import { CompleteFieldForceSetupPanel } from "./CompleteFieldForceSetupPanel";
 import { MyTaClaimActions, TeamTaClaimsPanel } from "./ManagerTaClaimActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
 import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments } from "@/lib/sales-distribution/operational-service";
+import { companyDirectEligibilityRoster } from "@/lib/sales-distribution/distributor-management-service";
 import { DeliveryActions } from "./DeliveryActions";
 import { documentSelectorData } from "@/lib/sales-distribution/document-portal-service";
 import { distributorCreditPosition, superStockistDistributorCreditOverview, superStockistCreditExtensionHistory, creditPositionFor, superStockistDistributorCollectionsSnapshot, founderDistributorCreditOversight } from "@/lib/sales-distribution/credit-service";
@@ -3916,6 +3918,19 @@ export async function OperationalWorkspace({
             assignments={distributorScopeData.assignments.map((a) => ({ ...a, effectiveFrom: a.effectiveFrom.toISOString() }))}
           />
           {showCompleteSetup && <CompleteFieldForceSetupPanel language={language} />}
+        </>
+      );
+    }
+    // Company Direct governance (GAP-004 addendum): Founder/Admin-only (master:manage — narrowed
+    // off SALES_HEAD per GAP-003) toggle for exactly which Sales Manager/Executive may operate
+    // Company Direct business at all. Same "Field force" slot as the reporting-line panels above,
+    // since this is the same category of governed field-force capability.
+    if (permissions.has("master:manage") || permissions.has("system:super_admin")) {
+      const roster = await companyDirectEligibilityRoster(db, userId);
+      workflow = (
+        <>
+          {workflow}
+          <CompanyDirectEligibilityPanel language={language} roster={roster} />
         </>
       );
     }

@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
-import { requirePartyMembership } from "./scope";
+import { requirePartyMembership, isCompanyDirectEligible, COMPANY_DIRECT_ELIGIBLE_ASSIGNMENT_TYPE, companyDirectPartnerId } from "./scope";
 import { numberFor } from "./workflow-service";
 
 // Founder decision (Super Stockist 95% pass, section 16-17): "Add Distributor" is reachable from
@@ -246,6 +246,104 @@ export async function createCompanyDirectPartner(
     return created;
   });
   return partner;
+}
+
+// Founder decision (GAP-004 addendum): Company Direct stays a Founder-approved EXCEPTION, never
+// inferred from territory/name/role alone — the default supply model remains Company -> Super
+// Stockist -> Distributor -> Retailer. This is the one governed switch that grants/revokes a
+// Sales Manager/Executive's eligibility to operate Company Direct business at all; every
+// enforcement point (createRetailer/createRetailerAndCheckIn, assignRetailerCommercialParty,
+// placeRetailerOrder) checks isCompanyDirectEligible() rather than trusting the caller.
+//
+// Disabling is deliberately BLOCKED (not silently orphaning routing) while the user still owns
+// retailers actively routed through Company Direct — the safer of the two Founder-approved options
+// (block vs. flag-for-review), since it makes "no orphaned commercial routing" structurally
+// impossible to violate rather than relying on someone noticing a review queue.
+export async function setCompanyDirectEligibility(
+  prisma: PrismaClient,
+  actorId: string,
+  input: { userId: string; eligible: boolean; reason: string },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  if (!input.reason.trim()) throw new FoundationError("ELIGIBILITY_REASON_REQUIRED", "A reason is required to change Company Direct eligibility", 400);
+  const target = await prisma.user.findFirst({
+    where: { id: input.userId, status: "ACTIVE", roleAssignments: { some: { status: "ACTIVE", role: { code: { in: ["SALES_MANAGER", "SALES_HEAD", "SALES_EXECUTIVE"] } } } } },
+  });
+  if (!target) throw new FoundationError("FIELD_FORCE_USER_NOT_FOUND", "User is not an active Sales Manager/Executive", 404);
+  const now = new Date();
+  const active = await prisma.seeraAssignment.findFirst({
+    where: { assignmentType: COMPANY_DIRECT_ELIGIBLE_ASSIGNMENT_TYPE, subjectId: input.userId, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
+  });
+  if (input.eligible) {
+    if (active) return active;
+    const created = await prisma.seeraAssignment.create({
+      data: {
+        assignmentType: COMPANY_DIRECT_ELIGIBLE_ASSIGNMENT_TYPE,
+        subjectType: "USER",
+        subjectId: input.userId,
+        targetType: "CAPABILITY",
+        targetId: "COMPANY_DIRECT",
+        effectiveFrom: now,
+        reason: input.reason,
+        createdById: actorId,
+      },
+    });
+    await recordAudit(prisma, {
+      actorId,
+      action: "company_direct_eligibility.enabled",
+      entityType: "SeeraAssignment",
+      entityId: created.id,
+      afterState: { userId: input.userId, reason: input.reason },
+    });
+    return created;
+  }
+  if (!active) return null;
+  const cdPartnerId = await companyDirectPartnerId(prisma);
+  const orphanCount = cdPartnerId
+    ? await prisma.seeraRetailer.count({ where: { salespersonId: input.userId, distributorId: cdPartnerId } })
+    : 0;
+  if (orphanCount > 0)
+    throw new FoundationError(
+      "COMPANY_DIRECT_REASSIGNMENT_REQUIRED",
+      `${orphanCount} retailer(s) are still routed through Company Direct under this user — reassign them to a Distributor/S.S. first`,
+      409,
+    );
+  const updated = await prisma.seeraAssignment.update({ where: { id: active.id }, data: { effectiveTo: now } });
+  await recordAudit(prisma, {
+    actorId,
+    action: "company_direct_eligibility.disabled",
+    entityType: "SeeraAssignment",
+    entityId: active.id,
+    reason: input.reason,
+    afterState: { userId: input.userId },
+  });
+  return updated;
+}
+
+// Founder/Admin roster read for the eligibility toggle UI (Field force page) — every active Sales
+// Manager/Head/Executive with their current Company Direct status, org-wide (mirrors
+// activeManagerTeamAssignments' own org-wide scope + user:create/master:manage gate pattern).
+export async function companyDirectEligibilityRoster(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const now = new Date();
+  const [users, activeAssignments] = await Promise.all([
+    prisma.userRoleAssignment.findMany({
+      where: { status: "ACTIVE", role: { code: { in: ["SALES_MANAGER", "SALES_HEAD", "SALES_EXECUTIVE"] } }, user: { status: "ACTIVE" } },
+      select: { userId: true, role: { select: { code: true, name: true } }, user: { select: { id: true, name: true, email: true } } },
+    }),
+    prisma.seeraAssignment.findMany({
+      where: { assignmentType: COMPANY_DIRECT_ELIGIBLE_ASSIGNMENT_TYPE, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
+      select: { subjectId: true },
+    }),
+  ]);
+  const eligibleIds = new Set(activeAssignments.map((a) => a.subjectId));
+  return users.map((u) => ({
+    userId: u.userId,
+    name: u.user.name ?? u.user.email,
+    roleCode: u.role.code,
+    roleName: u.role.name,
+    companyDirectEligible: eligibleIds.has(u.userId),
+  }));
 }
 
 // Founder/Admin UAT correction (P0, section 13): a Distributor's Super Stockist assignment was

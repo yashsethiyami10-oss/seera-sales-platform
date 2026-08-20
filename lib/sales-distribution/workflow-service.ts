@@ -14,7 +14,7 @@ import {
 } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, canonicalPiecesToWholesaleOrderUnit } from "./company-order-catalog";
-import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors } from "./scope";
+import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors, companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
 import { deriveInclusiveTax } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
 import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
@@ -550,7 +550,7 @@ export async function placeRetailerOrder(
   // retailer-portal assignment check only needs input.retailerId too. One round trip instead of
   // three. authorize() itself still throws synchronously into this Promise.all on a denied
   // permission, same as it always did.
-  const [retailer, visitCheck, scopeQuery] = await Promise.all([
+  const [retailer, visitCheck, scopeQuery, cdPartnerId] = await Promise.all([
     prisma.seeraRetailer.findUniqueOrThrow({ where: { id: input.retailerId } }),
     input.visitId
       ? prisma.seeraVisit.findFirst({
@@ -583,6 +583,9 @@ export async function placeRetailerOrder(
               }),
             )
           : Promise.reject(new FoundationError("INVALID_SOURCE_PORTAL", "Retailer order source denied", 403)),
+    // Company Direct governance (GAP-004 addendum) — independent of everything else above, folded
+    // into the same round trip. Singleton lookup, cheap even on the busiest write path in the app.
+    companyDirectPartnerId(prisma),
   ]);
   timing.stage("retailer_lookup_authorize_scope");
   if (input.visitId && !visitCheck)
@@ -661,6 +664,20 @@ export async function placeRetailerOrder(
         403,
       );
   }
+  // Company Direct governance (GAP-004 addendum): placing an order for a retailer already routed
+  // through Company Direct requires the ACTING executive/manager themselves to be eligible — a
+  // retailer legitimately assigned to Company Direct by an eligible Manager doesn't hand blanket
+  // Company Direct authority to whichever field user happens to place the next order for it.
+  // Retailer self-service orders (sourcePortal:"retailer") are unaffected — eligibility is a field
+  // -force concept, not a retailer-portal one.
+  if (
+    resolvedDistributorId &&
+    cdPartnerId &&
+    resolvedDistributorId === cdPartnerId &&
+    (context.sourcePortal === "sales-executive" || context.sourcePortal === "sales-manager") &&
+    !(await isCompanyDirectEligible(prisma, context.actorId))
+  )
+    throw new FoundationError("COMPANY_DIRECT_NOT_ELIGIBLE", "You are not authorized to place orders through Company Direct", 403);
   timing.stage("authorize_and_scope_checks");
   // Empty-string sentinel for "no commercial party assigned yet" — the same convention
   // managerBookRetailerOrder already passes for this field; commercialPartyId itself is a
