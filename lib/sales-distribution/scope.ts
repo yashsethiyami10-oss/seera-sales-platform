@@ -90,15 +90,24 @@ export async function distributorsForEmployeeIds(prisma: PrismaClient, employeeI
 }
 
 // Start Day "Choose Working Distributor" scope for a Sales Executive (spec: day-context only, never
-// retailer-routing authority). Two independent, additive sources, unioned:
+// retailer-routing authority). Three independent, additive sources, unioned:
 //   1. Retailer-derived: the Executive's own retailer-mapped distributors, widened to their
 //      Manager's whole team mapping when a Manager assignment exists.
 //   2. Direct governed assignment (SeeraAssignment{EXECUTIVE_DISTRIBUTOR}, see
 //      operational-service.ts's assignDistributorToExecutive) — closes the cold-start gap where a
 //      brand-new territory has zero retailers yet, so source 1 alone can never bootstrap the FIRST
 //      distributor a new Executive should be able to pick.
+//   3. Company Direct (Founder decision, GAP-004 addendum): a Company-Direct-eligible Executive/
+//      Manager must never be blocked from starting the day merely because no S.S./Distributor
+//      exists in their area — Company Direct is a legitimate no-S.S./no-Distributor working
+//      party for them specifically. Only added when isCompanyDirectEligible() is true for THIS
+//      actor right now (re-checked live, not cached) — an ineligible user's authorized set is
+//      completely unaffected, and a revoked user immediately loses it on their very next call.
+//      This is the single function both the Start Day UI (distributorOptions) and startFieldDay's
+//      own server-side authorization check already share, so fixing it here closes the gap on
+//      both surfaces at once — never a UI-only fix.
 export async function executiveAuthorizedDistributors(prisma: PrismaClient, executiveId: string) {
-  const [managerAssignment, directAssignments] = await Promise.all([
+  const [managerAssignment, directAssignments, companyDirectEligible] = await Promise.all([
     prisma.seeraAssignment.findFirst({
       where: {
         assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
@@ -111,10 +120,11 @@ export async function executiveAuthorizedDistributors(prisma: PrismaClient, exec
       where: { assignmentType: "EXECUTIVE_DISTRIBUTOR", subjectId: executiveId, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
       select: { targetId: true },
     }),
+    isCompanyDirectEligible(prisma, executiveId),
   ]);
   const employeeIds = managerAssignment ? await teamEmployeeIdsForManager(prisma, managerAssignment.targetId) : [executiveId];
   const directDistributorIds = directAssignments.map((a) => a.targetId);
-  const [retailerDerived, directDerived] = await Promise.all([
+  const [retailerDerived, directDerived, companyDirect] = await Promise.all([
     distributorsForEmployeeIds(prisma, employeeIds),
     directDistributorIds.length
       ? prisma.seeraPartner.findMany({
@@ -122,8 +132,14 @@ export async function executiveAuthorizedDistributors(prisma: PrismaClient, exec
           select: { id: true, legalName: true, tradeName: true, code: true, addresses: true },
         })
       : Promise.resolve([]),
+    companyDirectEligible
+      ? prisma.seeraPartner.findMany({
+          where: { type: "COMPANY_DIRECT", lifecycle: "ACTIVE" },
+          select: { id: true, legalName: true, tradeName: true, code: true, addresses: true },
+        })
+      : Promise.resolve([]),
   ]);
-  const merged = new Map([...retailerDerived, ...directDerived].map((d) => [d.id, d]));
+  const merged = new Map([...retailerDerived, ...directDerived, ...companyDirect].map((d) => [d.id, d]));
   return [...merged.values()].sort((a, b) => a.legalName.localeCompare(b.legalName));
 }
 
