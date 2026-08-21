@@ -129,10 +129,16 @@ function yieldToPaint(): Promise<void> {
   if (typeof requestAnimationFrame === "undefined") return Promise.resolve();
   return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
-// P0 mobile-memory path: the original camera File is never assigned to an <img>. Preview and
-// upload each use a bounded JPEG derivative. The full metadata bitmap is closed before the browser
-// decodes the resized bitmap, the resized bitmap is closed immediately after drawing, and the small
-// canvas is reset after encoding so a camera return cannot leave multiple decoded copies resident.
+// P0 21-Aug screen-recording regression fix: the ORIGINAL camera File is decoded via
+// createImageBitmap AT MOST TWICE total (one metadata-only pass to read real dimensions — the only
+// way to learn a camera photo's true pixel size before choosing a resize target — then ONE
+// resize-during-decode pass at the upload's 1280px target). The 800px preview is derived from that
+// already-bounded upload canvas via plain canvas-to-canvas drawImage (cheap raster scaling, not a
+// further decode of the multi-megapixel original) — never a second createImageBitmap(file) call.
+// This replaces the previous two-derivative design (preparePreview + prepareImageForUpload, each
+// independently decoding the original twice = 4 total decodes), which — combined with screen
+// recording's own continuous frame-capture memory pressure and the native camera app's teardown —
+// was proven (real device evidence) to trigger a renderer-level reload right after camera return.
 const PREVIEW_MAX_DIMENSION = 800;
 const PREVIEW_QUALITY = 0.7;
 const UPLOAD_MAX_DIMENSION = 1280;
@@ -144,66 +150,93 @@ const UPLOAD_QUALITY = 0.74;
 const MAX_FINAL_UPLOAD_BYTES = 3_000_000;
 const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 1_000_000;
 const PHOTO_TOO_LARGE_MESSAGE = "Photo is too large for this device. Please retake the photo.";
+const PHOTO_PREP_FAILED_MESSAGE = "Photo could not be prepared. Please retake.";
 
-async function resizeImageToJpeg(file: File, maxDimension: number, quality: number): Promise<Blob> {
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined")
-    throw new Error(PHOTO_TOO_LARGE_MESSAGE);
-
+async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob }> {
   let metadataBitmap: ImageBitmap | null = null;
-  let resizedBitmap: ImageBitmap | null = null;
-  let canvas: HTMLCanvasElement | null = null;
+  let uploadBitmap: ImageBitmap | null = null;
+  let uploadCanvas: HTMLCanvasElement | null = null;
+  let previewCanvas: HTMLCanvasElement | null = null;
   try {
+    // Decode #1 of 2 (max): dimensions only, closed immediately after reading width/height.
     metadataBitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, maxDimension / Math.max(metadataBitmap.width, metadataBitmap.height));
-    const width = Math.max(1, Math.round(metadataBitmap.width * scale));
-    const height = Math.max(1, Math.round(metadataBitmap.height * scale));
+    const scale = Math.min(1, UPLOAD_MAX_DIMENSION / Math.max(metadataBitmap.width, metadataBitmap.height));
+    const uploadWidth = Math.max(1, Math.round(metadataBitmap.width * scale));
+    const uploadHeight = Math.max(1, Math.round(metadataBitmap.height * scale));
     metadataBitmap.close?.();
     metadataBitmap = null;
 
-    resizedBitmap = await createImageBitmap(file, {
+    // Decode #2 of 2 (LAST decode of the original file): the browser's native decoder downsamples
+    // straight to the upload target during decode — a full-resolution bitmap is never materialized.
+    uploadBitmap = await createImageBitmap(file, {
       imageOrientation: "from-image",
-      resizeWidth: width,
-      resizeHeight: height,
+      resizeWidth: uploadWidth,
+      resizeHeight: uploadHeight,
       resizeQuality: "high",
     });
-    canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
-    ctx.drawImage(resizedBitmap, 0, 0, width, height);
-    resizedBitmap.close?.();
-    resizedBitmap = null;
-    const blob = await new Promise<Blob | null>((resolve) => canvas!.toBlob(resolve, "image/jpeg", quality));
-    if (!blob) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
-    return blob;
-  } catch {
-    throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+    uploadCanvas = document.createElement("canvas");
+    uploadCanvas.width = uploadWidth;
+    uploadCanvas.height = uploadHeight;
+    const uploadCtx = uploadCanvas.getContext("2d");
+    if (!uploadCtx) throw new Error(PHOTO_PREP_FAILED_MESSAGE);
+    uploadCtx.drawImage(uploadBitmap, 0, 0, uploadWidth, uploadHeight);
+    uploadBitmap.close?.();
+    uploadBitmap = null;
+    const uploadBlob = await new Promise<Blob | null>((resolve) => uploadCanvas!.toBlob(resolve, "image/jpeg", UPLOAD_QUALITY));
+    if (!uploadBlob) throw new Error(PHOTO_PREP_FAILED_MESSAGE);
+
+    // Preview: derived from the already-bounded uploadCanvas (canvas-to-canvas draw), never from
+    // `file`/a fresh createImageBitmap — this is what keeps the original-file decode count at 2.
+    const previewScale = Math.min(1, PREVIEW_MAX_DIMENSION / Math.max(uploadWidth, uploadHeight));
+    const previewWidth = Math.max(1, Math.round(uploadWidth * previewScale));
+    const previewHeight = Math.max(1, Math.round(uploadHeight * previewScale));
+    previewCanvas = document.createElement("canvas");
+    previewCanvas.width = previewWidth;
+    previewCanvas.height = previewHeight;
+    const previewCtx = previewCanvas.getContext("2d");
+    if (!previewCtx) throw new Error(PHOTO_PREP_FAILED_MESSAGE);
+    previewCtx.drawImage(uploadCanvas, 0, 0, previewWidth, previewHeight);
+    const previewBlob = await new Promise<Blob | null>((resolve) => previewCanvas!.toBlob(resolve, "image/jpeg", PREVIEW_QUALITY));
+    if (!previewBlob) throw new Error(PHOTO_PREP_FAILED_MESSAGE);
+
+    return { uploadBlob, previewBlob };
   } finally {
     metadataBitmap?.close?.();
-    resizedBitmap?.close?.();
-    if (canvas) {
-      canvas.width = 1;
-      canvas.height = 1;
+    uploadBitmap?.close?.();
+    if (uploadCanvas) {
+      uploadCanvas.width = 1;
+      uploadCanvas.height = 1;
+    }
+    if (previewCanvas) {
+      previewCanvas.width = 1;
+      previewCanvas.height = 1;
     }
   }
 }
 
-async function preparePreview(file: File): Promise<Blob> {
-  return resizeImageToJpeg(file, PREVIEW_MAX_DIMENSION, PREVIEW_QUALITY);
-}
-
-async function prepareImageForUpload(file: File): Promise<Blob> {
-  let uploadBlob: Blob;
-  try {
-    uploadBlob = await resizeImageToJpeg(file, UPLOAD_MAX_DIMENSION, UPLOAD_QUALITY);
-  } catch {
+// Single entry point for the whole camera-return pipeline — replaces the old preparePreview +
+// prepareImageForUpload pair, which each independently decoded the original file.
+async function preparePhotoDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob }> {
+  let derivatives: { uploadBlob: Blob; previewBlob: Blob };
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined") {
+    // Can't safely decode this format at all (e.g. HEIC/HEIF) — go straight to the fail-closed
+    // fallback below rather than attempting (and always failing) the canvas pipeline first.
     if (file.size > MAX_SAFE_ORIGINAL_FALLBACK_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
-    uploadBlob = file;
+    if (file.type !== "image/jpeg") throw new Error(PHOTO_PREP_FAILED_MESSAGE);
+    return { uploadBlob: file, previewBlob: file };
   }
-  if (uploadBlob.size > MAX_FINAL_UPLOAD_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
-  if (uploadBlob.type !== "image/jpeg") throw new Error(PHOTO_TOO_LARGE_MESSAGE);
-  return uploadBlob;
+  try {
+    derivatives = await decodeAndDeriveDerivatives(file);
+  } catch {
+    // Fail-closed fallback (unchanged from the prior design): only for a genuinely small original
+    // that's already a JPEG Cloudinary can accept as-is — never a multi-megabyte fallback, which
+    // would recreate the exact memory spike this whole pipeline exists to prevent.
+    if (file.size > MAX_SAFE_ORIGINAL_FALLBACK_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+    if (file.type !== "image/jpeg") throw new Error(PHOTO_PREP_FAILED_MESSAGE);
+    return { uploadBlob: file, previewBlob: file };
+  }
+  if (derivatives.uploadBlob.size > MAX_FINAL_UPLOAD_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+  return derivatives;
 }
 
 // P0 21-Aug "Invalid Signature" fix: this type (and the FormData loop below) must mirror EXACTLY
@@ -1760,26 +1793,40 @@ export function FieldJourney({
                 // "Add photo" tap after the camera returned a file. That gap was exactly wide enough
                 // for a native-camera return + an arriving WhatsApp notification + a mobile browser
                 // reclaiming the tab to strand an un-persisted photo the user believed was already
-                // saved (0 SeeraVisitPhoto rows were ever created for the exact production visit
-                // this was traced against, despite the camera clearly having been used). Uploading
-                // begins the instant a photo is captured/selected — no second required action.
+                // saved. Uploading begins the instant a photo is captured/selected — no second
+                // required action.
+                // P0 21-Aug screen-recording regression fix: the original file is decoded at most
+                // twice total (see preparePhotoDerivatives above — the preview is derived from the
+                // already-bounded upload canvas, never a second decode of the original), and a real
+                // browser yield separates preview render from the network upload below, so this
+                // still-single-tap flow can't stack two back-to-back decode bursts with zero
+                // breathing room the way the immediately-prior version did.
                 void (async () => {
                   setBusy(true);
+                  setBusyLabel(hi ? "फ़ोटो तैयार हो रही है…" : "Preparing photo…");
+                  await yieldToPaint();
+                  let derivatives: { uploadBlob: Blob; previewBlob: Blob };
+                  try {
+                    derivatives = await preparePhotoDerivatives(file);
+                  } catch (error) {
+                    setBusy(false);
+                    setBusyLabel(null);
+                    setMessage({ ok: false, text: error instanceof Error ? error.message : PHOTO_PREP_FAILED_MESSAGE });
+                    return;
+                  }
+                  if (fileRef.current?.files?.[0] === file) {
+                    const previewUrl = URL.createObjectURL(derivatives.previewBlob);
+                    photoPreviewUrlRef.current = previewUrl;
+                    setPhotoPreview(previewUrl);
+                  }
                   setBusyLabel(hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…");
+                  // Let the browser paint the preview and reclaim the decode/canvas memory from the
+                  // pass above before the network upload starts — the exact breathing room the
+                  // prior two-tap flow gave for free, restored explicitly instead of depending on a
+                  // second user gesture to create it.
                   await yieldToPaint();
                   try {
-                    const previewBlob = await preparePreview(file);
-                    if (fileRef.current?.files?.[0] === file) {
-                      const previewUrl = URL.createObjectURL(previewBlob);
-                      photoPreviewUrlRef.current = previewUrl;
-                      setPhotoPreview(previewUrl);
-                    }
-                  } catch {
-                    // Preview is cosmetic only — never block the real upload attempt below on it.
-                  }
-                  try {
-                    const uploadBlob = await prepareImageForUpload(file);
-                    const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob);
+                    const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, derivatives.uploadBlob);
                     setLocalAddedPhotos((current) => [...current, data]);
                     revokePhotoPreview();
                     setPhotoPreview(null);
