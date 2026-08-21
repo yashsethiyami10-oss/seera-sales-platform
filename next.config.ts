@@ -30,6 +30,22 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
 
+  // Quotation/invoice PDF rendering (lib/sales-distribution/document-pdf.ts) reads Noto Sans font
+  // .woff files straight out of node_modules/@fontsource at request time via readFileSync(path.
+  // join(process.cwd(), ...)) — a dynamically-built path Next's serverless output-file tracer
+  // cannot statically resolve, so those font files were silently dropped from the deployed
+  // function bundle. Locally (next dev/next start against a full checkout) the files are simply
+  // on disk, so it always worked in dev — production hit ENOENT, caught and normalized into a
+  // generic INTERNAL_ERROR by lib/errors.ts, exactly matching the Founder's "/api/documents/{id}
+  // /download" P0 report. Forcing inclusion here is the officially documented fix for reading
+  // non-code assets from node_modules in a Vercel Node.js function.
+  outputFileTracingIncludes: {
+    "/api/documents/**/*": [
+      "./node_modules/@fontsource/noto-sans/files/*.woff",
+      "./node_modules/@fontsource/noto-sans-devanagari/files/*.woff",
+    ],
+  },
+
   images: {
     remotePatterns: [
       {

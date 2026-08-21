@@ -132,11 +132,30 @@ export async function sendDocumentViaWhatsApp(
   db: PrismaClient,
   actorId: string,
   documentId: string,
-  input: { recipientType: string; recipientId: string; getProvider: () => Pick<MessagingProvider, "sendDocument">; caption?: string },
+  input: { recipientType: string; recipientId: string; getProvider: () => Pick<MessagingProvider, "sendDocument">; caption?: string; idempotencyKey?: string },
 ) {
   await authorize(db, { actorId, permission: "document:share" });
   const document = await db.seeraCommercialDocument.findUniqueOrThrow({ where: { id: documentId } });
   if (!(await canAccessDocument(db, actorId, document))) throw new FoundationError("DOCUMENT_SCOPE_DENIED", "Document scope denied", 403);
+
+  // Idempotency (P0 21-Aug): a caller-supplied key, checked against this document's own audit
+  // trail before sending — matches the idempotencyKey convention every other quotation action in
+  // this codebase already uses (create/duplicate/convert), extended here so a double-tap or a
+  // retried request after a slow response can never fire the actual Meta send twice. Only a prior
+  // SUCCESSFUL send with the same key blocks a resend; a prior failure with the same key is
+  // deliberately still retryable.
+  if (input.idempotencyKey) {
+    const priorSuccess = await db.auditLog.findFirst({
+      where: {
+        entityType: "SeeraCommercialDocument",
+        entityId: document.id,
+        action: "document.whatsapp_document_sent",
+        details: { path: ["idempotencyKey"], equals: input.idempotencyKey },
+      },
+      select: { details: true },
+    });
+    if (priorSuccess) return { sent: true as const, messageId: (priorSuccess.details as { providerMessageId?: string } | null)?.providerMessageId ?? null };
+  }
 
   let bytes: Uint8Array, mimeType: string, filename: string;
   if (document.source === "SYSTEM_GENERATED") {
@@ -162,18 +181,39 @@ export async function sendDocumentViaWhatsApp(
   if (!normalizedMobile) throw new FoundationError("RECIPIENT_MOBILE_INVALID", "Recipient mobile number on file is not a valid Indian mobile number", 409);
 
   const provider = input.getProvider();
-  const result = await provider.sendDocument(normalizedMobile, {
-    bytes,
-    filename,
-    mimeType,
-    caption: input.caption ?? `${document.type.replace(/_/g, " ")} ${document.documentNumber}`,
-  });
+  let result: { id: string };
+  try {
+    result = await provider.sendDocument(normalizedMobile, {
+      bytes,
+      filename,
+      mimeType,
+      caption: input.caption ?? `${document.type.replace(/_/g, " ")} ${document.documentNumber}`,
+    });
+  } catch (error) {
+    // Durable failure trail (Part D): previously a Meta-side failure left zero record anywhere —
+    // the UI's error toast was the only trace, gone the moment the page reloaded. Recorded even
+    // though the actual send didn't happen, so Founder/Admin can see "attempted, failed, why" in
+    // the same audit history as a successful send, not just successes.
+    await recordAudit(db, {
+      actorId,
+      action: "document.whatsapp_document_send_failed",
+      entityType: "SeeraCommercialDocument",
+      entityId: document.id,
+      details: {
+        recipientType: input.recipientType,
+        recipientId: input.recipientId,
+        idempotencyKey: input.idempotencyKey,
+        error: error instanceof Error ? error.message : "unknown",
+      },
+    });
+    throw error;
+  }
   await recordAudit(db, {
     actorId,
     action: "document.whatsapp_document_sent",
     entityType: "SeeraCommercialDocument",
     entityId: document.id,
-    details: { recipientType: input.recipientType, recipientId: input.recipientId, providerMessageId: result.id },
+    details: { recipientType: input.recipientType, recipientId: input.recipientId, providerMessageId: result.id, idempotencyKey: input.idempotencyKey },
   });
   return { sent: true as const, messageId: result.id };
 }

@@ -149,7 +149,7 @@ export function assertTaxConfigured(sku: { code: string; taxRate: unknown; hsn: 
 export async function buildLineSnapshots(
   db: Db,
   lines: CommercialLineInput[],
-  options: { enforceTax: boolean },
+  options: { enforceTax: boolean; forcePriceMode?: PriceMode },
 ): Promise<CommercialLineSnapshot[]> {
   if (!lines.length)
     throw new FoundationError("INVALID_DOCUMENT_LINES", "At least one line is required", 400);
@@ -167,7 +167,11 @@ export async function buildLineSnapshots(
       // Do not use one math path for both price modes (Founder correction): MUV rates are already
       // GST-inclusive (tax extracted from the gross); every other brand's rate is the GST-exclusive
       // base (tax added on top) — see priceModeForBrand/deriveExclusiveTax above.
-      const priceMode = priceModeForBrand(sku.brand);
+      // `forcePriceMode` overrides the brand-based lookup entirely (P0 21-Aug Founder decision:
+      // every Distributor/Super Stockist QUOTATION rate is GST-inclusive regardless of SKU brand —
+      // callers outside quotation-service.ts, e.g. billing/invoice drafts, don't pass this and keep
+      // the pre-existing brand-based behavior unchanged).
+      const priceMode = options.forcePriceMode ?? priceModeForBrand(sku.brand);
       const { taxableValue, taxAmount } =
         priceMode === "GST_INCLUSIVE"
           ? deriveInclusiveTax(grossAfterDiscount, taxRate)

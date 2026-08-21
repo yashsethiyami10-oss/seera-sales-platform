@@ -2,18 +2,39 @@ import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { PrismaClient, UserStatus } from "@prisma/client";
 import { z } from "zod";
+import { normalizeIndianMobile } from "@/lib/messaging/phone";
 import { recordAudit } from "./audit-service";
 import { FoundationError } from "./errors";
 
-const credentials = z.object({ email: z.string().trim().email().max(320), password: z.string().min(12).max(256) });
+// Not `.email()`-constrained (P0 21-Aug login fix): Distributor/Super Stockist accounts are
+// provisioned with a synthetic `dist.<mobile>@seera.local`-style identifier (see
+// lib/sales-distribution's partner-user provisioning) that nobody types from memory — production
+// evidence showed exactly this (repeated INVALID_CREDENTIALS for a real Distributor account whose
+// real identifier is `dist.9956736641@seera.local`). login() below now also accepts the plain
+// 10-digit mobile number already stored on User.phone for these accounts, matching what a
+// Distributor/S.S. actually knows. Shape validation happens inside login() itself instead, since
+// a valid identifier can now be either shape.
+const credentials = z.object({ email: z.string().trim().min(3).max(320), password: z.string().min(12).max(256) });
 const allowed: UserStatus[] = ["ACTIVE"];
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export async function login(prisma: PrismaClient, input: unknown) {
   const parsed = credentials.safeParse(input);
   if (!parsed.success) throw new FoundationError("INVALID_AUTH_PAYLOAD", "Invalid credentials", 401);
-  const normalizedEmail = parsed.data.email.toLowerCase();
-  const user = await prisma.user.findUnique({ where: { normalizedEmail } });
+  // A canonical 91XXXXXXXXXX mobile always takes the phone-lookup path (User.phone is stored as
+  // the raw 10-digit number, never a full email) — anything else falls back to the existing
+  // normalizedEmail lookup, so no currently-working email login can regress. Gated on "does not
+  // contain @" FIRST: normalizeIndianMobile only strips non-digit characters, so an unguarded call
+  // would also "recognize" the 10 digits embedded inside a synthetic dist.<mobile>@seera.local
+  // email as a mobile number — usually harmless (same digits, same user) but not always (a real
+  // email whose local part happens to contain an unrelated 10-digit sequence must never be
+  // reinterpreted as somebody else's phone number).
+  const identifier = parsed.data.email.trim();
+  const canonicalMobile = identifier.includes("@") ? null : normalizeIndianMobile(identifier);
+  const normalizedEmail = identifier.toLowerCase();
+  const user = canonicalMobile
+    ? await prisma.user.findUnique({ where: { phone: canonicalMobile.slice(2) } })
+    : await prisma.user.findUnique({ where: { normalizedEmail } });
   const valid = user?.passwordHash ? await bcrypt.compare(parsed.data.password, user.passwordHash) : false;
   if (!user || !valid) {
     await recordAudit(prisma, { actorId: user?.id, action: "auth.login_failed", entityType: "User", entityId: user?.id, outcome: "DENIED", reason: "INVALID_CREDENTIALS" });

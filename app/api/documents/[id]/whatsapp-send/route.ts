@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"; import { z } from "zod";
 import { prisma } from "@/lib/database/client"; import { apiFailure } from "@/lib/foundation/api-response"; import { resolveRequestIdentity } from "@/lib/foundation/request-auth"; import { enforceRateLimit } from "@/lib/foundation/rate-limit"; import { sendDocumentViaWhatsApp } from "@/lib/sales-distribution/document-service"; import { getMessagingProvider } from "@/lib/messaging"; import { DocumentSendUnsupportedError } from "@/lib/messaging/types";
-const body = z.object({ recipientType: z.string().min(1).max(40), recipientId: z.string().min(1).max(160) }).strict();
+const body = z.object({ recipientType: z.string().min(1).max(40), recipientId: z.string().min(1).max(160), idempotencyKey: z.string().min(1).max(160).optional() }).strict();
 // Real WhatsApp document send (actual PDF file, not a link) — see
 // lib/sales-distribution/document-service.ts's sendDocumentViaWhatsApp for the
 // authorization/scope proof and lib/messaging/providers/whatsapp-business.ts for the

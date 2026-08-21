@@ -47,7 +47,12 @@ export async function createQuotationDraft(
   await requireIssuerScope(prisma, actorId, input.issuerType, input.issuerId);
   const existing = await prisma.seeraCommercialDocument.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
   if (existing) return existing;
-  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
+  // Founder rule (P0 21-Aug): a Distributor/Super Stockist quotation's entered rate is ALWAYS the
+  // final GST-inclusive selling price — never brand-dependent, never a pre-tax base the system adds
+  // GST on top of. Forced here (not left to the brand-based default) since production data proved
+  // every non-MUV-branded SKU (Seera/Yuva/Shine Plus — the actual detergent lines this portal
+  // quotes) was silently using the GST-exclusive path and inflating the final amount.
+  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false, forcePriceMode: "GST_INCLUSIVE" });
   const totals = totalsOf(lines);
   const [issuerSnapshot, buyerSnapshot] = await Promise.all([
     partySnapshot(prisma, input.issuerType, input.issuerId),
@@ -118,7 +123,8 @@ export async function updateQuotationDraft(
   await requireIssuerScope(prisma, actorId, document.issuerType, document.issuerId);
   if (document.status !== "DRAFT")
     throw new FoundationError("QUOTATION_NOT_DRAFT", "Only a draft quotation can be edited", 409);
-  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
+  // Same forced GST-inclusive rule as createQuotationDraft above — see its comment.
+  const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false, forcePriceMode: "GST_INCLUSIVE" });
   const totals = totalsOf(lines);
   const issuerGstin = (document.issuerSnapshot as { gstin?: string } | null)?.gstin;
   const buyerGstin = (document.buyerSnapshot as { gstin?: string } | null)?.gstin;

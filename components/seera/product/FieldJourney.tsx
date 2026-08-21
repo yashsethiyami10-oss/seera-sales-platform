@@ -618,6 +618,11 @@ export function FieldJourney({
     [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine("initial")]),
     [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
     [photoPreview, setPhotoPreview] = useState<string | null>(null),
+    // P0 21-Aug fix: photo type is chosen BEFORE opening the camera and read directly from this
+    // state at capture time, since the upload now fires automatically the instant a photo is
+    // selected (see the file input's onChange below) — there is no longer a separate "Add photo"
+    // form/submit step whose FormData this used to come from.
+    [capturePhotoType, setCapturePhotoType] = useState("SHOPFRONT"),
     [showEndDayPreview, setShowEndDayPreview] = useState(false),
     [showAddCustomer, setShowAddCustomer] = useState(false),
     [duplicateWarning, setDuplicateWarning] = useState<{ similar: { id: string; businessName: string; mobile: string | null }[] } | null>(null),
@@ -1710,6 +1715,21 @@ export function FieldJourney({
                 </div>
               ))}
             </div>
+            <label>
+              {hi ? "फ़ोटो प्रकार" : "Photo type"}
+              <select
+                value={capturePhotoType}
+                disabled={busy}
+                onChange={(event) => setCapturePhotoType(event.target.value)}
+              >
+                <option value="SHOPFRONT">{hi ? "दुकान का सामने का हिस्सा" : "Shopfront"}</option>
+                <option value="COUNTER">{hi ? "काउंटर" : "Counter"}</option>
+                <option value="PRODUCT_DISPLAY">{hi ? "उत्पाद प्रदर्शन" : "Product display"}</option>
+                <option value="BANNER_BRANDING">{hi ? "बैनर / ब्रांडिंग" : "Banner / branding"}</option>
+                <option value="MERCHANDISING">{hi ? "मर्चेंडाइजिंग" : "Merchandising"}</option>
+                <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+              </select>
+            </label>
             <input
               ref={fileRef}
               type="file"
@@ -1722,23 +1742,65 @@ export function FieldJourney({
                 if (!file) return;
                 revokePhotoPreview();
                 setPhotoPreview(null);
-                void preparePreview(file)
-                  .then((previewBlob) => {
-                    if (fileRef.current?.files?.[0] !== file) return;
-                    const previewUrl = URL.createObjectURL(previewBlob);
-                    photoPreviewUrlRef.current = previewUrl;
-                    setPhotoPreview(previewUrl);
-                  })
-                  .catch(() => {
-                    if (fileRef.current?.files?.[0] !== file) return;
+                // P0 21-Aug fix (real founder UAT evidence): the upload used to wait for a SEPARATE
+                // "Add photo" tap after the camera returned a file. That gap was exactly wide enough
+                // for a native-camera return + an arriving WhatsApp notification + a mobile browser
+                // reclaiming the tab to strand an un-persisted photo the user believed was already
+                // saved (0 SeeraVisitPhoto rows were ever created for the exact production visit
+                // this was traced against, despite the camera clearly having been used). Uploading
+                // begins the instant a photo is captured/selected — no second required action.
+                void (async () => {
+                  setBusy(true);
+                  setBusyLabel(hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…");
+                  await yieldToPaint();
+                  try {
+                    const previewBlob = await preparePreview(file);
+                    if (fileRef.current?.files?.[0] === file) {
+                      const previewUrl = URL.createObjectURL(previewBlob);
+                      photoPreviewUrlRef.current = previewUrl;
+                      setPhotoPreview(previewUrl);
+                    }
+                  } catch {
+                    // Preview is cosmetic only — never block the real upload attempt below on it.
+                  }
+                  try {
+                    const uploadBlob = await prepareImageForUpload(file);
+                    const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob);
+                    setLocalAddedPhotos((current) => [...current, data]);
+                    revokePhotoPreview();
+                    setPhotoPreview(null);
                     if (fileRef.current) fileRef.current.value = "";
-                    setMessage({ ok: false, text: PHOTO_TOO_LARGE_MESSAGE });
-                  });
+                    setMessage({ ok: true, text: hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓" });
+                  } catch (error) {
+                    // Uploaded/finalized rows remain the ONLY authoritative "saved" state (matches
+                    // checkout's own server-side count) — a failed upload here must never be
+                    // reported as success. The preview + selected file are kept so "Retake" can
+                    // immediately retry without reopening the camera from scratch.
+                    setMessage({
+                      ok: false,
+                      text:
+                        (error instanceof Error ? error.message : hi ? "फ़ोटो अपलोड नहीं हो सकी। कृपया फिर से लें।" : "Photo upload failed. Please retake.") +
+                        (hi ? " (फ़ोटो अभी सहेजी नहीं गई है)" : " (Photo is NOT saved yet)"),
+                    });
+                  }
+                  setBusy(false);
+                  setBusyLabel(null);
+                })();
               }}
             />
+            <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}>
+              {hi ? "कैमरा खोलें" : "Open camera"}
+            </button>
             {photoPreview && (
               <div>
                 <img src={photoPreview} alt="" style={{ maxWidth: 220, borderRadius: 10 }} />
+                <p className={styles.note}>
+                  {busy
+                    ? busyLabel ?? (hi ? "अपलोड हो रहा है…" : "Uploading…")
+                    : hi
+                      ? "अपलोड विफल — यह फ़ोटो अभी सहेजी नहीं गई है।"
+                      : "Upload failed — this photo is NOT saved yet."}
+                </p>
                 <div className={styles.quickActions}>
                   <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}>
                     {hi ? "फिर से लें" : "Retake"}
@@ -1746,62 +1808,6 @@ export function FieldJourney({
                 </div>
               </div>
             )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget),
-                  file = fileRef.current?.files?.[0];
-                if (!file) {
-                  setMessage({ ok: false, text: hi ? "पहले एक फ़ोटो चुनें।" : "Choose a photo first." });
-                  return;
-                }
-                const photoType = String(f.get("photoType"));
-                void (async () => {
-                  // Set busy/feedback synchronously before the resize step (not just once the
-                  // network request starts) so "Uploading…" appears the instant the user taps "Add
-                  // photo" — the resize itself is typically much faster than the upload it shrinks,
-                  // so folding it into the same visible busy window keeps the UI simple without
-                  // adding a wait the user would perceive as new.
-                  setBusy(true);
-                  setBusyLabel(hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…");
-                  await yieldToPaint();
-                  try {
-                    const uploadBlob = await prepareImageForUpload(file);
-                    const data = await uploadFieldPhotoDirect(visit.id, photoType, uploadBlob);
-                    setLocalAddedPhotos((current) => [...current, data]);
-                    revokePhotoPreview();
-                    setPhotoPreview(null);
-                    if (fileRef.current) fileRef.current.value = "";
-                    setMessage({ ok: true, text: hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓" });
-                  } catch (error) {
-                    setBusy(false);
-                    setBusyLabel(null);
-                    setMessage({ ok: false, text: error instanceof Error ? error.message : "Photo upload failed. Please retry." });
-                    return;
-                  }
-                  setBusy(false);
-                  setBusyLabel(null);
-                })();
-              }}
-            >
-              <label>
-                {hi ? "फ़ोटो प्रकार" : "Photo type"}
-                <select name="photoType">
-                  <option value="SHOPFRONT">{hi ? "दुकान का सामने का हिस्सा" : "Shopfront"}</option>
-                  <option value="COUNTER">{hi ? "काउंटर" : "Counter"}</option>
-                  <option value="PRODUCT_DISPLAY">{hi ? "उत्पाद प्रदर्शन" : "Product display"}</option>
-                  <option value="BANNER_BRANDING">{hi ? "बैनर / ब्रांडिंग" : "Banner / branding"}</option>
-                  <option value="MERCHANDISING">{hi ? "मर्चेंडाइजिंग" : "Merchandising"}</option>
-                  <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
-                </select>
-              </label>
-              <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}>
-                {hi ? "कैमरा खोलें" : "Open camera"}
-              </button>
-              <button className={styles.primary} disabled={busy || !photoPreview}>
-                {busy ? (busyLabel ?? (hi ? "अपलोड हो रहा है…" : "Uploading…")) : hi ? "फ़ोटो जोड़ें" : "Add photo"}
-              </button>
-            </form>
             <p className={styles.note}>
               {hi
                 ? "फ़ोटो नहीं ले सकते? चेकआउट पर कारण दर्ज करें (रिटेलर ने मना किया / कैमरा खराब / आपातकाल / प्रबंधक-स्वीकृत छूट / अन्य)।"

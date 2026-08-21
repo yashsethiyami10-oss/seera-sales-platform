@@ -4,8 +4,8 @@ import { useState } from "react";
 import styles from "./login.module.css";
 
 const text = {
-  EN: { welcome: "Welcome back", intro: "Sign in to your governed Seera workspace.", email: "Email or username", password: "Password", show: "Show", hide: "Hide", submit: "Sign in securely", loading: "Signing in…", required: "Enter your email and password.", invalid: "The credentials are incorrect or the account is unavailable.", network: "Seera could not reach the server. Check your connection and try again.", language: "हिन्दी" },
-  HI: { welcome: "वापसी पर स्वागत है", intro: "अपने नियंत्रित सीरा कार्यक्षेत्र में साइन इन करें।", email: "ईमेल या उपयोगकर्ता नाम", password: "पासवर्ड", show: "दिखाएँ", hide: "छिपाएँ", submit: "सुरक्षित साइन इन", loading: "साइन इन हो रहा है…", required: "अपना ईमेल और पासवर्ड दर्ज करें।", invalid: "जानकारी गलत है या खाता उपलब्ध नहीं है।", network: "सीरा सर्वर से संपर्क नहीं कर सका। कनेक्शन जाँचें और फिर प्रयास करें।", language: "English" },
+  EN: { welcome: "Welcome back", intro: "Sign in to your governed Seera workspace.", email: "Email or mobile number", password: "Password", show: "Show", hide: "Hide", submit: "Sign in securely", loading: "Signing in…", required: "Enter your email/mobile number and password.", invalid: "The credentials are incorrect or the account is unavailable.", network: "Seera could not reach the server. Check your connection and try again.", language: "हिन्दी" },
+  HI: { welcome: "वापसी पर स्वागत है", intro: "अपने नियंत्रित सीरा कार्यक्षेत्र में साइन इन करें।", email: "ईमेल या मोबाइल नंबर", password: "पासवर्ड", show: "दिखाएँ", hide: "छिपाएँ", submit: "सुरक्षित साइन इन", loading: "साइन इन हो रहा है…", required: "अपना ईमेल/मोबाइल नंबर और पासवर्ड दर्ज करें।", invalid: "जानकारी गलत है या खाता उपलब्ध नहीं है।", network: "सीरा सर्वर से संपर्क नहीं कर सका। कनेक्शन जाँचें और फिर प्रयास करें।", language: "English" },
 } as const;
 
 export function LoginForm() {
@@ -32,7 +32,13 @@ export function LoginForm() {
         location.assign(result.landingPath ?? "/");
       } catch { setError(t.network); } finally { setLoading(false); }
     }} aria-busy={loading}>
-      <label>{t.email}<input required name="email" type="email" autoComplete="username" /></label>
+      {/* type="text" (not "email"): Distributor/Super Stockist accounts are provisioned with a
+          synthetic dist.<mobile>@seera.local-style identifier a user would never type from memory
+          — the server now also accepts a plain 10-digit mobile number (see
+          lib/foundation/auth-service.ts's login()), so the field can't be HTML5-email-constrained
+          or a mobile-number entry would be silently blocked by the browser before it ever reaches
+          the server. */}
+      <label>{t.email}<input required name="email" type="text" inputMode="email" autoComplete="username" /></label>
       <label>{t.password}<span className={styles.password}><input required name="password" type={visible ? "text" : "password"} autoComplete="current-password" /><button type="button" onClick={() => setVisible(!visible)} aria-label={visible ? t.hide : t.show}>{visible ? t.hide : t.show}</button></span></label>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <button className={styles.submit} type="submit" disabled={loading}>{loading ? t.loading : t.submit}</button>
