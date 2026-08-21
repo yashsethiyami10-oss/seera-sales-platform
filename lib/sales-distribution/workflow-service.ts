@@ -555,7 +555,7 @@ export async function placeRetailerOrder(
     input.visitId
       ? prisma.seeraVisit.findFirst({
           where: { id: input.visitId, retailerId: input.retailerId, workSession: { employeeId: context.actorId } },
-          select: { id: true },
+          select: { id: true, checkedOutAt: true },
         })
       : Promise.resolve(null),
     context.sourcePortal === "sales-executive"
@@ -588,8 +588,15 @@ export async function placeRetailerOrder(
     companyDirectPartnerId(prisma),
   ]);
   timing.stage("retailer_lookup_authorize_scope");
-  if (input.visitId && !visitCheck)
-    throw new FoundationError("VISIT_SCOPE_DENIED", "Visit unavailable", 403);
+  // P0 21-Aug closed-visit immutability fix (real production incident: an order was silently
+  // accepted against the Mishra kirana visit 18.5 minutes AFTER it was already checked out, because
+  // this check never verified checkedOutAt). A FIELD_VISIT order must reference a still-open visit
+  // — this is deliberately scoped inside `input.visitId &&` so the no-visit phone/repeat-order path
+  // (source !== "FIELD_VISIT", never carries a visitId — enforced above) is completely unaffected.
+  if (input.visitId) {
+    if (!visitCheck) throw new FoundationError("VISIT_SCOPE_DENIED", "Visit unavailable", 403);
+    if (visitCheck.checkedOutAt) throw new FoundationError("VISIT_ALREADY_CLOSED", "This visit is already checked out and can no longer accept a new order", 409);
+  }
   timing.stage("source_and_visit_validation");
   // Executive→Distributor routing foundation (Founder decision, RUN 1 shared-foundation pass): a
   // retailer with no Distributor mapping must NEVER lose the order for ANY field-order source

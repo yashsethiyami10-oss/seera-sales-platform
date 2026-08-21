@@ -1227,6 +1227,12 @@ model SeeraVisit {
   checkInAccuracy      Decimal?          @db.Decimal(10, 2)
   gpsExceptionReason   String?
   checkedOutAt         DateTime?
+  // P0 21-Aug checkout idempotency fix: set once, on the checkout call that actually closes the
+  // visit. A retry (double-tap, slow-response resend) carrying the SAME key finds this row by key
+  // and returns the already-completed result instead of failing with "Active visit unavailable" —
+  // the same governed idempotencyKey pattern SeeraVisit.idempotencyKey already uses for check-in,
+  // extended here to the separate checkout mutation on the same row.
+  checkoutIdempotencyKey String?         @unique
   outcome              VisitOutcome      @default(PENDING)
   noOrderReason        String?
   followUpAt           DateTime?

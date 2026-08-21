@@ -10,18 +10,33 @@ const cloudinaryService = read("lib/sales-distribution/field-photo-cloudinary-se
 const middleware = read("middleware.ts");
 const cameraInput = fieldJourney.indexOf('capture="environment"');
 const photoSelection = fieldJourney.slice(cameraInput, fieldJourney.indexOf("<button type=\"button\" disabled={busy} onClick={() => fileRef.current?.click()}>", cameraInput));
-// P0 21-Aug screen-recording regression fix: preparePhotoDerivatives (ONE function, ONE call
-// site) replaced the old preparePreview + prepareImageForUpload pair, which each independently
-// decoded the original camera file (4 total createImageBitmap(file, ...) calls). This block is
-// the single source-of-truth image pipeline this whole suite audits.
+// P0 21-Aug live-UAT fix: preparePhotoDerivatives (ONE function, ONE call site) now reads real
+// JPEG dimensions/orientation from the file's own header bytes (parseJpegHeader — see
+// jpeg-header-parser.test.ts for real, execution-based unit tests of that parser) instead of a
+// createImageBitmap "metadata" call, so a normal JPEG camera photo needs exactly ONE real
+// createImageBitmap(file, ...) call, not two. This block is the single source-of-truth image
+// pipeline this whole suite audits.
 const imagePipeline = fieldJourney.slice(fieldJourney.indexOf("const PREVIEW_MAX_DIMENSION"), fieldJourney.indexOf("const key ="));
+const decodeFn = imagePipeline.slice(imagePipeline.indexOf("async function decodeAndDeriveDerivatives"), imagePipeline.indexOf("// Single entry point"));
 
-describe("mobile camera memory and reload regression (P0 21-Aug screen-recording fix)", () => {
-  it("A/B: the original camera File is decoded via createImageBitmap AT MOST TWICE, through exactly one pipeline function", () => {
-    // Every createImageBitmap(file, call in the whole pipeline block — not createImageBitmap of
-    // any OTHER value (uploadCanvas is drawn via ctx.drawImage, never re-decoded).
-    const originalFileDecodes = imagePipeline.match(/createImageBitmap\(file,/g) ?? [];
-    expect(originalFileDecodes.length).toBe(2);
+describe("mobile camera memory and reload regression (P0 21-Aug live-UAT fix)", () => {
+  it("A/B: a normal JPEG needs exactly ONE real createImageBitmap(file) call — the header-parse path never decodes", () => {
+    // The `if (header) { ... }` branch (header parse succeeded) must NOT call createImageBitmap at
+    // all — only the `else` fallback branch does, and that's gated behind header parsing having
+    // failed/declined. This is the actual structural guarantee, not just an occurrence count.
+    const ifHeaderBranch = decodeFn.slice(decodeFn.indexOf("if (header) {"), decodeFn.indexOf("} else {"));
+    const elseBranch = decodeFn.slice(decodeFn.indexOf("} else {"), decodeFn.indexOf("let uploadBitmap"));
+    expect(ifHeaderBranch).not.toContain("createImageBitmap");
+    expect(ifHeaderBranch).toContain("orientedUploadTarget(header.width, header.height, header.orientation)");
+    expect(elseBranch).toContain("metadataBitmap = await createImageBitmap(file,");
+    // Exactly one UNCONDITIONAL decode of the original file, after the if/header branch — this is
+    // the single real decode for the normal JPEG path, and the second (LAST) decode for the
+    // non-JPEG/unparseable fallback path.
+    const afterHeaderBranch = decodeFn.slice(decodeFn.indexOf("let uploadBitmap"));
+    const unconditionalDecodes = afterHeaderBranch.match(/createImageBitmap\(file,/g) ?? [];
+    expect(unconditionalDecodes.length).toBe(1);
+    // Zero-decode header path exists and is tried FIRST.
+    expect(decodeFn).toContain("const header = await readJpegHeaderInfo(file);");
     // Exactly one pipeline entry point — no separate preparePreview/prepareImageForUpload
     // functions that could each independently call createImageBitmap(file, ...) again.
     expect(imagePipeline).toContain("async function preparePhotoDerivatives(file: File)");

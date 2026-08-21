@@ -129,16 +129,16 @@ function yieldToPaint(): Promise<void> {
   if (typeof requestAnimationFrame === "undefined") return Promise.resolve();
   return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
-// P0 21-Aug screen-recording regression fix: the ORIGINAL camera File is decoded via
-// createImageBitmap AT MOST TWICE total (one metadata-only pass to read real dimensions — the only
-// way to learn a camera photo's true pixel size before choosing a resize target — then ONE
-// resize-during-decode pass at the upload's 1280px target). The 800px preview is derived from that
-// already-bounded upload canvas via plain canvas-to-canvas drawImage (cheap raster scaling, not a
-// further decode of the multi-megapixel original) — never a second createImageBitmap(file) call.
-// This replaces the previous two-derivative design (preparePreview + prepareImageForUpload, each
-// independently decoding the original twice = 4 total decodes), which — combined with screen
-// recording's own continuous frame-capture memory pressure and the native camera app's teardown —
-// was proven (real device evidence) to trigger a renderer-level reload right after camera return.
+// P0 21-Aug live-UAT fix: the prior "2 decodes" design assumed createImageBitmap's dimension-only
+// call was a cheap "metadata pass". It is not — no such mode exists in the API; the browser must
+// realize a real (often native-resolution) bitmap just to report width/height, and the real device
+// evidence (camera attempts 1/2 failing with a low-memory error, attempt 3 succeeding) proved this
+// still isn't safe enough on high-megapixel/low-memory Android devices. For a real camera JPEG —
+// the overwhelming majority of field-evidence photos — dimensions and EXIF orientation are read
+// directly from the file's own header bytes (a plain byte-range read, zero image decode), so only
+// ONE real createImageBitmap call ever happens: the resize-during-decode pass at the upload target.
+// Non-JPEG or any file the header parser can't confidently interpret falls back to the previous,
+// already-proven 2-decode path — never a guess, never a silently-wrong dimension.
 const PREVIEW_MAX_DIMENSION = 800;
 const PREVIEW_QUALITY = 0.7;
 const UPLOAD_MAX_DIMENSION = 1280;
@@ -151,23 +151,146 @@ const MAX_FINAL_UPLOAD_BYTES = 3_000_000;
 const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 1_000_000;
 const PHOTO_TOO_LARGE_MESSAGE = "Photo is too large for this device. Please retake the photo.";
 const PHOTO_PREP_FAILED_MESSAGE = "Photo could not be prepared. Please retake.";
+// Real camera JPEGs put their SOF (dimensions) and APP1/EXIF (orientation) markers within the
+// first few KB; this generously covers even an unusually large EXIF/thumbnail block without ever
+// reading (let alone decoding) the actual image data that follows.
+const JPEG_HEADER_READ_BYTES = 256 * 1024;
 
-async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob }> {
+type JpegHeaderInfo = { width: number; height: number; orientation: number };
+
+// Pure, synchronous, given already-read bytes — trivially unit-testable without any File/Blob/DOM
+// API. Every array access is bounds-checked against `view.byteLength` before use; `offset` strictly
+// increases by at least 2 every loop iteration, so this can never infinite-loop; any ambiguity
+// (truncated segment, marker misalignment, implausible dimensions) returns null rather than guess,
+// so the caller falls back to the safe 2-decode path instead of trusting a bad parse.
+// Exported for direct unit testing (__tests__/seera-foundation/jpeg-header-parser.test.ts) — pure,
+// synchronous, no DOM/File API needed, so it can run under this project's node-only vitest
+// environment without a jsdom/browser dependency.
+export function parseJpegHeader(buf: ArrayBuffer): JpegHeaderInfo | null {
+  const view = new DataView(buf);
+  if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null; // not a JPEG (no SOI)
+
+  let offset = 2;
+  let dims: { width: number; height: number } | null = null;
+  let orientation = 1;
+
+  while (offset < view.byteLength) {
+    if (view.getUint8(offset) !== 0xff) return null; // not marker-aligned — malformed, bail safely
+    offset += 1;
+    while (offset < view.byteLength && view.getUint8(offset) === 0xff) offset += 1; // fill bytes
+    if (offset >= view.byteLength) return null;
+    const marker = view.getUint8(offset);
+    offset += 1;
+
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue; // no payload
+    if (marker === 0xd9) break; // EOI
+
+    if (offset + 2 > view.byteLength) return null;
+    const segmentLength = view.getUint16(offset);
+    if (segmentLength < 2) return null;
+    const dataStart = offset + 2;
+    const dataEnd = offset + segmentLength;
+    if (dataEnd > view.byteLength) return null; // segment extends past what we read — bail safely
+
+    const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) {
+      if (dataEnd - dataStart < 5) return null;
+      const height = view.getUint16(dataStart + 1);
+      const width = view.getUint16(dataStart + 3);
+      if (width > 0 && height > 0 && width <= 40000 && height <= 40000) dims = { width, height };
+    } else if (marker === 0xe1) {
+      orientation = parseExifOrientation(view, dataStart, dataEnd) ?? orientation;
+    } else if (marker === 0xda) {
+      break; // Start of Scan — header section is over, entropy-coded data follows
+    }
+
+    offset = dataEnd;
+  }
+
+  if (!dims) return null;
+  return { width: dims.width, height: dims.height, orientation };
+}
+
+// EXIF APP1 payload: "Exif\0\0" + TIFF header (byte order + IFD0 offset) + IFD0 entries. Bounded,
+// defensive: entry count and offsets are checked against `end` before every read; an implausible
+// entry count aborts rather than looping far past reasonable EXIF data.
+function parseExifOrientation(view: DataView, start: number, end: number): number | null {
+  if (end - start < 8) return null;
+  if (view.getUint32(start) !== 0x45786966 || view.getUint16(start + 4) !== 0x0000) return null; // "Exif\0\0"
+  const tiffStart = start + 6;
+  if (tiffStart + 8 > end) return null;
+  const byteOrderMarker = view.getUint16(tiffStart);
+  let little: boolean;
+  if (byteOrderMarker === 0x4949) little = true;
+  else if (byteOrderMarker === 0x4d4d) little = false;
+  else return null;
+  if (view.getUint16(tiffStart + 2, little) !== 0x002a) return null;
+  const ifd0Offset = view.getUint32(tiffStart + 4, little);
+  const ifd0Start = tiffStart + ifd0Offset;
+  if (ifd0Offset < 8 || ifd0Start + 2 > end) return null;
+  const entryCount = view.getUint16(ifd0Start, little);
+  if (entryCount > 200) return null; // real EXIF IFD0 has a handful of entries — sanity bound
+  const entriesStart = ifd0Start + 2;
+  for (let i = 0; i < entryCount; i++) {
+    const entryOffset = entriesStart + i * 12;
+    if (entryOffset + 12 > end) return null;
+    if (view.getUint16(entryOffset, little) === 0x0112) {
+      const value = view.getUint16(entryOffset + 8, little);
+      return value >= 1 && value <= 8 ? value : null;
+    }
+  }
+  return null;
+}
+
+async function readJpegHeaderInfo(file: File): Promise<JpegHeaderInfo | null> {
+  if (file.type !== "image/jpeg") return null;
+  try {
+    const buf = await file.slice(0, JPEG_HEADER_READ_BYTES).arrayBuffer();
+    return parseJpegHeader(buf);
+  } catch {
+    return null;
+  }
+}
+
+// EXIF orientations 5-8 carry a 90/270-degree rotation, which swaps the LOGICAL (post-rotation,
+// on-screen) width/height relative to the raw SOF values — createImageBitmap's resizeWidth/
+// resizeHeight hints are interpreted in POST-orientation space (since imageOrientation:"from-image"
+// rotates first), so this swap must happen before computing the resize target, or a portrait photo
+// (extremely common — a field rep holding their phone vertically) would decode stretched/distorted.
+// Exported for direct unit testing — see parseJpegHeader's export comment above.
+export function orientedUploadTarget(rawWidth: number, rawHeight: number, orientation: number) {
+  const swapped = orientation >= 5 && orientation <= 8;
+  const logicalWidth = swapped ? rawHeight : rawWidth;
+  const logicalHeight = swapped ? rawWidth : rawHeight;
+  const scale = Math.min(1, UPLOAD_MAX_DIMENSION / Math.max(logicalWidth, logicalHeight));
+  return { width: Math.max(1, Math.round(logicalWidth * scale)), height: Math.max(1, Math.round(logicalHeight * scale)) };
+}
+
+async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number }> {
+  const header = await readJpegHeaderInfo(file);
+  let uploadWidth: number, uploadHeight: number;
   let metadataBitmap: ImageBitmap | null = null;
+  if (header) {
+    ({ width: uploadWidth, height: uploadHeight } = orientedUploadTarget(header.width, header.height, header.orientation));
+  } else {
+    // Fallback: exactly ONE extra metadata-only decode, only when the zero-decode header parse
+    // didn't apply (non-JPEG) or declined to interpret this file (e.g. a JPEG shape our strict,
+    // safety-first parser wasn't confident about) — never a silent wrong-dimension guess.
+    try {
+      metadataBitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+      ({ width: uploadWidth, height: uploadHeight } = orientedUploadTarget(metadataBitmap.width, metadataBitmap.height, 1));
+    } finally {
+      metadataBitmap?.close?.();
+      metadataBitmap = null;
+    }
+  }
+
   let uploadBitmap: ImageBitmap | null = null;
   let uploadCanvas: HTMLCanvasElement | null = null;
   let previewCanvas: HTMLCanvasElement | null = null;
   try {
-    // Decode #1 of 2 (max): dimensions only, closed immediately after reading width/height.
-    metadataBitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, UPLOAD_MAX_DIMENSION / Math.max(metadataBitmap.width, metadataBitmap.height));
-    const uploadWidth = Math.max(1, Math.round(metadataBitmap.width * scale));
-    const uploadHeight = Math.max(1, Math.round(metadataBitmap.height * scale));
-    metadataBitmap.close?.();
-    metadataBitmap = null;
-
-    // Decode #2 of 2 (LAST decode of the original file): the browser's native decoder downsamples
-    // straight to the upload target during decode — a full-resolution bitmap is never materialized.
+    // The ONLY real decode of the original file for a normal JPEG camera path (or the second/last
+    // one on the non-JPEG fallback above): resize-during-decode straight to the upload target.
     uploadBitmap = await createImageBitmap(file, {
       imageOrientation: "from-image",
       resizeWidth: uploadWidth,
@@ -186,7 +309,7 @@ async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blo
     if (!uploadBlob) throw new Error(PHOTO_PREP_FAILED_MESSAGE);
 
     // Preview: derived from the already-bounded uploadCanvas (canvas-to-canvas draw), never from
-    // `file`/a fresh createImageBitmap — this is what keeps the original-file decode count at 2.
+    // `file`/a fresh createImageBitmap — this is what keeps the original-file decode count at 1.
     const previewScale = Math.min(1, PREVIEW_MAX_DIMENSION / Math.max(uploadWidth, uploadHeight));
     const previewWidth = Math.max(1, Math.round(uploadWidth * previewScale));
     const previewHeight = Math.max(1, Math.round(uploadHeight * previewScale));
@@ -199,9 +322,8 @@ async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blo
     const previewBlob = await new Promise<Blob | null>((resolve) => previewCanvas!.toBlob(resolve, "image/jpeg", PREVIEW_QUALITY));
     if (!previewBlob) throw new Error(PHOTO_PREP_FAILED_MESSAGE);
 
-    return { uploadBlob, previewBlob };
+    return { uploadBlob, previewBlob, sourceWidth: header?.width, sourceHeight: header?.height };
   } finally {
-    metadataBitmap?.close?.();
     uploadBitmap?.close?.();
     if (uploadCanvas) {
       uploadCanvas.width = 1;
@@ -214,10 +336,9 @@ async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blo
   }
 }
 
-// Single entry point for the whole camera-return pipeline — replaces the old preparePreview +
-// prepareImageForUpload pair, which each independently decoded the original file.
-async function preparePhotoDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob }> {
-  let derivatives: { uploadBlob: Blob; previewBlob: Blob };
+// Single entry point for the whole camera-return pipeline.
+async function preparePhotoDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number }> {
+  let derivatives: { uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number };
   if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined") {
     // Can't safely decode this format at all (e.g. HEIC/HEIF) — go straight to the fail-closed
     // fallback below rather than attempting (and always failing) the canvas pipeline first.
@@ -257,7 +378,21 @@ async function postPhotoJson<T>(url: string, payload: Record<string, unknown>): 
   return data as T;
 }
 
+// P0 21-Aug telemetry gap fix: fire-and-forget — telemetry must never block or fail the real photo
+// flow, so failures here are swallowed rather than surfaced. Never sends photo binary/base64 or
+// any Cloudinary secret; the payload shape is enforced server-side by recordPhotoTelemetry's own
+// type signature (lib/sales-distribution/field-portal-service.ts), not just trusted from the client.
+function sendPhotoTelemetry(event: string, fields: Record<string, unknown> = {}) {
+  void fetch("/api/field/operations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "photo-telemetry", payload: { event, ...fields } }),
+  }).catch(() => {});
+}
+
 async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: Blob) {
+  const uploadStart = performance.now();
+  sendPhotoTelemetry("UPLOAD_START", { visitId, outputBytes: blob.size });
   const signed = await postPhotoJson<SignedPhotoUpload>("/api/field/photos/upload-signature", { visitId });
   if (signed.expiresAt <= Math.floor(Date.now() / 1000)) throw new Error("Photo upload authorization expired. Please retry.");
   const form = new FormData();
@@ -274,9 +409,21 @@ async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: 
     // P0 21-Aug fix: never surface Cloudinary's raw provider error (which can include the literal
     // signing string/parameter names) to field staff — log it for developer diagnostics only.
     if (uploaded?.error?.message) console.error("cloudinary_upload_failed", uploaded.error.message);
+    sendPhotoTelemetry("UPLOAD_FAILED", { visitId, elapsedMs: Math.round(performance.now() - uploadStart), errorCode: String(response.status) });
     throw new Error("Photo upload failed. Please retry.");
   }
-  return postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", { visitId, photoType, publicId: uploaded.public_id });
+  sendPhotoTelemetry("UPLOAD_SUCCESS", { visitId, elapsedMs: Math.round(performance.now() - uploadStart) });
+
+  const finalizeStart = performance.now();
+  sendPhotoTelemetry("FINALIZE_START", { visitId });
+  try {
+    const result = await postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", { visitId, photoType, publicId: uploaded.public_id });
+    sendPhotoTelemetry("FINALIZE_SUCCESS", { visitId, elapsedMs: Math.round(performance.now() - finalizeStart) });
+    return result;
+  } catch (error) {
+    sendPhotoTelemetry("FINALIZE_FAILED", { visitId, elapsedMs: Math.round(performance.now() - finalizeStart), errorCode: error instanceof Error ? error.message.slice(0, 64) : "unknown" });
+    throw error;
+  }
 }
 const key = () => crypto.randomUUID();
 // PERFORMANCE PHASE 3 (hydration mismatch fix): `key()` is genuinely random, so calling it as the
@@ -656,6 +803,12 @@ export function FieldJourney({
     router = useRouter(),
     fileRef = useRef<HTMLInputElement>(null),
     photoPreviewUrlRef = useRef<string | null>(null),
+    // P0 21-Aug double-tap hardening (Part H): a synchronous ref, checked and set BEFORE any
+    // async work starts — React's own `disabled={busy}` on the submit button only takes effect on
+    // the NEXT render, which is not guaranteed to land before a second, near-simultaneous tap/
+    // native form resubmit fires. This is the actual non-reentrancy guard; `busy` still drives the
+    // visible disabled state for the normal single-tap case.
+    checkoutSubmittingRef = useRef(false),
     [busy, setBusy] = useState(false),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
@@ -763,6 +916,19 @@ export function FieldJourney({
     setLocalAddedPhotos([]);
     setLocallyDeletedPhotoIds(new Set());
     if (fileRef.current) fileRef.current.value = "";
+    checkoutSubmittingRef.current = false;
+    // P0 21-Aug telemetry: a leftover "in flight" marker for THIS visit means the last thing this
+    // browser did was start preparing/uploading a photo and never reached a terminal outcome —
+    // exactly the signature of a renderer reload during the camera-return decode/upload burst this
+    // whole pass exists to fix. Fires once per mount (this effect also runs on initial mount for
+    // the visit the server hands back), then clears the marker so it's not reported twice.
+    if (visit && typeof sessionStorage !== "undefined") {
+      const inflightKey = `seera:photo-inflight:${visit.id}`;
+      if (sessionStorage.getItem(inflightKey)) {
+        sessionStorage.removeItem(inflightKey);
+        sendPhotoTelemetry("RENDERER_RELOAD_RESUME", { visitId: visit.id });
+      }
+    }
     scrollToJourneyTop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visit?.id]);
@@ -1805,15 +1971,39 @@ export function FieldJourney({
                   setBusy(true);
                   setBusyLabel(hi ? "फ़ोटो तैयार हो रही है…" : "Preparing photo…");
                   await yieldToPaint();
-                  let derivatives: { uploadBlob: Blob; previewBlob: Blob };
+                  const prepStart = performance.now();
+                  const inflightKey = `seera:photo-inflight:${visit.id}`;
+                  // Set BEFORE any decode work starts — a renderer reload any time between here and
+                  // the matching clear below (on any terminal outcome) leaves this marker behind for
+                  // the next mount's RENDERER_RELOAD_RESUME check to find.
+                  if (typeof sessionStorage !== "undefined") sessionStorage.setItem(inflightKey, "1");
+                  sendPhotoTelemetry("IMAGE_PREP_START", { visitId: visit.id, sourceMime: file.type, sourceBytes: file.size });
+                  let derivatives: { uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number };
                   try {
                     derivatives = await preparePhotoDerivatives(file);
                   } catch (error) {
+                    if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
+                    sendPhotoTelemetry("IMAGE_PREP_FAILED", {
+                      visitId: visit.id,
+                      elapsedMs: Math.round(performance.now() - prepStart),
+                      errorCode: error instanceof Error ? error.message.slice(0, 64) : "unknown",
+                      sourceMime: file.type,
+                      sourceBytes: file.size,
+                    });
                     setBusy(false);
                     setBusyLabel(null);
                     setMessage({ ok: false, text: error instanceof Error ? error.message : PHOTO_PREP_FAILED_MESSAGE });
                     return;
                   }
+                  sendPhotoTelemetry("IMAGE_PREP_SUCCESS", {
+                    visitId: visit.id,
+                    elapsedMs: Math.round(performance.now() - prepStart),
+                    sourceMime: file.type,
+                    sourceBytes: file.size,
+                    sourceWidth: derivatives.sourceWidth,
+                    sourceHeight: derivatives.sourceHeight,
+                    outputBytes: derivatives.uploadBlob.size,
+                  });
                   if (fileRef.current?.files?.[0] === file) {
                     const previewUrl = URL.createObjectURL(derivatives.previewBlob);
                     photoPreviewUrlRef.current = previewUrl;
@@ -1827,12 +2017,14 @@ export function FieldJourney({
                   await yieldToPaint();
                   try {
                     const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, derivatives.uploadBlob);
+                    if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
                     setLocalAddedPhotos((current) => [...current, data]);
                     revokePhotoPreview();
                     setPhotoPreview(null);
                     if (fileRef.current) fileRef.current.value = "";
                     setMessage({ ok: true, text: hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓" });
                   } catch (error) {
+                    if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
                     // Uploaded/finalized rows remain the ONLY authoritative "saved" state (matches
                     // checkout's own server-side count) — a failed upload here must never be
                     // reported as success. The preview + selected file are kept so "Retake" can
@@ -1948,8 +2140,23 @@ export function FieldJourney({
           className={styles.checkout}
           onSubmit={(e) => {
             e.preventDefault();
+            // P0 21-Aug double-tap hardening (Part H): checked and set synchronously, before
+            // anything else — the real production incident this fixes was a second checkout
+            // submission racing the first (whether from a double-tap or a slow-response resend)
+            // and getting rejected with "Active visit unavailable" even though the first had
+            // already succeeded.
+            if (checkoutSubmittingRef.current) return;
+            checkoutSubmittingRef.current = true;
             const f = new FormData(e.currentTarget),
-              deviation = String(f.get("routeDeviationReason") ?? "");
+              deviation = String(f.get("routeDeviationReason") ?? ""),
+              // P0 21-Aug checkout idempotency (Part F/G): deterministically derived from the
+              // visit's own id, NOT a fresh random key per tap — a visit can only ever be
+              // legitimately checked out once, so every submission attempt for THIS visit
+              // (a genuine retry after a failure, a double-tap that slips past the ref guard
+              // above, or an offline-queue replay racing a direct send) carries the IDENTICAL key,
+              // letting the server treat all of them as the same intent instead of only literal
+              // simultaneous clicks.
+              checkoutIdempotencyKey = `checkout:${visit.id}`;
             void (async () => {
               setBusy(true);
               setBusyLabel(hi ? "विज़िट पूरी हो रही है…" : "Completing visit…");
@@ -1970,6 +2177,7 @@ export function FieldJourney({
                   latitude: point.latitude,
                   longitude: point.longitude,
                   accuracy: point.accuracy,
+                  idempotencyKey: checkoutIdempotencyKey,
                 },
                 { entityType: "SeeraVisit", actionType: "VISIT_CHECK_OUT" },
                 hi ? "विज़िट पूरी हुई।" : "Visit completed.",
@@ -1981,7 +2189,19 @@ export function FieldJourney({
               // kicked off. That refresh still lands moments later in the background to reconcile
               // dashboard/beat counters; the rawVisit?.id effect resets this flag once it does.
               if ("queued" in result || result.success) {
+                // P0 21-Aug stale-visit fix (Part K): clear the local optimistic visit + this
+                // visit's own sessionStorage mode marker immediately, synchronously with success —
+                // do not leave the just-closed visit's screen/state actionable while
+                // router.refresh() is still in flight in the background. checkoutSubmittingRef is
+                // deliberately NOT reset here: this visit is now closed and this exact form
+                // instance must never submit again (the next visit gets a fresh ref value via the
+                // reset effect below, keyed on visit?.id).
+                sessionStorage.removeItem(`seera:field-visit:${visit.id}:mode`);
                 setOptimisticVisitCleared(true);
+              } else {
+                // Only a genuine failure re-arms the guard — a legitimate retry (same
+                // checkoutIdempotencyKey) must be allowed to reach the server again.
+                checkoutSubmittingRef.current = false;
               }
             })();
           }}

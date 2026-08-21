@@ -4,7 +4,7 @@ import type { Prisma, PrismaClient, VisitOutcome } from "@prisma/client";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
-import { timeOperation } from "@/lib/foundation/logger";
+import { operationalLog, timeOperation } from "@/lib/foundation/logger";
 import { eligibleDelivered } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { recordGpsSample } from "./field-travel-service";
@@ -126,11 +126,39 @@ export async function executiveCheckOut(
     latitude?: number;
     longitude?: number;
     accuracy?: number;
+    idempotencyKey: string;
   },
 ) {
   const timing = timeOperation("field_portal.executiveCheckOut");
   await authorize(db, { actorId, permission: "retailer:visit" });
   timing.stage("authorize");
+  // Fail loud, not silently no-op: Prisma's `where: { checkoutIdempotencyKey: undefined }` means
+  // "no filter on this field" (not "match null"), so a caller that skips the API route's Zod
+  // validation and passes idempotencyKey as undefined/empty would make the priorByKey lookup below
+  // match ANY visit by id regardless of its actual checkoutIdempotencyKey — silently short-
+  // circuiting a real checkout with no error and no durable write. Caught live by this fix's own
+  // test suite (an older test calling this function without an idempotencyKey left checkedOutAt
+  // null). The API route already requires this via Zod; this is defense-in-depth for any other
+  // caller (scripts, future service code) that isn't Zod-validated.
+  if (!input.idempotencyKey) throw new FoundationError("IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required", 400);
+  // P0 21-Aug idempotency fix (real production incident: Mishra kirana visit
+  // cmt2tqcw9001zwhr9or51qm1j — a checkout retry against an already-closed visit returned "Active
+  // visit unavailable" even though the FIRST checkout had already durably succeeded). A retry
+  // carrying the SAME key as an already-completed checkout for THIS visit is a confirmed replay of
+  // the same intent — return that already-completed result instead of failing. Mirrors the
+  // idempotencyKey pattern executiveCheckIn/placeRetailerOrder/capturePhoto already use.
+  const priorByKey = await db.seeraVisit.findFirst({ where: { id: visitId, checkoutIdempotencyKey: input.idempotencyKey } });
+  if (priorByKey) {
+    timing.finish({ actorId, visitId, idempotentReplay: true });
+    await recordAudit(db, {
+      actorId,
+      action: "field_visit.checkout_idempotent_replay",
+      entityType: "SeeraVisit",
+      entityId: visitId,
+      outcome: "SUCCESS",
+    });
+    return priorByKey;
+  }
   // Photo count folded into the same query as a relation count instead of a second round trip.
   const visit = await db.seeraVisit.findFirst({
     where: {
@@ -141,12 +169,26 @@ export async function executiveCheckOut(
     include: { _count: { select: { photos: { where: { deletedAt: null } } } } },
   });
   timing.stage("visit_lookup");
-  if (!visit)
+  if (!visit) {
+    // A different intent (no matching idempotency key) hitting an already-closed — or genuinely
+    // not-owned — visit. Distinguish for observability: was this actually a close-race duplicate
+    // (visit exists, closed, just under a DIFFERENT key — a real double-submit that skipped past
+    // the key check above only because the two requests raced) versus a truly invalid visit.
+    const closedVisit = await db.seeraVisit.findFirst({ where: { id: visitId, workSession: { employeeId: actorId } }, select: { checkedOutAt: true } });
+    await recordAudit(db, {
+      actorId,
+      action: "field_visit.checkout_failed",
+      entityType: "SeeraVisit",
+      entityId: visitId,
+      outcome: "DENIED",
+      reason: closedVisit?.checkedOutAt ? "ALREADY_CLOSED" : "NOT_FOUND_OR_NOT_OWNED",
+    });
     throw new FoundationError(
       "VISIT_SCOPE_DENIED",
       "Active visit unavailable",
       403,
     );
+  }
   if (input.outcome === "NO_ORDER" && !input.noOrderReason)
     throw new FoundationError(
       "NO_ORDER_REASON_REQUIRED",
@@ -168,9 +210,20 @@ export async function executiveCheckOut(
   // The visit update and the GPS sample write are independent (recordGpsSample only needs
   // visit.workSessionId, already known) — one round trip instead of two, and both are the
   // actual durable-success boundary for this checkout.
-  const [updated] = await Promise.all([
-    db.seeraVisit.update({
-      where: { id: visit.id },
+  //
+  // `updateMany` with `checkedOutAt: null` repeated in the WHERE clause (not a plain `update`) is
+  // the actual compare-and-swap here — this is NOT redundant with the SELECT above. Two concurrent
+  // requests carrying the SAME idempotencyKey can both pass that SELECT before either commits (a
+  // real, reproducible TOCTOU race, caught live by this fix's own concurrent-checkout test): a
+  // plain `update()` has no WHERE guard tied to the row's read state, so both would silently
+  // succeed, each overwriting the other's checkedOutAt with its own timestamp — no error, no
+  // constraint violation (the unique index on checkoutIdempotencyKey only rejects two DIFFERENT
+  // rows sharing a key, not the same row being written twice). Postgres serializes two concurrent
+  // `UPDATE ... WHERE id = ? AND checkedOutAt IS NULL` statements against the same row via normal
+  // row-level locking, so the loser's `count` is reliably 0.
+  const [closeResult] = await Promise.all([
+    db.seeraVisit.updateMany({
+      where: { id: visit.id, checkedOutAt: null },
       data: {
         outcome,
         noOrderReason: input.noOrderReason,
@@ -178,6 +231,7 @@ export async function executiveCheckOut(
         notes: input.notes,
         photoExceptionReason: input.photoExceptionReason ?? visit.photoExceptionReason,
         checkedOutAt: new Date(),
+        checkoutIdempotencyKey: input.idempotencyKey,
       },
     }),
     recordGpsSample(db, {
@@ -190,7 +244,28 @@ export async function executiveCheckOut(
       trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
     }),
   ]);
+  if (closeResult.count === 0) {
+    // Lost the race: a concurrent request for THIS visit closed it first. If it closed with the
+    // SAME idempotencyKey, this is a safe idempotent replay of the same intent — return that
+    // result. A different key means a genuinely conflicting concurrent intent, correctly denied.
+    const winner = await db.seeraVisit.findUniqueOrThrow({ where: { id: visit.id } });
+    if (winner.checkoutIdempotencyKey === input.idempotencyKey) {
+      timing.finish({ actorId, visitId, idempotentReplay: true, racedReplay: true });
+      return winner;
+    }
+    await recordAudit(db, { actorId, action: "field_visit.checkout_failed", entityType: "SeeraVisit", entityId: visitId, outcome: "DENIED", reason: "RACED_BY_DIFFERENT_INTENT" });
+    throw new FoundationError("VISIT_SCOPE_DENIED", "Active visit unavailable", 403);
+  }
+  const updated = await db.seeraVisit.findUniqueOrThrow({ where: { id: visit.id } });
   timing.stage("visit_update_and_gps");
+  await recordAudit(db, {
+    actorId,
+    action: "field_visit.checkout_succeeded",
+    entityType: "SeeraVisit",
+    entityId: visitId,
+    outcome: "SUCCESS",
+    afterState: { outcome, workSessionId: visit.workSessionId },
+  });
   // Retailer WhatsApp notification is queued strictly AFTER the visit is durably checked out
   // (this is a fast local outbox write, not the Meta network call, which only ever happens
   // later from the separate dispatch worker) — never before/concurrent with the commit above,
@@ -701,8 +776,12 @@ export async function capturePhoto(
   },
 ) {
   await authorize(db, { actorId, permission: "retailer:visit" });
+  // P0 21-Aug closed-visit immutability fix: this legacy DB-blob capture path (still live via the
+  // Manager portal's capture-photo-manager action) was missing the checkedOutAt:null guard every
+  // other visit-scoped write in this file already has (recordPhotoException, executiveCheckOut) —
+  // a checked-out visit could silently accept a new photo forever after.
   const visit = await db.seeraVisit.findFirst({
-    where: { id: input.visitId, workSession: { employeeId: actorId } },
+    where: { id: input.visitId, checkedOutAt: null, workSession: { employeeId: actorId } },
   });
   if (!visit)
     throw new FoundationError("VISIT_SCOPE_DENIED", "Visit unavailable", 403);
@@ -745,6 +824,53 @@ export async function capturePhoto(
     });
     return photo;
   });
+}
+
+const PHOTO_TELEMETRY_EVENTS = [
+  "IMAGE_PREP_START", "IMAGE_PREP_SUCCESS", "IMAGE_PREP_FAILED",
+  "UPLOAD_START", "UPLOAD_SUCCESS", "UPLOAD_FAILED",
+  "FINALIZE_START", "FINALIZE_SUCCESS", "FINALIZE_FAILED",
+  "RENDERER_RELOAD_RESUME",
+] as const;
+export type PhotoTelemetryEvent = (typeof PHOTO_TELEMETRY_EVENTS)[number];
+
+// P0 21-Aug telemetry gap fix: the camera pipeline previously had exactly one console.error call
+// and nothing else — every device-only failure (the "attempt 1/2 fail, attempt 3 succeeds"
+// low-memory pattern) was undiagnosable without another live Founder UAT session. Deliberately
+// log-only (no DB write, no schema needed) — forwards into the SAME operationalLog() mechanism
+// this codebase already uses for api.internal_error, so it shows up in existing log tooling
+// without new infrastructure. Never accepts photo binary/base64/secrets — only small numeric/enum
+// fields, enforced by this function's own type signature, not by trusting the caller.
+export async function recordPhotoTelemetry(
+  db: PrismaClient,
+  actorId: string,
+  input: {
+    event: PhotoTelemetryEvent;
+    visitId?: string;
+    elapsedMs?: number;
+    errorCode?: string;
+    sourceMime?: string;
+    sourceBytes?: number;
+    sourceWidth?: number;
+    sourceHeight?: number;
+    outputBytes?: number;
+  },
+) {
+  await authorize(db, { actorId, permission: "retailer:visit" });
+  if (!PHOTO_TELEMETRY_EVENTS.includes(input.event)) throw new FoundationError("INVALID_TELEMETRY_EVENT", "Unknown telemetry event", 400);
+  operationalLog("info", "field_photo.telemetry", {
+    actorId,
+    event: input.event,
+    visitId: input.visitId,
+    elapsedMs: input.elapsedMs,
+    errorCode: input.errorCode,
+    sourceMime: input.sourceMime,
+    sourceBytes: input.sourceBytes,
+    sourceWidth: input.sourceWidth,
+    sourceHeight: input.sourceHeight,
+    outputBytes: input.outputBytes,
+  });
+  return { ok: true as const };
 }
 
 export async function recordPhotoException(

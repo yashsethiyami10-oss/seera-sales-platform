@@ -87,6 +87,7 @@ describe("WhatsApp queuing failure must never fail retailer checkout", () => {
           outcome: "NO_ORDER",
           noOrderReason: "Shop closed",
           photoExceptionReason: "No photo captured — forced-failure WhatsApp non-blocking test",
+          idempotencyKey: crypto.randomUUID(),
         }),
       ).resolves.not.toThrow();
 

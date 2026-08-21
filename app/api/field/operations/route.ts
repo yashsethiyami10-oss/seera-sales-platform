@@ -26,6 +26,7 @@ import {
   resolveFollowUp,
   acknowledgeInstruction,
   completeInstruction,
+  recordPhotoTelemetry,
 } from "@/lib/sales-distribution/field-portal-service";
 
 const body = z.object({
@@ -51,6 +52,7 @@ const body = z.object({
     "update-prospect",
     "submit-ta-claim",
     "market-intelligence",
+    "photo-telemetry",
   ]),
   payload: z.record(z.unknown()).default({}),
 });
@@ -127,9 +129,30 @@ export async function POST(request: Request) {
           latitude: z.number().optional(),
           longitude: z.number().optional(),
           accuracy: z.number().optional(),
+          idempotencyKey: z.string(),
         })
         .parse(payload);
       result = await executiveCheckOut(prisma, user.id, v.visitId, v);
+    } else if (action === "photo-telemetry") {
+      const v = z
+        .object({
+          event: z.enum([
+            "IMAGE_PREP_START", "IMAGE_PREP_SUCCESS", "IMAGE_PREP_FAILED",
+            "UPLOAD_START", "UPLOAD_SUCCESS", "UPLOAD_FAILED",
+            "FINALIZE_START", "FINALIZE_SUCCESS", "FINALIZE_FAILED",
+            "RENDERER_RELOAD_RESUME",
+          ]),
+          visitId: z.string().optional(),
+          elapsedMs: z.number().nonnegative().optional(),
+          errorCode: z.string().max(64).optional(),
+          sourceMime: z.string().max(64).optional(),
+          sourceBytes: z.number().nonnegative().optional(),
+          sourceWidth: z.number().nonnegative().optional(),
+          sourceHeight: z.number().nonnegative().optional(),
+          outputBytes: z.number().nonnegative().optional(),
+        })
+        .parse(payload);
+      result = await recordPhotoTelemetry(prisma, user.id, v);
     } else if (action === "place-order") {
       const v = z
           .object({
