@@ -26,7 +26,7 @@ function envFile(file: string) {
   const values: Record<string, string> = {};
   for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
     const match = /^\s*([^#][^=]*?)\s*=\s*(.*?)\s*$/.exec(line);
-    if (match) values[match[1]] = match[2].replace(/^['"]|['"]$/g, "");
+    if (match) values[match[1]!] = match[2]!.replace(/^['"]|['"]$/g, "");
   }
   return values;
 }
@@ -34,7 +34,7 @@ const root = path.resolve(__dirname, "..", "..");
 const production = envFile(path.join(root, ".env")).DATABASE_URL;
 const test = envFile(path.join(root, ".env.test")).TEST_DATABASE_URL;
 const target = authorizeDatabaseCommand({ intendedRole: "test", write: true, targetUrl: test, productionUrl: production, testUrl: test });
-const runtime = new URL(test);
+const runtime = new URL(test!);
 runtime.searchParams.set("connection_limit", "3");
 runtime.searchParams.set("pool_timeout", "60");
 const db = new PrismaClient({ datasourceUrl: runtime.toString() });

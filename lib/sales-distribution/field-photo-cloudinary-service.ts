@@ -37,6 +37,22 @@ async function requireActiveOwnedVisit(db: PrismaClient, actorId: string, visitI
   return visit;
 }
 
+// P0 21-Aug "Invalid Signature" fix: this is the ONE place upload parameters are decided — the
+// client (FieldJourney.tsx's uploadFieldPhotoDirect) copies these values verbatim into the
+// multipart FormData it posts to Cloudinary, it never rebuilds/reinterprets them. Kept to the
+// smallest genuinely-necessary signed set on purpose:
+//   - `resource_type` was previously included in the object handed to
+//     cloudinary.utils.api_sign_request(), which signs literally whatever keys it's given — but
+//     Cloudinary's own upload API never treats resource_type as a signable body parameter (it's
+//     routing metadata carried in the URL path, `/image/upload`; confirmed against the Cloudinary
+//     Node SDK's own build_upload_params(), which never includes it). Our server was signing a
+//     string Cloudinary's server-side verification could never reproduce — an unconditional,
+//     guaranteed mismatch on every single upload. Removed from the signed object entirely.
+//   - `transformation`/`allowed_formats` are dropped too: the client already resizes/compresses to
+//     a bounded JPEG (<=1280px, ~q0.74) before upload (see FieldJourney.tsx's
+//     prepareImageForUpload), so asking Cloudinary to transform/validate format again on top is
+//     redundant processing and redundant signature surface for no real benefit — format/dimensions
+//     /bytes are still re-verified authoritatively in finalizeFieldPhotoUpload below.
 export async function createFieldPhotoUploadSignature(db: PrismaClient, actorId: string, visitId: string) {
   const visit = await requireActiveOwnedVisit(db, actorId, visitId);
   const { cloudName, apiKey, apiSecret } = cloudinaryConfig();
@@ -44,13 +60,10 @@ export async function createFieldPhotoUploadSignature(db: PrismaClient, actorId:
   const folder = `${PHOTO_FOLDER_ROOT}/${visit.id}`;
   const publicId = `${folder}/${randomUUID()}`;
   const uploadParams = {
-    allowed_formats: "jpg,jpeg",
     folder,
     overwrite: false,
     public_id: publicId.slice(folder.length + 1),
-    resource_type: "image" as const,
     timestamp,
-    transformation: `c_limit,w_${MAX_DIMENSION},h_${MAX_DIMENSION}/f_jpg,q_74`,
     type: "upload" as const,
     unique_filename: false,
   };
@@ -62,7 +75,10 @@ export async function createFieldPhotoUploadSignature(db: PrismaClient, actorId:
     entityId: visit.id,
     afterState: { publicId, folder, expiresAt: new Date((timestamp + SIGNATURE_MAX_AGE_SECONDS) * 1000).toISOString() },
   });
-  return { cloudName, apiKey, signature, ...uploadParams, expiresAt: timestamp + SIGNATURE_MAX_AGE_SECONDS };
+  // `resource_type` is returned for the client's own URL construction only (`/image/upload`) — it
+  // is NOT part of `uploadParams` above and therefore NOT part of what was signed, matching how
+  // Cloudinary's own upload API treats it.
+  return { cloudName, apiKey, signature, resource_type: "image" as const, ...uploadParams, expiresAt: timestamp + SIGNATURE_MAX_AGE_SECONDS };
 }
 
 export async function finalizeFieldPhotoUpload(

@@ -206,10 +206,15 @@ async function prepareImageForUpload(file: File): Promise<Blob> {
   return uploadBlob;
 }
 
+// P0 21-Aug "Invalid Signature" fix: this type (and the FormData loop below) must mirror EXACTLY
+// what lib/sales-distribution/field-photo-cloudinary-service.ts's createFieldPhotoUploadSignature
+// signs — no field here that isn't part of what the server signed, and nothing rebuilt/reinterpreted
+// client-side. `resource_type` is intentionally present (needed for the upload URL) but intentionally
+// NOT part of the signed set server-side; see that file's comment for why.
 type SignedPhotoUpload = {
   cloudName: string; apiKey: string; signature: string; timestamp: number; expiresAt: number;
   folder: string; public_id: string; overwrite: false; resource_type: "image"; type: "upload";
-  unique_filename: false; allowed_formats: string; transformation: string;
+  unique_filename: false;
 };
 
 async function postPhotoJson<T>(url: string, payload: Record<string, unknown>): Promise<T> {
@@ -224,11 +229,20 @@ async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: 
   if (signed.expiresAt <= Math.floor(Date.now() / 1000)) throw new Error("Photo upload authorization expired. Please retry.");
   const form = new FormData();
   form.set("file", blob, "field-visit.jpg");
-  for (const [name, value] of Object.entries({ api_key: signed.apiKey, timestamp: signed.timestamp, signature: signed.signature, folder: signed.folder, public_id: signed.public_id, overwrite: signed.overwrite, resource_type: signed.resource_type, type: signed.type, unique_filename: signed.unique_filename, allowed_formats: signed.allowed_formats, transformation: signed.transformation }))
+  // Only the fields the server actually signed, copied verbatim (String() on a number/boolean is
+  // the same serialization `cloudinary.utils.api_sign_request`'s own value handling expects) — no
+  // client-side reconstruction of any of these values. `api_key` is the one field never signed
+  // (Cloudinary's own convention), added here alongside `signature`.
+  for (const [name, value] of Object.entries({ api_key: signed.apiKey, timestamp: signed.timestamp, signature: signed.signature, folder: signed.folder, public_id: signed.public_id, overwrite: signed.overwrite, type: signed.type, unique_filename: signed.unique_filename }))
     form.set(name, String(value));
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/${signed.resource_type}/upload`, { method: "POST", body: form });
   const uploaded = await response.json().catch(() => ({}));
-  if (!response.ok || typeof uploaded.public_id !== "string") throw new Error(uploaded?.error?.message ?? "Photo upload failed. Please retry.");
+  if (!response.ok || typeof uploaded.public_id !== "string") {
+    // P0 21-Aug fix: never surface Cloudinary's raw provider error (which can include the literal
+    // signing string/parameter names) to field staff — log it for developer diagnostics only.
+    if (uploaded?.error?.message) console.error("cloudinary_upload_failed", uploaded.error.message);
+    throw new Error("Photo upload failed. Please retry.");
+  }
   return postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", { visitId, photoType, publicId: uploaded.public_id });
 }
 const key = () => crypto.randomUUID();
