@@ -2,7 +2,10 @@ import { afterAll,beforeAll,describe,expect,it } from "vitest";
 import { login,resolveSession,revokeAllSessions,revokeSession } from "@/lib/foundation/auth-service";
 import { bootstrapFounder,bootstrapFounderFromEnvironment } from "@/lib/foundation/bootstrap-service";
 import { effectivePermissions } from "@/lib/foundation/authorization-service";
-import { expectCode,founderEmail,founderPassword,prisma,setup } from "./test-context";
+import { authorize } from "@/lib/foundation/authorization-service";
+import { hashPassword } from "@/lib/foundation/auth-service";
+import { resetPartnerLoginPassword } from "@/lib/foundation/user-management-service";
+import { expectCode,founderEmail,founderPassword,prisma,roleUsers,setup } from "./test-context";
 let founderId="";
 beforeAll(async()=>{await setup();founderId=(await prisma.user.findUniqueOrThrow({where:{normalizedEmail:founderEmail}})).id;});afterAll(()=>prisma.$disconnect());
 describe("authentication",()=>{
@@ -11,6 +14,35 @@ describe("authentication",()=>{
  it("rejects inactive, suspended, and disabled users",async()=>{for(const status of ["INACTIVE","SUSPENDED","DISABLED"] as const){const email=`${status.toLowerCase()}@example.test`,user=await prisma.user.create({data:{email,normalizedEmail:email,status,passwordHash:(await prisma.user.findUniqueOrThrow({where:{id:founderId}})).passwordHash}});await expectCode(()=>login(prisma,{email,password:founderPassword}),"USER_ACCESS_DISABLED");await prisma.user.delete({where:{id:user.id}});}});
  it("logout and explicit revoke invalidate sessions",async()=>{for(const reason of ["LOGOUT","EXPLICIT"]){const s=await login(prisma,{email:founderEmail,password:founderPassword});await revokeSession(prisma,s.sessionId,founderId,reason);await expectCode(()=>resolveSession(prisma,s.token),"SESSION_INVALID");}});
  it("revoke-all invalidates every session",async()=>{const a=await login(prisma,{email:founderEmail,password:founderPassword}),b=await login(prisma,{email:founderEmail,password:founderPassword});await revokeAllSessions(prisma,founderId,founderId,"ALL");await expectCode(()=>resolveSession(prisma,a.token),"SESSION_INVALID");await expectCode(()=>resolveSession(prisma,b.token),"SESSION_INVALID");});
+ it("closes the Distributor mobile-login matrix without creating ambiguous identities",async()=>{
+  const distributor=roleUsers.get("DISTRIBUTOR_OWNER")!,mobile="9956736641",synthetic="dist.9956736641@seera.local";
+  await prisma.user.update({where:{id:distributor.id},data:{email:synthetic,normalizedEmail:synthetic,phone:mobile}});
+  const byMobile=await login(prisma,{email:mobile,password:distributor.password});
+  const bySynthetic=await login(prisma,{email:synthetic,password:distributor.password});
+  expect(byMobile.userId).toBe(distributor.id);
+  expect(bySynthetic.userId).toBe(distributor.id);
+  await expectCode(()=>login(prisma,{email:mobile,password:"WrongPassword!123"}),"INVALID_CREDENTIALS");
+  await prisma.user.update({where:{id:distributor.id},data:{status:"INACTIVE"}});
+  await expectCode(()=>login(prisma,{email:mobile,password:distributor.password}),"USER_ACCESS_DISABLED");
+  await prisma.user.update({where:{id:distributor.id},data:{status:"ACTIVE"}});
+  const noRolePassword="Aa1!MissingRole123";
+  const noRole=await prisma.user.create({data:{email:"no-role@example.test",normalizedEmail:"no-role@example.test",phone:"9956736642",passwordHash:await hashPassword(noRolePassword)}});
+  expect((await login(prisma,{email:"9956736642",password:noRolePassword})).userId).toBe(noRole.id);
+  await expectCode(()=>authorize(prisma,{actorId:noRole.id,permission:"portal:distributor"}),"ACCESS_DENIED");
+  await expect(prisma.user.create({data:{email:"duplicate-mobile@example.test",normalizedEmail:"duplicate-mobile@example.test",phone:mobile,passwordHash:await hashPassword("Aa1!DuplicateMobile123")}})).rejects.toMatchObject({code:"P2002"});
+  await expect(prisma.user.create({data:{email:synthetic,normalizedEmail:synthetic,passwordHash:await hashPassword("Aa1!DuplicateEmail123")}})).rejects.toMatchObject({code:"P2002"});
+ });
+ it("resets one existing partner login through the governed audited path",async()=>{
+  const distributor=roleUsers.get("DISTRIBUTOR_OWNER")!;
+  const current=(await prisma.user.findUniqueOrThrow({where:{id:distributor.id}})).normalizedEmail;
+  const activeSession=await login(prisma,{email:current,password:distributor.password});
+  const reset=await resetPartnerLoginPassword(prisma,founderId,distributor.id,"Focused partner credential recovery test");
+  expect(reset.temporaryPassword).toHaveLength(24);
+  await expectCode(()=>login(prisma,{email:current,password:distributor.password}),"INVALID_CREDENTIALS");
+  expect((await login(prisma,{email:current,password:reset.temporaryPassword})).userId).toBe(distributor.id);
+  await expectCode(()=>resolveSession(prisma,activeSession.token),"SESSION_INVALID");
+  expect(await prisma.auditLog.count({where:{action:"user.password_reset",entityId:distributor.id}})).toBe(1);
+ });
 });
 describe("Founder bootstrap",()=>{
  it("created one Founder role and audit",async()=>{expect(await prisma.user.count({where:{normalizedEmail:founderEmail}})).toBe(1);expect((await effectivePermissions(prisma,founderId)).has("system:super_admin")).toBe(true);expect(await prisma.auditLog.count({where:{action:"founder.bootstrap"}})).toBe(1);});

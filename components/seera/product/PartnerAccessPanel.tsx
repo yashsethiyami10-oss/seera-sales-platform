@@ -41,6 +41,12 @@ export function PartnerAccessPanel({
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null),
     [revealed, setRevealed] = useState<{ email: string; password: string; roleCode: string } | null>(null),
+    // P1 21-Aug governed password-reset gap fix: this codebase had no way at all to reset an
+    // EXISTING login's password (only ever create a new one) — a real Distributor kept failing
+    // real production login with a provably-correct identifier lookup (User.phone unique match),
+    // narrowing the cause to the password itself, which is unprovable from a hash. Reuses the
+    // exact same one-time-reveal UI already built for CREATE LOGIN below.
+
     [copied, setCopied] = useState(false);
   const roleOptions =
     partnerType === "SUPER_STOCKIST"
@@ -73,26 +79,47 @@ export function PartnerAccessPanel({
                 <td>{m.active ? (hi ? "सक्रिय" : "Active") : hi ? "निरस्त" : "Revoked"}</td>
                 <td>
                   {m.active && (
-                    <button
-                      type="button"
-                      className={styles.secondaryBig}
-                      disabled={busy}
-                      onClick={() => {
-                        const reason = window.prompt(hi ? "निरस्त करने का कारण दर्ज करें" : "Enter a reason to revoke access");
-                        if (!reason) return;
-                        setBusy(true);
-                        setMessage(null);
-                        void patchJson(`/api/foundation/users/${m.userId}`, { action: "revoke_party_membership", membershipId: m.membershipId, reason })
-                          .then(() => {
-                            setMessage({ ok: true, text: hi ? "पहुँच निरस्त की गई।" : "Access revoked." });
-                            router.refresh();
-                          })
-                          .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not revoke access" }))
-                          .finally(() => setBusy(false));
-                      }}
-                    >
-                      {hi ? "निरस्त करें" : "REVOKE"}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className={styles.secondaryBig}
+                        disabled={busy}
+                        onClick={() => {
+                          const reason = window.prompt(hi ? "पासवर्ड रीसेट करने का कारण दर्ज करें" : "Enter a reason to reset this password");
+                          if (!reason) return;
+                          setBusy(true);
+                          setMessage(null);
+                          void patchJson(`/api/foundation/users/${m.userId}`, { action: "reset_password", reason })
+                            .then((result: { email: string; temporaryPassword: string }) => {
+                              setRevealed({ email: result.email, password: result.temporaryPassword, roleCode: m.accessRole });
+                            })
+                            .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not reset password" }))
+                            .finally(() => setBusy(false));
+                        }}
+                      >
+                        {hi ? "पासवर्ड रीसेट करें" : "RESET PASSWORD"}
+                      </button>{" "}
+                      <button
+                        type="button"
+                        className={styles.secondaryBig}
+                        disabled={busy}
+                        onClick={() => {
+                          const reason = window.prompt(hi ? "निरस्त करने का कारण दर्ज करें" : "Enter a reason to revoke access");
+                          if (!reason) return;
+                          setBusy(true);
+                          setMessage(null);
+                          void patchJson(`/api/foundation/users/${m.userId}`, { action: "revoke_party_membership", membershipId: m.membershipId, reason })
+                            .then(() => {
+                              setMessage({ ok: true, text: hi ? "पहुँच निरस्त की गई।" : "Access revoked." });
+                              router.refresh();
+                            })
+                            .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not revoke access" }))
+                            .finally(() => setBusy(false));
+                        }}
+                      >
+                        {hi ? "निरस्त करें" : "REVOKE"}
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>

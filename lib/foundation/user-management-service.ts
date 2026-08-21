@@ -179,6 +179,28 @@ export async function provisionPartnerLogin(prisma: PrismaClient, actorId: strin
   return { user: { id: user.id, email: user.email, name: user.name }, membership, roleCode, temporaryPassword };
 }
 
+// P1 21-Aug governed gap fix: as the comment above provisionPartnerLogin already documented, this
+// codebase had NO mechanism at all to reset an EXISTING user's password (provisionPartnerLogin can
+// only ever CREATE a new user) — a real, previously-flagged "auth-hardening gap". Needed live: a
+// real Distributor (Kuldeep Jha, provisioned 16-Aug) kept failing INVALID_CREDENTIALS after the
+// mobile-login identifier fix; the identifier lookup was proven correct against production data
+// (User.phone is a unique-indexed exact match), which narrows the failure to the password itself —
+// unprovable from a hash alone (see auth-service.ts's login(), which never distinguishes wrong-user
+// from wrong-password by design, for user-enumeration safety). This is the governed remediation:
+// same permission/audit/session-revocation pattern as setUserStatus/removeRole, returns the new
+// temporary password ONCE (never stored in plaintext, never re-shown), same convention
+// provisionPartnerLogin already established.
+export async function resetPartnerLoginPassword(prisma: PrismaClient, actorId: string, userId: string, reason: string) {
+  await authorize(prisma, { actorId, permission: "user:update" });
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const temporaryPassword = generateTemporaryPassword();
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(temporaryPassword), authorizationVersion: { increment: 1 } } });
+  invalidateEffectivePermissionsCache(userId);
+  await revokeAllSessions(prisma, userId, actorId, "PASSWORD_RESET");
+  await recordAudit(prisma, { actorId, action: "user.password_reset", entityType: "User", entityId: userId, reason });
+  return { userId, email: user.email, phone: user.phone, temporaryPassword };
+}
+
 export async function removeRole(prisma: PrismaClient, actorId: string, userId: string, roleCode: string, reason: string) {
   await authorize(prisma, { actorId, permission: "role:remove" });
   const role = await prisma.role.findUniqueOrThrow({ where: { code: roleCode } });
