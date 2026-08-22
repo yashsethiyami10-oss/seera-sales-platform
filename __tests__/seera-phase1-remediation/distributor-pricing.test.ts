@@ -14,9 +14,17 @@ describe("distributor purchase rate derivation (Founder 22-Aug cake +6% / powder
     expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-POWDER-1KG", ssRate: 1165.26 })).toBe(1258.48);
   });
 
-  it("unrelated/unnamed SKU (e.g. Yuva Cake, Shine Plus Powder, Bartan tubs): no invented margin", () => {
-    expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-YUVA-CAKE-BLUE", ssRate: 252.54 })).toBeNull();
-    expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-SHINEPLUS-POWDER-1KG", ssRate: 953.39 })).toBeNull();
+  it("Yuva Detergent Cake: Rule C, exact governed S.S. rate x1.06 (extended 22-Aug — its own real SKU, Founder-named product family)", () => {
+    expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-YUVA-CAKE-BLUE", ssRate: 252.54 })).toBe(267.69);
+  });
+
+  it("Shine Plus Detergent Powder, all 3 real pack sizes: Rule D, exact governed S.S. rate x1.08 (extended 22-Aug)", () => {
+    expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-SHINEPLUS-POWDER-1KG", ssRate: 953.39 })).toBe(1029.66);
+    expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-SHINEPLUS-POWDER-3KG", ssRate: 1144.06 })).toBe(1235.58);
+    expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-SHINEPLUS-POWDER-5KG", ssRate: 1144.06 })).toBe(1235.58);
+  });
+
+  it("unrelated/unnamed SKU (e.g. Bartan tubs): no invented margin", () => {
     expect(deriveDistributorPurchaseRate({ skuCode: "SEERA-BARTAN-300G", ssRate: 50 })).toBeNull();
   });
 

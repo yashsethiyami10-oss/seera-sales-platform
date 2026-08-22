@@ -68,7 +68,10 @@ export function OrderFromSSWizard({
             </p>
             {submittedAmounts && (
               <p>
-                {hi ? "मूल राशि (GST रहित)" : "Basic amount (Excl. GST)"}: ₹{submittedAmounts.subtotal.toFixed(2)} · {hi ? "GST" : "GST"}: ₹{submittedAmounts.taxTotal.toFixed(2)} · <strong>{hi ? "अंतिम राशि" : "Final amount"}: ₹{submittedAmounts.total.toFixed(2)}</strong>
+                {/* P0-4 correction: an order can mix Seera (basic ex-GST) and MUV (GST-inclusive)
+                    lines, so this can't claim one universal "Basic (Excl. GST)" label — Taxable
+                    value/GST/Final are true for both modes. */}
+                {hi ? "कर योग्य राशि" : "Taxable value"}: ₹{submittedAmounts.subtotal.toFixed(2)} · GST: ₹{submittedAmounts.taxTotal.toFixed(2)} · <strong>{hi ? "अंतिम राशि" : "Final amount"}: ₹{submittedAmounts.total.toFixed(2)}</strong>
               </p>
             )}
             <span className={styles.badge}>{hi ? "अनुरोधित" : "REQUESTED"}</span>
@@ -106,7 +109,9 @@ export function OrderFromSSWizard({
             }}
           >
             <p className={styles.emptyHint} style={{ gridColumn: "1/-1" }}>
-              {hi ? "दिखाई गई दरें मूल दरें हैं (GST रहित) — सबमिट करने पर GST अपने-आप जुड़ जाएगा।" : "Rates shown are Basic (Excl. GST) — GST is added automatically on submit."}
+              {hi
+                ? "Seera दरें मूल हैं (GST अलग से जुड़ेगा); MUV दरें अंतिम/GST सहित हैं (कोई अतिरिक्त GST नहीं जुड़ेगा) — प्रत्येक उत्पाद के आगे दर मोड दिखाया गया है।"
+                : "Seera rates are Basic — GST is added on submit. MUV rates are already Final/GST-inclusive — no GST is added on top. The rate mode is shown next to each product."}
             </p>
             {lines.map((line, index) => (
               <fieldset key={line.key} style={{ border: "1px solid #ead8d2", borderRadius: 9, padding: 10, display: "grid", gap: 8 }}>

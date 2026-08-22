@@ -43,12 +43,21 @@ export function DistributorMoneyPanel({ language, distributorId, snapshot }: { l
         <small>{hi ? "पैसा" : "MONEY"}</small>
         <h2>{hi ? "आपका खाता" : "Your account"}</h2>
       </div>
+      {/* P0-3 correction (Founder decision 22-Aug): the single "Outstanding" card previously
+          merged an ambiguous number — it is actually the Distributor's own exposure to its
+          Super Stockist (order-value based, netted against POSTED ledger entries — see
+          canonicalDistributorExposure), not "what retailers owe the Distributor." There is no
+          reliable retailer-receivable ledger in this codebase today (RETAILER_ORDER has no
+          payment-collection tracking), so that card is shown honestly as unavailable rather than
+          invented. Credit Limit/Available Credit show explicit "Not configured"/"Not applicable"
+          text instead of a bare dash, so an unconfigured credit facility never reads as ₹0. */}
       <div className={styles.notice} data-ok="true" style={{ gridColumn: "1/-1" }}>
         <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
-          <div><dt>{hi ? "कुल बकाया" : "Outstanding"}</dt><dd>{money(snapshot.outstanding)}</dd></div>
+          <div><dt>{hi ? "रिटेलर से प्राप्य" : "Receivable from retailers"}</dt><dd>{hi ? "उपलब्ध नहीं (अभी लेजर में ट्रैक नहीं)" : "Not available (not yet ledger-tracked)"}</dd></div>
+          <div><dt>{hi ? "S.S. को देय" : "Payable to S.S."}</dt><dd>{money(snapshot.outstanding)}</dd></div>
           <div><dt>{hi ? "अतिदेय" : "Overdue"}</dt><dd>{money(snapshot.overdue)}</dd></div>
-          <div><dt>{hi ? "क्रेडिट सीमा" : "Credit limit"}</dt><dd>{snapshot.creditLimit == null ? "—" : money(snapshot.creditLimit)}</dd></div>
-          <div><dt>{hi ? "उपलब्ध क्रेडिट" : "Available credit"}</dt><dd>{snapshot.availableCredit == null ? "—" : money(snapshot.availableCredit)}</dd></div>
+          <div><dt>{hi ? "क्रेडिट सीमा" : "Credit limit"}</dt><dd>{snapshot.creditLimit == null ? (hi ? "कॉन्फ़िगर नहीं" : "Not configured") : money(snapshot.creditLimit)}</dd></div>
+          <div><dt>{hi ? "उपलब्ध क्रेडिट" : "Available credit"}</dt><dd>{snapshot.availableCredit == null ? (hi ? "लागू नहीं" : "Not applicable") : money(snapshot.availableCredit)}</dd></div>
           <div><dt>{hi ? "सबसे पुरानी देय तारीख" : "Oldest due"}</dt><dd>{fmtDate(snapshot.oldestDueDate)}</dd></div>
           <div><dt>{hi ? "अंतिम भुगतान" : "Last payment"}</dt><dd>{snapshot.lastPayment ? `${money(snapshot.lastPayment.amount)} · ${fmtDate(snapshot.lastPayment.postedAt)}` : "—"}</dd></div>
           <div><dt>{hi ? "अगली वादा तारीख" : "Next promise"}</dt><dd>{fmtDate(snapshot.promisedPaymentDate)}</dd></div>

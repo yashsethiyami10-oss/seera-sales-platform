@@ -4055,8 +4055,25 @@ export async function OperationalWorkspace({
   } else if (["distributor", "super-stockist"].includes(portal)) {
     const partyType =
         portal === "distributor" ? "DISTRIBUTOR" : "SUPER_STOCKIST",
+      // P0-2 root-cause fix: this list previously only checked SeeraPartyUser.active + partner
+      // type — but requirePartyMembership (called internally by several of the functions this
+      // `parties` list feeds into, e.g. distributorCreditPosition/retailerOrderLineAvailability)
+      // additionally requires partner.lifecycle==="ACTIVE" and a live effectiveFrom/effectiveTo
+      // membership window. A partner on a real SUSPENDED/DEACTIVATED/CLOSED credit/compliance hold
+      // — or a membership whose window has simply lapsed — still showed up here, so the page
+      // rendered as if access were fine right up until a downstream call threw PARTY_SCOPE_DENIED
+      // uncaught. Matching the same criteria up front means a Distributor/S.S. user in that state
+      // now correctly sees "no active party" instead of a half-working page that crashes on some
+      // tabs but not others.
+      now = new Date(),
       links = await db.seeraPartyUser.findMany({
-        where: { userId, active: true, partner: { type: partyType } },
+        where: {
+          userId,
+          active: true,
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+          partner: { type: partyType, lifecycle: "ACTIVE" },
+        },
         include: { partner: true },
       }),
       parties = links.map((x) => ({
@@ -4207,7 +4224,15 @@ export async function OperationalWorkspace({
       const salespersonName = new Map(salespeople.map((u) => [u.id, u.name ?? u.email]));
       const pending = await Promise.all(
         pendingOrders.map(async (order) => {
-          const availability = await retailerOrderLineAvailability(db, userId, order.sellerPartnerId!, order.id);
+          // P0-2 defensive fix: requirePartyMembership (inside retailerOrderLineAvailability)
+          // checks partner.lifecycle/effectiveTo window; the `parties` list above does not — so a
+          // Distributor partner that goes SUSPENDED/DEACTIVATED/CLOSED (a real, normal
+          // credit/compliance-hold state) throws PARTY_SCOPE_DENIED here, uncaught, taking down the
+          // entire Orders list with the generic "Data temporarily unavailable" boundary. One order's
+          // stock-availability lookup failing must never break the whole list — degrade that one
+          // order to "no tracked stock data" instead (ACCEPT still works exactly as it already does
+          // for a Distributor with zero recorded stock, per the stockless-fulfilment fix).
+          const availability = await retailerOrderLineAvailability(db, userId, order.sellerPartnerId!, order.id).catch(() => [] as Awaited<ReturnType<typeof retailerOrderLineAvailability>>);
           const availableFor = (lineId: string) => availability.find((a) => a.lineId === lineId)?.available ?? 0;
           const trackedFor = (lineId: string) => availability.find((a) => a.lineId === lineId)?.tracked ?? false;
           return {
@@ -4387,11 +4412,22 @@ export async function OperationalWorkspace({
           superStockistName={superStockist ? (superStockist.tradeName ?? superStockist.legalName) : null}
           skus={allSkus.map((x) => {
             const rate = distributorRateFor(x);
+            // P0-4 correction: this label previously said "Basic ... (+GST)" for every brand,
+            // which is only true for GST_EXCLUSIVE SKUs (Seera). A GST_INCLUSIVE brand (MUV)
+            // shows the same governed rate as its final price — GST is derived FROM it, never
+            // added on top (createDistributorReplenishment already computes it this way via the
+            // same priceModeForBrand call; this was purely a mislabeled display, not a math bug).
+            const label =
+              rate == null
+                ? undefined
+                : priceModeForBrand(x.brand) === "GST_INCLUSIVE"
+                  ? `Rate ₹${rate.toFixed(2)} (Incl. GST)`
+                  : `Basic ₹${rate.toFixed(2)} (+GST)`;
             return {
               value: x.id,
               label: `${x.productName} (${x.packSize.toString()} ${x.unitType})`,
               brand: x.brand,
-              meta: rate == null ? undefined : `Basic ₹${rate.toFixed(2)} (+GST)`,
+              meta: label,
               unavailable: rate == null,
             };
           })}
@@ -4453,9 +4489,12 @@ export async function OperationalWorkspace({
       const territoryName = new Map(territoryNames.map((t) => [t.id, t.name]));
       const pending = await Promise.all(
         orders.map(async (order) => {
+          // P0-2 defensive fix: same class of risk as the Distributor-portal call sites above — a
+          // party on a real SUSPENDED/DEACTIVATED/CLOSED lifecycle must degrade this one order's
+          // row, never crash the whole S.S. Distributor-orders list.
           const [availability, position] = await Promise.all([
-            distributorOrderLineAvailability(db, userId, order.sellerPartnerId!, order.id),
-            order.buyerPartnerId ? creditPositionFor(db, order.buyerPartnerId, new Date()) : null,
+            distributorOrderLineAvailability(db, userId, order.sellerPartnerId!, order.id).catch(() => [] as Awaited<ReturnType<typeof distributorOrderLineAvailability>>),
+            order.buyerPartnerId ? creditPositionFor(db, order.buyerPartnerId, new Date()).catch(() => null) : null,
           ]);
           const availableFor = (lineId: string) => availability.find((a) => a.lineId === lineId)?.available ?? 0;
           return {
@@ -4808,7 +4847,20 @@ export async function OperationalWorkspace({
       // Money consolidation (Founder section 25): Credit/Outstanding/Ledger/Payments merged into
       // one glanceable view for the normal daily case — the old separate Outstanding/Ledger/
       // Payments screens remain reachable under MORE for advanced use, unchanged.
-      const position = await distributorCreditPosition(db, userId, parties[0].value);
+      // P0-2 defensive fix: `parties` (above) doesn't filter partner.lifecycle/effectiveTo the way
+      // requirePartyMembership (called inside distributorCreditPosition) does — a Distributor
+      // partner on a real SUSPENDED/DEACTIVATED/CLOSED credit hold throws PARTY_SCOPE_DENIED here,
+      // uncaught, previously taking down this whole tab with the generic "Data temporarily
+      // unavailable" boundary instead of a governed, in-app message.
+      const position = await distributorCreditPosition(db, userId, parties[0].value).catch((e) => ifExpectedNotFound<Awaited<ReturnType<typeof distributorCreditPosition>>>(e));
+      if (!position) {
+        workflow = (
+          <EmptyState
+            title={hi ? "खाता जानकारी अभी उपलब्ध नहीं है" : "Account information is not available right now"}
+            description={hi ? "आपकी पार्टनर स्थिति की समीक्षा चल रही है — कृपया अपने Admin से संपर्क करें।" : "Your partner account status is under review — please contact your Admin."}
+          />
+        );
+      } else {
       // Final UI reachability audit fix: the Distributor previously had no in-app signal that a
       // submitted payment was verified by Accounts or that their Super Stockist had generated a
       // receipt for it — this mirrors the same SeeraPaymentRecord + receipt-by-idempotencyKey
@@ -4845,17 +4897,22 @@ export async function OperationalWorkspace({
           }}
         />
       );
+      }
     } else if (
       portal === "distributor" &&
       item.slug === "outstanding" &&
       permissions.has("distributor_credit:view")
     ) {
-      const positions = await Promise.all(
+      // P0-2 defensive fix: same PARTY_SCOPE_DENIED risk as the Money/Credit tab above (a party on
+      // a real SUSPENDED/DEACTIVATED/CLOSED lifecycle) — skip that one party's row rather than
+      // crash this whole multi-party list.
+      const positionsRaw = await Promise.all(
         parties.map(async (party) => ({
           label: party.label,
-          position: await distributorCreditPosition(db, userId, party.value),
+          position: await distributorCreditPosition(db, userId, party.value).catch((e) => ifExpectedNotFound<Awaited<ReturnType<typeof distributorCreditPosition>>>(e)),
         })),
       );
+      const positions = positionsRaw.filter((p): p is { label: string; position: NonNullable<typeof p.position> } => p.position != null);
       workflow = (
         <CreditPanel
           language={language}

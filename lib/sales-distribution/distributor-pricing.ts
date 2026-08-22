@@ -2,19 +2,26 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-// Founder decision 22-Aug: exactly two Seera product families get a governed commercial uplift
-// when a Distributor buys from its authorised Super Stockist — Seera Detergent Cake (+6%) and
-// Seera Detergent Powder (+8%) — applied to the existing governed COMPANY_TO_SS rate (the S.S.'s
-// own procurement rate from Company; already GST-inclusive, matching the same convention
-// workflow-service.ts's deriveInclusiveTax already uses for SS_TO_DISTRIBUTOR). Keyed by the
-// stable SKU `code` identity, never a productName string match, and never hardcoded into any UI
-// component. Deliberately does NOT cover Yuva Cake, Shine Plus Powder, or the Bartan tubs — the
-// Founder named "Seera Detergent Cake"/"Seera Detergent Powder" specifically; inventing a margin
-// for an unnamed product line would be a guess, not a governed rule.
+// Founder decision 22-Aug, extended 22-Aug (Rules C/D): governed commercial uplift applied to the
+// existing governed COMPANY_TO_SS rate (the S.S.'s own procurement rate from Company — a genuine
+// BASIC/EX-GST value; GST is added on top, never extracted from it, per document-lines.ts's
+// priceModeForBrand/deriveExclusiveTax convention for every non-MUV brand). Keyed by the stable
+// SKU `code` identity, never a productName string match, and never hardcoded into any UI
+// component. Real production SKU codes confirmed via scripts/seera/audit-founder-sku-price-matrix-readonly.ts:
+//   Seera Detergent Cake (brand "Seera"): +6%
+//   Yuva Detergent Cake (brand "Yuva", its own real SKU, same governed source rate as Seera Cake): +6%
+//   Seera Detergent Powder 1kg (brand "Seera"): +8%
+//   Shine Plus Detergent Powder — all three real pack sizes (brand "Shine Plus"): +8%
+// Deliberately does NOT cover the Bartan tubs — Founder never named that product family; inventing
+// a margin for it would be a guess, not a governed rule.
 const DISTRIBUTOR_UPLIFT_BY_SKU_CODE: Record<string, number> = {
   "SEERA-CAKE-BLUE": 1.06,
   "SEERA-CAKE-WHITE": 1.06,
+  "SEERA-YUVA-CAKE-BLUE": 1.06,
   "SEERA-POWDER-1KG": 1.08,
+  "SEERA-SHINEPLUS-POWDER-1KG": 1.08,
+  "SEERA-SHINEPLUS-POWDER-3KG": 1.08,
+  "SEERA-SHINEPLUS-POWDER-5KG": 1.08,
 };
 
 export function deriveDistributorPurchaseRate(input: { skuCode: string; ssRate: number }): number | null {

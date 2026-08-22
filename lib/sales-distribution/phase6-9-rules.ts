@@ -50,7 +50,10 @@ export function allocatePayment(input: { paymentAmount: number; alreadyAllocated
   return { allocated: money(input.requested), unapplied: money(input.paymentAmount - input.alreadyAllocated - input.requested) };
 }
 
-export function ageingBucket(dueDate: Date, asOf: Date) { const days = Math.floor((asOf.getTime() - dueDate.getTime()) / 86_400_000); if (days <= 0) return "NOT_DUE"; if (days <= 30) return "1_30"; if (days <= 60) return "31_60"; if (days <= 90) return "61_90"; return "90_PLUS"; }
+// P0-2 defensive hardening: every current caller already guards a null/undefined dueDate before
+// calling this (see credit-service.ts, financial-service.ts), but the function itself had no such
+// guard — cheap insurance against a future unguarded caller throwing on `dueDate.getTime()`.
+export function ageingBucket(dueDate: Date | null | undefined, asOf: Date) { if (!dueDate) return "NOT_DUE"; const days = Math.floor((asOf.getTime() - dueDate.getTime()) / 86_400_000); if (days <= 0) return "NOT_DUE"; if (days <= 30) return "1_30"; if (days <= 60) return "31_60"; if (days <= 90) return "61_90"; return "90_PLUS"; }
 export function assertFormalExtension(input: { originalDueDate: Date; extensionUntil: Date; promisedDate?: Date; graceUntil?: Date }) { if (input.extensionUntil <= input.originalDueDate) throw new Error("INVALID_FORMAL_EXTENSION"); return { originalDueDate: input.originalDueDate, extensionUntil: input.extensionUntil, promisedDate: input.promisedDate, graceUntil: input.graceUntil }; }
 export function reversalEntry(input: { originalEntryId: string; amount: number; debitPartyId: string; creditPartyId: string }) { if (input.amount <= 0) throw new Error("INVALID_REVERSAL"); return { originalEntryId: input.originalEntryId, amount: input.amount, debitPartyId: input.creditPartyId, creditPartyId: input.debitPartyId, type: "REVERSAL" as const }; }
 
