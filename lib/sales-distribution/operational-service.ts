@@ -587,7 +587,15 @@ export async function createBeatPlan(
           ownerId: actorId,
         },
       });
-      if (input.publish)
+      // Final Master Revision (Beat/Route add-on, 22-Aug): same zero-retailer warning as
+      // publishBeatPlan — this is the OTHER path that can publish a plan (create-with-publish in
+      // one step, the UI's "Publish" checkbox at creation time), and must not silently create an
+      // empty unusable plan here either. Same beatId/territoryId-level matching.
+      let retailerCount: number | undefined;
+      if (input.publish) {
+        retailerCount = await tx.seeraRetailer.count({
+          where: { salespersonId: input.employeeId, lifecycle: "ACTIVE", OR: [{ beatId: beat.id }, { marketId: geography.id }, { territoryId: territory.id }] },
+        });
         await tx.notification.create({
           data: {
             recipientId: input.employeeId,
@@ -599,14 +607,15 @@ export async function createBeatPlan(
             payload: { actionPath: "/portal/sales-executive/beat" },
           },
         });
+      }
       await recordAudit(tx, {
         actorId,
         action: input.publish ? "journey_plan.published" : "journey_plan.drafted",
         entityType: "SeeraJourneyPlan",
         entityId: plan.id,
-        afterState: { employeeId: input.employeeId, territory: territory.name, beat: beat.name, geography: geography.name, dayOfWeek: input.dayOfWeek },
+        afterState: { employeeId: input.employeeId, territory: territory.name, beat: beat.name, geography: geography.name, dayOfWeek: input.dayOfWeek, retailerCount },
       });
-      return plan;
+      return { ...plan, retailerCount, retailerWarning: input.publish ? retailerCount === 0 : undefined };
     });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002")
