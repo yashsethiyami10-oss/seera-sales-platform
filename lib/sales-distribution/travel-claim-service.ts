@@ -7,6 +7,23 @@ import { calculateGovernedTa } from "./phase6-9-rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+async function activeHeadquarters(db: Db, employeeId: string, at: Date) {
+  return db.seeraEmployeeHeadquarters.findFirst({ where: { employeeId, status: "ACTIVE", effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] }, orderBy: { effectiveFrom: "desc" } });
+}
+
+async function classifyFromGovernedGeography(db: Db, plannedGeographyId: string | null, headquartersGeographyId: string | null) {
+  if (!plannedGeographyId || !headquartersGeographyId) return null;
+  let current: string | null = plannedGeographyId;
+  const visited = new Set<string>();
+  while (current && !visited.has(current)) {
+    if (current === headquartersGeographyId) return "LOCAL_HQ" as const;
+    visited.add(current);
+    const node: { parentId: string | null } | null = await db.seeraGeographyNode.findUnique({ where: { id: current }, select: { parentId: true } });
+    current = node?.parentId ?? null;
+  }
+  return "OUTSTATION" as const;
+}
+
 async function reviewerFor(db: Db, employeeId: string) {
   const now = new Date();
   return db.seeraAssignment.findFirst({
@@ -33,6 +50,10 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
   const source = estimate.sourceEvents as { reviewRequired?: boolean; method?: string; warnings?: string[] };
   const reviewer = await reviewerFor(db, employeeId);
   const at = session.endedAt ?? new Date();
+  const headquarters = await activeHeadquarters(db, employeeId, at);
+  const governedDutyType = await classifyFromGovernedGeography(db, session.plannedGeographyId ?? null, headquarters?.geographyId ?? null);
+  const dutyType = governedDutyType ?? "UNCLASSIFIED";
+  const dutyClassificationSource = governedDutyType ? "APPROVED_PLANNED_GEOGRAPHY" : headquarters ? "MANAGER_CLASSIFICATION_REQUIRED" : "HEADQUARTERS_NOT_CONFIGURED";
   const policy = await db.seeraTravelPolicy.findFirst({
     where: {
       status: "ACTIVE",
@@ -56,6 +77,8 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
         fixedAllowance: Number(policy.fixedAllowance ?? policy.dailyAllowance ?? 0),
       })
     : null;
+  const daEligible = dutyType === "LOCAL_HQ" ? false : dutyType === "OUTSTATION" ? true : null;
+  const daStatus = dutyType === "LOCAL_HQ" ? "NOT_APPLICABLE" : dutyType === "OUTSTATION" ? "POLICY_NOT_CONFIGURED" : "PENDING_DUTY_CLASSIFICATION";
   const status = source.reviewRequired ? "TRAVEL_REVIEW_REQUIRED" : "READY_FOR_REVIEW";
   const rateSnapshot = policy
     ? {
@@ -88,6 +111,20 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
       policyStatus,
       gpsReviewRequired: Boolean(source.reviewRequired),
       status,
+      dutyType,
+      dutyClassificationSource,
+      classifiedAt: governedDutyType ? at : null,
+      classificationReason: governedDutyType ? "Classified from approved planned geography against effective employee HQ geography" : null,
+      hqAssignmentId: headquarters?.id,
+      taPolicyId: policy?.id,
+      taMode: policy?.policyType,
+      taRatePerKm: policy?.ratePerKm,
+      taAmount: amounts?.travelAmount,
+      daEligible,
+      daPolicyId: null,
+      daAmount: null,
+      daStatus,
+      totalReimbursement: amounts?.total,
     },
     create: {
       claimNumber: `TA-AUTO-${workSessionId.slice(-18)}`,
@@ -106,6 +143,20 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
       policyStatus,
       gpsReviewRequired: Boolean(source.reviewRequired),
       status,
+      dutyType,
+      dutyClassificationSource,
+      classifiedAt: governedDutyType ? at : null,
+      classificationReason: governedDutyType ? "Classified from approved planned geography against effective employee HQ geography" : null,
+      hqAssignmentId: headquarters?.id,
+      taPolicyId: policy?.id,
+      taMode: policy?.policyType,
+      taRatePerKm: policy?.ratePerKm,
+      taAmount: amounts?.travelAmount,
+      daEligible,
+      daPolicyId: null,
+      daAmount: null,
+      daStatus,
+      totalReimbursement: amounts?.total,
       submittedAt: at,
       idempotencyKey: `auto-travel:${workSessionId}`,
     },
@@ -115,7 +166,7 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
     action: "ta.auto_finalized",
     entityType: "SeeraTaClaim",
     entityId: claim.id,
-    afterState: { workSessionId, distanceKm, policyStatus, status, warnings: source.warnings ?? [] },
+    afterState: { workSessionId, distanceKm, policyStatus, status, dutyType, dutyClassificationSource, daStatus, warnings: source.warnings ?? [] },
   });
   return claim;
 }
@@ -131,6 +182,7 @@ async function loadReviewable(db: PrismaClient, reviewerId: string, claimId: str
 export async function approveDailyTravel(db: PrismaClient, reviewerId: string, claimId: string, input: { eligibleDistanceKm: number; reason: string }) {
   await authorize(db, { actorId: reviewerId, permission: "ta_claim:verify" });
   const claim = await loadReviewable(db, reviewerId, claimId);
+  if (claim.dutyType === "UNCLASSIFIED") throw new FoundationError("TA_DUTY_CLASSIFICATION_REQUIRED", "Local HQ or Outstation duty classification is required before approval", 409);
   if (input.eligibleDistanceKm < 0 || !input.reason.trim()) throw new FoundationError("INVALID_TA_APPROVAL", "Eligible distance and reason required", 400);
   const snapshot = claim.rateSnapshot as { policyType?: "PER_KM" | "FIXED_DAILY" | "PER_KM_PLUS_FIXED" | "NONE"; ratePerKm?: string | null; fixedAllowance?: string | null };
   const amounts = claim.policyStatus === "CONFIGURED" && snapshot.policyType
@@ -143,6 +195,8 @@ export async function approveDailyTravel(db: PrismaClient, reviewerId: string, c
       approvedDistanceKm: input.eligibleDistanceKm,
       travelAmount: amounts?.travelAmount,
       totalApproved: amounts?.total,
+      taAmount: amounts?.travelAmount,
+      totalReimbursement: amounts?.total,
       status: "SENT_TO_ACCOUNTS",
       managerVerifiedById: reviewerId,
       approvedAt: now,
@@ -151,6 +205,16 @@ export async function approveDailyTravel(db: PrismaClient, reviewerId: string, c
     },
   });
   await recordAudit(db, { actorId: reviewerId, action: "ta.approved_sent_to_accounts", entityType: "SeeraTaClaim", entityId: claim.id, beforeState: { calculatedDistanceKm: claim.originalDistanceKm.toString() }, afterState: { eligibleDistanceKm: input.eligibleDistanceKm, totalApproved: amounts?.total ?? null } });
+  return result;
+}
+
+export async function classifyDailyTravelDuty(db: PrismaClient, reviewerId: string, claimId: string, input: { dutyType: "LOCAL_HQ" | "OUTSTATION"; reason: string; reference?: string }) {
+  await authorize(db, { actorId: reviewerId, permission: "ta_claim:verify" });
+  const claim = await loadReviewable(db, reviewerId, claimId);
+  if (!input.reason.trim()) throw new FoundationError("TA_DUTY_REASON_REQUIRED", "Duty classification reason required", 400);
+  const daEligible = input.dutyType === "OUTSTATION";
+  const result = await db.seeraTaClaim.update({ where: { id: claim.id }, data: { dutyType: input.dutyType, dutyClassificationSource: "MANAGER_GOVERNED_CLASSIFICATION", classifiedById: reviewerId, classifiedAt: new Date(), classificationReason: `${input.reason}${input.reference ? ` (${input.reference})` : ""}`, daEligible, daPolicyId: null, daAmount: null, daStatus: daEligible ? "POLICY_NOT_CONFIGURED" : "NOT_APPLICABLE" } });
+  await recordAudit(db, { actorId: reviewerId, action: "ta.duty_classified", entityType: "SeeraTaClaim", entityId: claim.id, beforeState: { dutyType: claim.dutyType }, afterState: { dutyType: input.dutyType, source: "MANAGER_GOVERNED_CLASSIFICATION", reason: input.reason, reference: input.reference ?? null, daStatus: result.daStatus } });
   return result;
 }
 
@@ -218,14 +282,16 @@ export async function travelReport(db: PrismaClient, actorId: string, input: { s
   const identityIds = [...new Set([...sessions.map((s) => s.employeeId), ...managerByEmployee.values()])];
   const users = await db.user.findMany({ where: { id: { in: identityIds } }, select: { id: true, name: true, email: true } });
   const names = new Map(users.map((u) => [u.id, u.name ?? u.email]));
-  const grouped = new Map<string, { employeeId: string; employeeName: string; role: string; managerId: string | null; managerName: string | null; workingDays: number; travelDays: number; visits: number; calculatedKm: number; eligibleKm: number; approvedTa: number; sentToAccounts: number; paid: number; pending: number; exceptions: number }>();
+  const headquarters = await db.seeraEmployeeHeadquarters.findMany({ where: { employeeId: { in: sessions.map((s) => s.employeeId) }, status: "ACTIVE", effectiveFrom: { lte: input.to }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: input.from } }] }, orderBy: { effectiveFrom: "desc" } });
+  const hqByEmployee = new Map(headquarters.map((hq) => [hq.employeeId, hq.headquartersName]));
+  const grouped = new Map<string, { employeeId: string; employeeName: string; role: string; managerId: string | null; managerName: string | null; headquarters: string | null; workingDays: number; travelDays: number; visits: number; calculatedKm: number; eligibleKm: number; localHqDays: number; outstationDays: number; taAmount: number; daAmount: number; totalApproved: number; approvedTa: number; sentToAccounts: number; paid: number; pending: number; exceptions: number }>();
   for (const session of sessions) {
     const estimate = estimateBySession.get(session.id); const claim = estimate ? claimByEstimate.get(estimate.id) : undefined;
     if (input.status && !claim) continue;
     const managerId = managerByEmployee.get(session.employeeId) ?? null;
-    const row = grouped.get(session.employeeId) ?? { employeeId: session.employeeId, employeeName: names.get(session.employeeId) ?? session.employeeId, role: session.employeeRole, managerId, managerName: managerId ? names.get(managerId) ?? managerId : null, workingDays: 0, travelDays: 0, visits: 0, calculatedKm: 0, eligibleKm: 0, approvedTa: 0, sentToAccounts: 0, paid: 0, pending: 0, exceptions: 0 };
+    const row = grouped.get(session.employeeId) ?? { employeeId: session.employeeId, employeeName: names.get(session.employeeId) ?? session.employeeId, role: session.employeeRole, managerId, managerName: managerId ? names.get(managerId) ?? managerId : null, headquarters: hqByEmployee.get(session.employeeId) ?? null, workingDays: 0, travelDays: 0, visits: 0, calculatedKm: 0, eligibleKm: 0, localHqDays: 0, outstationDays: 0, taAmount: 0, daAmount: 0, totalApproved: 0, approvedTa: 0, sentToAccounts: 0, paid: 0, pending: 0, exceptions: 0 };
     row.workingDays++; row.visits += session.visits.length; if (estimate) { row.travelDays++; row.calculatedKm += Number(estimate.distanceKm); }
-    if (claim) { row.eligibleKm += Number(claim.approvedDistanceKm ?? claim.claimedDistanceKm); row.approvedTa += Number(claim.totalApproved ?? 0); if (claim.status === "SENT_TO_ACCOUNTS") row.sentToAccounts += Number(claim.totalApproved ?? 0); if (claim.status === "PAID") row.paid += Number(claim.amountPaid ?? 0); if (["READY_FOR_REVIEW", "TRAVEL_REVIEW_REQUIRED", "RETURNED"].includes(claim.status)) row.pending += Number(claim.totalClaimed ?? 0); if (claim.gpsReviewRequired) row.exceptions++; }
+    if (claim) { row.eligibleKm += Number(claim.approvedDistanceKm ?? claim.claimedDistanceKm); if (claim.dutyType === "LOCAL_HQ") row.localHqDays++; if (claim.dutyType === "OUTSTATION") row.outstationDays++; row.taAmount += Number(claim.taAmount ?? 0); row.daAmount += Number(claim.daAmount ?? 0); row.totalApproved += Number(claim.totalApproved ?? 0); row.approvedTa += Number(claim.taAmount ?? claim.totalApproved ?? 0); if (claim.status === "SENT_TO_ACCOUNTS") row.sentToAccounts += Number(claim.totalApproved ?? 0); if (claim.status === "PAID") row.paid += Number(claim.amountPaid ?? 0); if (["READY_FOR_REVIEW", "TRAVEL_REVIEW_REQUIRED", "RETURNED"].includes(claim.status)) row.pending += Number(claim.totalReimbursement ?? claim.totalClaimed ?? 0); if (claim.gpsReviewRequired || claim.dutyType === "UNCLASSIFIED") row.exceptions++; }
     grouped.set(session.employeeId, row);
   }
   const rows = [...grouped.values()];
@@ -245,4 +311,14 @@ export async function configureTravelPolicy(db: PrismaClient, actorId: string, i
   const policy = await db.seeraTravelPolicy.create({ data: { employeeRole: input.employeeRole, vehicleType: input.vehicleType, policyType: input.policyType, ratePerKm: needsRate ? input.ratePerKm : 0, fixedAllowance: needsFixed ? input.fixedAllowance : null, dailyAllowance: needsFixed ? input.fixedAllowance : null, eligibility: { roles: input.employeeRole ? [input.employeeRole] : [], policyType: input.policyType }, effectiveFrom: input.effectiveFrom, effectiveTo: input.effectiveTo, status: input.status, approvedById: actorId } });
   await recordAudit(db, { actorId, action: "travel_policy.configured", entityType: "SeeraTravelPolicy", entityId: policy.id, afterState: { employeeRole: input.employeeRole, policyType: input.policyType, ratePerKm: input.ratePerKm ?? null, fixedAllowance: input.fixedAllowance ?? null, effectiveFrom: input.effectiveFrom.toISOString(), effectiveTo: input.effectiveTo?.toISOString() ?? null, status: input.status } });
   return policy;
+}
+
+export async function configureEmployeeHeadquarters(db: PrismaClient, actorId: string, input: { employeeId: string; headquartersName: string; geographyId?: string; effectiveFrom: Date; effectiveTo?: Date; reason: string }) {
+  await authorize(db, { actorId, permission: "travel_policy:manage" });
+  if (!input.headquartersName.trim() || !input.reason.trim() || (input.effectiveTo && input.effectiveTo <= input.effectiveFrom)) throw new FoundationError("INVALID_EMPLOYEE_HQ", "Headquarters name, reason and valid effective dates are required", 400);
+  await db.user.findUniqueOrThrow({ where: { id: input.employeeId }, select: { id: true } });
+  if (input.geographyId) await db.seeraGeographyNode.findFirstOrThrow({ where: { id: input.geographyId, status: "ACTIVE" }, select: { id: true } });
+  const assignment = await db.seeraEmployeeHeadquarters.create({ data: { employeeId: input.employeeId, headquartersName: input.headquartersName.trim(), geographyId: input.geographyId, effectiveFrom: input.effectiveFrom, effectiveTo: input.effectiveTo, configuredById: actorId, reason: input.reason } });
+  await recordAudit(db, { actorId, action: "employee_headquarters.configured", entityType: "SeeraEmployeeHeadquarters", entityId: assignment.id, afterState: { employeeId: input.employeeId, headquartersName: input.headquartersName.trim(), geographyId: input.geographyId ?? null, effectiveFrom: input.effectiveFrom.toISOString(), effectiveTo: input.effectiveTo?.toISOString() ?? null, reason: input.reason } });
+  return assignment;
 }

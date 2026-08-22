@@ -1410,6 +1410,8 @@ function TaDaSummaryPanel({
               <th>{hi ? "विज़िट" : "Visits"}</th>
               <th>{hi ? "दूरी (किमी)" : "Distance (km)"}</th>
               <th>{hi ? "योग्य किमी" : "Eligible km"}</th>
+              <th>{hi ? "ड्यूटी" : "Duty type"}</th>
+              <th>{hi ? "टीए दर" : "TA rate"}</th>
               <th>{hi ? "टीए" : "TA"}</th>
               <th>{hi ? "डीए योग्य" : "DA eligible"}</th>
               <th>{hi ? "डीए" : "DA"}</th>
@@ -1426,9 +1428,11 @@ function TaDaSummaryPanel({
                 <td>{row.visits}</td>
                 <td>{row.gpsDistanceKm.toFixed(1)}</td>
                 <td>{row.eligibleDistanceKm.toFixed(1)}</td>
+                <td>{row.dutyType}</td>
+                <td>{row.taRatePerKm == null ? "—" : `₹${row.taRatePerKm}/km`}</td>
                 <td>{row.taAmount == null ? "—" : `₹${row.taAmount.toLocaleString("en-IN")}`}</td>
                 <td>{row.daEligible ? (hi ? "हाँ" : "Yes") : hi ? "नहीं" : "No"}</td>
-                <td>{row.daAmount == null ? "—" : `₹${row.daAmount.toLocaleString("en-IN")}`}</td>
+                <td>{row.daStatus === "NOT_APPLICABLE" ? (hi ? "लागू नहीं" : "Not applicable") : row.daStatus === "POLICY_NOT_CONFIGURED" ? (hi ? "नीति लंबित" : "Policy not configured") : row.daAmount == null ? "—" : `₹${row.daAmount.toLocaleString("en-IN")}`}</td>
                 <td>
                   {row.hqStart == null ? "—" : row.hqStart ? "✓" : "!"} /{" "}
                   {row.hqReturn == null ? "—" : row.hqReturn ? "✓" : "!"}
@@ -1456,14 +1460,14 @@ function TravelReportPanel({ language, report }: { language: "EN" | "HI"; report
     <div><small>{hi ? "यात्रा और टीए रिपोर्ट" : "TRAVEL & TA REPORT"}</small><h2>{hi ? "अधिकृत सारांश" : "Authoritative summary"}</h2></div>
     <form method="get" className={styles.filters} style={{ gridColumn: "1/-1" }}><label>{hi ? "से" : "From"}<input type="date" name="from" /></label><label>{hi ? "तक" : "To"}<input type="date" name="to" /></label><label>{hi ? "कर्मचारी" : "Employee"}<select name="employee"><option value="">{hi ? "सभी" : "All"}</option>{report.rows.map((row) => <option key={row.employeeId} value={row.employeeId}>{row.employeeName}</option>)}</select></label><label>{hi ? "प्रबंधक" : "Manager"}<select name="manager"><option value="">{hi ? "सभी" : "All"}</option>{[...new Map(report.rows.filter((row) => row.managerId).map((row) => [row.managerId!, row.managerName ?? row.managerId!])).entries()].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>{hi ? "भूमिका" : "Role"}<select name="role"><option value="">{hi ? "सभी" : "All"}</option><option>SALES_EXECUTIVE</option><option>SALES_MANAGER</option></select></label><label>{hi ? "स्थिति" : "Status"}<select name="status"><option value="">{hi ? "सभी" : "All"}</option><option>READY_FOR_REVIEW</option><option>TRAVEL_REVIEW_REQUIRED</option><option>SENT_TO_ACCOUNTS</option><option>PAID</option><option>MANAGER_REJECTED</option><option>RETURNED</option></select></label><button>{hi ? "लागू करें" : "Apply"}</button></form>
     <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}><table><thead><tr>
-      <th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "भूमिका" : "Role"}</th><th>{hi ? "प्रबंधक" : "Manager"}</th><th>{hi ? "कार्य दिवस" : "Working days"}</th><th>{hi ? "यात्रा दिवस" : "Travel days"}</th><th>{hi ? "विज़िट" : "Visits"}</th><th>{hi ? "गणना किमी" : "Calculated km"}</th><th>{hi ? "योग्य किमी" : "Eligible km"}</th><th>{hi ? "स्वीकृत" : "Approved TA"}</th><th>{hi ? "अकाउंट्स" : "Sent to Accounts"}</th><th>{hi ? "भुगतान" : "Paid"}</th><th>{hi ? "लंबित" : "Pending"}</th><th>{hi ? "अपवाद" : "Exceptions"}</th>
-    </tr></thead><tbody>{report.rows.map((row) => <tr key={row.employeeId}><td>{row.employeeName}</td><td>{row.role}</td><td>{row.managerName ?? "—"}</td><td>{row.workingDays}</td><td>{row.travelDays}</td><td>{row.visits}</td><td>{row.calculatedKm.toFixed(1)}</td><td>{row.eligibleKm.toFixed(1)}</td><td>₹{row.approvedTa.toLocaleString("en-IN")}</td><td>₹{row.sentToAccounts.toLocaleString("en-IN")}</td><td>₹{row.paid.toLocaleString("en-IN")}</td><td>₹{row.pending.toLocaleString("en-IN")}</td><td>{row.exceptions}</td></tr>)}</tbody></table></div>
+      <th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "भूमिका" : "Role"}</th><th>{hi ? "प्रबंधक" : "Manager"}</th><th>HQ</th><th>{hi ? "कार्य दिवस" : "Working days"}</th><th>{hi ? "यात्रा दिवस" : "Travel days"}</th><th>{hi ? "विज़िट" : "Visits"}</th><th>{hi ? "गणना किमी" : "Calculated km"}</th><th>{hi ? "योग्य किमी" : "Eligible km"}</th><th>{hi ? "स्थानीय" : "Local days"}</th><th>{hi ? "बाहरी" : "Outstation days"}</th><th>TA</th><th>DA</th><th>{hi ? "कुल स्वीकृत" : "Total approved"}</th><th>{hi ? "अकाउंट्स" : "Sent to Accounts"}</th><th>{hi ? "भुगतान" : "Paid"}</th><th>{hi ? "लंबित" : "Pending"}</th><th>{hi ? "अपवाद" : "Exceptions"}</th>
+    </tr></thead><tbody>{report.rows.map((row) => <tr key={row.employeeId}><td>{row.employeeName}</td><td>{row.role}</td><td>{row.managerName ?? "—"}</td><td>{row.headquarters ?? "—"}</td><td>{row.workingDays}</td><td>{row.travelDays}</td><td>{row.visits}</td><td>{row.calculatedKm.toFixed(1)}</td><td>{row.eligibleKm.toFixed(1)}</td><td>{row.localHqDays}</td><td>{row.outstationDays}</td><td>₹{row.taAmount.toLocaleString("en-IN")}</td><td>₹{row.daAmount.toLocaleString("en-IN")}</td><td>₹{row.totalApproved.toLocaleString("en-IN")}</td><td>₹{row.sentToAccounts.toLocaleString("en-IN")}</td><td>₹{row.paid.toLocaleString("en-IN")}</td><td>₹{row.pending.toLocaleString("en-IN")}</td><td>{row.exceptions}</td></tr>)}</tbody></table></div>
   </section>;
 }
 
 function AccountsTravelHistory({ language, claims }: { language: "EN" | "HI"; claims: Awaited<ReturnType<typeof accountsTravelClaims>> }) {
   const hi = language === "HI";
-  return <section className={styles.section}><div><small>{hi ? "अकाउंट्स यात्रा" : "ACCOUNTS TRAVEL"}</small><h2>{hi ? "लंबित भुगतान और इतिहास" : "Pending payment and history"}</h2></div><div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}><table><thead><tr><th>{hi ? "दावा" : "Claim"}</th><th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "दिनांक" : "Date"}</th><th>{hi ? "गणना किमी" : "Calculated km"}</th><th>{hi ? "योग्य किमी" : "Eligible km"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "स्थिति" : "Status"}</th></tr></thead><tbody>{claims.map((claim) => <tr key={claim.id}><td>{claim.claimNumber}</td><td>{claim.employeeId}</td><td>{claim.claimDate.toLocaleDateString(hi ? "hi-IN" : "en-IN")}</td><td>{Number(claim.originalDistanceKm).toFixed(1)}</td><td>{Number(claim.approvedDistanceKm ?? claim.claimedDistanceKm).toFixed(1)}</td><td>{claim.totalApproved == null ? "Policy not configured" : `₹${Number(claim.totalApproved).toLocaleString("en-IN")}`}</td><td>{claim.status}</td></tr>)}</tbody></table></div></section>;
+  return <section className={styles.section}><div><small>{hi ? "अकाउंट्स यात्रा" : "ACCOUNTS TRAVEL"}</small><h2>{hi ? "लंबित भुगतान और इतिहास" : "Pending payment and history"}</h2></div><div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}><table><thead><tr><th>{hi ? "दावा" : "Claim"}</th><th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "दिनांक" : "Date"}</th><th>{hi ? "ड्यूटी" : "Duty"}</th><th>{hi ? "गणना किमी" : "Calculated km"}</th><th>{hi ? "योग्य किमी" : "Eligible km"}</th><th>{hi ? "टीए दर" : "TA rate"}</th><th>TA</th><th>DA</th><th>{hi ? "कुल" : "Total"}</th><th>{hi ? "स्थिति" : "Status"}</th></tr></thead><tbody>{claims.map((claim) => <tr key={claim.id}><td>{claim.claimNumber}</td><td>{claim.employeeId}</td><td>{claim.claimDate.toLocaleDateString(hi ? "hi-IN" : "en-IN")}</td><td>{claim.dutyType}</td><td>{Number(claim.originalDistanceKm).toFixed(1)}</td><td>{Number(claim.approvedDistanceKm ?? claim.claimedDistanceKm).toFixed(1)}</td><td>{claim.taRatePerKm == null ? "—" : `₹${Number(claim.taRatePerKm)}/km`}</td><td>{claim.taAmount == null ? "—" : `₹${Number(claim.taAmount).toLocaleString("en-IN")}`}</td><td>{claim.daStatus === "NOT_APPLICABLE" ? "Not applicable" : claim.daStatus === "POLICY_NOT_CONFIGURED" ? "Policy not configured" : claim.daAmount == null ? "—" : `₹${Number(claim.daAmount).toLocaleString("en-IN")}`}</td><td>{claim.totalApproved == null ? "—" : `₹${Number(claim.totalApproved).toLocaleString("en-IN")}`}</td><td>{claim.status}</td></tr>)}</tbody></table></div></section>;
 }
 
 function BeatRoutePanel({
@@ -3120,8 +3124,12 @@ export async function OperationalWorkspace({
   } else if (portal === "founder-admin" && item.slug === "ta-expenses") {
     const reportTo = query.to ? new Date(query.to) : new Date();
     const reportFrom = query.from ? new Date(query.from) : new Date(reportTo.getFullYear(), reportTo.getMonth(), 1);
-    const report = await travelReport(db, userId, { scope: "ORGANIZATION", from: reportFrom, to: reportTo, employeeId: query.employee || undefined, managerId: query.manager || undefined, role: query.role || undefined, status: query.status || undefined });
-    workflow = <><TravelPolicyActions language={language} /><TravelReportPanel language={language} report={report} /></>;
+    const [report, travelEmployees, travelGeographies] = await Promise.all([
+      travelReport(db, userId, { scope: "ORGANIZATION", from: reportFrom, to: reportTo, employeeId: query.employee || undefined, managerId: query.manager || undefined, role: query.role || undefined, status: query.status || undefined }),
+      db.user.findMany({ where: { status: "ACTIVE" }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
+      db.seeraGeographyNode.findMany({ where: { status: "ACTIVE" }, select: { id: true, name: true, level: true }, orderBy: [{ level: "asc" }, { name: "asc" }] }),
+    ]);
+    workflow = <><TravelPolicyActions language={language} employees={travelEmployees.map((employee) => ({ id: employee.id, label: employee.name ?? employee.email }))} geographies={travelGeographies.map((geography) => ({ id: geography.id, label: `${geography.level} · ${geography.name}` }))} /><TravelReportPanel language={language} report={report} /></>;
   } else if (
     portal === "accounts" &&
     ["payments", "payment-inbox", "reconciliation"].includes(item.slug)
@@ -3443,6 +3451,8 @@ export async function OperationalWorkspace({
           hotelStay: x.hotelStay,
           hotelAmount: Number(x.hotelAmount ?? 0),
           employeeName: x.employeeName,
+          dutyType: x.dutyType,
+          daStatus: x.daStatus,
         }))}/><TravelReportPanel language={language} report={report} /></>
     );
   } else if (portal === "sales-manager" && item.slug === "my-ta") {

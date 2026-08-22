@@ -243,6 +243,10 @@ export async function executiveTaDaMonthlySummary(
       status: claim?.status ?? (session.status === "ENDED" ? "FINALIZATION_PENDING" : "IN_PROGRESS"),
       gpsReviewRequired: claim?.gpsReviewRequired ?? false,
       claimId: claim?.id ?? null,
+      dutyType: claim?.dutyType ?? "UNCLASSIFIED",
+      taRatePerKm: claim?.taRatePerKm == null ? null : Number(claim.taRatePerKm),
+      daStatus: claim?.daStatus ?? "NOT_EVALUATED",
+      totalReimbursement: claim?.totalReimbursement == null ? null : Number(claim.totalReimbursement),
     };
   });
   return {

@@ -436,6 +436,18 @@ enum TravelPolicyStatus {
   INACTIVE
 }
 
+enum TravelDutyType {
+  UNCLASSIFIED
+  LOCAL_HQ
+  OUTSTATION
+}
+
+enum DaPolicyType {
+  HALF_DAY
+  FULL_DAY
+  OVERNIGHT
+}
+
 enum PartnerLifecycleAction {
   SUSPEND
   DEACTIVATE
@@ -1227,6 +1239,41 @@ model SeeraHqConfiguration {
 
   @@index([status, effectiveFrom, effectiveTo])
   @@map("seera_hq_configurations")
+}
+
+model SeeraEmployeeHeadquarters {
+  id               String       @id @default(cuid())
+  employeeId       String
+  headquartersName String
+  geographyId      String?
+  status           MasterStatus @default(ACTIVE)
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  configuredById   String
+  reason           String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, status, effectiveFrom, effectiveTo])
+  @@index([geographyId, status])
+  @@map("seera_employee_headquarters")
+}
+
+model SeeraDaPolicy {
+  id             String             @id @default(cuid())
+  employeeRole   String?
+  policyType     DaPolicyType
+  amount         Decimal?           @db.Decimal(12, 2)
+  status         TravelPolicyStatus @default(INACTIVE)
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  approvedById   String
+  createdAt      DateTime           @default(now())
+
+  @@unique([employeeRole, policyType, effectiveFrom])
+  @@index([status, effectiveFrom, effectiveTo])
+  @@map("seera_da_policies")
 }
 
 model SeeraVisit {
@@ -2125,6 +2172,21 @@ model SeeraTaClaim {
   returnedAt           DateTime?
   paymentReference     String?
   amountPaid           Decimal?      @db.Decimal(14, 2)
+  dutyType             TravelDutyType @default(UNCLASSIFIED)
+  dutyClassificationSource String?
+  classifiedById       String?
+  classifiedAt         DateTime?
+  classificationReason String?
+  hqAssignmentId       String?
+  taPolicyId           String?
+  taMode               TravelPolicyType?
+  taRatePerKm          Decimal?      @db.Decimal(12, 2)
+  taAmount             Decimal?      @db.Decimal(14, 2)
+  daEligible           Boolean?
+  daPolicyId           String?
+  daAmount             Decimal?      @db.Decimal(14, 2)
+  daStatus             String        @default("NOT_EVALUATED")
+  totalReimbursement   Decimal?      @db.Decimal(14, 2)
   idempotencyKey       String        @unique
   submittedAt          DateTime?
   paidAt               DateTime?

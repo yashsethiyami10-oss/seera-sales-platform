@@ -17,6 +17,8 @@ type Claim = {
   hotelStay: boolean;
   hotelAmount: number;
   employeeName?: string;
+  dutyType?: string;
+  daStatus?: string;
 };
 
 async function send(endpoint: string, body: unknown) {
@@ -176,6 +178,7 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                 {c.hotelStay ? ` · ${hi ? "होटल" : "Hotel"} ₹${c.hotelAmount.toLocaleString("en-IN")}` : ""}
                 {c.purpose ? ` · ${c.purpose}` : ""}
               </p>
+              <p>{hi ? "ड्यूटी" : "Duty"}: {c.dutyType ?? "UNCLASSIFIED"} · DA: {c.daStatus ?? "NOT_EVALUATED"}</p>
               <form
                 className={styles.inlineActions}
                 onSubmit={(event) => {
@@ -201,6 +204,20 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
               >
                 <input name="distance" type="number" min="0" step="0.1" defaultValue={c.claimedDistanceKm} required />
                 <input name="reason" placeholder={hi ? "कारण" : "Reason"} required />
+                <select name="dutyType" defaultValue={c.dutyType === "OUTSTATION" ? "OUTSTATION" : "LOCAL_HQ"}><option>LOCAL_HQ</option><option>OUTSTATION</option></select>
+                <button
+                  disabled={busy}
+                  type="button"
+                  onClick={(event) => {
+                    const form = new FormData(event.currentTarget.closest("form")!);
+                    void (async () => {
+                      setBusy(true); setMessage("");
+                      try { await send("/api/travel/classification", { claimId: c.id, dutyType: String(form.get("dutyType")), reason: String(form.get("reason")) }); setMessage(hi ? "ड्यूटी वर्गीकृत की गई।" : "Duty classified."); router.refresh(); }
+                      catch (error) { setMessage(error instanceof Error ? error.message : "Action failed"); }
+                      finally { setBusy(false); }
+                    })();
+                  }}
+                >{hi ? "ड्यूटी सेट करें" : "Set duty"}</button>
                 <button disabled={busy}>{hi ? "सत्यापित करें" : "Verify"}</button>
                 <button
                   disabled={busy}
