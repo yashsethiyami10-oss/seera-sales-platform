@@ -76,7 +76,7 @@ async function teamEmployeeIdsForManager(prisma: PrismaClient, managerId: string
 // parallel assignment system, just the existing SeeraRetailer.salespersonId -> distributorId trail.
 export async function distributorsForEmployeeIds(prisma: PrismaClient, employeeIds: string[]) {
   const mapped = await prisma.seeraRetailer.findMany({
-    where: { salespersonId: { in: employeeIds }, distributorId: { not: null } },
+    where: { salespersonId: { in: employeeIds }, distributorId: { not: null }, lifecycle: "ACTIVE" },
     select: { distributorId: true },
     distinct: ["distributorId"],
   });

@@ -1061,7 +1061,7 @@ export async function assignRetailerCommercialParty(
     throw new FoundationError("ASSIGNMENT_REASON_REQUIRED", "A reason is required to reassign a retailer's supplying party", 400);
   const employeeIds = await managerTeamEmployeeIds(db, managerId);
   const retailer = await db.seeraRetailer.findFirst({
-    where: { id: input.retailerId, salespersonId: { in: employeeIds } },
+    where: { id: input.retailerId, salespersonId: { in: employeeIds }, lifecycle: "ACTIVE" },
   });
   if (!retailer) throw new FoundationError("RETAILER_SCOPE_DENIED", "Retailer is outside your team's scope", 403);
   const partner = await db.seeraPartner.findFirst({
@@ -2267,7 +2267,7 @@ export async function managerAlerts(db: PrismaClient, managerId: string, now = n
   }
 
   const mappedDistributors = await db.seeraRetailer.findMany({
-    where: { salespersonId: { in: employeeIds }, distributorId: { not: null } },
+    where: { salespersonId: { in: employeeIds }, distributorId: { not: null }, lifecycle: "ACTIVE" },
     select: { distributorId: true },
     distinct: ["distributorId"],
   });

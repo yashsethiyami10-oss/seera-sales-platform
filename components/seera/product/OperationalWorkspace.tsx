@@ -47,6 +47,9 @@ import { ApprovalActions, MasterActions } from "./GovernedActions";
 import { FinanceControlActions } from "./FinanceControlActions";
 import { ManagerFieldActions } from "./ManagerFieldActions";
 import { BeatPlannerActions } from "./BeatPlannerActions";
+import { UnmappedRetailersPanel } from "./UnmappedRetailersPanel";
+import { RetailerCleanupPanel } from "./RetailerCleanupPanel";
+import { unmappedRetailers, retailerCleanupOverview } from "@/lib/sales-distribution/retailer-lifecycle-service";
 import { FieldForceAssignmentPanel } from "./FieldForceAssignmentPanel";
 import { AssignDistributorToExecutivePanel } from "./AssignDistributorToExecutivePanel";
 import { CompleteFieldForceSetupPanel } from "./CompleteFieldForceSetupPanel";
@@ -58,6 +61,8 @@ import { moneyDeskHome, moneyDeskSupportingData } from "@/lib/finance/money-desk
 import { MONEY_DESK_PURPOSE_CODES, purposeDefinition } from "@/lib/finance/money-desk-registry";
 import { DeliveryActions } from "./DeliveryActions";
 import { documentSelectorData } from "@/lib/sales-distribution/document-portal-service";
+import { invoiceNumberingStatus } from "@/lib/sales-distribution/billing-service";
+import { InvoiceNumberingPanel } from "./InvoiceNumberingPanel";
 import { distributorCreditPosition, superStockistDistributorCreditOverview, superStockistCreditExtensionHistory, creditPositionFor, superStockistDistributorCollectionsSnapshot, founderDistributorCreditOversight } from "@/lib/sales-distribution/credit-service";
 import { ledgerReadModel, partyOutstanding } from "@/lib/sales-distribution/financial-service";
 import { deriveDistributorPurchaseRate } from "@/lib/sales-distribution/distributor-pricing";
@@ -2389,7 +2394,7 @@ export async function OperationalWorkspace({
     // resolves. A small redundant session lookup (sessionForContext, cheap/indexed, same filter
     // executiveDashboard already uses internally) is folded into THIS batch instead, so
     // workingDistributor/visit can run in their own single follow-up Promise.all — 2 stages total.
-    const [dashboardData, beat, distributorFollowUp, skus, authorizedDistributors, sessionForContext] = await Promise.all([
+    const [dashboardData, beat, distributorFollowUp, skus, authorizedDistributors, sessionForContext, beatNodes] = await Promise.all([
       executiveDashboard(db, userId, now),
       executiveBeat(db, userId, "today", now),
       executiveDistributorFollowUp(db, userId, now),
@@ -2399,6 +2404,16 @@ export async function OperationalWorkspace({
         where: { employeeId: userId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
         orderBy: { startedAt: "desc" },
         select: { id: true, workingDistributorId: true },
+      }),
+      // Final Retailer Cleanup + Handover (22-Aug): real, existing Beat nodes only (never
+      // freshly-typed/guessed geography) — offered on Add Customer so a real retailer created
+      // going forward starts with proper geography instead of joining the null/null/null gap the
+      // previous 16 test retailers all had.
+      db.seeraGeographyNode.findMany({
+        where: { level: "BEAT" },
+        select: { id: true, name: true, parentId: true },
+        orderBy: { name: "asc" },
+        take: 300,
       }),
     ]);
     const session = dashboardData.session;
@@ -2410,6 +2425,16 @@ export async function OperationalWorkspace({
       return city ? `${firm} — ${city}` : firm;
     };
     const distributorOptions = authorizedDistributors.map((d) => ({ value: d.id, label: distributorLabel(d) }));
+    const beatTerritoryIds = [...new Set(beatNodes.map((b) => b.parentId).filter((x): x is string => Boolean(x)))];
+    const beatTerritories = beatTerritoryIds.length
+      ? await db.seeraGeographyNode.findMany({ where: { id: { in: beatTerritoryIds } }, select: { id: true, name: true } })
+      : [];
+    const beatTerritoryName = new Map(beatTerritories.map((t) => [t.id, t.name]));
+    const beatOptions = beatNodes.map((b) => ({
+      value: b.id,
+      label: b.parentId && beatTerritoryName.has(b.parentId) ? `${b.name} (${beatTerritoryName.get(b.parentId)})` : b.name,
+      territoryId: b.parentId ?? "",
+    }));
     const [workingDistributor, visit] = await Promise.all([
       sessionForContext?.workingDistributorId
         ? db.seeraPartner.findUnique({
@@ -2443,6 +2468,7 @@ export async function OperationalWorkspace({
           today: dashboardData.today,
         }}
         distributorOptions={distributorOptions}
+        beatOptions={beatOptions}
         session={
           session
             ? {
@@ -2655,14 +2681,26 @@ export async function OperationalWorkspace({
     // reads in this file (delivered-sales, instructions) — final audit fix, was the only one of the
     // four narrowed to a single literal value.
     const assignments = await db.seeraAssignment.findMany({ where: { assignmentType: { in: ["MANAGER_TEAM", "TEAM"] }, targetId: userId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, select: { subjectId: true } });
-    const [executives, territories, beats, places, distributors, plans] = await Promise.all([
+    const [executives, territories, beats, places, distributors, plans, unmapped, beatNodesForAssignment] = await Promise.all([
       db.user.findMany({ where: { id: { in: assignments.map((x) => x.subjectId) }, status: "ACTIVE" }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
       geographySuggestions(db, userId, "TERRITORY"),
       geographySuggestions(db, userId, "BEAT"),
       db.seeraGeographyNode.findMany({ where: { level: { in: [...GEOGRAPHY_TYPES] }, status: "ACTIVE" }, select: { name: true }, orderBy: { name: "asc" }, take: 300 }),
       db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 250 }),
       managerBeatPlans(db, userId),
+      unmappedRetailers(db, userId),
+      db.seeraGeographyNode.findMany({ where: { level: "BEAT" }, select: { id: true, name: true, parentId: true }, orderBy: { name: "asc" }, take: 300 }),
     ]);
+    const unmappedBeatTerritoryIds = [...new Set(beatNodesForAssignment.map((b) => b.parentId).filter((x): x is string => Boolean(x)))];
+    const unmappedBeatTerritories = unmappedBeatTerritoryIds.length
+      ? await db.seeraGeographyNode.findMany({ where: { id: { in: unmappedBeatTerritoryIds } }, select: { id: true, name: true } })
+      : [];
+    const unmappedBeatTerritoryName = new Map(unmappedBeatTerritories.map((t) => [t.id, t.name]));
+    const unmappedBeatOptions = beatNodesForAssignment.map((b) => ({
+      value: b.id,
+      label: b.parentId && unmappedBeatTerritoryName.has(b.parentId) ? `${b.name} (${unmappedBeatTerritoryName.get(b.parentId)})` : b.name,
+      territoryId: b.parentId ?? "",
+    }));
     workflow = (
       <BeatPlannerActions
         language={language}
@@ -2688,6 +2726,12 @@ export async function OperationalWorkspace({
           isFuture: p.isFuture,
         }))}
       />
+    );
+    workflow = (
+      <>
+        {workflow}
+        <UnmappedRetailersPanel language={language} retailers={unmapped} beatSuggestions={unmappedBeatOptions} />
+      </>
     );
   } else if (portal === "sales-manager" && item.slug === "team-review") {
     const [scorecard, syncStatus] = await Promise.all([managerTeamScorecard(db, userId), teamSyncStatus(db, userId)]);
@@ -3608,6 +3652,53 @@ export async function OperationalWorkspace({
       />
     );
   } else if (
+    item.slug === "billing-profile" &&
+    ["distributor", "super-stockist"].includes(portal) &&
+    (permissions.has("document:issue") || permissions.has("document:create"))
+  ) {
+    // Final Retailer Cleanup + Handover (Part 14, 22-Aug): "S.S. must not need Founder/Admin 360
+    // for routine work" — invoice numbering is routine (it changes as their physical book
+    // progresses) and is now reachable directly from their own portal nav via requireIssuerScope's
+    // self-service party-membership check. Initial legal/GST billing-profile VERIFICATION stays a
+    // one-time Founder/Admin step (creates a real legal identity record, not routine adjustment) —
+    // shown here read-only with a clear "contact Founder/Admin" message when not yet verified.
+    const ownerType = portal === "distributor" ? "DISTRIBUTOR" : "SUPER_STOCKIST";
+    const data = await documentSelectorData(db, userId, portal);
+    const ownerId = data.profiles[0]?.ownerId;
+    const [profile, numbering] = ownerId
+      ? await Promise.all([
+          db.seeraBillingProfile.findFirst({
+            where: { ownerType, ownerId, verificationStatus: "VERIFIED", effectiveTo: null },
+            orderBy: { effectiveFrom: "desc" },
+          }),
+          invoiceNumberingStatus(db, userId, { ownerType, ownerId, documentType: "TAX_INVOICE" }).catch(() => null),
+        ])
+      : [null, null];
+    workflow = (
+      <section className={styles.panel}>
+        <div>
+          <small>{hi ? "बिलिंग प्रोफ़ाइल" : "BILLING PROFILE"}</small>
+          <h2>{hi ? "आपकी कानूनी बिलिंग पहचान" : "Your legal billing identity"}</h2>
+        </div>
+        {!profile ? (
+          <p className={styles.emptyHint}>
+            {hi
+              ? "आपकी बिलिंग प्रोफ़ाइल अभी सत्यापित नहीं है — कृपया Founder/Admin से संपर्क करें।"
+              : "Your billing profile is not verified yet — please contact Founder/Admin to complete verification."}
+          </p>
+        ) : (
+          <dl className={styles.detail}>
+            <div><dt>{hi ? "कानूनी नाम" : "Legal name"}</dt><dd>{profile.legalName}</dd></div>
+            <div><dt>{hi ? "GST स्थिति" : "GST status"}</dt><dd>{profile.gstRegistered ? `${hi ? "पंजीकृत" : "Registered"} · ${profile.gstin}` : hi ? "अपंजीकृत" : "Unregistered"}</dd></div>
+            <div><dt>{hi ? "राज्य" : "State"}</dt><dd>{profile.state} ({profile.stateCode})</dd></div>
+          </dl>
+        )}
+        {profile && ownerId && numbering && (
+          <InvoiceNumberingPanel language={language} ownerType={ownerType} ownerId={ownerId} status={numbering} />
+        )}
+      </section>
+    );
+  } else if (
     ["documents", "billing"].includes(item.slug) &&
     (permissions.has("document:issue") ||
       permissions.has("document:upload") ||
@@ -3764,6 +3855,14 @@ export async function OperationalWorkspace({
           };
         })}
         unconfiguredGstSkuCount={skus.filter((s) => s.status === "ACTIVE" && (s.taxRate == null || !s.hsn)).length}
+      />
+    );
+  } else if (item.slug === "retailer-cleanup" && permissions.has("master:manage")) {
+    const cleanup = await retailerCleanupOverview(db, userId);
+    workflow = (
+      <RetailerCleanupPanel
+        language={language}
+        retailers={cleanup.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }))}
       />
     );
   } else if (

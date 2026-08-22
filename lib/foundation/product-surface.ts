@@ -110,6 +110,17 @@ const founder: SurfaceItem[] = [
     "retailers",
     "network:manage",
   ),
+  // Final Retailer Cleanup + Handover (22-Aug): one-time governed worklist so the Founder can
+  // archive/hard-delete every test/UAT retailer through the real app (production DB writes are
+  // categorically blocked outside it — see lib/database/identity-guard.ts) before team handover.
+  item(
+    "retailer-cleanup",
+    "Retailer Cleanup",
+    "रिटेलर क्लीनअप",
+    "⌫",
+    "retailers",
+    "master:manage",
+  ),
   item(
     "prospects",
     "Distributor prospects",
@@ -459,6 +470,7 @@ const distributor: SurfaceItem[] = [
   g(G.distMore, item("claims", "Claims", "दावे", "◇", "claims", "distributor_claims:manage")),
   g(G.distMore, item("quotations", "Quotations", "कोटेशन", "▧", "documents", "document:create")),
   g(G.distMore, item("billing", "Billing", "बिलिंग", "▤", "documents", "document:create")),
+  g(G.distMore, item("billing-profile", "Billing Profile & Numbering", "बिलिंग प्रोफ़ाइल और नंबरिंग", "☰", "documents", "document:create")),
   g(G.distMore, shared.documents),
   g(G.distMore, item("reports", "Reports", "रिपोर्ट", "▨", "analytics", "distributor_orders:view")),
   shared.notifications,
@@ -509,6 +521,7 @@ const stockist: SurfaceItem[] = [
   g(G.ssDistributors, item("credit", "Distributor credit", "वितरक क्रेडिट", "△", "finance", "partner_credit:enforce")),
   g(G.ssBilling, item("quotations", "Quotations", "कोटेशन", "▧", "documents", "document:create")),
   g(G.ssBilling, item("billing", "GST billing", "जीएसटी बिलिंग", "▤", "documents", "document:create")),
+  g(G.ssBilling, item("billing-profile", "Billing Profile & Numbering", "बिलिंग प्रोफ़ाइल और नंबरिंग", "☰", "documents", "document:create")),
   g(G.ssBilling, item("payments", "Payments", "भुगतान", "₹", "finance", "payment_proof:create")),
   g(G.ssBilling, item("collections", "Collections", "संग्रह", "₹", "finance", "payment_promise:create")),
   g(G.ssBilling, item("outstanding", "Outstanding", "बकाया", "₹", "finance", "ledger:view")),

@@ -42,6 +42,7 @@ import {
 } from "@/lib/sales-distribution/distributor-easy-mode-service";
 import { acceptAndAllocateDistributorOrder } from "@/lib/sales-distribution/super-stockist-easy-mode-service";
 import { createDistributorForSuperStockist, updateDistributorCreditPolicy, createSuperStockist, createCompanyDirectPartner, reassignDistributorToSuperStockist, settleDistributorClosureStock, setCompanyDirectEligibility, setPartnerBillingProfile, createStandaloneDistributor } from "@/lib/sales-distribution/distributor-management-service";
+import { archiveRetailer, hardDeleteRetailer, retailerCleanupOverview } from "@/lib/sales-distribution/retailer-lifecycle-service";
 import { correctSkuMasterFields } from "@/lib/sales-distribution/catalog-master-service";
 import { sendDistributorPaymentReminder } from "@/lib/sales-distribution/outbox-service";
 import { bulkOnboardRatanDistributors } from "@/lib/sales-distribution/ratan-onboarding-service";
@@ -91,6 +92,9 @@ const body = z.object({
     "correct-sku-master-fields",
     "create-standalone-distributor",
     "assign-distributor-to-executive",
+    "retailer-cleanup-overview",
+    "archive-retailer",
+    "hard-delete-retailer",
     "create-company-direct-partner",
     "set-company-direct-eligibility",
     "create-territory",
@@ -135,6 +139,9 @@ export async function POST(request: Request) {
     else if(action==="correct-sku-master-fields") result=await correctSkuMasterFields(prisma,user.id,z.object({skuCode:z.string().min(1),mrp:z.number().positive().optional(),unitsPerCase:z.number().int().positive().optional(),reason:z.string().min(3)}).parse(payload));
     else if(action==="create-standalone-distributor") result=await createStandaloneDistributor(prisma,user.id,z.object({firmName:z.string().min(1),address:z.record(z.unknown()),mobile:z.string().min(10),ownerName:z.string().optional(),alternateMobile:z.string().optional(),email:z.string().email().optional(),gstin:z.string().optional(),pincode:z.string().optional(),territoryId:z.string().optional(),notes:z.string().optional(),idempotencyKey:z.string()}).parse(payload));
     else if(action==="assign-distributor-to-executive") result=await assignDistributorToExecutive(prisma,user.id,z.object({executiveId:z.string(),distributorId:z.string(),reason:z.string().min(3)}).parse(payload));
+    else if(action==="retailer-cleanup-overview") result=await retailerCleanupOverview(prisma,user.id);
+    else if(action==="archive-retailer") result=await archiveRetailer(prisma,user.id,z.object({retailerId:z.string(),reason:z.string().min(3)}).parse(payload));
+    else if(action==="hard-delete-retailer") result=await hardDeleteRetailer(prisma,user.id,z.object({retailerId:z.string(),reason:z.string().min(3)}).parse(payload));
     else if(action==="set-company-direct-eligibility") result=await setCompanyDirectEligibility(prisma,user.id,z.object({userId:z.string(),eligible:z.boolean(),reason:z.string().min(3)}).parse(payload));
     else if(action==="create-territory") result=await createTerritory(prisma,user.id,z.object({name:z.string().min(1),headquarters:z.string().optional(),state:z.string().optional(),description:z.string().optional(),code:z.string().optional(),status:z.enum(["DRAFT","ACTIVE","INACTIVE","DISCONTINUED"]).optional()}).parse(payload));
     else if(action==="create-beat") result=await createBeat(prisma,user.id,z.object({name:z.string().min(1),territoryId:z.string(),description:z.string().optional(),code:z.string().optional(),status:z.enum(["DRAFT","ACTIVE","INACTIVE","DISCONTINUED"]).optional()}).parse(payload));

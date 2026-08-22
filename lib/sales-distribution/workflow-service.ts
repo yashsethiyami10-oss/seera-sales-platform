@@ -27,7 +27,12 @@ import { assertCompanyDispatchAvailable, postCompanyDispatchStockAndCogs } from 
 // selected ("2 BOX"), carried through to packSnapshot/schemeSnapshot so it's never lost, matching
 // the exact same schemeSnapshot-reuse convention createCompanyOrder already established for its own
 // order-unit snapshot (no schema change).
-type OrderLineInput = { skuId: string; quantity: number; rate?: number; uom?: { unit: string; packFactor: number; uomQuantity: number } };
+// `scheme` (Final Retailer Cleanup + Handover, 22-Aug): an optional free-goods scheme captured on
+// the SAME line as the paid quantity — "10 BOX purchase -> 1 PC FREE". `quantity`/`rate` here are
+// always the PAID amount only (the client has already excluded free units before this point) — so
+// every downstream subtotal/tax/lineTotal calculation is completely unaffected; freeBaseQuantity is
+// carried purely as informational snapshot data for the Distributor/documents to display.
+type OrderLineInput = { skuId: string; quantity: number; rate?: number; uom?: { unit: string; packFactor: number; uomQuantity: number }; scheme?: { freeQuantity: number; freeUom: string; freeBaseQuantity: number } };
 type ActorContext = {
   actorId: string;
   sourcePortal: string;
@@ -787,6 +792,7 @@ export async function placeRetailerOrder(
         quantity: line.quantity,
         total: unitRate * line.quantity,
         uom: line.uom,
+        scheme: line.scheme,
       };
     });
     const subtotal = snapshots.reduce((sum, item) => sum + item.total, 0);
@@ -829,20 +835,24 @@ export async function placeRetailerOrder(
         idempotencyKey: input.idempotencyKey,
         submittedAt: new Date(),
         lines: {
-          create: snapshots.map(({ sku, unitRate, quantity, total, uom }) => ({
+          create: snapshots.map(({ sku, unitRate, quantity, total, uom, scheme }) => ({
             skuId: sku.id,
             skuCodeSnapshot: sku.code,
             productNameSnapshot: sku.productName,
-            // Final Master Revision (Part 2, 22-Aug): when a UOM was selected, packSnapshot shows
-            // it directly ("2 BOX (80 PC)") — this is the one field every existing order-line
-            // display already renders everywhere, so "2 BOX" becomes visible on every surface with
-            // no rendering-code changes. Falls back to the plain physical pack description exactly
-            // as before when no UOM was selected (base PC order, the overwhelmingly common case).
-            packSnapshot: uom ? `${uom.uomQuantity} ${uom.unit} (${quantity} PC)` : `${sku.packSize} ${sku.unitType}`,
+            // Final Master Revision (Part 2, 22-Aug) + scheme support (22-Aug): when a UOM was
+            // selected, packSnapshot shows it directly ("2 BOX (80 PC)"), plus "+ N FREE" when a
+            // scheme applies — this is the one field every existing order-line display already
+            // renders everywhere, so both become visible on every surface with no rendering-code
+            // changes. Falls back to the plain physical pack description when neither applies.
+            packSnapshot:
+              (uom ? `${uom.uomQuantity} ${uom.unit} (${quantity} PC)` : `${sku.packSize} ${sku.unitType}`) +
+              (scheme ? ` + ${scheme.freeQuantity} ${scheme.freeUom} FREE` : ""),
             priceSnapshot: unitRate,
             mrpSnapshot: sku.mrp,
             // Rate is GST-inclusive (Founder global rule) — taxable/tax are derived FROM unitRate,
-            // never added on top of it; lineTotal (below) stays exactly unitRate*quantity.
+            // never added on top of it; lineTotal (below) stays exactly unitRate*quantity. `quantity`
+            // and `total` are the PAID amount only — a scheme's free units never reach this
+            // calculation, so free goods can never inflate taxable value, GST, or the grand total.
             taxSnapshot:
               sku.taxRate == null
                 ? undefined
@@ -852,13 +862,29 @@ export async function placeRetailerOrder(
                   })(),
             orderedQuantity: quantity,
             lineTotal: total,
-            // Structured UOM snapshot (Founder Part 2 field list: selectedUom/orderedUomQuantity/
-            // packFactor/packCommercialRate) — same schemeSnapshot-reuse convention
-            // createCompanyOrder already established, no schema change. null (not the discount-pct
-            // shape quotation-service.ts uses on a different model) when no UOM was selected.
-            schemeSnapshot: uom
-              ? { selectedUom: uom.unit, orderedUomQuantity: uom.uomQuantity, packFactor: uom.packFactor, packCommercialRate: unitRate * uom.packFactor }
-              : undefined,
+            // Structured UOM + scheme snapshot (Founder field list: selectedUom/orderedUomQuantity/
+            // packFactor/packCommercialRate/paidQuantity/paidUom/freeQuantity/freeUom/
+            // paidBaseQuantity/freeBaseQuantity/schemeNote) — same schemeSnapshot-reuse convention
+            // createCompanyOrder already established, no schema change. undefined when neither a
+            // UOM nor a scheme was selected (the plain base-PC, no-scheme order — still the
+            // overwhelmingly common case).
+            schemeSnapshot:
+              uom || scheme
+                ? {
+                    ...(uom ? { selectedUom: uom.unit, orderedUomQuantity: uom.uomQuantity, packFactor: uom.packFactor, packCommercialRate: unitRate * uom.packFactor } : {}),
+                    paidQuantity: uom ? uom.uomQuantity : quantity,
+                    paidUom: uom ? uom.unit : "PC",
+                    paidBaseQuantity: quantity,
+                    ...(scheme
+                      ? {
+                          freeQuantity: scheme.freeQuantity,
+                          freeUom: scheme.freeUom,
+                          freeBaseQuantity: scheme.freeBaseQuantity,
+                          schemeNote: `+${scheme.freeQuantity} ${scheme.freeUom} FREE`,
+                        }
+                      : {}),
+                  }
+                : undefined,
           })),
         },
       },

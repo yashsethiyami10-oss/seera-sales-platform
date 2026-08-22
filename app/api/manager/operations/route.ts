@@ -40,6 +40,7 @@ import {
   GEOGRAPHY_TYPES,
 } from "@/lib/sales-distribution/operational-service";
 import { submitTaClaim } from "@/lib/sales-distribution/travel-lifecycle-service";
+import { unmappedRetailers, assignRetailerGeography } from "@/lib/sales-distribution/retailer-lifecycle-service";
 
 const requestBody = z.object({
   action: z.enum([
@@ -58,6 +59,8 @@ const requestBody = z.object({
     "close-joint",
     "assisted-distributor",
     "create-beat-plan",
+    "unmapped-retailers",
+    "assign-retailer-geography",
     "publish-plan",
     "duplicate-plan",
     "edit-plan",
@@ -277,6 +280,8 @@ export async function POST(request: Request) {
           })
           .parse(payload),
       );
+    else if (action === "unmapped-retailers") result = await unmappedRetailers(prisma, user.id);
+    else if (action === "assign-retailer-geography") result = await assignRetailerGeography(prisma, user.id, z.object({ retailerId: z.string(), territoryId: z.string().optional(), beatId: z.string().optional(), marketId: z.string().optional(), reason: z.string().min(3) }).parse(payload));
     else if (action === "publish-plan")
       result = await publishBeatPlan(prisma, user.id, z.object({ planId: z.string() }).parse(payload).planId);
     else if (action === "duplicate-plan") {

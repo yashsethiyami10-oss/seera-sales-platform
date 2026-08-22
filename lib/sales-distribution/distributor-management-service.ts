@@ -431,7 +431,7 @@ export async function setCompanyDirectEligibility(
   if (!active) return null;
   const cdPartnerId = await companyDirectPartnerId(prisma);
   const orphanCount = cdPartnerId
-    ? await prisma.seeraRetailer.count({ where: { salespersonId: input.userId, distributorId: cdPartnerId } })
+    ? await prisma.seeraRetailer.count({ where: { salespersonId: input.userId, distributorId: cdPartnerId, lifecycle: "ACTIVE" } })
     : 0;
   if (orphanCount > 0)
     throw new FoundationError(

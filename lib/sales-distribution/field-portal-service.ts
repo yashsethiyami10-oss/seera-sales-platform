@@ -460,7 +460,14 @@ export async function createRetailer(
     customerType?: (typeof CUSTOMER_TYPES)[number];
     gstin?: string;
     distributorId?: string;
+    // territoryId/marketId (Final Retailer Cleanup + Handover, 22-Aug): the same governed
+    // geography hierarchy the Manager's Beat Planner already writes to (SeeraGeographyNode) —
+    // never a second/parallel geography system. All three are optional foreign keys to EXISTING
+    // nodes, picked by the Executive from what's already published for them; this function never
+    // creates a new geography node (that stays Manager-only, via createBeatPlan).
+    territoryId?: string;
     beatId?: string;
+    marketId?: string;
     latitude?: number;
     longitude?: number;
     notes?: string;
@@ -529,7 +536,9 @@ export async function createRetailer(
         shopType: input.shopType,
         customerType: input.customerType,
         distributorId,
+        territoryId: input.territoryId,
         beatId: input.beatId,
+        marketId: input.marketId,
         salespersonId: actorId,
         lifecycle: "ACTIVE",
         source: "UNPLANNED_FIELD_ADDED",
@@ -543,7 +552,7 @@ export async function createRetailer(
       action: "retailer.created_by_executive",
       entityType: "SeeraRetailer",
       entityId: created.id,
-      afterState: { businessName: created.businessName, distributorId, source: "UNPLANNED_FIELD_ADDED" },
+      afterState: { businessName: created.businessName, distributorId, territoryId: input.territoryId, beatId: input.beatId, marketId: input.marketId, source: "UNPLANNED_FIELD_ADDED" },
     });
     return created;
   });
@@ -571,7 +580,9 @@ export async function createRetailerAndCheckIn(
     customerType?: (typeof CUSTOMER_TYPES)[number];
     gstin?: string;
     distributorId?: string;
+    territoryId?: string;
     beatId?: string;
+    marketId?: string;
     notes?: string;
     confirmDuplicate?: boolean;
     idempotencyKey: string;
@@ -661,7 +672,9 @@ export async function createRetailerAndCheckIn(
           shopType: input.shopType,
           customerType: input.customerType,
           distributorId,
+          territoryId: input.territoryId,
           beatId: input.beatId,
+          marketId: input.marketId,
           salespersonId: actorId,
           lifecycle: "ACTIVE",
           source: "UNPLANNED_FIELD_ADDED",
@@ -1540,7 +1553,7 @@ export async function executiveDsrHistory(
 export async function executiveDistributorFollowUp(db: PrismaClient, actorId: string, now = new Date()) {
   await authorize(db, { actorId, permission: "field_reports:view_self" });
   const own = await db.seeraRetailer.findMany({
-    where: { salespersonId: actorId, distributorId: { not: null } },
+    where: { salespersonId: actorId, distributorId: { not: null }, lifecycle: "ACTIVE" },
     select: { distributorId: true },
     distinct: ["distributorId"],
   });

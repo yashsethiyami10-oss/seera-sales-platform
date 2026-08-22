@@ -68,7 +68,11 @@ type Dashboard = {
 // so every downstream accept/allocate/dispatch/ledger calculation keeps operating on base PC units
 // completely unchanged. Defaults to "PC" so every existing line (and every SKU with no case unit)
 // behaves exactly as before.
-type OrderLine = { key: string; skuId: string; quantity: number; rate: number; brandFilter: string; search: string; uom: string };
+// freeQuantity/freeUom (Final Retailer Cleanup + Handover, 22-Aug): an optional scheme —
+// "10 BOX purchase -> 1 PC FREE" — captured on the SAME line as the paid quantity/rate, never a
+// separate line. freeUom defaults to "PC" (matches every one of the Founder's own examples) but
+// stays selectable for a SKU with a case unit, supporting "5 BAG -> 1 BAG" style combinations too.
+type OrderLine = { key: string; skuId: string; quantity: number; rate: number; brandFilter: string; search: string; uom: string; freeQuantity: number; freeUom: string };
 type WorkingType = "RETAILING" | "DISTRIBUTOR_SEARCH" | "DISTRIBUTOR_VISIT" | "WHOLESALE_MARKET" | "OTHER";
 
 // Normalized action outcome — business/validation failures (photo required, duplicate customer,
@@ -446,22 +450,31 @@ const key = () => crypto.randomUUID();
 // change) still gets a real random key — those only ever run client-side, post-mount, in a
 // useEffect/event handler, never during SSR, so they carry no hydration risk and keeping them
 // random preserves correct React list-reconciliation identity across visits.
-const blankOrderLine = (fixedKey?: string): OrderLine => ({ key: fixedKey ?? key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "", uom: "PC" });
+const blankOrderLine = (fixedKey?: string): OrderLine => ({ key: fixedKey ?? key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "", uom: "PC", freeQuantity: 0, freeUom: "PC" });
 
-// Final Master Revision (Part 2, 22-Aug): converts a UOM-scoped order line (quantity/rate entered
-// at the selected pack unit) into the base-PC quantity/rate placeRetailerOrder has always expected,
-// plus an explicit uom snapshot so the order line records what was actually picked ("2 BOX"), not
-// just the resulting 80 PC. packSnapshot carries the human-readable UOM text since it's already the
-// one field every order-line display (Distributor/S.S. order cards, receipts) renders everywhere —
-// no document-rendering code needs to change to show "2 BOX" instead of "80 PC".
+// Final Master Revision (Part 2, 22-Aug) + Final Retailer Cleanup scheme support (22-Aug):
+// converts a UOM-scoped order line (quantity/rate entered at the selected pack unit, plus an
+// optional free-goods scheme) into the base-PC quantity/rate placeRetailerOrder has always
+// expected. `rate`/`quantity` (and therefore taxable/GST/lineTotal) are derived from the PAID
+// quantity ONLY — a scheme's free units are carried purely as informational uom/scheme metadata,
+// never folded into the priced quantity, so free goods can never inflate tax or the grand total.
+// packSnapshot carries the human-readable text ("2 BOX (80 PC) + 1 PC FREE") since it's already
+// the one field every order-line display (Distributor/S.S. order cards, receipts) renders
+// everywhere — no document-rendering code needs to change to show it.
 function toBasePcLine(line: OrderLine, skuById: Map<string, Sku>) {
   const sku = skuById.get(line.skuId);
   const packFactor = line.uom !== "PC" && sku && sku.unitsPerCase > 1 ? sku.unitsPerCase : 1;
+  const freePackFactor = line.freeUom !== "PC" && sku && sku.unitsPerCase > 1 ? sku.unitsPerCase : 1;
+  const freeBaseQuantity = line.freeQuantity > 0 ? line.freeQuantity * freePackFactor : 0;
   return {
     skuId: line.skuId,
     quantity: line.quantity * packFactor,
     rate: packFactor > 1 ? line.rate / packFactor : line.rate,
     uom: packFactor > 1 ? { unit: line.uom, packFactor, uomQuantity: line.quantity } : undefined,
+    scheme:
+      line.freeQuantity > 0
+        ? { freeQuantity: line.freeQuantity, freeUom: line.freeUom, freeBaseQuantity }
+        : undefined,
   };
 }
 
@@ -582,9 +595,7 @@ function OrderLineItemsEditor({
               )}
             </label>
             <label>
-              {hi
-                ? `दर (GST सहित)${line.uom !== "PC" ? ` — प्रति ${line.uom}` : ""}`
-                : `Rate (Incl. GST)${line.uom !== "PC" ? ` — per ${line.uom}` : ""}`}
+              {hi ? `बिक्री दर / ${line.uom} (GST सहित)` : `Selling Rate / ${line.uom} (Incl. GST)`}
               <input
                 type="number"
                 min="0.01"
@@ -594,6 +605,29 @@ function OrderLineItemsEditor({
                 onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, rate: Number(event.target.value) } : item)))}
                 required
               />
+            </label>
+            <label>
+              {hi ? "स्कीम — फ्री मात्रा (वैकल्पिक)" : "Scheme — free quantity (optional)"}
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={line.freeQuantity || ""}
+                  placeholder="0"
+                  onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, freeQuantity: Math.max(0, Number(event.target.value)) } : item)))}
+                />
+                <select
+                  value={line.freeUom}
+                  onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, freeUom: event.target.value } : item)))}
+                >
+                  <option value="PC">PC</option>
+                  {sku && sku.caseUnit && sku.unitsPerCase > 1 && <option value={sku.caseUnit}>{sku.caseUnit}</option>}
+                </select>
+              </div>
+              {line.freeQuantity > 0 && (
+                <small>{hi ? `स्कीम: +${line.freeQuantity} ${line.freeUom} फ्री (कर/कुल में शामिल नहीं)` : `Scheme: +${line.freeQuantity} ${line.freeUom} FREE (not included in tax/total)`}</small>
+              )}
             </label>
             <label>
               {hi ? "कुल" : "Total"}
@@ -836,6 +870,7 @@ export function FieldJourney({
   hasPublishedPlan,
   skus,
   distributorOptions,
+  beatOptions,
 }: {
   language: "EN" | "HI";
   dashboard: Dashboard;
@@ -845,6 +880,11 @@ export function FieldJourney({
   hasPublishedPlan: boolean;
   skus: Sku[];
   distributorOptions: { value: string; label: string }[];
+  // Final Retailer Cleanup + Handover (22-Aug): real, existing Beat nodes (never freshly typed/
+  // guessed) the Executive can optionally assign at Add Customer time, so a real retailer created
+  // going forward has proper geography from the start — governed the same way Beat Planner's own
+  // nodes are, no second geography system.
+  beatOptions: { value: string; label: string; territoryId: string }[];
 }) {
   const hi = language === "HI",
     router = useRouter(),
@@ -1336,6 +1376,19 @@ export function FieldJourney({
             {hi ? "पिनकोड" : "Pincode"}
             <input name="pincode" inputMode="numeric" />
           </label>
+          {beatOptions.length > 0 && (
+            <label>
+              {hi ? "बीट / रूट (वैकल्पिक)" : "Beat / Route (optional)"}
+              <select name="beatId" defaultValue="">
+                <option value="">{hi ? "बाद में असाइन करें" : "Assign later"}</option>
+                {beatOptions.map((b) => (
+                  <option key={b.value} value={b.value}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             {hi ? "GSTIN" : "GSTIN"}
             <input name="gstin" />
@@ -1379,6 +1432,8 @@ export function FieldJourney({
       pincode: String(f.get("pincode") ?? "") || undefined,
       gstin: String(f.get("gstin") ?? "") || undefined,
       notes: String(f.get("notes") ?? "") || undefined,
+      beatId: String(f.get("beatId") ?? "") || undefined,
+      territoryId: beatOptions.find((b) => b.value === String(f.get("beatId") ?? ""))?.territoryId,
       latitude: point.latitude,
       longitude: point.longitude,
       accuracy: point.accuracy,
