@@ -356,6 +356,7 @@ export function ManagerFieldActions({
                           <option value="">{hi ? "उत्पाद चुनें" : "Choose product"}</option>
                           {skus.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
                         </select>
+                        {!skus.length && <EmptyOptionHint language={language} fallback={hi ? "कोई सक्रिय उत्पाद उपलब्ध नहीं है — Admin से जांच करें।" : "No active product is available — check with Admin."} />}
                       </label>
                       <label>
                         {hi ? "मात्रा" : "Quantity"}

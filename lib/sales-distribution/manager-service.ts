@@ -10,7 +10,7 @@ import { placeRetailerOrder } from "./workflow-service";
 import { recordGpsSample } from "./field-travel-service";
 import { wholesaleOrderUnitToCanonicalPieces } from "./company-order-catalog";
 import { queuePartnerVisitCommunicationSafe } from "./partner-communication-service";
-import { isCompanyDirectEligible } from "./scope";
+import { isCompanyDirectEligible, distributorsForEmployeeIds } from "./scope";
 
 async function managerTeamEmployeeIds(db: PrismaClient, managerId: string) {
   const assignments = await db.seeraAssignment.findMany({
@@ -1778,20 +1778,37 @@ export async function teamSyncStatus(db: PrismaClient, managerId: string): Promi
   });
 }
 
+// P1 21-Aug fix (real production incident: Sales Manager AWDHESH KUMAR MISHRA's team has 13
+// retailers, ZERO of them mapped to a distributor, but the team's own executive (Neeraj Rawat)
+// already holds 10 real, ACTIVE, governed EXECUTIVE_DISTRIBUTOR assignments — the exact same
+// M/s Ratan Products & Traders onboarding the Founder asked about). This function previously
+// derived "the Manager's authorized distributors" SOLELY from retailer.distributorId mappings, so
+// a legitimately-scoped Distributor with zero mapped team retailers was completely invisible in
+// Distributor Oversight — not a data gap, a read-model gap. The exact same class of bug (a
+// retailer-derived-only distributor scope with no cold-start bootstrap) was already found and
+// fixed once for the Sales Executive's own "Choose Working Distributor" (Start Day) scope — see
+// scope.ts's executiveAuthorizedDistributors, which unions retailer-derived + direct
+// EXECUTIVE_DISTRIBUTOR assignments for exactly this reason. That fix was never propagated to
+// Manager Distributor Oversight; this closes that gap the same governed way, reusing the same
+// SeeraAssignment relation and the same distributorsForEmployeeIds() helper scope.ts already
+// exports (previously duplicated here) — no new table, no new assignment type.
 async function mappedDistributorsFor(db: PrismaClient, managerId: string) {
   const employeeIds = await managerTeamEmployeeIds(db, managerId);
-  const mapped = await db.seeraRetailer.findMany({
-    where: { salespersonId: { in: employeeIds }, distributorId: { not: null } },
-    select: { distributorId: true },
-    distinct: ["distributorId"],
-  });
-  const distributorIds = mapped.map((r) => r.distributorId).filter((x): x is string => Boolean(x));
-  if (!distributorIds.length) return [];
-  return db.seeraPartner.findMany({
-    where: { id: { in: distributorIds }, type: "DISTRIBUTOR" },
-    select: { id: true, legalName: true, tradeName: true, code: true },
-    orderBy: { legalName: "asc" },
-  });
+  const [retailerDerived, directAssignments] = await Promise.all([
+    distributorsForEmployeeIds(db, employeeIds),
+    db.seeraAssignment.findMany({
+      where: { assignmentType: "EXECUTIVE_DISTRIBUTOR", subjectId: { in: employeeIds }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+      select: { targetId: true },
+    }),
+  ]);
+  const directIds = [...new Set(directAssignments.map((a) => a.targetId))].filter((id) => !retailerDerived.some((d) => d.id === id));
+  const directDerived = directIds.length
+    ? await db.seeraPartner.findMany({
+        where: { id: { in: directIds }, type: "DISTRIBUTOR", lifecycle: "ACTIVE" },
+        select: { id: true, legalName: true, tradeName: true, code: true, addresses: true },
+      })
+    : [];
+  return [...retailerDerived, ...directDerived].sort((a, b) => a.legalName.localeCompare(b.legalName));
 }
 
 // Distributor-first Collections: the Manager searches/chooses a Distributor mapped to their own

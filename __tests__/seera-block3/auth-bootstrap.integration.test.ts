@@ -5,6 +5,7 @@ import { effectivePermissions } from "@/lib/foundation/authorization-service";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { hashPassword } from "@/lib/foundation/auth-service";
 import { resetPartnerLoginPassword } from "@/lib/foundation/user-management-service";
+import { changeOwnPassword } from "@/lib/foundation/auth-service";
 import { expectCode,founderEmail,founderPassword,prisma,roleUsers,setup } from "./test-context";
 let founderId="";
 beforeAll(async()=>{await setup();founderId=(await prisma.user.findUniqueOrThrow({where:{normalizedEmail:founderEmail}})).id;});afterAll(()=>prisma.$disconnect());
@@ -42,6 +43,21 @@ describe("authentication",()=>{
   expect((await login(prisma,{email:current,password:reset.temporaryPassword})).userId).toBe(distributor.id);
   await expectCode(()=>resolveSession(prisma,activeSession.token),"SESSION_INVALID");
   expect(await prisma.auditLog.count({where:{action:"user.password_reset",entityId:distributor.id}})).toBe(1);
+ });
+ it("lets an authenticated partner user change their own password (shared self-service flow)",async()=>{
+  const stockist=roleUsers.get("SUPER_STOCKIST_OWNER")!;
+  const currentSession=await login(prisma,{email:stockist.email,password:stockist.password});
+  const otherSession=await login(prisma,{email:stockist.email,password:stockist.password});
+  const newPassword="Aa1!ChangedSelfService123";
+  await expectCode(()=>changeOwnPassword(prisma,stockist.id,currentSession.sessionId,{currentPassword:"WrongCurrentPassword!123",newPassword}),"CURRENT_PASSWORD_INVALID");
+  await expectCode(()=>changeOwnPassword(prisma,stockist.id,currentSession.sessionId,{currentPassword:stockist.password,newPassword:stockist.password}),"PASSWORD_UNCHANGED");
+  const result=await changeOwnPassword(prisma,stockist.id,currentSession.sessionId,{currentPassword:stockist.password,newPassword});
+  expect(result.success).toBe(true);
+  await expectCode(()=>login(prisma,{email:stockist.email,password:stockist.password}),"INVALID_CREDENTIALS");
+  expect((await login(prisma,{email:stockist.email,password:newPassword})).userId).toBe(stockist.id);
+  expect((await resolveSession(prisma,currentSession.token)).user.id).toBe(stockist.id);
+  await expectCode(()=>resolveSession(prisma,otherSession.token),"SESSION_INVALID");
+  expect(await prisma.auditLog.count({where:{action:"auth.password_changed",entityId:stockist.id}})).toBe(1);
  });
 });
 describe("Founder bootstrap",()=>{

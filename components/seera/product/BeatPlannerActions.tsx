@@ -64,15 +64,21 @@ export function BeatPlannerActions({
     [reassignPlanId, setReassignPlanId] = useState<string | null>(null),
     [duplicatePlanId, setDuplicatePlanId] = useState<string | null>(null),
     [editPlanId, setEditPlanId] = useState<string | null>(null);
-  const run = async (body: unknown) => {
+  // P1 22-Aug stuck-save fix: returns whether the action actually succeeded so the create-plan
+  // form (below) can reset itself and show a distinct "Beat saved" confirmation only on success —
+  // previously the form stayed filled with the just-submitted values and the only feedback was a
+  // generic message detached from the Save button, reading as "stuck" even though the save worked.
+  const run = async (body: unknown, successMessage?: string): Promise<boolean> => {
     setBusy(true);
     setMessage("");
     try {
       await send(body);
-      setMessage(hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully.");
+      setMessage(successMessage ?? (hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully."));
       router.refresh();
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Action failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -86,23 +92,35 @@ export function BeatPlannerActions({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          const form = new FormData(event.currentTarget);
+          const formEl = event.currentTarget;
+          const form = new FormData(formEl);
           const publish = String(form.get("submitAction")) === "publish";
-          void run({
-            action: "create-beat-plan",
-            payload: {
-              employeeId: String(form.get("employeeId")),
-              territoryName: String(form.get("territoryName")),
-              beatName: String(form.get("beatName")),
-              geographyType: String(form.get("geographyType")),
-              geographyName: String(form.get("geographyName")),
-              distributorName: String(form.get("distributorName") || "") || undefined,
-              dayOfWeek: Number(form.get("dayOfWeek")),
-              effectiveFrom: String(form.get("effectiveFrom")),
-              effectiveTo: String(form.get("effectiveTo") || "") || undefined,
-              notes: String(form.get("notes") || "") || undefined,
-              publish,
+          void run(
+            {
+              action: "create-beat-plan",
+              payload: {
+                employeeId: String(form.get("employeeId")),
+                territoryName: String(form.get("territoryName")),
+                beatName: String(form.get("beatName")),
+                geographyType: String(form.get("geographyType")),
+                geographyName: String(form.get("geographyName")),
+                distributorName: String(form.get("distributorName") || "") || undefined,
+                dayOfWeek: Number(form.get("dayOfWeek")),
+                effectiveFrom: String(form.get("effectiveFrom")),
+                effectiveTo: String(form.get("effectiveTo") || "") || undefined,
+                notes: String(form.get("notes") || "") || undefined,
+                publish,
+              },
             },
+            publish
+              ? hi
+                ? "बीट सहेजी और प्रकाशित की गई। नीचे सूची में देखें — अगली बीट जोड़ने के लिए फ़ॉर्म तैयार है।"
+                : "Beat saved and published — see it in the list below. The form is ready for your next Beat."
+              : hi
+                ? "बीट ड्राफ़्ट के रूप में सहेजी गई। नीचे सूची में देखें — अगली बीट जोड़ने के लिए फ़ॉर्म तैयार है।"
+                : "Beat saved as a draft — see it in the list below. The form is ready for your next Beat.",
+          ).then((ok) => {
+            if (ok) formEl.reset();
           });
         }}
       >

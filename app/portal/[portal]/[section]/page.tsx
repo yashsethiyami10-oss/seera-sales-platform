@@ -15,6 +15,7 @@ import {
 } from "@/components/seera/foundation/FoundationActions";
 import { surfaceItem } from "@/lib/foundation/product-surface";
 import { OperationalWorkspace } from "@/components/seera/product/OperationalWorkspace";
+import { ChangePasswordActions } from "@/components/seera/product/ChangePasswordActions";
 import styles from "@/components/seera/foundation/Workspace.module.css";
 const valid = new Set([
   "users",
@@ -538,6 +539,7 @@ export default async function WorkspacePage({
             ))}
           </section>
         </div>
+        <ChangePasswordActions language={language} />
       </>
     );
   }

@@ -1,3 +1,5 @@
+"use client";
+import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
 
 const money = (v: number) => `₹${v.toLocaleString("en-IN")}`;
@@ -32,6 +34,11 @@ export function ManagerDistributorOversightPanel({
 }) {
   const hi = language === "HI";
   const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(hi ? "hi-IN" : "en-IN") : "—");
+  const [query, setQuery] = useState(""),
+    [selected, setSelected] = useState(selectedDistributorId ?? "");
+  const filtered = query.trim()
+    ? distributors.filter((d) => d.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : distributors;
   return (
     <section className={styles.panel}>
       <div>
@@ -40,10 +47,16 @@ export function ManagerDistributorOversightPanel({
       </div>
       <form method="get" action={base}>
         <label>
+          {hi ? "नाम से खोजें" : "Search by name"}
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={hi ? "वितरक का नाम टाइप करें" : "Type a distributor name"} />
+        </label>
+        <label>
           {hi ? "वितरक" : "Distributor"}
-          <select name="distributorId" defaultValue={selectedDistributorId ?? ""} required>
-            <option value="">{hi ? "नाम से खोजें" : "Search by name"}</option>
-            {distributors.map((d) => (
+          <select name="distributorId" value={selected} onChange={(e) => setSelected(e.target.value)} required>
+            <option value="" disabled>
+              {distributors.length ? (hi ? "एक वितरक चुनें" : "Choose a distributor") : hi ? "कोई वितरक उपलब्ध नहीं" : "No distributors available"}
+            </option>
+            {filtered.map((d) => (
               <option key={d.value} value={d.value}>
                 {d.label}
               </option>
@@ -51,11 +64,17 @@ export function ManagerDistributorOversightPanel({
           </select>
         </label>
         {!distributors.length && (
+          // P1 21-Aug fix: this list now sources from the Manager's full authorized distributor
+          // scope (retailer mapping OR a direct governed assignment — see mappedDistributorsFor in
+          // manager-service.ts), not retailer mapping alone, so an empty list here means "no
+          // distributors are assigned to your scope" — distinct from "a distributor exists but has
+          // no mapped retailers yet", which now correctly still lets the distributor be selected
+          // and viewed (see the detail sections below, none of which require a mapped retailer).
           <p className={styles.emptyHint}>
-            {hi ? "इस टीम की कोई रिटेलर मैप वितरक से जुड़ी नहीं है।" : "No retailer on this team is mapped to a distributor yet."}
+            {hi ? "आपके दायरे में कोई वितरक निर्दिष्ट नहीं है।" : "No distributors are assigned to your scope."}
           </p>
         )}
-        <button>{hi ? "देखें" : "View"}</button>
+        <button disabled={!selected}>{hi ? "देखें" : "View"}</button>
       </form>
       {selectedDistributorId && !snapshot && (
         <p className={styles.emptyHint}>{hi ? "इस वितरक के लिए डेटा लोड नहीं हो सका।" : "Could not load this distributor."}</p>

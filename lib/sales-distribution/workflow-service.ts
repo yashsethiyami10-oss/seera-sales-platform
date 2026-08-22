@@ -13,6 +13,7 @@ import {
   reconciliationVariance,
 } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
+import { resolveDistributorPurchaseRate } from "./distributor-pricing";
 import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, canonicalPiecesToWholesaleOrderUnit } from "./company-order-catalog";
 import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors, companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
 import { deriveInclusiveTax } from "./document-lines";
@@ -1079,16 +1080,7 @@ export async function createDistributorReplenishment(
               "An ordered SKU is unavailable",
               409,
             );
-          const price = await tx.seeraPriceVersion.findFirst({
-            where: {
-              skuId: sku.id,
-              tier: "SS_TO_DISTRIBUTOR",
-              status: "ACTIVE",
-              effectiveFrom: { lte: now },
-              OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
-            },
-            orderBy: { effectiveFrom: "desc" },
-          });
+          const price = await resolveDistributorPurchaseRate(tx, sku.id, sku.code, now);
           if (!price)
             throw new FoundationError(
               "PRICE_UNAVAILABLE",
@@ -1099,7 +1091,7 @@ export async function createDistributorReplenishment(
             sku,
             price,
             quantity: line.quantity,
-            total: Number(price.amount) * line.quantity,
+            total: price.amount * line.quantity,
           };
         }),
       );
@@ -1119,41 +1111,20 @@ export async function createDistributorReplenishment(
         },
         orderBy: { effectiveFrom: "desc" },
       });
-      if (!terms)
-        throw new FoundationError(
-          "CREDIT_TERMS_REQUIRED",
-          "Distributor credit terms are not configured",
-          409,
-        );
-      const { exposure: outstanding } = await canonicalDistributorExposure(
-        tx,
-        distributorId,
-        now,
-      );
-      const credit = evaluateDistributorCredit({
-        creditEnabled: terms.creditEnabled,
-        creditLimit: Number(terms.creditLimit),
-        outstanding,
-        orderValue: subtotal,
-        warningThreshold:
-          terms.warningThreshold == null
-            ? null
-            : Number(terms.warningThreshold),
-        blockThreshold:
-          terms.blockThreshold == null ? null : Number(terms.blockThreshold),
-        now,
-      });
-      const held = ["BLOCK", "HOLD", "OVERRIDE_REQUIRED"].includes(
-        credit.decision,
-      );
-      const originalDueDate = new Date(
-        now.getTime() + terms.creditDays * 86_400_000,
-      );
+      // Founder decision 22-Aug: a Distributor's own replenishment order to its authorised S.S.
+      // must never be blocked by credit configuration/limit/overdue state — that barrier applied
+      // only to THIS submission path. canonicalDistributorExposure/evaluateDistributorCredit are
+      // untouched and still govern everywhere else (Distributor Credit page, Finance/Accounts
+      // views, and releaseHeldDistributorOrder below for any order that reaches HELD another way).
+      // Missing terms no longer throws CREDIT_TERMS_REQUIRED; terms.creditDays only informs the
+      // recorded due date when terms genuinely exist — never invented.
+      const contractualCreditDays = terms?.creditDays ?? null;
+      const originalDueDate = terms ? new Date(now.getTime() + terms.creditDays * 86_400_000) : null;
       const order = await tx.seeraSalesOrder.create({
         data: {
           orderNumber: numberFor("DO", input.idempotencyKey),
           type: "DISTRIBUTOR_REPLENISHMENT",
-          status: held ? "HELD" : "SUBMITTED",
+          status: "SUBMITTED",
           buyerPartnerId: distributorId,
           sellerPartnerId: stockist.id,
           actorId,
@@ -1165,7 +1136,7 @@ export async function createDistributorReplenishment(
           discountTotal: 0,
           taxTotal,
           total: subtotal,
-          contractualCreditDays: terms.creditDays,
+          contractualCreditDays,
           originalDueDate,
           notes: input.notes,
           idempotencyKey: input.idempotencyKey,
@@ -1178,8 +1149,9 @@ export async function createDistributorReplenishment(
               packSnapshot: `${sku.packSize} ${sku.unitType}`,
               priceSnapshot: price.amount,
               mrpSnapshot: sku.mrp,
-              // Governed SS_TO_DISTRIBUTOR price is already GST-inclusive (total/subtotal below
-              // charge it as-is, no extra tax layer) — taxable/tax are derived for transparency only.
+              // Governed/derived distributor price (resolveDistributorPurchaseRate) is already
+              // GST-inclusive (total/subtotal below charge it as-is, no extra tax layer) — taxable/
+              // tax are derived for transparency only.
               taxSnapshot:
                 sku.taxRate == null
                   ? undefined
@@ -1201,7 +1173,6 @@ export async function createDistributorReplenishment(
         entityId: order.id,
         afterState: {
           orderNumber: order.orderNumber,
-          creditDecision: credit.decision,
           total: subtotal,
         },
       });

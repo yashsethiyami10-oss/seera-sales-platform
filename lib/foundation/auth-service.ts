@@ -75,3 +75,35 @@ export async function hashPassword(password: string) {
   if (password.length < 12) throw new FoundationError("WEAK_PASSWORD", "Password must be at least 12 characters");
   return bcrypt.hash(password, 12);
 }
+
+// P1 22-Aug self-service account security gap fix: distinct from resetPartnerLoginPassword
+// (user-management-service.ts, admin-only, resets ANY user's password without knowing the old one)
+// — this is the counterpart every authenticated user needs for themselves: prove the CURRENT
+// password, then replace it. No `authorize()` permission check is needed or appropriate — identity
+// (already authenticated) is the only requirement, and it can never target another user's id.
+// Revokes every OTHER session (stolen-session hygiene) but deliberately keeps the caller's own
+// current session alive so changing your password doesn't also log you out of the device you're
+// using — matching how most consumer apps behave.
+export async function changeOwnPassword(
+  prisma: PrismaClient,
+  userId: string,
+  currentSessionId: string,
+  input: { currentPassword: string; newPassword: string },
+) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const currentValid = user.passwordHash ? await bcrypt.compare(input.currentPassword, user.passwordHash) : false;
+  if (!currentValid) {
+    await recordAudit(prisma, { actorId: userId, action: "auth.password_change_failed", entityType: "User", entityId: userId, outcome: "DENIED", reason: "CURRENT_PASSWORD_INVALID" });
+    throw new FoundationError("CURRENT_PASSWORD_INVALID", "Current password is incorrect", 401);
+  }
+  if (await bcrypt.compare(input.newPassword, user.passwordHash!))
+    throw new FoundationError("PASSWORD_UNCHANGED", "New password must be different from the current password", 400);
+  const passwordHash = await hashPassword(input.newPassword);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  await prisma.session.updateMany({
+    where: { userId, revokedAt: null, id: { not: currentSessionId } },
+    data: { revokedAt: new Date(), revocationReason: "PASSWORD_CHANGED" },
+  });
+  await recordAudit(prisma, { actorId: userId, action: "auth.password_changed", entityType: "User", entityId: userId });
+  return { success: true as const };
+}

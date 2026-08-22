@@ -60,6 +60,7 @@ import { DeliveryActions } from "./DeliveryActions";
 import { documentSelectorData } from "@/lib/sales-distribution/document-portal-service";
 import { distributorCreditPosition, superStockistDistributorCreditOverview, superStockistCreditExtensionHistory, creditPositionFor, superStockistDistributorCollectionsSnapshot, founderDistributorCreditOversight } from "@/lib/sales-distribution/credit-service";
 import { ledgerReadModel, partyOutstanding } from "@/lib/sales-distribution/financial-service";
+import { deriveDistributorPurchaseRate } from "@/lib/sales-distribution/distributor-pricing";
 import { financeWorkspaceData } from "@/lib/finance/founder-workspace-data";
 import { FinanceWorkspacePanel } from "./FinanceWorkspacePanel";
 import { manufacturingWorkspaceData } from "@/lib/manufacturing/workspace-data";
@@ -108,6 +109,15 @@ const DETAIL_KINDS = new Set([
 ]);
 const money = (value: unknown) =>
   `₹${Number(value ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+// P1 21-Aug UX fix (Manager Distributor Oversight/Collections dropdowns): disambiguate same-name
+// distributors and give the Manager a location cue without a second lookup — addresses is a free-
+// form Json blob (see document-lines.ts's formatAddress for the same defensive-extraction
+// convention), so this only appends a city when the field genuinely has one, never a blank suffix.
+const distributorLabel = (d: { legalName: string; tradeName: string | null; code: string; addresses?: unknown }) => {
+  const city = d.addresses && typeof d.addresses === "object" ? (d.addresses as { city?: unknown }).city : undefined;
+  const base = `${d.tradeName ?? d.legalName} · ${d.code}`;
+  return typeof city === "string" && city.trim() ? `${base} — ${city.trim()}` : base;
+};
 const date = (value: Date | null | undefined, language: UiLanguage) =>
   value ? value.toLocaleDateString(language === "HI" ? "hi-IN" : "en-IN") : "—";
 const scopePortal = (portal: string): AnalyticsPortal =>
@@ -3397,7 +3407,7 @@ export async function OperationalWorkspace({
         language={language}
         base={`/portal/${portal}/${item.slug}`}
         selectedDistributorId={selectedDistributorId}
-        distributors={mappedDistributors.map((d) => ({ value: d.id, label: `${d.tradeName ?? d.legalName} · ${d.code}` }))}
+        distributors={mappedDistributors.map((d) => ({ value: d.id, label: distributorLabel(d) }))}
         snapshot={
           snapshot
             ? {
@@ -3439,7 +3449,7 @@ export async function OperationalWorkspace({
         language={language}
         base={`/portal/${portal}/${item.slug}`}
         selectedDistributorId={selectedDistributorId}
-        distributors={mappedDistributors.map((d) => ({ value: d.id, label: `${d.tradeName ?? d.legalName} · ${d.code}` }))}
+        distributors={mappedDistributors.map((d) => ({ value: d.id, label: distributorLabel(d) }))}
         snapshot={
           snapshot
             ? {
@@ -4326,15 +4336,21 @@ export async function OperationalWorkspace({
       // Order from S.S. wizard (Founder section 24): the assigned S.S. is shown, never chosen —
       // createDistributorReplenishment already auto-resolves it server-side from
       // distributor.assignedSuperStockistId. Every active SKU is shown (never silently hidden);
-      // one lacking a governed SS_TO_DISTRIBUTOR price is visible but disabled with a clear
-      // "price not configured yet" reason, never an invented rate.
+      // one with no resolvable price (governed SS_TO_DISTRIBUTOR row, or the Cake/Powder derived
+      // formula — see distributor-pricing.ts, the same authoritative source
+      // createDistributorReplenishment itself uses) is visible but disabled with a clear "price
+      // not configured yet" reason, never an invented rate.
       const now = new Date();
-      const [distributorPartner, allSkus, pricedSkuIds, recentSsOrders] = await Promise.all([
+      const [distributorPartner, allSkus, ssToDistributorPrices, companyToSsPrices, recentSsOrders] = await Promise.all([
         db.seeraPartner.findUnique({ where: { id: parties[0].value }, select: { assignedSuperStockistId: true } }),
         db.seeraSku.findMany({ where: { status: "ACTIVE" }, orderBy: [{ brand: "asc" }, { productName: "asc" }] }),
         db.seeraPriceVersion.findMany({
           where: { tier: "SS_TO_DISTRIBUTOR", status: "ACTIVE", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
-          select: { skuId: true },
+          select: { skuId: true, amount: true },
+        }),
+        db.seeraPriceVersion.findMany({
+          where: { tier: "COMPANY_TO_SS", status: "ACTIVE", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
+          select: { skuId: true, amount: true },
         }),
         db.seeraSalesOrder.findMany({
           where: { buyerPartnerId: parties[0].value, type: "DISTRIBUTOR_REPLENISHMENT" },
@@ -4345,7 +4361,14 @@ export async function OperationalWorkspace({
       const superStockist = distributorPartner?.assignedSuperStockistId
         ? await db.seeraPartner.findFirst({ where: { id: distributorPartner.assignedSuperStockistId, type: "SUPER_STOCKIST", lifecycle: "ACTIVE" }, select: { legalName: true, tradeName: true } })
         : null;
-      const pricedIds = new Set(pricedSkuIds.map((p) => p.skuId));
+      const governedPriceBySkuId = new Map(ssToDistributorPrices.map((p) => [p.skuId, Number(p.amount)]));
+      const companyToSsBySkuId = new Map(companyToSsPrices.map((p) => [p.skuId, Number(p.amount)]));
+      const distributorRateFor = (sku: { id: string; code: string }): number | null => {
+        const governed = governedPriceBySkuId.get(sku.id);
+        if (governed != null) return governed;
+        const base = companyToSsBySkuId.get(sku.id);
+        return base == null ? null : deriveDistributorPurchaseRate({ skuCode: sku.code, ssRate: base });
+      };
       const statusOf = (s: string): "REQUESTED" | "ACCEPTED" | "DISPATCHED" | "RECEIVED" =>
         ["SUBMITTED", "ACKNOWLEDGED", "HELD"].includes(s)
           ? "REQUESTED"
@@ -4359,12 +4382,16 @@ export async function OperationalWorkspace({
           language={language}
           distributorId={parties[0].value}
           superStockistName={superStockist ? (superStockist.tradeName ?? superStockist.legalName) : null}
-          skus={allSkus.map((x) => ({
-            value: x.id,
-            label: `${x.productName} (${x.packSize.toString()} ${x.unitType})`,
-            brand: x.brand,
-            unavailable: !pricedIds.has(x.id),
-          }))}
+          skus={allSkus.map((x) => {
+            const rate = distributorRateFor(x);
+            return {
+              value: x.id,
+              label: `${x.productName} (${x.packSize.toString()} ${x.unitType})`,
+              brand: x.brand,
+              meta: rate == null ? undefined : `₹${rate.toFixed(2)}`,
+              unavailable: rate == null,
+            };
+          })}
           recentOrders={recentSsOrders.map((o) => ({
             id: o.id,
             orderNumber: o.orderNumber,
