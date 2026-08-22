@@ -1011,11 +1011,26 @@ export async function executiveBeat(
       : range === "tomorrow"
         ? [(now.getDay() + 1) % 7]
         : [0, 1, 2, 3, 4, 5, 6];
+  // P1 22-Aug cross-portal handoff fix (real Founder UAT: a Manager-published plan starting a few
+  // days out was invisible under EVERY Executive tab, including "This week" — which is supposed to
+  // preview the week ahead, not just what has already started). The bug was `effectiveFrom: {lte:
+  // now}` applied unconditionally regardless of range: a plan can only ever show once the literal
+  // calendar date arrives, even though "week" already widens dayOfWeek to 0-6. Scale the cutoff to
+  // the requested window instead — "today" still means "has this plan actually started as of right
+  // now" (unchanged), "tomorrow"/"week" mean "will this plan have started by the end of that
+  // window" (a real week-ahead preview). effectiveTo is untouched — a plan that's already ended
+  // must never resurface just because its start date is in the past.
+  const windowEnd =
+    range === "today" ? now : range === "tomorrow" ? new Date(now.getTime() + 86_400_000) : new Date(now.getTime() + 6 * 86_400_000);
   const plans = await db.seeraJourneyPlan.findMany({
     where: {
       employeeId: actorId,
+      // Same pass: a DRAFT plan (createBeatPlan's un-published save) had no status filter here at
+      // all, so it was visible to the Executive as if it were active work — never the intent (a
+      // Manager's DRAFT is explicitly still-being-built, not yet a real handoff).
+      status: "PUBLISHED",
       dayOfWeek: { in: days },
-      effectiveFrom: { lte: now },
+      effectiveFrom: { lte: windowEnd },
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
     },
     orderBy: { effectiveFrom: "desc" },
@@ -1129,6 +1144,7 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
       db.seeraJourneyPlan.findFirst({
         where: {
           employeeId: actorId,
+          status: "PUBLISHED",
           dayOfWeek: now.getDay(),
           effectiveFrom: { lte: now },
           OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],

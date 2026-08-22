@@ -36,7 +36,8 @@ export function OrderFromSSWizard({
     [lines, setLines] = useState([{ key: key(), skuId: "", quantity: 1 }]),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [submittedOrderNumber, setSubmittedOrderNumber] = useState<string | null>(null);
+    [submittedOrderNumber, setSubmittedOrderNumber] = useState<string | null>(null),
+    [submittedAmounts, setSubmittedAmounts] = useState<{ subtotal: number; taxTotal: number; total: number } | null>(null);
 
   if (!superStockistName)
     return (
@@ -65,11 +66,17 @@ export function OrderFromSSWizard({
             <p>
               <strong>{hi ? "ऑर्डर सबमिट किया गया" : "Order submitted"}</strong> — {hi ? "S.S. ऑर्डर नंबर" : "S.S. order number"}: <strong>{submittedOrderNumber}</strong>
             </p>
+            {submittedAmounts && (
+              <p>
+                {hi ? "मूल राशि (GST रहित)" : "Basic amount (Excl. GST)"}: ₹{submittedAmounts.subtotal.toFixed(2)} · {hi ? "GST" : "GST"}: ₹{submittedAmounts.taxTotal.toFixed(2)} · <strong>{hi ? "अंतिम राशि" : "Final amount"}: ₹{submittedAmounts.total.toFixed(2)}</strong>
+              </p>
+            )}
             <span className={styles.badge}>{hi ? "अनुरोधित" : "REQUESTED"}</span>
             <button
               type="button"
               onClick={() => {
                 setSubmittedOrderNumber(null);
+                setSubmittedAmounts(null);
                 setLines([{ key: key(), skuId: "", quantity: 1 }]);
               }}
             >
@@ -91,12 +98,16 @@ export function OrderFromSSWizard({
               })
                 .then((order) => {
                   setSubmittedOrderNumber(order.orderNumber ?? null);
+                  setSubmittedAmounts({ subtotal: Number(order.subtotal ?? 0), taxTotal: Number(order.taxTotal ?? 0), total: Number(order.total ?? 0) });
                   router.refresh();
                 })
                 .catch((err) => setError(err instanceof Error ? err.message : "Could not submit order"))
                 .finally(() => setBusy(false));
             }}
           >
+            <p className={styles.emptyHint} style={{ gridColumn: "1/-1" }}>
+              {hi ? "दिखाई गई दरें मूल दरें हैं (GST रहित) — सबमिट करने पर GST अपने-आप जुड़ जाएगा।" : "Rates shown are Basic (Excl. GST) — GST is added automatically on submit."}
+            </p>
             {lines.map((line, index) => (
               <fieldset key={line.key} style={{ border: "1px solid #ead8d2", borderRadius: 9, padding: 10, display: "grid", gap: 8 }}>
                 <legend>{hi ? `उत्पाद ${index + 1}` : `Product ${index + 1}`}</legend>

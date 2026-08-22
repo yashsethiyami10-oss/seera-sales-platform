@@ -68,8 +68,13 @@ export async function completeDelivery(
           "Delivery outside assigned scope",
           403,
         );
+      // P1 22-Aug idempotency fix: this same-actor/same-outcome retry path (e.g. a UI double-click
+      // after the delivery already finalized) must never re-queue the DELIVERED WhatsApp message —
+      // `alreadyFinal: true` tells the post-commit block below to skip it entirely, matching the
+      // real hard-idempotency path a few lines down (DELIVERY_ALREADY_FINAL) which already never
+      // reaches the post-commit block at all since it throws before returning.
       if (delivery.status === input.status && delivery.actorId === actorId)
-        return { delivery, orderType: delivery.order.type, retailerId: delivery.order.retailerId };
+        return { delivery, orderType: delivery.order.type, retailerId: delivery.order.retailerId, orderId: delivery.orderId, alreadyFinal: true as const };
       const claimed = await tx.seeraDelivery.updateMany({
         where: { id: delivery.id, status: { in: ["PENDING", "RESCHEDULED"] } },
         data: {
@@ -242,6 +247,7 @@ export async function completeDelivery(
         orderType: delivery.order.type,
         retailerId: delivery.order.retailerId,
         orderId: delivery.orderId,
+        alreadyFinal: false as const,
       };
     },
     { isolationLevel: "Serializable", timeout: 15000 },
@@ -251,7 +257,9 @@ export async function completeDelivery(
   // also completes Distributor/S.S. replenishment deliveries, which have no retailer to notify).
   // Never before the status is durably DELIVERED (input.status is the durably-committed status
   // read back from completedDelivery's own transaction, not merely the caller's request).
-  if (completedDelivery.orderType === "RETAILER_ORDER" && completedDelivery.retailerId && input.status === "DELIVERED") {
+  // `alreadyFinal` (P1 22-Aug) skips this on a same-actor/same-outcome retry of an already-finalized
+  // delivery — a genuinely new delivery always has alreadyFinal:false, so the normal path is unchanged.
+  if (!completedDelivery.alreadyFinal && completedDelivery.orderType === "RETAILER_ORDER" && completedDelivery.retailerId && input.status === "DELIVERED") {
     try {
       await queueRetailerCommunicationSafe(db, { eventType: "DELIVERED", retailerId: completedDelivery.retailerId, orderId: completedDelivery.orderId, actorId });
     } catch (error) {

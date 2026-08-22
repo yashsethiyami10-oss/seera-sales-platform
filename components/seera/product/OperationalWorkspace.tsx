@@ -2932,6 +2932,7 @@ export async function OperationalWorkspace({
         skus={skus.map((x) => ({
           value: x.id,
           label: `${x.code} · ${x.productName} (${x.packSize.toString()} ${x.unitType})`,
+          brand: x.brand,
           meta: String(x.prices[0]?.amount ?? x.mrp),
           unit: x.unitType,
         }))}
@@ -4208,6 +4209,7 @@ export async function OperationalWorkspace({
         pendingOrders.map(async (order) => {
           const availability = await retailerOrderLineAvailability(db, userId, order.sellerPartnerId!, order.id);
           const availableFor = (lineId: string) => availability.find((a) => a.lineId === lineId)?.available ?? 0;
+          const trackedFor = (lineId: string) => availability.find((a) => a.lineId === lineId)?.tracked ?? false;
           return {
             id: order.id,
             distributorId: order.sellerPartnerId!,
@@ -4223,6 +4225,7 @@ export async function OperationalWorkspace({
               unit: line.packSnapshot,
               ordered: Number(line.orderedQuantity),
               available: availableFor(line.id),
+              tracked: trackedFor(line.id),
               rate: Number(line.priceSnapshot),
               lineTotal: Number(line.lineTotal),
             })),
@@ -4388,7 +4391,7 @@ export async function OperationalWorkspace({
               value: x.id,
               label: `${x.productName} (${x.packSize.toString()} ${x.unitType})`,
               brand: x.brand,
-              meta: rate == null ? undefined : `₹${rate.toFixed(2)}`,
+              meta: rate == null ? undefined : `Basic ₹${rate.toFixed(2)} (+GST)`,
               unavailable: rate == null,
             };
           })}

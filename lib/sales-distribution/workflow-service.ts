@@ -16,7 +16,7 @@ import { canonicalDistributorExposure } from "./credit-service";
 import { resolveDistributorPurchaseRate } from "./distributor-pricing";
 import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, canonicalPiecesToWholesaleOrderUnit } from "./company-order-catalog";
 import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors, companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
-import { deriveInclusiveTax } from "./document-lines";
+import { deriveInclusiveTax, deriveExclusiveTax, priceModeForBrand } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
 import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
 import { assertCompanyDispatchAvailable, postCompanyDispatchStockAndCogs } from "@/lib/manufacturing/company-stock-service";
@@ -556,7 +556,7 @@ export async function placeRetailerOrder(
     input.visitId
       ? prisma.seeraVisit.findFirst({
           where: { id: input.visitId, retailerId: input.retailerId, workSession: { employeeId: context.actorId } },
-          select: { id: true, checkedOutAt: true },
+          select: { id: true, checkedOutAt: true, workSession: { select: { workingDistributorId: true } } },
         })
       : Promise.resolve(null),
     context.sourcePortal === "sales-executive"
@@ -599,44 +599,63 @@ export async function placeRetailerOrder(
     if (visitCheck.checkedOutAt) throw new FoundationError("VISIT_ALREADY_CLOSED", "This visit is already checked out and can no longer accept a new order", 409);
   }
   timing.stage("source_and_visit_validation");
-  // Executive→Distributor routing foundation (Founder decision, RUN 1 shared-foundation pass): a
-  // retailer with no Distributor mapping must NEVER lose the order for ANY field-order source
-  // portal — Executive included, not just Manager Own Retailing. Resolution order:
-  //   1. retailer.distributorId if already set — unchanged, unambiguous.
-  //   2. Else, if the retailer's territory has EXACTLY ONE active Distributor covering it, that
+  // Executive→Distributor routing foundation (Founder decision, RUN 1 shared-foundation pass, then
+  // corrected 22-Aug): Start Day's chosen working Distributor is now the authoritative daily
+  // commercial-routing context for a FIELD_VISIT order — a retailer with no Distributor mapping
+  // must NEVER lose the order, and must never need Manager manual assignment when a valid working
+  // Distributor context already exists. Resolution order:
+  //   1. retailer.distributorId if already set — unchanged, unambiguous, and never silently
+  //      overwritten. If the acting session's workingDistributorId is set and DIFFERS from it, that
+  //      is recorded as a governed conflict for Manager review (never a silent reroute).
+  //   2. Else, if this order is inside a FIELD_VISIT whose work session has a workingDistributorId
+  //      (Start Day's Distributor selection, already validated against
+  //      executiveAuthorizedDistributors when the session started), resolve to it AND persist it
+  //      onto the retailer — a safe first-time mapping, exactly like the territory-match case below.
+  //   3. Else, if the retailer's territory has EXACTLY ONE active Distributor covering it, that
   //      is a deterministic (not guessed) routing decision — resolve to it AND persist it onto
   //      the retailer so every future order for this retailer routes directly, no repeated lookup.
-  //   3. Else (zero or multiple territory candidates), the order still books successfully as
-  //      unassigned (sellerPartnerId/commercialPartyId empty-string sentinel) for Manager/Admin to
-  //      resolve — never a random Distributor, never a dropped order.
+  //   4. Else (zero or multiple territory candidates, and no working-distributor context), the
+  //      order still books successfully as unassigned (sellerPartnerId/commercialPartyId
+  //      empty-string sentinel) for Manager/Admin to resolve — never a random Distributor, never a
+  //      dropped order.
   let resolvedDistributorId = retailer.distributorId;
   let territoryResolved = false;
+  let workingDistributorMapped = false;
+  const workingDistributorId = visitCheck?.workSession?.workingDistributorId ?? null;
   // Routing outcome, distinguished explicitly (Founder decision, RUN 2 shared-foundation residual)
   // rather than collapsing "no candidate" and "multiple candidates" into one indistinguishable
   // pending bucket — recorded as a SeeraStatusHistory reason (no schema change) so Manager's
   // unassigned-orders queue can tell them apart and, for the multiple-candidate case, show which
   // Distributors are in play instead of a bare "unassigned".
-  let routingOutcome: "RETAILER_ASSIGNED" | "SINGLE_TERRITORY_MATCH" | "MULTIPLE_DISTRIBUTOR_CANDIDATES" | "NO_DISTRIBUTOR_MAPPING" = "RETAILER_ASSIGNED";
+  let routingOutcome: "RETAILER_ASSIGNED" | "WORKING_DISTRIBUTOR_ASSIGNED" | "WORKING_DISTRIBUTOR_CONFLICT" | "SINGLE_TERRITORY_MATCH" | "MULTIPLE_DISTRIBUTOR_CANDIDATES" | "NO_DISTRIBUTOR_MAPPING" = "RETAILER_ASSIGNED";
   let candidateDistributorIds: string[] = [];
-  if (!resolvedDistributorId) {
-    if (retailer.territoryId) {
-      const candidates = await prisma.seeraPartner.findMany({
-        where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE", territoryIds: { has: retailer.territoryId } },
-        select: { id: true },
-      });
-      if (candidates.length === 1) {
-        resolvedDistributorId = candidates[0]!.id;
-        territoryResolved = true;
-        routingOutcome = "SINGLE_TERRITORY_MATCH";
-      } else if (candidates.length > 1) {
-        routingOutcome = "MULTIPLE_DISTRIBUTOR_CANDIDATES";
-        candidateDistributorIds = candidates.map((c) => c.id);
-      } else {
-        routingOutcome = "NO_DISTRIBUTOR_MAPPING";
-      }
+  let workingDistributorConflictId: string | null = null;
+  if (resolvedDistributorId) {
+    if (workingDistributorId && workingDistributorId !== resolvedDistributorId) {
+      routingOutcome = "WORKING_DISTRIBUTOR_CONFLICT";
+      workingDistributorConflictId = workingDistributorId;
+    }
+  } else if (workingDistributorId) {
+    resolvedDistributorId = workingDistributorId;
+    workingDistributorMapped = true;
+    routingOutcome = "WORKING_DISTRIBUTOR_ASSIGNED";
+  } else if (retailer.territoryId) {
+    const candidates = await prisma.seeraPartner.findMany({
+      where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE", territoryIds: { has: retailer.territoryId } },
+      select: { id: true },
+    });
+    if (candidates.length === 1) {
+      resolvedDistributorId = candidates[0]!.id;
+      territoryResolved = true;
+      routingOutcome = "SINGLE_TERRITORY_MATCH";
+    } else if (candidates.length > 1) {
+      routingOutcome = "MULTIPLE_DISTRIBUTOR_CANDIDATES";
+      candidateDistributorIds = candidates.map((c) => c.id);
     } else {
       routingOutcome = "NO_DISTRIBUTOR_MAPPING";
     }
+  } else {
+    routingOutcome = "NO_DISTRIBUTOR_MAPPING";
   }
   timing.stage("distributor_company_direct_routing_resolution");
   // authorize() itself already ran (and would have thrown) inside the Promise.all above —
@@ -699,7 +718,7 @@ export async function placeRetailerOrder(
       include: { lines: true },
     });
     if (existing) return { order: existing, isNew: false };
-    if (territoryResolved && resolvedDistributorId)
+    if ((territoryResolved || workingDistributorMapped) && resolvedDistributorId)
       await tx.seeraRetailer.update({ where: { id: retailer.id }, data: { distributorId: resolvedDistributorId } });
     timing.stage("tx_idempotency_check");
     // PERFORMANCE PHASE 2: this runs inside an interactive $transaction, which pins `tx` to a
@@ -848,9 +867,13 @@ export async function placeRetailerOrder(
           reason:
             routingOutcome === "MULTIPLE_DISTRIBUTOR_CANDIDATES"
               ? `MULTIPLE_DISTRIBUTOR_CANDIDATES:${candidateDistributorIds.join(",")}`
-              : routingOutcome === "SINGLE_TERRITORY_MATCH"
-                ? "SINGLE_TERRITORY_MATCH"
-                : "NO_DISTRIBUTOR_MAPPING",
+              : routingOutcome === "WORKING_DISTRIBUTOR_CONFLICT"
+                ? `WORKING_DISTRIBUTOR_CONFLICT:${workingDistributorConflictId}`
+                : routingOutcome === "WORKING_DISTRIBUTOR_ASSIGNED"
+                  ? "WORKING_DISTRIBUTOR_ASSIGNED"
+                  : routingOutcome === "SINGLE_TERRITORY_MATCH"
+                    ? "SINGLE_TERRITORY_MATCH"
+                    : "NO_DISTRIBUTOR_MAPPING",
         },
       });
     timing.stage("tx_order_create");
@@ -1087,22 +1110,36 @@ export async function createDistributorReplenishment(
               `No active distributor price for ${sku.code}`,
               409,
             );
+          // Founder correction 22-Aug: the governed/derived distributor rate is a BASIC (ex-GST)
+          // rate, not GST-inclusive — GST must be added on top, never extracted from it. Reuses the
+          // same governed priceModeForBrand/deriveExclusiveTax convention document-lines.ts already
+          // established (Seera brand = GST_EXCLUSIVE) instead of inventing a new rule, so a future
+          // MUV SKU reaching this same order type would still correctly stay GST-inclusive.
+          const gross = price.amount * line.quantity;
+          const priceMode = priceModeForBrand(sku.brand);
+          const { taxableValue, taxAmount } =
+            sku.taxRate == null
+              ? { taxableValue: gross, taxAmount: 0 }
+              : priceMode === "GST_INCLUSIVE"
+                ? deriveInclusiveTax(gross, Number(sku.taxRate))
+                : deriveExclusiveTax(gross, Number(sku.taxRate));
+          const lineTotal = priceMode === "GST_INCLUSIVE" ? gross : taxableValue + taxAmount;
           return {
             sku,
             price,
             quantity: line.quantity,
-            total: price.amount * line.quantity,
+            taxableValue,
+            taxAmount,
+            lineTotal,
           };
         }),
       );
-      const subtotal = snapshots.reduce((sum, line) => sum + line.total, 0);
-      // RUN 2B resume Section 12 — see the matching comment in placeRetailerOrder: sums the same
-      // real embedded tax this function already derives per line (below) onto the order header,
-      // instead of a hardcoded 0. Gross (subtotal/total) is unaffected.
-      const taxTotal = snapshots.reduce(
-        (sum, line) => sum + (line.sku.taxRate == null ? 0 : deriveInclusiveTax(line.total, Number(line.sku.taxRate)).taxAmount),
-        0,
-      );
+      // subtotal = sum of taxable (basic) values; taxTotal = sum of GST; total = subtotal+taxTotal
+      // — correct for BOTH modes: GST_EXCLUSIVE (subtotal=basic, taxTotal=added-on-top GST) and
+      // GST_INCLUSIVE (taxableValue is already tax-extracted from gross, so subtotal+taxTotal
+      // reconstructs the original inclusive gross exactly).
+      const subtotal = snapshots.reduce((sum, line) => sum + line.taxableValue, 0);
+      const taxTotal = snapshots.reduce((sum, line) => sum + line.taxAmount, 0);
       const terms = await tx.seeraCreditTerm.findFirst({
         where: {
           distributorId,
@@ -1135,32 +1172,26 @@ export async function createDistributorReplenishment(
           subtotal,
           discountTotal: 0,
           taxTotal,
-          total: subtotal,
+          // Correct for both price modes (see snapshot derivation above): GST_EXCLUSIVE means
+          // total = basic subtotal + added GST; GST_INCLUSIVE means subtotal is already
+          // tax-extracted from the original inclusive gross, so subtotal+taxTotal reconstructs it.
+          total: subtotal + taxTotal,
           contractualCreditDays,
           originalDueDate,
           notes: input.notes,
           idempotencyKey: input.idempotencyKey,
           submittedAt: now,
           lines: {
-            create: snapshots.map(({ sku, price, quantity, total }) => ({
+            create: snapshots.map(({ sku, price, quantity, taxableValue, taxAmount, lineTotal }) => ({
               skuId: sku.id,
               skuCodeSnapshot: sku.code,
               productNameSnapshot: sku.productName,
               packSnapshot: `${sku.packSize} ${sku.unitType}`,
               priceSnapshot: price.amount,
               mrpSnapshot: sku.mrp,
-              // Governed/derived distributor price (resolveDistributorPurchaseRate) is already
-              // GST-inclusive (total/subtotal below charge it as-is, no extra tax layer) — taxable/
-              // tax are derived for transparency only.
-              taxSnapshot:
-                sku.taxRate == null
-                  ? undefined
-                  : (() => {
-                      const { taxableValue, taxAmount } = deriveInclusiveTax(total, Number(sku.taxRate));
-                      return { rate: sku.taxRate.toString(), hsn: sku.hsn, taxableValue, taxAmount };
-                    })(),
+              taxSnapshot: sku.taxRate == null ? undefined : { rate: sku.taxRate.toString(), hsn: sku.hsn, taxableValue, taxAmount },
               orderedQuantity: quantity,
-              lineTotal: total,
+              lineTotal,
             })),
           },
         },
@@ -1540,7 +1571,16 @@ export async function allocateOrderStock(prisma:PrismaClient,actorId:string,inpu
       // ever reaches the availability check or the RESERVE movement — a RETAILER_ORDER line is never
       // converted, since it's already pieces by design.
       const deltaPieces=order.type==="RETAILER_ORDER"?delta:wholesaleOrderUnitToCanonicalPieces(line.skuCodeSnapshot,delta);
-      if(delta>0){const movements=await tx.seeraInventoryMovement.findMany({where:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId},select:{direction:true,quantity:true},orderBy:{occurredAt:"asc"}});const position=inventoryPosition(movements.map((x)=>({direction:x.direction,quantity:Number(x.quantity)})));if(deltaPieces>position.onHand-position.reserved)throw new FoundationError("INSUFFICIENT_AVAILABLE_STOCK",`Available stock is insufficient for ${line.productNameSnapshot}`,409);await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"ALLOCATION",direction:"RESERVE",quantity:deltaPieces,sourceType:"SeeraSalesOrder",sourceId:order.id,actorId,sourcePortal:input.partyType==="DISTRIBUTOR"?"distributor":"super-stockist",reason:"Order allocation",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});}
+      if(delta>0){const movements=await tx.seeraInventoryMovement.findMany({where:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId},select:{direction:true,quantity:true},orderBy:{occurredAt:"asc"}});const position=inventoryPosition(movements.map((x)=>({direction:x.direction,quantity:Number(x.quantity)})));const short=deltaPieces>position.onHand-position.reserved;
+        // Founder decision 22-Aug: the Executive->Distributor field-order flow (RETAILER_ORDER) must
+        // never block on stock — most Distributors never maintain a live Seera stock ledger at all.
+        // Stock stays an OPTIONAL operational record: if there's enough recorded stock, reserve it
+        // exactly as before (unchanged for every other order type, e.g. S.S. fulfilling a
+        // DISTRIBUTOR_REPLENISHMENT, which still hard-blocks on INSUFFICIENT_AVAILABLE_STOCK); if
+        // there isn't (including "no stock tracked at all"), skip the movement rather than risk a
+        // negative ledger or block commercial fulfilment.
+        if(order.type==="RETAILER_ORDER"){if(!short)await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"ALLOCATION",direction:"RESERVE",quantity:deltaPieces,sourceType:"SeeraSalesOrder",sourceId:order.id,actorId,sourcePortal:"distributor",reason:"Order allocation",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});}
+        else{if(short)throw new FoundationError("INSUFFICIENT_AVAILABLE_STOCK",`Available stock is insufficient for ${line.productNameSnapshot}`,409);await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"ALLOCATION",direction:"RESERVE",quantity:deltaPieces,sourceType:"SeeraSalesOrder",sourceId:order.id,actorId,sourcePortal:input.partyType==="DISTRIBUTOR"?"distributor":"super-stockist",reason:"Order allocation",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});}}
       if(request.quantity!==alreadyAllocated)await tx.seeraOrderLine.update({where:{id:line.id},data:{allocatedQuantity:request.quantity}});}
     await tx.seeraStatusHistory.create({data:{entityType:"SeeraSalesOrder",entityId:order.id,fromStatus:order.status,toStatus:"ALLOCATED",actorId,reason:"Stock allocated"}});
     const updated = await tx.seeraSalesOrder.update({where:{id:order.id},data:{status:"ALLOCATED"},include:{lines:true}});

@@ -15,7 +15,7 @@ async function post(action: string, payload: unknown) {
   return d;
 }
 
-export type PendingLine = { id: string; label: string; unit: string; ordered: number; available: number; rate: number; lineTotal: number };
+export type PendingLine = { id: string; label: string; unit: string; ordered: number; available: number; tracked: boolean; rate: number; lineTotal: number };
 export type PendingOrder = { id: string; distributorId: string; orderNumber: string; retailer: string; placedAt: string; salesExecutive?: string | null; cashOrCredit: string; orderTotal: number; lines: PendingLine[] };
 export type DeliverableLine = { id: string; label: string; remaining: number };
 export type DeliverableOrder = { deliveryId: string; orderNumber: string; retailer: string; lines: DeliverableLine[] };
@@ -40,7 +40,13 @@ function DecisionCard({ order, language }: { order: PendingOrder; language: "EN"
     [reason, setReason] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    shortfall = order.lines.some((l) => l.available < l.ordered);
+    [advanced, setAdvanced] = useState(false),
+    // Founder decision 22-Aug: most Distributors never maintain a live Seera stock ledger — an
+    // untracked line (zero movements ever recorded) must never block or hide ACCEPT. Only a line
+    // the Distributor genuinely DOES track, and is genuinely short on, is a real shortfall worth
+    // surfacing — and even then it's informational now, not a hard gate (see workflow-service.ts's
+    // allocateOrderStock: stock is an OPTIONAL operational record for this order type).
+    shortfall = order.lines.some((l) => l.tracked && l.available < l.ordered);
 
   const decide = async (decision: "ACCEPT" | "PARTIAL_ACCEPT" | "REJECT") => {
     if (decision === "REJECT" && !reason.trim()) {
@@ -80,27 +86,18 @@ function DecisionCard({ order, language }: { order: PendingOrder; language: "EN"
       </header>
       <ul className={styles.cardLines}>
         {order.lines.map((line) => (
-          <li key={line.id} data-short={line.available < line.ordered}>
+          <li key={line.id} data-short={line.tracked && line.available < line.ordered}>
             <div>
               <span>{line.label}</span>
               <small>
                 {hi ? "मात्रा" : "Qty"} {line.ordered} {line.unit} · ₹{line.rate.toFixed(2)} × = ₹{line.lineTotal.toFixed(2)}
               </small>
-              {line.available < line.ordered && (
+              {line.tracked && line.available < line.ordered && (
                 <small className={styles.shortHint}>
-                  {hi ? `उपलब्ध ${line.available} / मंगाया ${line.ordered}` : `Available ${line.available} / Ordered ${line.ordered}`}
+                  {hi ? `स्टॉक में केवल ${line.available} / मंगाया ${line.ordered}` : `Only ${line.available} in your recorded stock / Ordered ${line.ordered}`}
                 </small>
               )}
             </div>
-            <input
-              type="number"
-              min={0}
-              max={Math.min(line.ordered, line.available)}
-              step="1"
-              value={qty[line.id] ?? 0}
-              onChange={(e) => setQty((c) => ({ ...c, [line.id]: Math.max(0, Math.min(Number(e.target.value), line.ordered, line.available)) }))}
-              aria-label={hi ? "स्वीकार मात्रा" : "Accept quantity"}
-            />
           </li>
         ))}
       </ul>
@@ -108,27 +105,53 @@ function DecisionCard({ order, language }: { order: PendingOrder; language: "EN"
       {shortfall && (
         <p className={styles.emptyHint}>
           {hi
-            ? "कुछ उत्पादों का स्टॉक कम है — पूर्ण स्वीकार उपलब्ध नहीं है, कृपया आंशिक (उपलब्ध मात्रा) का उपयोग करें।"
-            : "Some products are short on stock — full ACCEPT isn't available, use PARTIAL for the quantity on hand."}
+            ? "आपके स्टॉक रिकॉर्ड में कुछ उत्पाद कम दिख रहे हैं — फिर भी स्वीकार करना सुरक्षित है; यह केवल एक सूचना है।"
+            : "Your recorded stock shows some products running low — it's still safe to Accept; this is informational only."}
         </p>
       )}
       <div className={styles.cardActions}>
-        {!shortfall && (
-          <button type="button" disabled={busy} onClick={() => void decide("ACCEPT")} className={styles.primaryBig}>
-            {hi ? "स्वीकार करें" : "ACCEPT"}
-          </button>
-        )}
-        <button type="button" disabled={busy} onClick={() => void decide("PARTIAL_ACCEPT")} className={shortfall ? styles.primaryBig : styles.secondaryBig}>
-          {hi ? "आंशिक" : "PARTIAL"}
+        <button type="button" disabled={busy} onClick={() => void decide("ACCEPT")} className={styles.primaryBig}>
+          {hi ? "स्वीकार करें" : "ACCEPT ORDER"}
         </button>
-        <button type="button" disabled={busy} onClick={() => void decide("REJECT")} className={styles.dangerBig}>
-          {hi ? "अस्वीकार" : "REJECT"}
+        <button type="button" disabled={busy} onClick={() => setAdvanced((a) => !a)} className={styles.secondaryBig}>
+          {advanced ? (hi ? "अधिक विकल्प छुपाएं" : "Hide more options") : (hi ? "अधिक विकल्प (आंशिक / अस्वीकार)" : "More options (Partial / Reject)")}
         </button>
       </div>
-      <label className={styles.reasonField}>
-        {hi ? "कारण (अस्वीकार के लिए आवश्यक)" : "Reason (required to reject)"}
-        <input value={reason} onChange={(e) => setReason(e.target.value)} />
-      </label>
+      {advanced && (
+        <>
+          <ul className={styles.cardLines}>
+            {order.lines.map((line) => (
+              <li key={line.id}>
+                <div>
+                  <span>{line.label}</span>
+                  <small>{hi ? "आंशिक स्वीकार मात्रा" : "Partial-accept quantity"}</small>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={line.ordered}
+                  step="1"
+                  value={qty[line.id] ?? 0}
+                  onChange={(e) => setQty((c) => ({ ...c, [line.id]: Math.max(0, Math.min(Number(e.target.value), line.ordered)) }))}
+                  aria-label={hi ? "आंशिक स्वीकार मात्रा" : "Partial-accept quantity"}
+                />
+              </li>
+            ))}
+          </ul>
+          <div className={styles.cardActions}>
+            <button type="button" disabled={busy} onClick={() => void decide("PARTIAL_ACCEPT")} className={styles.secondaryBig}>
+              {hi ? "आंशिक स्वीकार करें" : "PARTIAL ACCEPT"}
+            </button>
+            <button type="button" disabled={busy} onClick={() => void decide("REJECT")} className={styles.dangerBig}>
+              {hi ? "अस्वीकार" : "REJECT"}
+            </button>
+          </div>
+          <label className={styles.reasonField}>
+            {hi ? "कारण (अस्वीकार के लिए आवश्यक)" : "Reason (required to reject)"}
+            <input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+        </>
+      )}
       {error && <p role="status" className={styles.cardError}>{error}</p>}
     </article>
   );
@@ -141,7 +164,8 @@ function DeliveryCard({ order, language }: { order: DeliverableOrder; language: 
     [reason, setReason] = useState(""),
     [receiverName, setReceiverName] = useState(""),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [advanced, setAdvanced] = useState(false);
 
   const outcome = async (value: string) => {
     setBusy(true);
@@ -193,21 +217,33 @@ function DeliveryCard({ order, language }: { order: DeliverableOrder; language: 
           </li>
         ))}
       </ul>
-      <label>
-        {hi ? "प्राप्तकर्ता का नाम (वैकल्पिक)" : "Receiver name (optional)"}
-        <input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
-      </label>
-      <label className={styles.reasonField}>
-        {hi ? "कारण / टिप्पणी" : "Reason / note"}
-        <input value={reason} onChange={(e) => setReason(e.target.value)} />
-      </label>
       <div className={styles.cardActions}>
-        {OUTCOMES.map((o) => (
-          <button key={o.value} type="button" disabled={busy} onClick={() => void outcome(o.value)} className={styles.secondaryBig}>
-            {hi ? o.hi : o.en}
-          </button>
-        ))}
+        <button type="button" disabled={busy} onClick={() => void outcome("DELIVERED")} className={styles.primaryBig}>
+          {hi ? "वितरित के रूप में चिह्नित करें" : "MARK DELIVERED"}
+        </button>
+        <button type="button" disabled={busy} onClick={() => setAdvanced((a) => !a)} className={styles.secondaryBig}>
+          {advanced ? (hi ? "अधिक विकल्प छुपाएं" : "Hide more options") : (hi ? "अधिक विकल्प" : "More options")}
+        </button>
       </div>
+      {advanced && (
+        <>
+          <label>
+            {hi ? "प्राप्तकर्ता का नाम (वैकल्पिक)" : "Receiver name (optional)"}
+            <input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
+          </label>
+          <label className={styles.reasonField}>
+            {hi ? "कारण / टिप्पणी" : "Reason / note"}
+            <input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+          <div className={styles.cardActions}>
+            {OUTCOMES.filter((o) => o.value !== "DELIVERED").map((o) => (
+              <button key={o.value} type="button" disabled={busy} onClick={() => void outcome(o.value)} className={styles.secondaryBig}>
+                {hi ? o.hi : o.en}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {error && <p role="status" className={styles.cardError}>{error}</p>}
     </article>
   );

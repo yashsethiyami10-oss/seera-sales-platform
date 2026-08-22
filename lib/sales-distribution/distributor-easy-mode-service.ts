@@ -53,6 +53,11 @@ export async function retailerOrderLineAvailability(
         rate: Number(line.priceSnapshot),
         lineTotal: Number(line.lineTotal),
         available: Math.max(0, position.onHand - position.reserved),
+        // Founder decision 22-Aug: most Distributors never maintain a live Seera stock ledger at
+        // all — zero movements ever recorded must read as "untracked" (assume fine, ACCEPT stays
+        // primary), not as "confirmed zero stock" (which would wrongly force PARTIAL/REJECT). A
+        // Distributor who DOES track stock still gets an accurate, informative shortfall signal.
+        tracked: movements.length > 0,
       };
     }),
   );

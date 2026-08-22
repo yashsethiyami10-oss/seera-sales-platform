@@ -6,9 +6,10 @@ import styles from "./WorkflowActions.module.css";
 import journeyStyles from "./FieldJourney.module.css";
 import { captureGps, GpsBadge, type GpsStatus } from "./gps";
 import { EmptyOptionHint } from "./EmptyOptionHint";
+import { SkuSelect } from "./SkuSelect";
 
 type Option = { value: string; label: string; meta?: string };
-type SkuOption = Option & { unit?: string };
+type SkuOption = Option & { unit?: string; brand: string };
 type LinkedActivity = {
   shopsVisited: number;
   productive: number;
@@ -343,19 +344,23 @@ export function ManagerFieldActions({
                     <div key={line.key} className={styles.orderLine}>
                       <label>
                         {hi ? "उत्पाद / वेरिएंट" : "Product / Variant"}
-                        <select
+                        {/* P1 22-Aug: swapped the ad-hoc <select> for the same shared, proven
+                            SkuSelect component the Distributor portal's "Order from S.S." already
+                            uses successfully (brand-grouped, consistent option rendering) — per
+                            Founder instruction to replace a reported-unreliable native selector
+                            with an accessible pattern already working elsewhere. */}
+                        <SkuSelect
+                          language={language}
+                          skus={skus}
                           value={line.skuId}
-                          onChange={(event) => {
-                            const chosen = skuById.get(event.target.value);
+                          onChange={(value) => {
+                            const chosen = skuById.get(value);
                             setOrderLines((c) =>
-                              c.map((x, i) => (i === index ? { ...x, skuId: event.target.value, rate: chosen ? Number(chosen.meta ?? 0) : x.rate } : x)),
+                              c.map((x, i) => (i === index ? { ...x, skuId: value, rate: chosen ? Number(chosen.meta ?? 0) : x.rate } : x)),
                             );
                           }}
                           required
-                        >
-                          <option value="">{hi ? "उत्पाद चुनें" : "Choose product"}</option>
-                          {skus.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-                        </select>
+                        />
                         {!skus.length && <EmptyOptionHint language={language} fallback={hi ? "कोई सक्रिय उत्पाद उपलब्ध नहीं है — Admin से जांच करें।" : "No active product is available — check with Admin."} />}
                       </label>
                       <label>
