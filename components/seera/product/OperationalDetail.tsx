@@ -10,6 +10,7 @@ import { DeliveryActions } from "./DeliveryActions";
 import { RetailerActions } from "./RetailerActions";
 import { DocumentShareActions } from "./DocumentShareActions";
 import { PartnerAccessPanel } from "./PartnerAccessPanel";
+import { BillingProfilePanel } from "./BillingProfilePanel";
 import { ReassignDistributorPanel } from "./ReassignDistributorPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { DistributorClosureSettlementPanel } from "./DistributorClosureSettlementPanel";
@@ -322,6 +323,13 @@ export async function OperationalDetail({
           }));
         })()
       : [];
+    const billingProfile =
+      canManageAccess && (x.type === "DISTRIBUTOR" || x.type === "SUPER_STOCKIST" || x.type === "COMPANY_DIRECT")
+        ? await db.seeraBillingProfile.findFirst({
+            where: { ownerType: x.type, ownerId: x.id, verificationStatus: "VERIFIED", effectiveTo: null },
+            orderBy: { effectiveFrom: "desc" },
+          })
+        : null;
     const reassignSuperStockists =
       canManageAccess && x.type === "DISTRIBUTOR"
         ? (
@@ -413,6 +421,26 @@ export async function OperationalDetail({
           // Company Direct is the Founder's own internal entity, not an external partner with its
           // own portal login — no user-access management needed for it.
           <PartnerAccessPanel language={language} partnerId={x.id} partnerType={x.type} members={members} />
+        )}
+        {canManageAccess && (x.type === "DISTRIBUTOR" || x.type === "SUPER_STOCKIST" || x.type === "COMPANY_DIRECT") && (
+          <BillingProfilePanel
+            language={language}
+            ownerType={x.type}
+            ownerId={x.id}
+            partnerGstin={x.gstin}
+            profile={
+              billingProfile
+                ? {
+                    gstRegistered: billingProfile.gstRegistered,
+                    gstin: billingProfile.gstin,
+                    state: billingProfile.state,
+                    stateCode: billingProfile.stateCode,
+                    invoicePrefix: billingProfile.invoicePrefix,
+                    verificationStatus: billingProfile.verificationStatus,
+                  }
+                : null
+            }
+          />
         )}
         {canManageAccess && x.type === "DISTRIBUTOR" && (
           <ReassignDistributorPanel

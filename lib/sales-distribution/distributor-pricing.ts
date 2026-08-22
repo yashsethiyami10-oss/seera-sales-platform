@@ -2,6 +2,12 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+// SOURCE OF RULE (traceability for the final commercial closure pass, 22-Aug): the base +6%/+8%
+// rule was explicitly Founder-approved in the "SEERA DISTRIBUTOR FIELD ORDER FLOW FINAL
+// SIMPLIFICATION" task of this same engagement, which named the product families directly —
+// "Seera Blue Detergent Cake, Seera White Detergent Cake" at +6% and "SEERA DETERGENT POWDER" at
+// +8% — not a guess or an inferred pattern. Rules C/D (Yuva Cake, Shine Plus Powder) extend the
+// SAME named rule to those brands' own real SKUs, not a new/separate rule.
 // Founder decision 22-Aug, extended 22-Aug (Rules C/D): governed commercial uplift applied to the
 // existing governed COMPANY_TO_SS rate (the S.S.'s own procurement rate from Company — a genuine
 // BASIC/EX-GST value; GST is added on top, never extracted from it, per document-lines.ts's

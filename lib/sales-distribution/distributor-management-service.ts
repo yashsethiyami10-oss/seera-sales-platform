@@ -248,6 +248,72 @@ export async function createCompanyDirectPartner(
   return partner;
 }
 
+// Final commercial closure (Part 6, 22-Aug): createSuperStockist can capture a SeeraBillingProfile
+// bundled into onboarding, but there was no equivalent governed path for a Distributor (or for an
+// S.S. that skipped billing capture at creation time) — Distributor billing profiles simply never
+// existed in production (0 rows for any of the 10 real Distributors). Deliberately reads
+// `gstin`/`legalName`/`addresses` from the EXISTING SeeraPartner row rather than accepting them as
+// fresh free-text input here — the Founder's explicit instruction was "Do NOT invent GSTIN/legal
+// identity," so this function can only ever reflect what the partner record already has on file
+// (today: null gstin for every real Distributor) and correctly produces an unregistered/non-GST
+// billing profile (`gstRegistered:false, gstin:null`) rather than fabricate one. `state`/
+// `stateCode`/`invoicePrefix` are the one piece of genuinely new input, because they are operational
+// GST-filing configuration, not personal/legal identity — same convention createSuperStockist's own
+// billingProfile sub-object already uses. Idempotent: returns the existing VERIFIED profile as-is
+// instead of creating a duplicate if one is already active.
+export async function setPartnerBillingProfile(
+  prisma: PrismaClient,
+  actorId: string,
+  input: {
+    ownerType: "DISTRIBUTOR" | "SUPER_STOCKIST" | "COMPANY_DIRECT";
+    ownerId: string;
+    state: string;
+    stateCode: string;
+    invoicePrefix: string;
+  },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  const partner = await prisma.seeraPartner.findFirst({ where: { id: input.ownerId, type: input.ownerType } });
+  if (!partner) throw new FoundationError("PARTNER_NOT_FOUND", "Partner not found", 404);
+  if (partner.lifecycle !== "ACTIVE")
+    throw new FoundationError("PARTNER_NOT_ACTIVE", "Only an active partner can be billing-verified", 400);
+  const existing = await prisma.seeraBillingProfile.findFirst({
+    where: { ownerType: input.ownerType, ownerId: partner.id, verificationStatus: "VERIFIED", effectiveTo: null },
+  });
+  if (existing) return existing;
+  const now = new Date();
+  const profile = await prisma.$transaction(async (tx) => {
+    const created = await tx.seeraBillingProfile.create({
+      data: {
+        ownerType: input.ownerType,
+        ownerId: partner.id,
+        legalName: partner.legalName,
+        tradeName: partner.tradeName,
+        gstRegistered: Boolean(partner.gstin?.trim()),
+        gstin: partner.gstin,
+        registeredAddress: partner.addresses as object,
+        state: input.state.trim(),
+        stateCode: input.stateCode.trim(),
+        invoicePrefix: input.invoicePrefix.trim(),
+        authorizedBilling: true,
+        verificationStatus: "VERIFIED",
+        verifiedById: actorId,
+        effectiveFrom: now,
+        createdById: actorId,
+      },
+    });
+    await recordAudit(tx, {
+      actorId,
+      action: "billing_profile.verified",
+      entityType: "SeeraBillingProfile",
+      entityId: created.id,
+      afterState: { ownerType: input.ownerType, ownerId: partner.id, gstRegistered: created.gstRegistered },
+    });
+    return created;
+  });
+  return profile;
+}
+
 // Founder decision (GAP-004 addendum): Company Direct stays a Founder-approved EXCEPTION, never
 // inferred from territory/name/role alone — the default supply model remains Company -> Super
 // Stockist -> Distributor -> Retailer. This is the one governed switch that grants/revokes a

@@ -31,28 +31,21 @@ export async function canonicalDistributorExposure(prisma: Db, distributorId: st
       select: { debitPartyId: true, creditPartyId: true, amount: true },
     }),
   ]);
-  // Once a TAX_INVOICE/NON_TAX_INVOICE has actually been issued against an order, that order's
-  // exposure lives in the ledger (postedDebits, below) instead of its raw order.total — otherwise
-  // an invoiced order would count twice (once as an open order, once as its own invoice's ledger
-  // entry). Un-invoiced orders keep contributing their order.total, matching the documented
-  // "order-value based until billing is live" design (see MUV_PHASE0/handover notes).
-  const invoicedOrderIds = openOrders.length
-    ? new Set(
-        (
-          await prisma.seeraCommercialDocument.findMany({
-            where: {
-              orderId: { in: openOrders.map((o) => o.id) },
-              type: { in: ["TAX_INVOICE", "NON_TAX_INVOICE"] },
-              status: { not: "DRAFT" },
-            },
-            select: { orderId: true },
-          })
-        ).map((d) => d.orderId!),
-      )
-    : new Set<string>();
-  const orderExposureTotal = openOrders
-    .filter((order) => !invoicedOrderIds.has(order.id))
-    .reduce((sum, order) => sum + Number(order.total), 0);
+  // Founder decision 22-Aug (final commercial-freeze correction): ORDER != FINANCIAL OUTSTANDING,
+  // QUOTATION != FINANCIAL OUTSTANDING. A Distributor's exposure to its S.S. is no longer the raw
+  // value of open (SUBMITTED/ACCEPTED/ALLOCATED/DISPATCHED/DELIVERED) replenishment orders — an
+  // order or a delivery, on its own, creates no financial exposure. Exposure is purely what has
+  // actually been POSTED to the ledger: an ISSUED TAX_INVOICE/NON_TAX_INVOICE debits the
+  // Distributor (billing-service.ts's issueBillingDraft posts the SeeraFinancialEntry at the
+  // moment of issuance — that IS the event that creates exposure, not order placement/acceptance/
+  // delivery beforehand), a verified payment or credit note credits it back, a cancelled/void
+  // document was never posted so never contributed. orderExposureTotal is kept at 0 (not removed
+  // from the return shape) so every existing caller of this "single calculation every exposure-
+  // facing surface must call" keeps working unchanged, just with a value that finally matches this
+  // governed rule everywhere at once. `openOrders` is still queried/returned — it remains real,
+  // useful informational data (the Money panel's "open orders" statement list, and
+  // creditPositionFor's overdue-by-due-date signal below), just no longer summed into exposure.
+  const orderExposureTotal = 0;
   const postedDebits = ledger.filter((e) => e.debitPartyId === distributorId).reduce((sum, e) => sum + Number(e.amount), 0);
   const postedCredits = ledger.filter((e) => e.creditPartyId === distributorId).reduce((sum, e) => sum + Number(e.amount), 0);
   const exposure = netCreditExposure({ orderExposureTotal, postedDebits, postedCredits });
@@ -93,14 +86,24 @@ export async function creditPositionFor(prisma: PrismaClient, distributorId: str
         now,
       })
     : null;
+  // Founder correction 22-Aug: `overdue` used to be derived as `outstanding - current`, which
+  // silently broke once `outstanding` stopped being order-value-based (see
+  // canonicalDistributorExposure) — it would floor to 0 the instant ledger exposure was smaller
+  // than open-order value, i.e. almost always. `current`/`overdue` are a genuinely separate,
+  // still-real signal: which of the Distributor's OPEN orders (not yet invoiced) are past the due
+  // date their credit terms set at order time. This never re-enters the exposure/payable number —
+  // it is order-value information, shown honestly as its own thing, not folded into "S.S. Payable".
   const current = openOrders
     .filter((order) => !order.originalDueDate || ageingBucket(order.originalDueDate, now) === "NOT_DUE")
+    .reduce((sum, order) => sum + Number(order.total), 0);
+  const overdueOrderValue = openOrders
+    .filter((order) => order.originalDueDate && ageingBucket(order.originalDueDate, now) !== "NOT_DUE")
     .reduce((sum, order) => sum + Number(order.total), 0);
   return {
     terms,
     outstanding,
     current,
-    overdue: Math.max(0, outstanding - current),
+    overdue: overdueOrderValue,
     decision,
     promisedPaymentDate: promise?.promisedPaymentDate ?? null,
     formalExtensionUntil: extension?.extensionUntil ?? null,
