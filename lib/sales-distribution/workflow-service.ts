@@ -1572,14 +1572,17 @@ export async function allocateOrderStock(prisma:PrismaClient,actorId:string,inpu
       // converted, since it's already pieces by design.
       const deltaPieces=order.type==="RETAILER_ORDER"?delta:wholesaleOrderUnitToCanonicalPieces(line.skuCodeSnapshot,delta);
       if(delta>0){const movements=await tx.seeraInventoryMovement.findMany({where:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId},select:{direction:true,quantity:true},orderBy:{occurredAt:"asc"}});const position=inventoryPosition(movements.map((x)=>({direction:x.direction,quantity:Number(x.quantity)})));const short=deltaPieces>position.onHand-position.reserved;
-        // Founder decision 22-Aug: the Executive->Distributor field-order flow (RETAILER_ORDER) must
-        // never block on stock — most Distributors never maintain a live Seera stock ledger at all.
-        // Stock stays an OPTIONAL operational record: if there's enough recorded stock, reserve it
-        // exactly as before (unchanged for every other order type, e.g. S.S. fulfilling a
-        // DISTRIBUTOR_REPLENISHMENT, which still hard-blocks on INSUFFICIENT_AVAILABLE_STOCK); if
-        // there isn't (including "no stock tracked at all"), skip the movement rather than risk a
-        // negative ledger or block commercial fulfilment.
-        if(order.type==="RETAILER_ORDER"){if(!short)await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"ALLOCATION",direction:"RESERVE",quantity:deltaPieces,sourceType:"SeeraSalesOrder",sourceId:order.id,actorId,sourcePortal:"distributor",reason:"Order allocation",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});}
+        // Founder decision 22-Aug, extended in the Final Master Revision (Part 5) to
+        // DISTRIBUTOR_REPLENISHMENT: stock stays an OPTIONAL operational record for BOTH the
+        // Executive->Distributor (RETAILER_ORDER) and S.S.->Distributor (DISTRIBUTOR_REPLENISHMENT)
+        // flows — most Distributors AND most Super Stockists never maintain a live Seera stock
+        // ledger at all, and a party who genuinely has never recorded a movement for this SKU
+        // (`movements.length===0`, i.e. untracked) must not be hard-blocked on a fabricated "zero
+        // stock." A party who DOES track stock for this SKU and is genuinely short on it still gets
+        // a real, governed block — this only removes the block for the untracked case, it does not
+        // weaken real stock discipline for whoever actually keeps one.
+        const untracked = movements.length === 0;
+        if(order.type==="RETAILER_ORDER"||untracked){if(!short)await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"ALLOCATION",direction:"RESERVE",quantity:deltaPieces,sourceType:"SeeraSalesOrder",sourceId:order.id,actorId,sourcePortal:input.partyType==="DISTRIBUTOR"?"distributor":"super-stockist",reason:"Order allocation",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});}
         else{if(short)throw new FoundationError("INSUFFICIENT_AVAILABLE_STOCK",`Available stock is insufficient for ${line.productNameSnapshot}`,409);await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"ALLOCATION",direction:"RESERVE",quantity:deltaPieces,sourceType:"SeeraSalesOrder",sourceId:order.id,actorId,sourcePortal:input.partyType==="DISTRIBUTOR"?"distributor":"super-stockist",reason:"Order allocation",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});}}
       if(request.quantity!==alreadyAllocated)await tx.seeraOrderLine.update({where:{id:line.id},data:{allocatedQuantity:request.quantity}});}
     await tx.seeraStatusHistory.create({data:{entityType:"SeeraSalesOrder",entityId:order.id,fromStatus:order.status,toStatus:"ALLOCATED",actorId,reason:"Stock allocated"}});

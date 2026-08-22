@@ -16,7 +16,7 @@ async function post(action: string, payload: unknown) {
   return d;
 }
 
-export type SsPendingLine = { id: string; label: string; unit: string; ordered: number; available: number; rate: number; lineTotal: number };
+export type SsPendingLine = { id: string; label: string; unit: string; ordered: number; available: number; tracked: boolean; rate: number; lineTotal: number };
 export type SsCredit = { limit: number; used: number; available: number | null; overdue: number; status: string | null };
 export type SsPendingOrder = {
   id: string;
@@ -35,13 +35,18 @@ function DecisionCard({ order, language, dispatchHref }: { order: SsPendingOrder
   const hi = language === "HI",
     router = useRouter(),
     [qty, setQty] = useState<Record<string, number>>(() =>
-      Object.fromEntries(order.lines.map((l) => [l.id, Math.min(l.ordered, l.available)])),
+      Object.fromEntries(order.lines.map((l) => [l.id, l.tracked ? Math.min(l.ordered, l.available) : l.ordered])),
     ),
     [reason, setReason] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [accepted, setAccepted] = useState(false),
-    shortfall = order.lines.some((l) => l.available < l.ordered),
+    // Final Master Revision (Part 5, 22-Aug): most Super Stockists never maintain a live Seera
+    // stock ledger — an untracked line (zero movements ever recorded) must never block or hide
+    // ACCEPT. Only a line the S.S. genuinely DOES track, and is genuinely short on, is a real
+    // shortfall worth surfacing (see workflow-service.ts's allocateOrderStock: stock stays an
+    // OPTIONAL operational record for an untracked SKU on this order type too, now).
+    shortfall = order.lines.some((l) => l.tracked && l.available < l.ordered),
     creditBlocked = order.credit.status ? ["BLOCK", "HOLD", "OVERRIDE_REQUIRED"].includes(order.credit.status) : false;
 
   const decide = async (decision: "ACCEPT" | "PARTIAL_ACCEPT" | "REJECT") => {
@@ -64,6 +69,9 @@ function DecisionCard({ order, language, dispatchHref }: { order: SsPendingOrder
       else setAccepted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+      // A failure here can still have partially committed (see acceptAndAllocateDistributorOrder's
+      // retry-safety fix) — refresh so a retry click reads this order's real current state.
+      router.refresh();
     } finally {
       setBusy(false);
     }
@@ -93,13 +101,13 @@ function DecisionCard({ order, language, dispatchHref }: { order: SsPendingOrder
         <>
           <ul className={styles.cardLines}>
             {order.lines.map((line) => (
-              <li key={line.id} data-short={line.available < line.ordered}>
+              <li key={line.id} data-short={line.tracked && line.available < line.ordered}>
                 <div>
                   <span>{line.label}</span>
                   <small>
                     {hi ? "मात्रा" : "Qty"} {line.ordered} {line.unit} · ₹{line.rate.toFixed(2)} × = ₹{line.lineTotal.toFixed(2)}
                   </small>
-                  {line.available < line.ordered && (
+                  {line.tracked && line.available < line.ordered && (
                     <small className={styles.shortHint}>
                       {hi ? `उपलब्ध ${line.available} / मंगाया ${line.ordered}` : `Available ${line.available} / Ordered ${line.ordered}`}
                     </small>
@@ -108,10 +116,10 @@ function DecisionCard({ order, language, dispatchHref }: { order: SsPendingOrder
                 <input
                   type="number"
                   min={0}
-                  max={Math.min(line.ordered, line.available)}
+                  max={line.tracked ? Math.min(line.ordered, line.available) : line.ordered}
                   step="1"
                   value={qty[line.id] ?? 0}
-                  onChange={(e) => setQty((c) => ({ ...c, [line.id]: Math.max(0, Math.min(Number(e.target.value), line.ordered, line.available)) }))}
+                  onChange={(e) => setQty((c) => ({ ...c, [line.id]: Math.max(0, Math.min(Number(e.target.value), line.ordered, line.tracked ? line.available : line.ordered)) }))}
                   aria-label={hi ? "स्वीकार मात्रा" : "Accept quantity"}
                 />
               </li>

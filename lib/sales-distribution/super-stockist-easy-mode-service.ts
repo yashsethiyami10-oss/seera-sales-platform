@@ -45,6 +45,11 @@ export async function distributorOrderLineAvailability(
         rate: Number(line.priceSnapshot),
         lineTotal: Number(line.lineTotal),
         available: Math.max(0, position.onHand - position.reserved),
+        // Final Master Revision (Part 5, 22-Aug): mirrors retailerOrderLineAvailability's own
+        // `tracked` — most Super Stockists never maintain a live Seera stock ledger either, so zero
+        // movements ever recorded must read as "untracked" (ACCEPT stays available), not "confirmed
+        // zero stock" (which would wrongly force PARTIAL/REJECT or hide ACCEPT outright).
+        tracked: movements.length > 0,
       };
     }),
   );
@@ -75,12 +80,24 @@ export async function acceptAndAllocateDistributorOrder(
       reason: input.reason,
     });
   }
-  await fulfilDistributorReplenishment(prisma, actorId, superStockistId, {
-    orderId: input.orderId,
-    accepted: input.lines,
-    action: input.decision,
-    reason: input.reason,
+  // Final Master Revision (Part 5, 22-Aug): same retry-safety fix as
+  // acceptAndPrepareRetailerOrder — re-read the order's current status before each step and skip
+  // whatever's already done, so a transient failure between decide and allocate leaves the order
+  // safely re-clickable instead of throwing ORDER_SCOPE_OR_STATE_DENIED on retry.
+  const existing = await prisma.seeraSalesOrder.findFirst({
+    where: { id: input.orderId, sellerPartnerId: superStockistId, type: "DISTRIBUTOR_REPLENISHMENT" },
+    select: { status: true },
   });
+  if (!existing) throw new FoundationError("ORDER_SCOPE_OR_STATE_DENIED", "Order unavailable", 403);
+  const order = ["SUBMITTED", "ACKNOWLEDGED", "HELD"].includes(existing.status)
+    ? await fulfilDistributorReplenishment(prisma, actorId, superStockistId, {
+        orderId: input.orderId,
+        accepted: input.lines,
+        action: input.decision,
+        reason: input.reason,
+      })
+    : await prisma.seeraSalesOrder.findFirstOrThrow({ where: { id: input.orderId }, include: { lines: true } });
+  if (!["ACCEPTED", "PARTIAL_ACCEPTED"].includes(order.status)) return order;
   return allocateOrderStock(prisma, actorId, {
     partyType: "SUPER_STOCKIST",
     partyId: superStockistId,

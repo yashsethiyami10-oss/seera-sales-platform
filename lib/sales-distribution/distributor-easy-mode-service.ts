@@ -65,9 +65,18 @@ export async function retailerOrderLineAvailability(
 
 // ACCEPT / PARTIAL collapse decide -> reserve -> dispatch into one call. `lines` must carry the
 // quantity the Distributor is committing to for EACH line right now (full ordered qty for a plain
-// ACCEPT, a capped qty per line for PARTIAL) — the UI is expected to have already shown Available
-// so this should not normally hit a stock shortfall; if it still does (a race), the order is left
-// correctly ACCEPTED-but-not-allocated and this same action is safely retryable.
+// ACCEPT, a capped qty per line for PARTIAL).
+//
+// Final Master Revision (Part 4, 22-Aug) fix: this used to call all three steps unconditionally,
+// so a transient failure partway through (a pooled-connection timeout on step 2 or 3 is the
+// observed real-world case — see api-response.ts's P2024/P2034 handling) left the order genuinely
+// ACCEPTED in the DB while the client saw a raw error. The retry then re-called this same function
+// from the top, but fulfilRetailerOrder's own status filter only ever matches
+// SUBMITTED/ACKNOWLEDGED/HELD — an already-ACCEPTED order doesn't match, so the retry threw
+// ORDER_SCOPE_OR_STATE_DENIED (rendered by the UI as "You don't have permission for this action"),
+// which is exactly the reported P0. Re-reading the order's CURRENT status before each step and
+// skipping any step whose target state the order has already reached makes the whole orchestration
+// genuinely retry-safe, matching what the old comment here claimed but never implemented.
 export async function acceptAndPrepareRetailerOrder(
   prisma: PrismaClient,
   actorId: string,
@@ -91,25 +100,48 @@ export async function acceptAndPrepareRetailerOrder(
     });
     return { order, delivery: null };
   }
-  const order = await fulfilRetailerOrder(prisma, actorId, distributorId, {
-    orderId: input.orderId,
-    accepted: input.lines,
-    action: input.decision,
-    reason: input.reason,
+  const existing = await prisma.seeraSalesOrder.findFirst({
+    where: { id: input.orderId, sellerPartnerId: distributorId, type: "RETAILER_ORDER" },
+    select: { status: true },
   });
-  const allocated = await allocateOrderStock(prisma, actorId, {
-    partyType: "DISTRIBUTOR",
-    partyId: distributorId,
-    orderId: input.orderId,
-    lines: input.lines,
-    idempotencyKey: `${input.idempotencyKey}-alloc`,
-  });
-  const delivery = await dispatchAllocatedOrder(prisma, actorId, {
-    partyType: "DISTRIBUTOR",
-    partyId: distributorId,
-    orderId: input.orderId,
-    idempotencyKey: `${input.idempotencyKey}-dispatch`,
-  });
+  if (!existing) throw new FoundationError("ORDER_SCOPE_OR_STATE_DENIED", "Order unavailable", 403);
+  let order: Awaited<ReturnType<typeof fulfilRetailerOrder>>;
+  if (["SUBMITTED", "ACKNOWLEDGED", "HELD"].includes(existing.status)) {
+    order = await fulfilRetailerOrder(prisma, actorId, distributorId, {
+      orderId: input.orderId,
+      accepted: input.lines,
+      action: input.decision,
+      reason: input.reason,
+    });
+  } else {
+    order = await prisma.seeraSalesOrder.findFirstOrThrow({
+      where: { id: input.orderId },
+      include: { lines: true },
+    });
+  }
+  let allocated: Awaited<ReturnType<typeof allocateOrderStock>>;
+  if (["ACCEPTED", "PARTIAL_ACCEPTED"].includes(order.status)) {
+    allocated = await allocateOrderStock(prisma, actorId, {
+      partyType: "DISTRIBUTOR",
+      partyId: distributorId,
+      orderId: input.orderId,
+      lines: input.lines,
+      idempotencyKey: `${input.idempotencyKey}-alloc`,
+    });
+  } else {
+    allocated = await prisma.seeraSalesOrder.findFirstOrThrow({
+      where: { id: input.orderId },
+      include: { lines: true },
+    });
+  }
+  const delivery = ["ALLOCATED", "DISPATCH_READY"].includes(allocated.status)
+    ? await dispatchAllocatedOrder(prisma, actorId, {
+        partyType: "DISTRIBUTOR",
+        partyId: distributorId,
+        orderId: input.orderId,
+        idempotencyKey: `${input.idempotencyKey}-dispatch`,
+      })
+    : await prisma.seeraDelivery.findFirst({ where: { orderId: input.orderId }, orderBy: { createdAt: "desc" } });
   return { order: allocated, delivery };
 }
 

@@ -2,8 +2,6 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
-import { evaluateDistributorCredit } from "./business-rules";
-import { canonicalDistributorExposure } from "./credit-service";
 import { notifyPartyUsers, requirePartyMembership } from "./scope";
 import { numberFor } from "./workflow-service";
 import {
@@ -401,6 +399,16 @@ export async function convertQuotationToOrder(
           include: { lines: true },
         });
       } else {
+        // Final Master Revision (Part 10, 22-Aug) fix: this used to hard-throw
+        // CREDIT_TERMS_REQUIRED whenever the buying Distributor had no SeeraCreditTerm row
+        // configured — a common real state for an informally-run/newly-onboarded Distributor —
+        // which silently broke the "Convert to Order" button for exactly those cases. The Founder
+        // already ruled (22-Aug, createDistributorReplenishment) that a Distributor's own
+        // replenishment order must never be blocked by credit configuration/limit/overdue state;
+        // this path creates the same DISTRIBUTOR_REPLENISHMENT order type and must follow the same
+        // rule, not a stricter one of its own. Terms are now optional and purely informational —
+        // canonicalDistributorExposure/evaluateDistributorCredit remain untouched and still govern
+        // everywhere else (Distributor Credit page, S.S. accept-time credit check, Finance views).
         const distributor = await tx.seeraPartner.findFirstOrThrow({ where: { id: document.buyerId } });
         const terms = await tx.seeraCreditTerm.findFirst({
           where: {
@@ -410,24 +418,11 @@ export async function convertQuotationToOrder(
           },
           orderBy: { effectiveFrom: "desc" },
         });
-        if (!terms)
-          throw new FoundationError("CREDIT_TERMS_REQUIRED", "Distributor credit terms are not configured", 409);
-        const { exposure: outstanding } = await canonicalDistributorExposure(tx, document.buyerId, now);
-        const credit = evaluateDistributorCredit({
-          creditEnabled: terms.creditEnabled,
-          creditLimit: Number(terms.creditLimit),
-          outstanding,
-          orderValue: Number(document.grandTotal),
-          warningThreshold: terms.warningThreshold == null ? null : Number(terms.warningThreshold),
-          blockThreshold: terms.blockThreshold == null ? null : Number(terms.blockThreshold),
-          now,
-        });
-        const held = ["BLOCK", "HOLD", "OVERRIDE_REQUIRED"].includes(credit.decision);
         order = await tx.seeraSalesOrder.create({
           data: {
             orderNumber: numberFor("DQ", idempotencyKey),
             type: "DISTRIBUTOR_REPLENISHMENT",
-            status: held ? "HELD" : "SUBMITTED",
+            status: "SUBMITTED",
             buyerPartnerId: document.buyerId,
             sellerPartnerId: document.issuerId,
             actorId,
@@ -439,8 +434,8 @@ export async function convertQuotationToOrder(
             discountTotal: 0,
             taxTotal: document.igstTotal,
             total: document.grandTotal,
-            contractualCreditDays: terms.creditDays,
-            originalDueDate: new Date(now.getTime() + terms.creditDays * 86_400_000),
+            contractualCreditDays: terms?.creditDays ?? null,
+            originalDueDate: terms ? new Date(now.getTime() + terms.creditDays * 86_400_000) : null,
             notes: `Converted from quotation ${document.documentNumber}`,
             idempotencyKey,
             submittedAt: now,

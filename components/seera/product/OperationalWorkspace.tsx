@@ -4497,6 +4497,7 @@ export async function OperationalWorkspace({
             order.buyerPartnerId ? creditPositionFor(db, order.buyerPartnerId, new Date()).catch(() => null) : null,
           ]);
           const availableFor = (lineId: string) => availability.find((a) => a.lineId === lineId)?.available ?? 0;
+          const trackedFor = (lineId: string) => availability.find((a) => a.lineId === lineId)?.tracked ?? false;
           return {
             id: order.id,
             superStockistId: order.sellerPartnerId!,
@@ -4519,6 +4520,7 @@ export async function OperationalWorkspace({
               unit: line.packSnapshot,
               ordered: Number(line.orderedQuantity),
               available: availableFor(line.id),
+              tracked: trackedFor(line.id),
               rate: Number(line.priceSnapshot),
               lineTotal: Number(line.lineTotal),
             })),

@@ -70,6 +70,10 @@ function DecisionCard({ order, language }: { order: PendingOrder; language: "EN"
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+      // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
+      // retry-safety fix) — refresh so a retry click reads this order's real current state rather
+      // than the stale pre-attempt card.
+      router.refresh();
     } finally {
       setBusy(false);
     }
@@ -184,6 +188,10 @@ function DeliveryCard({ order, language }: { order: DeliverableOrder; language: 
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+      // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
+      // retry-safety fix) — refresh so a retry click reads this order's real current state rather
+      // than the stale pre-attempt card.
+      router.refresh();
     } finally {
       setBusy(false);
     }
@@ -269,6 +277,10 @@ function RemainingCard({ order, language }: { order: RemainingOrder; language: "
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+      // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
+      // retry-safety fix) — refresh so a retry click reads this order's real current state rather
+      // than the stale pre-attempt card.
+      router.refresh();
     } finally {
       setBusy(false);
     }
@@ -285,6 +297,10 @@ function RemainingCard({ order, language }: { order: RemainingOrder; language: "
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+      // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
+      // retry-safety fix) — refresh so a retry click reads this order's real current state rather
+      // than the stale pre-attempt card.
+      router.refresh();
     } finally {
       setBusy(false);
     }

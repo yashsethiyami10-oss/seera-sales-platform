@@ -102,6 +102,71 @@ export async function createDistributorForSuperStockist(
   });
 }
 
+// Final Master Revision (Part 3, 22-Aug): createDistributorForSuperStockist (above) always
+// requires a real upstream Super Stockist — correct for the existing Jhansi-division Distributors,
+// which really do have one. Manoj Vijayvargiya's 5 real Founder-supplied Distributors are in a
+// different region (Udaipur/Rajsamand/Bhilwara, Rajasthan) with no Super Stockist in production
+// today; forcing them under the one existing (Jhansi, UP) S.S. would fabricate a supply
+// relationship that doesn't exist. `assignedSuperStockistId` is already nullable on SeeraPartner —
+// this is the governed Founder/Admin-only path to create a Distributor with it genuinely unset,
+// left for the Founder to link once a real upstream S.S. exists for that region. It only affects a
+// Distributor's OWN replenishment-ordering path (Distributor -> S.S.); it does not block the
+// Executive -> Distributor retailer-order flow this Part is actually about.
+export async function createStandaloneDistributor(
+  prisma: PrismaClient,
+  actorId: string,
+  input: {
+    firmName: string;
+    address: Record<string, unknown>;
+    mobile: string;
+    ownerName?: string;
+    alternateMobile?: string;
+    email?: string;
+    gstin?: string;
+    pincode?: string;
+    territoryId?: string;
+    notes?: string;
+    idempotencyKey: string;
+  },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  if (!input.firmName.trim())
+    throw new FoundationError("FIRM_NAME_REQUIRED", "Firm / business name is required", 400);
+  const normalizedMobile = input.mobile.replace(/\D/g, "");
+  if (normalizedMobile.length < 10)
+    throw new FoundationError("INVALID_MOBILE", "A valid primary mobile number is required", 400);
+  const code = numberFor("DIST", input.idempotencyKey);
+  const existing = await prisma.seeraPartner.findFirst({ where: { code } });
+  if (existing) return existing;
+  const now = new Date();
+  const partner = await prisma.$transaction(async (tx) => {
+    const created = await tx.seeraPartner.create({
+      data: {
+        type: "DISTRIBUTOR",
+        code,
+        legalName: input.firmName.trim(),
+        gstin: input.gstin?.trim() || undefined,
+        primaryContact: { mobile: normalizedMobile, ownerName: input.ownerName, alternateMobile: input.alternateMobile, email: input.email },
+        addresses: { ...input.address, pincode: input.pincode },
+        territoryIds: input.territoryId ? [input.territoryId] : [],
+        lifecycle: "ACTIVE",
+        appointmentDate: now,
+        remarks: input.notes,
+        createdById: actorId,
+      },
+    });
+    await recordAudit(tx, {
+      actorId,
+      action: "distributor.created_standalone",
+      entityType: "SeeraPartner",
+      entityId: created.id,
+      afterState: { legalName: created.legalName, code: created.code, assignedSuperStockistId: null },
+    });
+    return created;
+  });
+  return partner;
+}
+
 // Stage 3 fix: createDistributorForSuperStockist (above) lets an EXISTING S.S. onboard its own
 // Distributors, but nothing in application code could create the FIRST party in the chain — a new
 // Super Stockist — outside a seed script. Founder-only (master:manage), no upstream party/credit
