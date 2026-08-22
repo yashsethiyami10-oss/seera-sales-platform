@@ -58,6 +58,13 @@ export function assertFormalExtension(input: { originalDueDate: Date; extensionU
 export function reversalEntry(input: { originalEntryId: string; amount: number; debitPartyId: string; creditPartyId: string }) { if (input.amount <= 0) throw new Error("INVALID_REVERSAL"); return { originalEntryId: input.originalEntryId, amount: input.amount, debitPartyId: input.creditPartyId, creditPartyId: input.debitPartyId, type: "REVERSAL" as const }; }
 
 export function calculateTa(input: { estimatedKm: number; claimedKm: number; approvedKm?: number; ratePerKm: number; toll: number; parking: number; dailyAllowance: number }) { const payableKm = input.approvedKm ?? Math.min(input.estimatedKm, input.claimedKm); if ([payableKm, input.ratePerKm, input.toll, input.parking, input.dailyAllowance].some((value) => value < 0)) throw new Error("INVALID_TA_INPUT"); return { payableKm, travelAmount: money(payableKm * input.ratePerKm), total: money(payableKm * input.ratePerKm + input.toll + input.parking + input.dailyAllowance) }; }
+export type TravelPolicyType = "PER_KM" | "FIXED_DAILY" | "PER_KM_PLUS_FIXED" | "NONE";
+export function calculateGovernedTa(input: { policyType: TravelPolicyType; eligibleKm: number; ratePerKm: number; fixedAllowance: number }) {
+  if ([input.eligibleKm, input.ratePerKm, input.fixedAllowance].some((value) => !Number.isFinite(value) || value < 0)) throw new Error("INVALID_TA_INPUT");
+  const perKm = input.policyType === "PER_KM" || input.policyType === "PER_KM_PLUS_FIXED" ? input.eligibleKm * input.ratePerKm : 0;
+  const fixed = input.policyType === "FIXED_DAILY" || input.policyType === "PER_KM_PLUS_FIXED" ? input.fixedAllowance : 0;
+  return { travelAmount: money(perKm), fixedAllowance: money(fixed), total: money(perKm + fixed) };
+}
 export function assertTaVerifier(input: { employeeId: string; managerId?: string; verifierId: string; employeeRole: string }) { if (input.verifierId === input.employeeId) throw new Error("TA_SELF_APPROVAL_DENIED"); if (input.employeeRole === "SALES_MANAGER" && input.verifierId === input.managerId) throw new Error("MANAGER_CLAIM_REQUIRES_HIGHER_APPROVER"); }
 export function assertWorkingLocation(input: { workSessionActive: boolean; eventAt: Date; workStartedAt: Date; workEndedAt?: Date }) { if (!input.workSessionActive || input.eventAt < input.workStartedAt || (input.workEndedAt && input.eventAt > input.workEndedAt)) throw new Error("LOCATION_OUTSIDE_WORK_CONTEXT"); }
 

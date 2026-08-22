@@ -6,10 +6,8 @@ import { eligibleGpsDistanceKm, nearestHqWithin, type TimedGpsPoint } from "./bu
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-// The single governed "standard field" travel policy the Founder approved: ₹2/km, ₹150/day.
-// Modelled as a normal, dated SeeraTravelPolicy row (vehicleType is used as a policy key here,
-// not a literal vehicle) so the rate stays configurable/auditable instead of buried in code —
-// changing it in the future is a new dated policy row, not a code change.
+// A conventional policy key for the standard field policy. Amounts are always read from a dated
+// policy row; absence is a first-class "policy not configured" state, never an implicit rupee rate.
 const STANDARD_FIELD_VEHICLE_TYPE = "STANDARD_FIELD";
 
 export async function standardFieldTravelPolicy(db: Db, now = new Date()) {
@@ -110,22 +108,37 @@ export async function recomputeSessionDistance(db: Db, employeeId: string, workS
     capturedAt: s.capturedAt,
     accuracy: s.accuracy != null ? Number(s.accuracy) : null,
   }));
-  const { distanceKm, excludedSegments, sampleCount } = eligibleGpsDistanceKm(points);
+  const quality = eligibleGpsDistanceKm(points);
+  const { distanceKm, sampleCount } = quality;
   if (sampleCount < 2) return null;
+  const existingEstimate = await db.seeraTravelEstimate.findUnique({
+    where: { employeeId_workSessionId: { employeeId, workSessionId } },
+    select: { id: true },
+  });
+  const protectedClaim = existingEstimate ? await db.seeraTaClaim.findFirst({
+    where: {
+      travelEstimateId: existingEstimate.id,
+      status: { in: ["MANAGER_VERIFIED", "ACCOUNTS_APPROVED", "PAID", "CLOSED"] },
+    },
+    select: { id: true },
+  }) : null;
+  if (protectedClaim) return db.seeraTravelEstimate.findUnique({
+    where: { employeeId_workSessionId: { employeeId, workSessionId } },
+  });
   return db.seeraTravelEstimate.upsert({
     where: { employeeId_workSessionId: { employeeId, workSessionId } },
     update: {
       distanceKm,
-      sourceEvents: { sampleCount, excludedSegments } as Prisma.InputJsonValue,
-      calculationVersion: "v2-gps-samples-filtered",
+      sourceEvents: quality as Prisma.InputJsonValue,
+      calculationVersion: quality.calculationVersion,
     },
     create: {
       employeeId,
       workSessionId,
       estimateDate: new Date(),
       distanceKm,
-      sourceEvents: { sampleCount, excludedSegments } as Prisma.InputJsonValue,
-      calculationVersion: "v2-gps-samples-filtered",
+      sourceEvents: quality as Prisma.InputJsonValue,
+      calculationVersion: quality.calculationVersion,
     },
   });
 }
@@ -181,8 +194,8 @@ export async function executiveTaDaMonthlySummary(
   const self = actorId === targetEmployeeId;
   await authorize(db, { actorId, permission: self ? "field_reports:view_self" : "manager_team:view" });
   const policy = await standardFieldTravelPolicy(db, monthEnd);
-  const ratePerKm = Number(policy?.ratePerKm ?? 2);
-  const dailyAllowance = Number(policy?.dailyAllowance ?? 150);
+  const ratePerKm = policy ? Number(policy.ratePerKm) : null;
+  const dailyAllowance = policy ? Number(policy.dailyAllowance ?? policy.fixedAllowance ?? 0) : null;
   const sessions = await db.seeraWorkSession.findMany({
     where: {
       employeeId: targetEmployeeId,
@@ -203,8 +216,8 @@ export async function executiveTaDaMonthlySummary(
     const hasActivity = session.visits.length > 0 || gpsDistanceKm > 0;
     const dayEnded = session.status === "ENDED";
     const daEligible = dayEnded && hasActivity;
-    const taAmount = Math.round(gpsDistanceKm * ratePerKm * 100) / 100;
-    const daAmount = daEligible ? dailyAllowance : 0;
+    const taAmount = ratePerKm == null ? null : Math.round(gpsDistanceKm * ratePerKm * 100) / 100;
+    const daAmount = dailyAllowance == null ? null : daEligible ? dailyAllowance : 0;
     return {
       sessionId: session.id,
       date: session.startedAt,
@@ -218,9 +231,11 @@ export async function executiveTaDaMonthlySummary(
       taAmount,
       daEligible,
       daAmount,
-      totalTaDa: taAmount + daAmount,
+      totalTaDa: taAmount == null || daAmount == null ? null : taAmount + daAmount,
       exceptions: [session.startExceptionReason, session.endExceptionReason].filter(Boolean),
-      gpsConfidence: estimate ? "DERIVED" : "NO_SAMPLES",
+      gpsConfidence: estimate ? "ESTIMATED_FROM_CHECKPOINTS" : "NO_SAMPLES",
+      distanceMethod: "CHECKPOINT_HAVERSINE_ESTIMATE",
+      policyStatus: policy ? "CONFIGURED" : "POLICY_NOT_CONFIGURED",
     };
   });
   return {
@@ -231,9 +246,9 @@ export async function executiveTaDaMonthlySummary(
     dailyAllowance,
     rows,
     totals: {
-      taAmount: rows.reduce((s, r) => s + r.taAmount, 0),
-      daAmount: rows.reduce((s, r) => s + r.daAmount, 0),
-      totalTaDa: rows.reduce((s, r) => s + r.totalTaDa, 0),
+      taAmount: policy ? rows.reduce((s, r) => s + (r.taAmount ?? 0), 0) : null,
+      daAmount: policy ? rows.reduce((s, r) => s + (r.daAmount ?? 0), 0) : null,
+      totalTaDa: policy ? rows.reduce((s, r) => s + (r.totalTaDa ?? 0), 0) : null,
       eligibleDays: rows.filter((r) => r.daEligible).length,
     },
   };

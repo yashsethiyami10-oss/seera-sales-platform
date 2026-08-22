@@ -100,7 +100,7 @@ export function MyTaClaimActions({
         {!claimableSessions.length && <EmptyOptionHint language={language} fallback={hi ? "GPS दूरी वाले कार्य दिवस के बाद ही दावा किया जा सकता है।" : "A claim is available once a work day has a GPS distance."} />}
         {selected && (
           <p className={styles.emptyHint} style={{ background: "#effaf2", color: "#177245" }}>
-            {hi ? `GPS-आधारित दूरी: ${selected.distanceKm.toFixed(1)} किमी — मैन्युअल रूप से दर्ज नहीं की गई।` : `GPS-derived distance: ${selected.distanceKm.toFixed(1)} km — not manually entered.`}
+            {hi ? `GPS चेकपॉइंट से अनुमानित दूरी: ${selected.distanceKm.toFixed(1)} किमी — यह वास्तविक सड़क दूरी नहीं है।` : `Estimated travel distance from GPS checkpoints: ${selected.distanceKm.toFixed(1)} km — not actual road distance.`}
           </p>
         )}
         <label>
@@ -202,6 +202,28 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                 <input name="distance" type="number" min="0" step="0.1" defaultValue={c.claimedDistanceKm} required />
                 <input name="reason" placeholder={hi ? "कारण" : "Reason"} required />
                 <button disabled={busy}>{hi ? "सत्यापित करें" : "Verify"}</button>
+                <button
+                  disabled={busy}
+                  type="button"
+                  onClick={(event) => {
+                    const form = new FormData(event.currentTarget.closest("form")!);
+                    void (async () => {
+                      setBusy(true);
+                      setMessage("");
+                      try {
+                        await send("/api/travel/operations", { action: "reject", payload: { claimId: c.id, reason: String(form.get("reason")) } });
+                        setMessage(hi ? "दावा अस्वीकृत किया गया।" : "Claim rejected.");
+                        router.refresh();
+                      } catch (error) {
+                        setMessage(error instanceof Error ? error.message : "Action failed");
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {hi ? "अस्वीकार करें" : "Reject"}
+                </button>
               </form>
             </li>
           ))}

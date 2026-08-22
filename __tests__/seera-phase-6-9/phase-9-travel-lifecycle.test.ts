@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { assertHardDeleteAllowed, assertPartnerCanTransact, assertTaVerifier, assertWorkingLocation, calculateTa, closureDecision } from "@/lib/sales-distribution/phase6-9-rules";
+import { assertHardDeleteAllowed, assertPartnerCanTransact, assertTaVerifier, assertWorkingLocation, calculateGovernedTa, calculateTa, closureDecision } from "@/lib/sales-distribution/phase6-9-rules";
 
 describe("Phase 9 travel and partner lifecycle", () => {
   it("calculates policy-bounded TA", () => expect(calculateTa({ estimatedKm: 100, claimedKm: 120, ratePerKm: 5, toll: 50, parking: 20, dailyAllowance: 100 })).toEqual({ payableKm: 100, travelAmount: 500, total: 670 }));
+  it.each([["PER_KM", 250], ["FIXED_DAILY", 100], ["PER_KM_PLUS_FIXED", 350], ["NONE", 0]] as const)("supports governed %s policy", (policyType, total) => expect(calculateGovernedTa({ policyType, eligibleKm: 50, ratePerKm: 5, fixedAllowance: 100 }).total).toBe(total));
   it("denies TA self approval", () => expect(() => assertTaVerifier({ employeeId: "u1", verifierId: "u1", employeeRole: "SALES_EXECUTIVE" })).toThrow("TA_SELF_APPROVAL_DENIED"));
   it("requires higher approval for manager claims", () => expect(() => assertTaVerifier({ employeeId: "m1", managerId: "director1", verifierId: "director1", employeeRole: "SALES_MANAGER" })).toThrow("MANAGER_CLAIM_REQUIRES_HIGHER_APPROVER"));
   it("limits location evidence to active work context", () => expect(() => assertWorkingLocation({ workSessionActive: false, eventAt: new Date(), workStartedAt: new Date() })).toThrow("LOCATION_OUTSIDE_WORK_CONTEXT"));

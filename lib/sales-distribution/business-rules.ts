@@ -146,6 +146,7 @@ export function routeDistanceKm(points: { lat: number; lng: number }[]) {
 // consecutive pair is summed, so genuine route wandering still counts.
 const MAX_PLAUSIBLE_SPEED_KMH = 100;
 const MAX_TRUSTED_ACCURACY_METERS = 150;
+const DUPLICATE_POINT_METERS = 5;
 
 export type TimedGpsPoint = {
   lat: number;
@@ -157,30 +158,60 @@ export type TimedGpsPoint = {
 export function eligibleGpsDistanceKm(points: TimedGpsPoint[]) {
   const sorted = [...points].sort((a, b) => a.capturedAt.getTime() - b.capturedAt.getTime());
   let total = 0;
-  let excludedSegments = 0;
+  const warnings: string[] = [];
+  const excludedByReason: Record<string, number> = {};
+  const exclude = (reason: string) => {
+    warnings.push(reason);
+    excludedByReason[reason] = (excludedByReason[reason] ?? 0) + 1;
+  };
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1], next = sorted[i];
     if (!prev || !next) continue;
+    if (![prev.lat, prev.lng, next.lat, next.lng].every(Number.isFinite) ||
+      Math.abs(prev.lat) > 90 || Math.abs(next.lat) > 90 ||
+      Math.abs(prev.lng) > 180 || Math.abs(next.lng) > 180) {
+      exclude("INVALID_COORDINATE");
+      continue;
+    }
     if (
       (prev.accuracy != null && prev.accuracy > MAX_TRUSTED_ACCURACY_METERS) ||
       (next.accuracy != null && next.accuracy > MAX_TRUSTED_ACCURACY_METERS)
     ) {
-      excludedSegments++;
+      exclude("POOR_ACCURACY");
       continue;
     }
     const segmentKm = haversineKm(prev, next);
+    if (segmentKm * 1000 <= DUPLICATE_POINT_METERS) {
+      exclude("DUPLICATE_OR_SAME_LOCATION");
+      continue;
+    }
+    const elapsedMs = next.capturedAt.getTime() - prev.capturedAt.getTime();
+    if (elapsedMs <= 0) {
+      exclude("NON_MONOTONIC_TIMESTAMP");
+      continue;
+    }
     const hoursElapsed = Math.max(
-      (next.capturedAt.getTime() - prev.capturedAt.getTime()) / 3_600_000,
+      elapsedMs / 3_600_000,
       1 / 3600,
     );
     const impliedSpeedKmh = segmentKm / hoursElapsed;
     if (impliedSpeedKmh > MAX_PLAUSIBLE_SPEED_KMH) {
-      excludedSegments++;
+      exclude("IMPOSSIBLE_SPEED");
       continue;
     }
     total += segmentKm;
   }
-  return { distanceKm: roundQuantity(total), excludedSegments, sampleCount: sorted.length };
+  const excludedSegments = Object.values(excludedByReason).reduce((sum, count) => sum + count, 0);
+  return {
+    distanceKm: roundQuantity(total),
+    excludedSegments,
+    excludedByReason,
+    warnings: [...new Set(warnings)],
+    reviewRequired: warnings.some((warning) => warning !== "DUPLICATE_OR_SAME_LOCATION"),
+    sampleCount: sorted.length,
+    method: "CHECKPOINT_HAVERSINE_ESTIMATE" as const,
+    calculationVersion: "v3-checkpoint-haversine-quality",
+  };
 }
 
 // Whether a start/end point falls inside a configured HQ's geofence — returns the nearest HQ

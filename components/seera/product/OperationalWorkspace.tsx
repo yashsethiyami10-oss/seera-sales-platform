@@ -1374,9 +1374,11 @@ function TaDaSummaryPanel({
         <h2>{hi ? "मेरा टीए और डीए (इस माह)" : "My TA & DA (this month)"}</h2>
       </div>
       <p className={styles.readOnly}>
-        {hi
-          ? `दूरी GPS से स्वतः गणना की जाती है — मैन्युअल दावा प्रविष्टि की आवश्यकता नहीं। दर: ₹${summary.ratePerKm}/किमी, ₹${summary.dailyAllowance}/दिन।`
-          : `Distance is calculated automatically from GPS — no manual claim entry needed. Rate: ₹${summary.ratePerKm}/km, ₹${summary.dailyAllowance}/day.`}
+        {summary.ratePerKm == null
+          ? hi ? "GPS चेकपॉइंट दूरी उपलब्ध है। TA नीति कॉन्फ़िगर नहीं है।" : "Estimated GPS checkpoint distance is available. TA policy not configured."
+          : hi
+            ? `GPS चेकपॉइंट से अनुमानित दूरी। दर: ₹${summary.ratePerKm}/किमी, ₹${summary.dailyAllowance}/दिन।`
+            : `Estimated travel distance from GPS checkpoints (not actual road distance). Rate: ₹${summary.ratePerKm}/km, ₹${summary.dailyAllowance}/day.`}
       </p>
       <dl className={styles.statGrid}>
         <div>
@@ -1385,15 +1387,15 @@ function TaDaSummaryPanel({
         </div>
         <div>
           <dt>{hi ? "कुल टीए" : "Total TA"}</dt>
-          <dd>₹{summary.totals.taAmount.toLocaleString("en-IN")}</dd>
+          <dd>{summary.totals.taAmount == null ? (hi ? "नीति नहीं" : "Policy not configured") : `₹${summary.totals.taAmount.toLocaleString("en-IN")}`}</dd>
         </div>
         <div>
           <dt>{hi ? "कुल डीए" : "Total DA"}</dt>
-          <dd>₹{summary.totals.daAmount.toLocaleString("en-IN")}</dd>
+          <dd>{summary.totals.daAmount == null ? "—" : `₹${summary.totals.daAmount.toLocaleString("en-IN")}`}</dd>
         </div>
         <div>
           <dt>{hi ? "कुल टीए+डीए" : "Total TA+DA"}</dt>
-          <dd>₹{summary.totals.totalTaDa.toLocaleString("en-IN")}</dd>
+          <dd>{summary.totals.totalTaDa == null ? "—" : `₹${summary.totals.totalTaDa.toLocaleString("en-IN")}`}</dd>
         </div>
       </dl>
       <div className={styles.tableWrap}>
@@ -1414,9 +1416,9 @@ function TaDaSummaryPanel({
               <tr key={row.sessionId}>
                 <td>{row.date.toLocaleDateString(hi ? "hi-IN" : "en-IN")}</td>
                 <td>{row.gpsDistanceKm.toFixed(1)}</td>
-                <td>₹{row.taAmount.toLocaleString("en-IN")}</td>
+                <td>{row.taAmount == null ? "—" : `₹${row.taAmount.toLocaleString("en-IN")}`}</td>
                 <td>{row.daEligible ? (hi ? "हाँ" : "Yes") : hi ? "नहीं" : "No"}</td>
-                <td>₹{row.daAmount.toLocaleString("en-IN")}</td>
+                <td>{row.daAmount == null ? "—" : `₹${row.daAmount.toLocaleString("en-IN")}`}</td>
                 <td>
                   {row.hqStart == null ? "—" : row.hqStart ? "✓" : "!"} /{" "}
                   {row.hqReturn == null ? "—" : row.hqReturn ? "✓" : "!"}
