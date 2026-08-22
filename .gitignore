@@ -33,6 +33,10 @@ tsconfig.zip
 .env*
 SEERA_DATABASE_URLS.txt
 
+# Founder-local credential handover file — contains actual plaintext passwords.
+# Local-only, never committed/pushed/deployed.
+SEERA_FINAL_CREDENTIAL_MASTER.csv
+
 # Execution Sprint 1 — raw source product photography (2.3GB, ~220 files).
 # Already uploaded to Cloudinary and referenced by URL in the database
 # (Product.images / MediaAsset) — the actual production storage. The local
