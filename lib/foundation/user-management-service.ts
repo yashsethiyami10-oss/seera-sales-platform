@@ -117,10 +117,22 @@ const PARTNER_ROLE_CODE: Record<string, Record<"OWNER" | "OPERATOR" | "DELIVERY"
   DISTRIBUTOR: { OWNER: "DISTRIBUTOR_OWNER", OPERATOR: "DISTRIBUTOR_OPERATOR", DELIVERY: "DISTRIBUTOR_DELIVERY_USER" },
 };
 
+// P1 22-Aug Founder correction: the previous 24-char base64url generator was real entropy but not
+// practical for a human to actually type on a phone — this codebase has no invite-delivery/forced-
+// first-login mechanism (see the comment below), so every temporary password here IS the password
+// someone types by hand at least once. 12 characters, letters+digits only, no spaces, and excludes
+// the visually-confusing 0/O/1/l/I set — still well above createUser's min(12) length policy, still
+// unique per call (crypto-random, not derived from any shared seed).
 function generateTemporaryPassword(): string {
-  // 18 random bytes -> 24-char URL-safe string; satisfies createUser's min(12) length policy with
-  // real entropy. Never persisted anywhere in plaintext — returned once to the caller only.
-  return randomBytes(18).toString("base64url");
+  const letters = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz";
+  const digits = "23456789";
+  const all = letters + digits;
+  const randomFrom = (charset: string) => charset[randomBytes(1)[0]! % charset.length]!;
+  const body = Array.from({ length: 12 }, () => randomFrom(all));
+  // Guarantee at least one letter and one digit regardless of what the random draw produced.
+  body[0] = randomFrom(letters);
+  body[1] = randomFrom(digits);
+  return body.sort(() => randomBytes(1)[0]! - 128).join("");
 }
 
 // Founder/Admin UAT correction (P0, section 8-9): grantPartyMembership (above) already links an

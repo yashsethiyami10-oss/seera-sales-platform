@@ -38,7 +38,8 @@ describe("authentication",()=>{
   const current=(await prisma.user.findUniqueOrThrow({where:{id:distributor.id}})).normalizedEmail;
   const activeSession=await login(prisma,{email:current,password:distributor.password});
   const reset=await resetPartnerLoginPassword(prisma,founderId,distributor.id,"Focused partner credential recovery test");
-  expect(reset.temporaryPassword).toHaveLength(24);
+  expect(reset.temporaryPassword).toHaveLength(12);
+  expect(reset.temporaryPassword).toMatch(/^[A-Za-z0-9]{12}$/);
   await expectCode(()=>login(prisma,{email:current,password:distributor.password}),"INVALID_CREDENTIALS");
   expect((await login(prisma,{email:current,password:reset.temporaryPassword})).userId).toBe(distributor.id);
   await expectCode(()=>resolveSession(prisma,activeSession.token),"SESSION_INVALID");
