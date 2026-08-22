@@ -16,7 +16,12 @@ type BeatRetailer = {
   followUpAt: Date | null;
   visitStatus: string | null;
 };
-type Sku = { id: string; brand: string; productName: string; packLabel: string; price: string; rate: number };
+// unitsPerCase/unitType (Final Master Revision Part 2, 22-Aug): the governed pack-conversion
+// factor already on SeeraSku, plumbed through for the PC/BOX/BAG selector below. caseUnit is
+// derived, not stored — Founder's own matrix maps every "g"-packed SKU (cakes) to BOX and every
+// "kg"-packed SKU (powders) to BAG, so this is a real, general rule rather than a per-SKU guess;
+// a SKU with unitsPerCase<=1 simply has no case unit to offer (PC only), same as today.
+type Sku = { id: string; brand: string; productName: string; packLabel: string; price: string; rate: number; unitsPerCase: number; caseUnit: "BOX" | "BAG" | null };
 type Photo = { id: string; photoType: string; capturedAt: string; secureUrl?: string | null };
 type Visit = {
   id: string;
@@ -57,7 +62,13 @@ type Dashboard = {
     photos: number;
   };
 };
-type OrderLine = { key: string; skuId: string; quantity: number; rate: number; brandFilter: string; search: string };
+// `uom` (Final Master Revision Part 2, 22-Aug): "PC" or the SKU's caseUnit ("BOX"/"BAG"). `quantity`
+// and `rate` are always entered AT the selected uom — a BOX order of 2 with rate ₹400/BOX, not 80
+// PC at ₹10/PC — converted to base-PC quantity/rate only at submit time (see submitLines below),
+// so every downstream accept/allocate/dispatch/ledger calculation keeps operating on base PC units
+// completely unchanged. Defaults to "PC" so every existing line (and every SKU with no case unit)
+// behaves exactly as before.
+type OrderLine = { key: string; skuId: string; quantity: number; rate: number; brandFilter: string; search: string; uom: string };
 type WorkingType = "RETAILING" | "DISTRIBUTOR_SEARCH" | "DISTRIBUTOR_VISIT" | "WHOLESALE_MARKET" | "OTHER";
 
 // Normalized action outcome — business/validation failures (photo required, duplicate customer,
@@ -435,7 +446,24 @@ const key = () => crypto.randomUUID();
 // change) still gets a real random key — those only ever run client-side, post-mount, in a
 // useEffect/event handler, never during SSR, so they carry no hydration risk and keeping them
 // random preserves correct React list-reconciliation identity across visits.
-const blankOrderLine = (fixedKey?: string): OrderLine => ({ key: fixedKey ?? key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "" });
+const blankOrderLine = (fixedKey?: string): OrderLine => ({ key: fixedKey ?? key(), skuId: "", quantity: 1, rate: 0, brandFilter: "ALL", search: "", uom: "PC" });
+
+// Final Master Revision (Part 2, 22-Aug): converts a UOM-scoped order line (quantity/rate entered
+// at the selected pack unit) into the base-PC quantity/rate placeRetailerOrder has always expected,
+// plus an explicit uom snapshot so the order line records what was actually picked ("2 BOX"), not
+// just the resulting 80 PC. packSnapshot carries the human-readable UOM text since it's already the
+// one field every order-line display (Distributor/S.S. order cards, receipts) renders everywhere —
+// no document-rendering code needs to change to show "2 BOX" instead of "80 PC".
+function toBasePcLine(line: OrderLine, skuById: Map<string, Sku>) {
+  const sku = skuById.get(line.skuId);
+  const packFactor = line.uom !== "PC" && sku && sku.unitsPerCase > 1 ? sku.unitsPerCase : 1;
+  return {
+    skuId: line.skuId,
+    quantity: line.quantity * packFactor,
+    rate: packFactor > 1 ? line.rate / packFactor : line.rate,
+    uom: packFactor > 1 ? { unit: line.uom, packFactor, uomQuantity: line.quantity } : undefined,
+  };
+}
 
 // Part A (repeat business / phone orders): extracted so the SAME brand/search/product/qty/rate
 // line-item editor can be reused by both the in-visit ORDER tab and the new no-visit order panel
@@ -506,7 +534,7 @@ function OrderLineItemsEditor({
                 onChange={(event) => {
                   const chosen = skuById.get(event.target.value);
                   setLines((current) =>
-                    current.map((item) => (item.key === line.key ? { ...item, skuId: event.target.value, rate: chosen?.rate || item.rate } : item)),
+                    current.map((item) => (item.key === line.key ? { ...item, skuId: event.target.value, rate: chosen?.rate || item.rate, uom: "PC" } : item)),
                   );
                 }}
                 required
@@ -525,8 +553,22 @@ function OrderLineItemsEditor({
                 ))}
               </select>
             </label>
+            {sku && sku.caseUnit && sku.unitsPerCase > 1 && (
+              <label>
+                {hi ? "बेचें" : "Sell by"}
+                <select
+                  value={line.uom}
+                  onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, uom: event.target.value } : item)))}
+                >
+                  <option value="PC">{hi ? "पीस" : "PC"}</option>
+                  <option value={sku.caseUnit}>
+                    {sku.caseUnit} ({sku.unitsPerCase} PC)
+                  </option>
+                </select>
+              </label>
+            )}
             <label>
-              {hi ? "मात्रा" : "Quantity"}
+              {hi ? "मात्रा" : "Quantity"} {line.uom !== "PC" ? `(${line.uom})` : ""}
               <input
                 type="number"
                 min="1"
@@ -535,9 +577,14 @@ function OrderLineItemsEditor({
                 onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, quantity: Number(event.target.value) } : item)))}
                 required
               />
+              {sku && line.uom !== "PC" && (
+                <small>{hi ? `= ${line.quantity * sku.unitsPerCase} PC` : `= ${line.quantity * sku.unitsPerCase} PC`}</small>
+              )}
             </label>
             <label>
-              {hi ? "दर (GST सहित)" : "Rate (Incl. GST)"}
+              {hi
+                ? `दर (GST सहित)${line.uom !== "PC" ? ` — प्रति ${line.uom}` : ""}`
+                : `Rate (Incl. GST)${line.uom !== "PC" ? ` — per ${line.uom}` : ""}`}
               <input
                 type="number"
                 min="0.01"
@@ -1386,9 +1433,10 @@ export function FieldJourney({
   // own distributor/Company-Direct entity server-side exactly as it always has.
   async function submitNoVisitOrder(notes: string) {
     if (!noVisitOrder) return;
+    const skuById = new Map(skus.map((s) => [s.id, s]));
     const lines = noVisitOrderLines
       .filter((line) => line.skuId && line.quantity > 0)
-      .map(({ skuId, quantity, rate }) => ({ skuId, quantity, rate }));
+      .map((line) => toBasePcLine(line, skuById));
     if (!lines.length) {
       setMessage({ ok: false, text: hi ? "कम से कम एक उत्पाद और मात्रा चुनें।" : "Choose at least one product and quantity." });
       return;
@@ -1844,9 +1892,10 @@ export function FieldJourney({
             onSubmit={(e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
+              const skuById = new Map(skus.map((s) => [s.id, s]));
               const lines = orderLines
                 .filter((line) => line.skuId && line.quantity > 0)
-                .map(({ skuId, quantity, rate }) => ({ skuId, quantity, rate }));
+                .map((line) => toBasePcLine(line, skuById));
               if (!lines.length) {
                 setMessage({
                   ok: false,

@@ -9,6 +9,7 @@ import {
   assertLinesTaxConfigured,
   draftNumber,
   partySnapshot,
+  formatAddress,
   totalsOf,
   taxSplit,
   type CommercialLineInput,
@@ -209,14 +210,22 @@ export async function issueQuotation(prisma: PrismaClient, actorId: string, quot
       data: {
         documentNumber,
         status: "ISSUED",
-        issuerSnapshot: {
-          legalName: profile.legalName,
-          tradeName: profile.tradeName ?? undefined,
-          gstin: profile.gstin ?? undefined,
-          address: JSON.stringify(profile.registeredAddress),
-          state: profile.state,
-          stateCode: profile.stateCode,
-        },
+        // Final Master Revision (Part 6, 22-Aug) fix: was JSON.stringify(profile.registeredAddress)
+        // — raw JSON dumped straight into the PDF's address line. formatAddress() is the same
+        // governed formatter partySnapshot() uses for the buyer at draft time.
+        issuerSnapshot: (() => {
+          const contact = profile.contact as { ownerName?: string; mobile?: string } | null;
+          return {
+            legalName: profile.legalName,
+            tradeName: profile.tradeName ?? undefined,
+            gstin: profile.gstin ?? undefined,
+            address: formatAddress(profile.registeredAddress),
+            state: profile.state,
+            stateCode: profile.stateCode,
+            contactName: contact?.ownerName ?? undefined,
+            mobile: contact?.mobile ?? undefined,
+          };
+        })(),
         issueDate: now,
         issuedAt: now,
         verificationStatus: "VERIFIED",

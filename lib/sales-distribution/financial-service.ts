@@ -6,7 +6,7 @@ import { FoundationError } from "@/lib/foundation/errors";
 import { ageingBucket } from "./phase6-9-rules";
 import { notifyPartyUsers, requirePartyMembership } from "./scope";
 import { issueSystemDocument } from "./document-service";
-import { partySnapshot } from "./document-lines";
+import { partySnapshot, formatAddress } from "./document-lines";
 import { postJournalForCompanyAllocation } from "@/lib/finance/sales-integration-service";
 
 const numberFor = (prefix: string, key: string) => `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 16).toUpperCase()}`;
@@ -71,7 +71,10 @@ export async function generateDistributorPaymentReceipt(
     buyerType: "DISTRIBUTOR",
     buyerId: payment.payerId,
     sourcePortal: "super-stockist",
-    issuerSnapshot: { legalName: profile.legalName, tradeName: profile.tradeName ?? undefined, gstin: profile.gstin ?? undefined, address: JSON.stringify(profile.registeredAddress), state: profile.state, stateCode: profile.stateCode },
+    // Final Master Revision (Part 6, 22-Aug) fix: was JSON.stringify(profile.registeredAddress) —
+    // raw JSON dumped straight into the PDF's address line. formatAddress() is the same governed
+    // formatter partySnapshot() uses for the buyer above.
+    issuerSnapshot: { legalName: profile.legalName, tradeName: profile.tradeName ?? undefined, gstin: profile.gstin ?? undefined, address: formatAddress(profile.registeredAddress), state: profile.state, stateCode: profile.stateCode },
     buyerSnapshot,
     supplySnapshot: { paymentNumber: payment.paymentNumber, reference: payment.reference, paymentMode: payment.paymentMode, paymentDate: payment.paymentDate.toISOString() },
     lines: [{ description: `Payment received — ${payment.paymentMode} — Ref ${payment.reference}`, quantity: 1, unit: "PAYMENT", rate: amount, taxableValue: amount, total: amount }],

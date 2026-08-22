@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import { SkuSelect } from "./SkuSelect";
+import { DocumentRowActions, type RowAction } from "./DocumentRowActions";
 
 type Option = { value: string; label: string };
 // Founder rule (P0 21-Aug): every Distributor/Super Stockist QUOTATION rate is the final
@@ -360,85 +361,50 @@ export function QuotationActions({
                 <td>₹{q.grandTotal.toFixed(2)}</td>
                 <td>{q.validUntil ?? "—"}</td>
                 <td>
-                  <div className={styles.inlineActions}>
-                    {q.status === "DRAFT" && (
-                      <button
-                        type="button"
-                        disabled={busy || q.lines.some((l) => l.taxRate == null)}
-                        title={q.lines.some((l) => l.taxRate == null) ? (hi ? "जारी करने से पहले सभी उत्पादों में GST दर कॉन्फ़िगर होनी चाहिए" : "All products need a configured GST rate before this can be issued") : undefined}
-                        onClick={() => void run("issue-quotation", { quotationId: q.id })}
-                      >
-                        {hi ? "जारी करें" : "Issue"}
-                      </button>
-                    )}
-                    {q.status === "ISSUED" && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            void run("respond-quotation", { quotationId: q.id, decision: "ACCEPTED" })
-                          }
-                        >
-                          {hi ? "स्वीकृत" : "Accept"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => {
-                            const reason = window.prompt(
-                              hi ? "अस्वीकृति का कारण" : "Reason for rejection",
-                            );
+                  {(() => {
+                    // Final Master Revision (Part 11, 22-Aug): ONE primary action per status (the
+                    // thing this row most wants next) stays a visible button; everything else
+                    // collapses into "More ⋮" — matching the Founder's exact DRAFT/ISSUED/ACCEPTED/
+                    // CONVERTED grouping instead of every possible action shown inline at once.
+                    const download: RowAction = { label: hi ? "PDF डाउनलोड करें" : "Download PDF", href: `/api/documents/${q.id}/download`, external: true };
+                    const send: RowAction = { label: hi ? "WhatsApp पर भेजें" : "Send via WhatsApp", onClick: () => void shareOrSend(q), disabled: busy };
+                    const duplicate: RowAction = { label: hi ? "डुप्लिकेट" : "Duplicate", onClick: () => void run("duplicate-quotation", { quotationId: q.id, idempotencyKey: key() }), disabled: busy };
+                    let primary: RowAction | null = null;
+                    const secondary: RowAction[] = [];
+                    if (q.status === "DRAFT") {
+                      primary = {
+                        label: hi ? "जारी करें" : "Issue",
+                        tone: "primary",
+                        disabled: busy || q.lines.some((l) => l.taxRate == null),
+                        title: q.lines.some((l) => l.taxRate == null) ? (hi ? "जारी करने से पहले सभी उत्पादों में GST दर कॉन्फ़िगर होनी चाहिए" : "All products need a configured GST rate before this can be issued") : undefined,
+                        onClick: () => void run("issue-quotation", { quotationId: q.id }),
+                      };
+                    } else if (q.status === "ISSUED") {
+                      primary = { label: hi ? "स्वीकृत" : "Accept", tone: "primary", disabled: busy, onClick: () => void run("respond-quotation", { quotationId: q.id, decision: "ACCEPTED" }) };
+                      secondary.push(
+                        {
+                          label: hi ? "अस्वीकृत" : "Reject",
+                          disabled: busy,
+                          onClick: () => {
+                            const reason = window.prompt(hi ? "अस्वीकृति का कारण" : "Reason for rejection");
                             if (reason == null) return;
-                            void run("respond-quotation", {
-                              quotationId: q.id,
-                              decision: "REJECTED",
-                              reason,
-                            });
-                          }}
-                        >
-                          {hi ? "अस्वीकृत" : "Reject"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void run("expire-quotation", { quotationId: q.id })}
-                        >
-                          {hi ? "समाप्त करें" : "Expire"}
-                        </button>
-                      </>
-                    )}
-                    {q.status === "ACCEPTED" && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void run("convert-quotation", { quotationId: q.id, idempotencyKey: key() })
-                        }
-                      >
-                        {hi ? "ऑर्डर में बदलें" : "Convert to order"}
-                      </button>
-                    )}
-                    {q.status !== "DRAFT" && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void run("duplicate-quotation", { quotationId: q.id, idempotencyKey: key() })
-                        }
-                      >
-                        {hi ? "डुप्लिकेट" : "Duplicate"}
-                      </button>
-                    )}
-                    {q.status !== "DRAFT" && (
-                      <>
-                        <a href={`/api/documents/${q.id}/download`} target="_blank" rel="noreferrer">{hi ? "PDF डाउनलोड करें" : "Download PDF"}</a>
-                        <button type="button" disabled={busy} onClick={() => void shareOrSend(q)}>
-                          {hi ? "WhatsApp पर भेजें" : "Send via WhatsApp"}
-                        </button>
-                      </>
-                    )}
-                  </div>
+                            void run("respond-quotation", { quotationId: q.id, decision: "REJECTED", reason });
+                          },
+                        },
+                        { label: hi ? "समाप्त करें" : "Expire", disabled: busy, onClick: () => void run("expire-quotation", { quotationId: q.id }) },
+                        download,
+                        send,
+                        duplicate,
+                      );
+                    } else if (q.status === "ACCEPTED") {
+                      primary = { label: hi ? "ऑर्डर में बदलें" : "Convert to order", tone: "primary", disabled: busy, onClick: () => void run("convert-quotation", { quotationId: q.id, idempotencyKey: key() }) };
+                      secondary.push(download, send, duplicate);
+                    } else {
+                      primary = download;
+                      secondary.push(send, duplicate);
+                    }
+                    return <DocumentRowActions primary={primary} secondary={secondary} />;
+                  })()}
                   {docSendStatus[q.id] === "sent" && (
                     <p className={styles.notice} data-ok="true">{hi ? "PDF WhatsApp पर भेजा गया ✓" : "PDF sent via WhatsApp ✓"}</p>
                   )}

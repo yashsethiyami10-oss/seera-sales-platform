@@ -1368,15 +1368,18 @@ export async function managerDsrRollup(
             orderBy: { createdAt: "desc" },
           })
         : null;
+      // Final Master Revision (Beat/Route add-on, 22-Aug) fix: same geography-level mismatch as
+      // executiveBeat (field-portal-service.ts) — beatId/territoryId must match the plan's OWN
+      // beatId/territoryId (Beat/Territory-level), not its leaf geographyId.
       const planned = plan
         ? await db.seeraRetailer.count({
             where: {
               salespersonId: session.employeeId,
               lifecycle: "ACTIVE",
               OR: [
-                { beatId: plan.geographyId },
+                ...(plan.beatId ? [{ beatId: plan.beatId }] : []),
                 { marketId: plan.geographyId },
-                { territoryId: plan.geographyId },
+                ...(plan.territoryId ? [{ territoryId: plan.territoryId }] : []),
               ],
             },
           })

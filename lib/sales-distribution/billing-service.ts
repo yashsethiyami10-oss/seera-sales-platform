@@ -11,6 +11,7 @@ import {
   partySnapshot,
   totalsOf,
   taxSplit,
+  formatAddress,
   type CommercialLineInput,
   type CommercialLineSnapshot,
 } from "./document-lines";
@@ -206,13 +207,20 @@ export async function issueBillingDraft(prisma: PrismaClient, actorId: string, d
         "A verified issuer billing profile is required to issue a tax-bearing document",
         409,
       );
+    // Final Master Revision (Part 6, 22-Aug) fix: this used to dump the raw registeredAddress JSON
+    // object straight into the PDF's address line (via JSON.stringify) — exactly the
+    // "raw JSON in the document" defect the Founder flagged. formatAddress() is the same governed
+    // formatter partySnapshot() already uses for buyer/issuer at draft time.
+    const contact = profile.contact as { ownerName?: string; mobile?: string } | null;
     issuerSnapshot = {
       legalName: profile.legalName,
       tradeName: profile.tradeName ?? undefined,
       gstin: profile.gstin ?? undefined,
-      address: JSON.stringify(profile.registeredAddress),
+      address: formatAddress(profile.registeredAddress),
       state: profile.state,
       stateCode: profile.stateCode,
+      contactName: contact?.ownerName ?? undefined,
+      mobile: contact?.mobile ?? undefined,
     } as Prisma.InputJsonValue;
   }
   return prisma.$transaction(async (tx) => {
@@ -285,4 +293,116 @@ export async function issueBillingDraft(prisma: PrismaClient, actorId: string, d
     });
     return updated;
   });
+}
+
+// Final Master Revision (Part 9, 22-Aug): a Distributor/S.S. controls their own real physical/
+// manual invoice sequence — Seera must never force its own arbitrary numbering on top of it. This
+// is the governed self-service path to set/confirm the prefix and current sequence for a given
+// document type (self-service — same requireIssuerScope as issuing a document — the S.S./
+// Distributor's own login, or Founder/Admin override). Two safety rules the Founder explicitly
+// asked for: never move the sequence BACKWARD below a number that may already be issued (a real
+// SeeraDocumentSequence row's nextNumber only ever increments at issuance, so anything below it is
+// either already used or was skipped — moving backward risks a real duplicate GST invoice number),
+// and every change is fully audited (never silent).
+export async function configureInvoiceNumbering(
+  prisma: PrismaClient,
+  actorId: string,
+  input: {
+    ownerType: "DISTRIBUTOR" | "SUPER_STOCKIST";
+    ownerId: string;
+    documentType: "TAX_INVOICE" | "NON_TAX_INVOICE" | "QUOTATION_DOCUMENT";
+    prefix: string;
+    nextNumber: number;
+    reason: string;
+  },
+) {
+  await requireIssuerScope(prisma, actorId, input.ownerType, input.ownerId);
+  const prefix = input.prefix.trim();
+  if (!prefix) throw new FoundationError("INVOICE_PREFIX_REQUIRED", "An invoice prefix is required", 400);
+  if (!Number.isInteger(input.nextNumber) || input.nextNumber < 1)
+    throw new FoundationError("INVALID_NEXT_NUMBER", "Next number must be a positive whole number", 400);
+  if (!input.reason.trim()) throw new FoundationError("NUMBERING_REASON_REQUIRED", "A reason is required to configure invoice numbering", 400);
+  const now = new Date();
+  const fy = financialYear(now);
+  const existing = await prisma.seeraDocumentSequence.findUnique({
+    where: {
+      issuerType_issuerId_documentType_financialYear: {
+        issuerType: input.ownerType,
+        issuerId: input.ownerId,
+        documentType: input.documentType,
+        financialYear: fy,
+      },
+    },
+  });
+  if (existing && BigInt(input.nextNumber) < existing.nextNumber)
+    throw new FoundationError(
+      "SEQUENCE_CANNOT_MOVE_BACKWARD",
+      `Cannot set the next number below the current sequence (${existing.nextNumber}) — a number below this may already be issued`,
+      409,
+    );
+  return prisma.$transaction(async (tx) => {
+    const sequence = await tx.seeraDocumentSequence.upsert({
+      where: {
+        issuerType_issuerId_documentType_financialYear: {
+          issuerType: input.ownerType,
+          issuerId: input.ownerId,
+          documentType: input.documentType,
+          financialYear: fy,
+        },
+      },
+      create: { issuerType: input.ownerType, issuerId: input.ownerId, documentType: input.documentType, financialYear: fy, prefix, nextNumber: BigInt(input.nextNumber) },
+      update: { prefix, nextNumber: BigInt(input.nextNumber) },
+    });
+    // Keeps the billing profile's own invoicePrefix in sync — it's what a BRAND NEW document type
+    // (one with no SeeraDocumentSequence row yet this financial year) copies its starting prefix
+    // from at first issuance, so a stale profile prefix would otherwise silently reappear later.
+    await tx.seeraBillingProfile.updateMany({
+      where: { ownerType: input.ownerType, ownerId: input.ownerId, verificationStatus: "VERIFIED", effectiveTo: null },
+      data: { invoicePrefix: prefix },
+    });
+    await recordAudit(tx, {
+      actorId,
+      action: "invoice_numbering.configured",
+      entityType: "SeeraDocumentSequence",
+      entityId: sequence.id,
+      reason: input.reason,
+      beforeState: existing ? { prefix: existing.prefix, nextNumber: existing.nextNumber.toString() } : undefined,
+      afterState: { prefix, nextNumber: sequence.nextNumber.toString(), documentType: input.documentType, financialYear: fy },
+    });
+    return { ...sequence, nextNumber: sequence.nextNumber.toString() };
+  });
+}
+
+// Companion read for the Billing Profile / Invoice Numbering screen — "Current prefix / Last used /
+// Next suggested" needs to be shown BEFORE the S.S./Distributor ever confirms anything.
+export async function invoiceNumberingStatus(
+  prisma: PrismaClient,
+  actorId: string,
+  input: { ownerType: "DISTRIBUTOR" | "SUPER_STOCKIST"; ownerId: string; documentType: "TAX_INVOICE" | "NON_TAX_INVOICE" | "QUOTATION_DOCUMENT" },
+) {
+  await requireIssuerScope(prisma, actorId, input.ownerType, input.ownerId);
+  const fy = financialYear(new Date());
+  const [sequence, profile] = await Promise.all([
+    prisma.seeraDocumentSequence.findUnique({
+      where: {
+        issuerType_issuerId_documentType_financialYear: {
+          issuerType: input.ownerType,
+          issuerId: input.ownerId,
+          documentType: input.documentType,
+          financialYear: fy,
+        },
+      },
+    }),
+    prisma.seeraBillingProfile.findFirst({
+      where: { ownerType: input.ownerType, ownerId: input.ownerId, verificationStatus: "VERIFIED", effectiveTo: null },
+      orderBy: { effectiveFrom: "desc" },
+    }),
+  ]);
+  return {
+    financialYear: fy,
+    currentPrefix: sequence?.prefix ?? profile?.invoicePrefix ?? null,
+    lastUsedNumber: sequence ? (sequence.nextNumber - 1n).toString() : null,
+    nextSuggested: sequence ? sequence.nextNumber.toString() : "1",
+    configured: Boolean(sequence),
+  };
 }

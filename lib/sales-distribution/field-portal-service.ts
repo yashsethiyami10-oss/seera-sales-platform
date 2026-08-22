@@ -1036,7 +1036,20 @@ export async function executiveBeat(
     orderBy: { effectiveFrom: "desc" },
   });
   timing.stage("plans");
+  // Final Master Revision (Beat/Route add-on, 22-Aug) fix: this used to collect ONLY
+  // plan.geographyId (the leaf VILLAGE/TOWN/.../OTHER node createBeatPlan creates under the Beat)
+  // and match it against retailer.beatId/marketId/territoryId indiscriminately. But
+  // SeeraRetailer.beatId/.territoryId are populated with the actual BEAT-level/TERRITORY-level node
+  // ids (see seed-routing-fixtures.ts), a DIFFERENT level of the geography tree than the plan's leaf
+  // geographyId — so a real PUBLISHED plan with real retailers mapped to its Beat could never match,
+  // regardless of date range. Compare each field at its OWN matching level instead: retailer.beatId
+  // against plan.beatId, retailer.territoryId against plan.territoryId, and retailer.marketId
+  // against plan.geographyId (kept as a defensive extra match — marketId is otherwise never written
+  // anywhere today, so this is inert, not a regression risk).
+  const beatIds = [...new Set(plans.map((plan) => plan.beatId).filter((id): id is string => Boolean(id)))];
+  const territoryIds = [...new Set(plans.map((plan) => plan.territoryId).filter((id): id is string => Boolean(id)))];
   const geographyIds = [...new Set(plans.map((plan) => plan.geographyId))];
+  const hasGeographyMatch = beatIds.length > 0 || territoryIds.length > 0 || geographyIds.length > 0;
   const [visitsToday, retailers] = await Promise.all([
     db.seeraVisit.findMany({
       where: {
@@ -1047,15 +1060,15 @@ export async function executiveBeat(
       },
       select: { retailerId: true, outcome: true },
     }),
-    geographyIds.length
+    hasGeographyMatch
       ? db.seeraRetailer.findMany({
           where: {
             salespersonId: actorId,
             lifecycle: "ACTIVE",
             OR: [
-              { beatId: { in: geographyIds } },
+              { beatId: { in: beatIds } },
               { marketId: { in: geographyIds } },
-              { territoryId: { in: geographyIds } },
+              { territoryId: { in: territoryIds } },
             ],
           },
           orderBy: { businessName: "asc" },
@@ -1169,10 +1182,13 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
           where: {
             salespersonId: actorId,
             lifecycle: "ACTIVE",
+            // Final Master Revision (Beat/Route add-on, 22-Aug) fix: same geography-level mismatch
+            // as executiveBeat above — beatId/territoryId must match the plan's OWN beatId/
+            // territoryId (Beat/Territory-level), not its leaf geographyId.
             OR: [
-              { beatId: plannedToday.geographyId },
+              ...(plannedToday.beatId ? [{ beatId: plannedToday.beatId }] : []),
               { marketId: plannedToday.geographyId },
-              { territoryId: plannedToday.geographyId },
+              ...(plannedToday.territoryId ? [{ territoryId: plannedToday.territoryId }] : []),
             ],
           },
         })

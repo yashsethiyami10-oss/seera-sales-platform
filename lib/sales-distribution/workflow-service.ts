@@ -21,7 +21,13 @@ import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from ".
 import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
 import { assertCompanyDispatchAvailable, postCompanyDispatchStockAndCogs } from "@/lib/manufacturing/company-stock-service";
 
-type OrderLineInput = { skuId: string; quantity: number; rate?: number };
+// `uom` (Final Master Revision Part 2, 22-Aug): the client (FieldJourney.tsx's toBasePcLine) has
+// already converted `quantity`/`rate` to base PC units before this reaches placeRetailerOrder — no
+// pricing math here changes. `uom` is purely the human-readable record of what was actually
+// selected ("2 BOX"), carried through to packSnapshot/schemeSnapshot so it's never lost, matching
+// the exact same schemeSnapshot-reuse convention createCompanyOrder already established for its own
+// order-unit snapshot (no schema change).
+type OrderLineInput = { skuId: string; quantity: number; rate?: number; uom?: { unit: string; packFactor: number; uomQuantity: number } };
 type ActorContext = {
   actorId: string;
   sourcePortal: string;
@@ -780,6 +786,7 @@ export async function placeRetailerOrder(
         unitRate,
         quantity: line.quantity,
         total: unitRate * line.quantity,
+        uom: line.uom,
       };
     });
     const subtotal = snapshots.reduce((sum, item) => sum + item.total, 0);
@@ -822,11 +829,16 @@ export async function placeRetailerOrder(
         idempotencyKey: input.idempotencyKey,
         submittedAt: new Date(),
         lines: {
-          create: snapshots.map(({ sku, unitRate, quantity, total }) => ({
+          create: snapshots.map(({ sku, unitRate, quantity, total, uom }) => ({
             skuId: sku.id,
             skuCodeSnapshot: sku.code,
             productNameSnapshot: sku.productName,
-            packSnapshot: `${sku.packSize} ${sku.unitType}`,
+            // Final Master Revision (Part 2, 22-Aug): when a UOM was selected, packSnapshot shows
+            // it directly ("2 BOX (80 PC)") — this is the one field every existing order-line
+            // display already renders everywhere, so "2 BOX" becomes visible on every surface with
+            // no rendering-code changes. Falls back to the plain physical pack description exactly
+            // as before when no UOM was selected (base PC order, the overwhelmingly common case).
+            packSnapshot: uom ? `${uom.uomQuantity} ${uom.unit} (${quantity} PC)` : `${sku.packSize} ${sku.unitType}`,
             priceSnapshot: unitRate,
             mrpSnapshot: sku.mrp,
             // Rate is GST-inclusive (Founder global rule) — taxable/tax are derived FROM unitRate,
@@ -840,6 +852,13 @@ export async function placeRetailerOrder(
                   })(),
             orderedQuantity: quantity,
             lineTotal: total,
+            // Structured UOM snapshot (Founder Part 2 field list: selectedUom/orderedUomQuantity/
+            // packFactor/packCommercialRate) — same schemeSnapshot-reuse convention
+            // createCompanyOrder already established, no schema change. null (not the discount-pct
+            // shape quotation-service.ts uses on a different model) when no UOM was selected.
+            schemeSnapshot: uom
+              ? { selectedUom: uom.unit, orderedUomQuantity: uom.uomQuantity, packFactor: uom.packFactor, packCommercialRate: unitRate * uom.packFactor }
+              : undefined,
           })),
         },
       },

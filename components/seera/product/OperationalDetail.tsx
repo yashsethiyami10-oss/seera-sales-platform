@@ -11,6 +11,8 @@ import { RetailerActions } from "./RetailerActions";
 import { DocumentShareActions } from "./DocumentShareActions";
 import { PartnerAccessPanel } from "./PartnerAccessPanel";
 import { BillingProfilePanel } from "./BillingProfilePanel";
+import { InvoiceNumberingPanel } from "./InvoiceNumberingPanel";
+import { invoiceNumberingStatus } from "@/lib/sales-distribution/billing-service";
 import { ReassignDistributorPanel } from "./ReassignDistributorPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { DistributorClosureSettlementPanel } from "./DistributorClosureSettlementPanel";
@@ -330,6 +332,14 @@ export async function OperationalDetail({
             orderBy: { effectiveFrom: "desc" },
           })
         : null;
+    // Founder/Admin viewing this 360 page is very often not personally a SeeraPartyUser of the
+    // partner being viewed (see billingProfile's own comment above for the same class of gap) —
+    // invoiceNumberingStatus's requireIssuerScope would otherwise throw PARTY_SCOPE_DENIED and take
+    // down the whole page. Degrades to null (panel simply doesn't render) rather than crash.
+    const numberingStatus =
+      canManageAccess && billingProfile && (x.type === "DISTRIBUTOR" || x.type === "SUPER_STOCKIST")
+        ? await invoiceNumberingStatus(db, userId, { ownerType: x.type, ownerId: x.id, documentType: "TAX_INVOICE" }).catch(() => null)
+        : null;
     const reassignSuperStockists =
       canManageAccess && x.type === "DISTRIBUTOR"
         ? (
@@ -441,6 +451,9 @@ export async function OperationalDetail({
                 : null
             }
           />
+        )}
+        {numberingStatus && (x.type === "DISTRIBUTOR" || x.type === "SUPER_STOCKIST") && (
+          <InvoiceNumberingPanel language={language} ownerType={x.type} ownerId={x.id} status={numberingStatus} />
         )}
         {canManageAccess && x.type === "DISTRIBUTOR" && (
           <ReassignDistributorPanel

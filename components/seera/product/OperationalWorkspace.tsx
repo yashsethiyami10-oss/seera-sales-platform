@@ -1471,16 +1471,23 @@ function BeatRoutePanel({
           </Link>
         ))}
       </div>
-      {!beat.hasPublishedPlan && (
+      {/* Final Master Revision (Beat/Route add-on, 22-Aug): these are three genuinely different
+          conditions and must read differently — "no plan published at all" is not the same fact
+          as "a real published plan resolves to zero retailers" (a real, distinct data gap the
+          Manager needs to know about), and neither is the same as "retailers found." Previously
+          the no-plan and zero-retailer messages could both render at once, and a published plan
+          with zero resolved retailers was indistinguishable from no plan ever existing. */}
+      {!beat.hasPublishedPlan ? (
         <p className={styles.readOnly}>
           {hi
             ? "इस दिन के लिए कोई मार्ग निर्दिष्ट नहीं किया गया है।"
             : "No route has been assigned for this day."}
         </p>
-      )}
-      {beat.retailers.length === 0 ? (
+      ) : beat.retailers.length === 0 ? (
         <p className={styles.readOnly}>
-          {hi ? "कोई खुदरा विक्रेता उपलब्ध नहीं है।" : "No retailers are available."}
+          {hi
+            ? "प्रकाशित योजना में कोई खुदरा विक्रेता निर्दिष्ट नहीं है।"
+            : "Published plan has no retailers assigned."}
         </p>
       ) : (
         <div className={styles.tableWrap}>
@@ -2492,6 +2499,8 @@ export async function OperationalWorkspace({
           // Founder-approved MUV catalog) gets pre-filled.
           price: x.prices[0] ? money(x.prices[0].amount) : "—",
           rate: Number(x.prices[0]?.amount ?? 0),
+          unitsPerCase: x.unitsPerCase,
+          caseUnit: x.unitsPerCase > 1 ? (x.unitType === "g" ? "BOX" : x.unitType === "kg" ? "BAG" : null) : null,
         }))}
       />
       <DistributorFollowUpPanel language={language} entries={distributorFollowUp} />

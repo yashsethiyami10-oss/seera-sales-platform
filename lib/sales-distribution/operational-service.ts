@@ -631,6 +631,23 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
     prisma.seeraGeographyNode.findUnique({ where: { id: plan.geographyId } }),
     plan.beatId ? prisma.seeraGeographyNode.findUnique({ where: { id: plan.beatId } }) : null,
   ]);
+  // Final Master Revision (Beat/Route add-on, 22-Aug): "do not silently publish an empty unusable
+  // plan while presenting it as complete" — publish is still allowed (the Manager may legitimately
+  // publish an empty-for-now plan), but the caller can now surface a clear, honest warning instead
+  // of the Executive later just seeing a mysterious "no retailers" with no explanation why. Uses
+  // the exact same beatId/territoryId-level matching executiveBeat reads by, so this warning can
+  // never disagree with what the Executive will actually see.
+  const retailerCount = await prisma.seeraRetailer.count({
+    where: {
+      salespersonId: plan.employeeId,
+      lifecycle: "ACTIVE",
+      OR: [
+        ...(plan.beatId ? [{ beatId: plan.beatId }] : []),
+        { marketId: plan.geographyId },
+        ...(plan.territoryId ? [{ territoryId: plan.territoryId }] : []),
+      ],
+    },
+  });
   const updated = await prisma.seeraJourneyPlan.update({ where: { id: plan.id }, data: { status: "PUBLISHED" } });
   await prisma.notification.create({
     data: {
@@ -643,8 +660,8 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
       payload: { actionPath: "/portal/sales-executive/beat" },
     },
   });
-  await recordAudit(prisma, { actorId, action: "journey_plan.published", entityType: "SeeraJourneyPlan", entityId: plan.id });
-  return updated;
+  await recordAudit(prisma, { actorId, action: "journey_plan.published", entityType: "SeeraJourneyPlan", entityId: plan.id, afterState: { retailerCount } });
+  return { ...updated, retailerCount, retailerWarning: retailerCount === 0 };
 }
 
 export async function duplicateBeatPlan(

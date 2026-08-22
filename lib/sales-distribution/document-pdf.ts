@@ -4,7 +4,10 @@ import path from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 
-export type LegalPartySnapshot = { legalName: string; tradeName?: string; gstin?: string; address: string; state?: string; stateCode?: string };
+// contactName/mobile (Final Master Revision Part 6, 22-Aug): optional so every historical
+// document's already-issued, immutable snapshot (Part 14 — never rewritten) keeps rendering
+// exactly as before when it predates these fields; only newly issued documents populate them.
+export type LegalPartySnapshot = { legalName: string; tradeName?: string; gstin?: string; address: string; state?: string; stateCode?: string; contactName?: string; mobile?: string };
 export type DocumentLineSnapshot = { description: string; hsn?: string; quantity: number; unit: string; rate: number; discount?: number; taxableValue: number; cgst?: number; sgst?: number; igst?: number; total: number };
 export type IssuedDocumentSnapshot = {
   type: string; documentNumber: string; issueDate: string; issuer: LegalPartySnapshot; buyer: LegalPartySnapshot;
@@ -112,20 +115,22 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   // ---- Issuer / Buyer boxed sections, side by side ----
   const colGap = 16;
   const colWidth = (CONTENT_WIDTH - colGap) / 2;
-  const partyBlockLines = (party: LegalPartySnapshot) => {
+  const partyBlockLines = (party: LegalPartySnapshot, isBuyer: boolean) => {
     const lines: { label: string; value: string }[] = [{ label: "", value: party.tradeName ? `${party.legalName} (${party.tradeName})` : party.legalName }];
+    if (party.contactName) lines.push({ label: "Contact", value: party.contactName });
+    if (party.mobile) lines.push({ label: "Mobile", value: party.mobile });
     if (party.address) lines.push({ label: "", value: party.address });
-    if (party.state) lines.push({ label: "", value: party.stateCode ? `${party.state} · ${party.stateCode}` : party.state });
-    if (party.gstin) lines.push({ label: "GSTIN", value: party.gstin });
+    if (party.state) lines.push({ label: isBuyer ? "Place of Supply" : "State", value: party.stateCode ? `${party.state} · ${party.stateCode}` : party.state });
+    lines.push({ label: "GSTIN", value: party.gstin ?? "Unregistered" });
     return lines;
   };
-  const issuerLines = partyBlockLines(snapshot.issuer);
-  const buyerLines = partyBlockLines(snapshot.buyer);
-  const drawParty = (label: string, party: LegalPartySnapshot, x: number) => {
+  const issuerLines = partyBlockLines(snapshot.issuer, false);
+  const buyerLines = partyBlockLines(snapshot.buyer, true);
+  const drawParty = (label: string, party: LegalPartySnapshot, x: number, isBuyer: boolean) => {
     let yy = y;
     text(label, x, yy, { size: 7.5, strong: true, color: MUTED });
     yy -= 13;
-    const lines = partyBlockLines(party);
+    const lines = partyBlockLines(party, isBuyer);
     lines.forEach((l, i) => {
       const wrapped = wrap(l.value, selectFont(l.value, i === 0), i === 0 ? 10 : 8.5, colWidth - 4);
       wrapped.forEach((w) => {
@@ -138,8 +143,8 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   const boxHeight = 16 + Math.max(issuerLines.length, buyerLines.length) * 13 + 10;
   page.drawRectangle({ x: MARGIN, y: y - boxHeight, width: colWidth, height: boxHeight, borderColor: RULE, borderWidth: 0.8, color: rgb(1, 1, 1) });
   page.drawRectangle({ x: MARGIN + colWidth + colGap, y: y - boxHeight, width: colWidth, height: boxHeight, borderColor: RULE, borderWidth: 0.8, color: rgb(1, 1, 1) });
-  drawParty("ISSUED BY", snapshot.issuer, MARGIN + 8);
-  drawParty("BILLED TO", snapshot.buyer, MARGIN + colWidth + colGap + 8);
+  drawParty("ISSUED BY", snapshot.issuer, MARGIN + 8, false);
+  drawParty("BILLED TO", snapshot.buyer, MARGIN + colWidth + colGap + 8, true);
   y -= boxHeight + 18;
 
   // ---- Item table ----

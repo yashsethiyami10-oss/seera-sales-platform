@@ -33,7 +33,7 @@ import {
   convertQuotationToOrder,
 } from "@/lib/sales-distribution/quotation-service";
 import { createReturnRequest, decideReturnRequest } from "@/lib/sales-distribution/returns-service";
-import { createBillingDraft, updateBillingDraft, issueBillingDraft } from "@/lib/sales-distribution/billing-service";
+import { createBillingDraft, updateBillingDraft, issueBillingDraft, configureInvoiceNumbering } from "@/lib/sales-distribution/billing-service";
 import { commercialLineInputSchema } from "@/lib/sales-distribution/document-lines";
 import {
   acceptAndPrepareRetailerOrder,
@@ -76,6 +76,7 @@ const body = z.object({
     "create-billing-draft",
     "update-billing-draft",
     "issue-billing-draft",
+    "configure-invoice-numbering",
     "easy-decide",
     "easy-deliver-remaining",
     "easy-delivery-outcome",
@@ -157,6 +158,7 @@ export async function POST(request: Request) {
     else if(action==="create-billing-draft") result=await createBillingDraft(prisma,user.id,z.object({type:z.enum(["TAX_INVOICE","NON_TAX_INVOICE","PRO_FORMA_INVOICE","DELIVERY_CHALLAN","RECEIPT","CREDIT_NOTE","DEBIT_NOTE"]),issuerType:z.enum(["DISTRIBUTOR","SUPER_STOCKIST"]),issuerId:z.string(),buyerType:z.enum(["RETAILER","DISTRIBUTOR","SUPER_STOCKIST"]),buyerId:z.string(),sourcePortal:z.string(),orderId:z.string().optional(),originalDocumentId:z.string().optional(),paymentTerms:z.string().optional(),notes:z.string().optional(),lines:z.array(commercialLineInputSchema).min(1),idempotencyKey:z.string()}).parse(payload));
     else if(action==="update-billing-draft") result=await updateBillingDraft(prisma,user.id,z.string().parse((payload as {documentId:unknown}).documentId),z.object({paymentTerms:z.string().optional(),notes:z.string().optional(),lines:z.array(commercialLineInputSchema).min(1)}).parse(payload));
     else if(action==="issue-billing-draft") result=await issueBillingDraft(prisma,user.id,z.object({documentId:z.string()}).parse(payload).documentId);
+    else if(action==="configure-invoice-numbering") result=await configureInvoiceNumbering(prisma,user.id,z.object({ownerType:z.enum(["DISTRIBUTOR","SUPER_STOCKIST"]),ownerId:z.string(),documentType:z.enum(["TAX_INVOICE","NON_TAX_INVOICE","QUOTATION_DOCUMENT"]),prefix:z.string().min(1),nextNumber:z.number().int().positive(),reason:z.string().min(3)}).parse(payload));
     else if (action === "create-distributor-replenishment") {
       const v = z
         .object({

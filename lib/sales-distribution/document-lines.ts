@@ -236,26 +236,48 @@ export function formatAddress(value: unknown): string {
   return Object.values(a).filter((v) => typeof v === "string" && v.trim()).join(", ");
 }
 
+// Final Master Revision (Part 6, 22-Aug): the joined formatAddress() string already contains the
+// state, but the Founder explicitly wants "Place of Supply"/"State" shown as its own labeled line,
+// not buried in a comma-joined blob — real data already on the address JSON, never invented.
+export function stateFromAddress(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const state = (value as Record<string, unknown>).state;
+  return typeof state === "string" && state.trim() ? state.trim() : undefined;
+}
+
 export async function partySnapshot(
   db: Db,
   partyType: string,
   partyId: string,
-): Promise<{ legalName: string; tradeName?: string; gstin?: string; address: string; state?: string; stateCode?: string }> {
+): Promise<{ legalName: string; tradeName?: string; gstin?: string; address: string; state?: string; stateCode?: string; contactName?: string; mobile?: string }> {
+  // contactName/mobile (Final Master Revision Part 6, 22-Aug): "WHO the customer is... HOW to
+  // contact them" — real fields already captured at onboarding (SeeraRetailer.ownerName/mobile,
+  // SeeraPartner.primaryContact), never invented; simply weren't being read into the document
+  // snapshot before. Absent entirely (undefined, not a blank string) when the source data has
+  // none, so document-pdf.ts's optional-field rendering just omits the line rather than showing
+  // an empty "Contact:" — matches the "no invented fallback" convention used throughout this file.
   if (partyType === "RETAILER") {
     const retailer = await db.seeraRetailer.findUniqueOrThrow({ where: { id: partyId } });
     return {
       legalName: retailer.businessName,
       gstin: retailer.gstin ?? undefined,
       address: formatAddress(retailer.address),
+      state: stateFromAddress(retailer.address),
       stateCode: stateCodeFromGstin(retailer.gstin),
+      contactName: retailer.ownerName ?? undefined,
+      mobile: retailer.mobile ?? retailer.normalizedMobile ?? undefined,
     };
   }
   const partner = await db.seeraPartner.findUniqueOrThrow({ where: { id: partyId } });
+  const contact = partner.primaryContact as { ownerName?: string; mobile?: string } | null;
   return {
     legalName: partner.legalName,
     tradeName: partner.tradeName ?? undefined,
     gstin: partner.gstin ?? undefined,
     address: formatAddress(partner.addresses),
+    state: stateFromAddress(partner.addresses),
     stateCode: stateCodeFromGstin(partner.gstin),
+    contactName: contact?.ownerName ?? undefined,
+    mobile: contact?.mobile ?? undefined,
   };
 }

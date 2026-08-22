@@ -166,6 +166,7 @@ export async function POST(request: Request) {
                   skuId: z.string(),
                   quantity: z.number().positive(),
                   rate: z.number().positive().optional(),
+                  uom: z.object({ unit: z.string(), packFactor: z.number().int().positive(), uomQuantity: z.number().positive() }).optional(),
                 }),
               )
               .min(1),

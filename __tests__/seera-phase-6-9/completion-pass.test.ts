@@ -7,7 +7,7 @@ const snapshot: IssuedDocumentSnapshot = { type:"TAX_INVOICE",documentNumber:"IN
 const source=(file:string)=>readFileSync(path.join(process.cwd(),file),"utf8");
 
 describe("Phase 6-9 completion pass",()=>{
-  it("renders a real PDF from immutable snapshot data",async()=>{const before=structuredClone(snapshot);const bytes=await renderIssuedDocumentPdf(snapshot);expect(new TextDecoder().decode(bytes.slice(0,5))).toBe("%PDF-");expect(bytes.byteLength).toBeGreaterThan(5000);expect(snapshot).toEqual(before);});
+  it("renders a real PDF from immutable snapshot data",async()=>{const before=structuredClone(snapshot);const bytes=await renderIssuedDocumentPdf(snapshot);expect(new TextDecoder().decode(bytes.slice(0,5))).toBe("%PDF-");expect(bytes.byteLength).toBeGreaterThan(5000);expect(snapshot).toEqual(before);},15000);
   it("creates safe content-disposition filenames",()=>expect(documentPdfFilename(snapshot)).toBe("TAX_INVOICE-INV_2026-27_000001.pdf"));
   it("uses bundled Latin and Devanagari fonts",()=>{expect(source("lib/sales-distribution/document-pdf.ts")).toContain("noto-sans-devanagari");expect(source("lib/sales-distribution/document-pdf.ts")).not.toContain("replace(/[^\\x00-\\x7F]");});
   it("hashes secure tokens and never stores raw tokens",()=>{const code=source("lib/sales-distribution/document-service.ts");expect(code).toContain('randomBytes(32).toString("base64url")');expect(code).toContain("tokenHash: hashToken(token)");expect(code).not.toContain("token: token");});

@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
+import { DocumentRowActions, type RowAction } from "./DocumentRowActions";
 
 type Option = { value: string; label: string };
 // taxRate null (not 0) means "no governed GST rate configured yet" — kept distinct from a
@@ -399,25 +400,18 @@ export function BillingActions({
                 </td>
                 <td>₹{d.grandTotal.toFixed(2)}</td>
                 <td>
-                  <div className={styles.inlineActions}>
-                    {d.status === "DRAFT" && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void run("issue-billing-draft", { documentId: d.id })}
-                      >
-                        {hi ? "जारी करें" : "Issue"}
-                      </button>
-                    )}
-                    {d.status !== "DRAFT" && (
-                      <>
-                        <a href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">{hi ? "PDF डाउनलोड करें" : "Download PDF"}</a>
-                        <button type="button" disabled={busy} onClick={() => void shareOrSend(d)}>
-                          {hi ? "WhatsApp पर भेजें" : "Send via WhatsApp"}
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  {(() => {
+                    // Final Master Revision (Part 11/12, 22-Aug): same primary/secondary pattern
+                    // QuotationActions.tsx uses — shared presentation, issuer-specific data only.
+                    const download: RowAction = { label: hi ? "PDF डाउनलोड करें" : "Download PDF", href: `/api/documents/${d.id}/download`, external: true };
+                    const send: RowAction = { label: hi ? "WhatsApp पर भेजें" : "Send via WhatsApp", onClick: () => void shareOrSend(d), disabled: busy };
+                    const primary: RowAction =
+                      d.status === "DRAFT"
+                        ? { label: hi ? "जारी करें" : "Issue", tone: "primary", disabled: busy, onClick: () => void run("issue-billing-draft", { documentId: d.id }) }
+                        : download;
+                    const secondary: RowAction[] = d.status === "DRAFT" ? [] : [send];
+                    return <DocumentRowActions primary={primary} secondary={secondary} />;
+                  })()}
                   {docSendStatus[d.id] === "sent" && (
                     <p className={styles.notice} data-ok="true">{hi ? "PDF WhatsApp पर भेजा गया ✓" : "PDF sent via WhatsApp ✓"}</p>
                   )}

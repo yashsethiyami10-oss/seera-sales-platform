@@ -72,8 +72,17 @@ export function BeatPlannerActions({
     setBusy(true);
     setMessage("");
     try {
-      await send(body);
-      setMessage(successMessage ?? (hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully."));
+      const result = await send(body);
+      // Final Master Revision (Beat/Route add-on, 22-Aug): publishBeatPlan now reports whether the
+      // published Beat/Route actually resolves to any of this Executive's retailers — surfaced
+      // here so the Manager sees the gap immediately, at publish time, instead of the Executive
+      // silently seeing an empty route later with no explanation.
+      const warning = (result as { retailerWarning?: boolean } | null)?.retailerWarning
+        ? hi
+          ? " चेतावनी: इस बीट/मार्ग के लिए वर्तमान में कोई खुदरा विक्रेता मैप नहीं है।"
+          : " Warning: this Beat/Route currently has no retailers mapped."
+        : "";
+      setMessage((successMessage ?? (hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully.")) + warning);
       router.refresh();
       return true;
     } catch (error) {
