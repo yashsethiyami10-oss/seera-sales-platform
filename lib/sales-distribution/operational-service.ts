@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { FoundationError } from "@/lib/foundation/errors";
-import { requirePartyMembership } from "./scope";
+import { requirePartyMembership, resolveManagerOperationalScope } from "./scope";
 import { assertAdvanceOnlyCompanyOrder } from "./business-rules";
 import { createHash } from "node:crypto";
 import { recordAudit } from "@/lib/foundation/audit-service";
@@ -562,14 +562,30 @@ export async function createBeatPlan(
   await assertTeamMember(prisma, actorId, input.employeeId);
   if (input.effectiveTo && input.effectiveTo < input.effectiveFrom)
     throw new FoundationError("INVALID_EFFECTIVE_PERIOD", "End date cannot be before start date", 400);
+  // Final Production Closure (23-Aug): SERVER-SIDE authoritative geography scope — a Manager whose
+  // authorized Territory is Jhansi must never be able to plan into Bhilwara (or vice versa) merely
+  // by typing a different Territory name; the dropdown suggestion list alone is not a security
+  // boundary. Computed once, before the transaction, so a Founder/Admin (unrestricted) still plans
+  // freely and a scoped Manager gets rejected before any write happens.
+  const managerScope = await resolveManagerOperationalScope(prisma, actorId);
   try {
     return await prisma.$transaction(async (tx) => {
       const territory = await resolveOrCreateGeography(tx, { name: input.territoryName, level: "TERRITORY" });
+      if (!managerScope.unrestricted && !managerScope.territoryIds.includes(territory.id))
+        throw new FoundationError("TERRITORY_OUT_OF_SCOPE", `"${territory.name}" is outside your authorized Territory scope`, 403);
       const beat = await resolveOrCreateGeography(tx, { name: input.beatName, level: "BEAT", parentId: territory.id });
       const geography = await resolveOrCreateGeography(tx, { name: input.geographyName, level: input.geographyType, parentId: beat.id });
       const { distributorId, distributorNameSnapshot } = input.distributorName
         ? await resolveDistributorByName(tx, input.distributorName)
         : { distributorId: undefined, distributorNameSnapshot: undefined };
+      // Founder-final rule (23-Aug): publishing a plan with zero active retailers mapped to it is
+      // no longer a soft warning — it is BLOCKED outright. A Manager may still save it as a DRAFT
+      // (input.publish:false) while retailer/Beat mapping is still in progress.
+      const retailerCount = await tx.seeraRetailer.count({
+        where: { salespersonId: input.employeeId, lifecycle: "ACTIVE", OR: [{ beatId: beat.id }, { marketId: geography.id }, { territoryId: territory.id }] },
+      });
+      if (input.publish && retailerCount === 0)
+        throw new FoundationError("BEAT_HAS_NO_RETAILERS", "This Beat has no active retailers mapped. Map at least one retailer before publishing.", 409);
       const plan = await tx.seeraJourneyPlan.create({
         data: {
           employeeId: input.employeeId,
@@ -587,15 +603,7 @@ export async function createBeatPlan(
           ownerId: actorId,
         },
       });
-      // Final Master Revision (Beat/Route add-on, 22-Aug): same zero-retailer warning as
-      // publishBeatPlan — this is the OTHER path that can publish a plan (create-with-publish in
-      // one step, the UI's "Publish" checkbox at creation time), and must not silently create an
-      // empty unusable plan here either. Same beatId/territoryId-level matching.
-      let retailerCount: number | undefined;
       if (input.publish) {
-        retailerCount = await tx.seeraRetailer.count({
-          where: { salespersonId: input.employeeId, lifecycle: "ACTIVE", OR: [{ beatId: beat.id }, { marketId: geography.id }, { territoryId: territory.id }] },
-        });
         await tx.notification.create({
           data: {
             recipientId: input.employeeId,
@@ -615,7 +623,7 @@ export async function createBeatPlan(
         entityId: plan.id,
         afterState: { employeeId: input.employeeId, territory: territory.name, beat: beat.name, geography: geography.name, dayOfWeek: input.dayOfWeek, retailerCount },
       });
-      return { ...plan, retailerCount, retailerWarning: input.publish ? retailerCount === 0 : undefined };
+      return { ...plan, retailerCount };
     });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002")
@@ -640,12 +648,10 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
     prisma.seeraGeographyNode.findUnique({ where: { id: plan.geographyId } }),
     plan.beatId ? prisma.seeraGeographyNode.findUnique({ where: { id: plan.beatId } }) : null,
   ]);
-  // Final Master Revision (Beat/Route add-on, 22-Aug): "do not silently publish an empty unusable
-  // plan while presenting it as complete" — publish is still allowed (the Manager may legitimately
-  // publish an empty-for-now plan), but the caller can now surface a clear, honest warning instead
-  // of the Executive later just seeing a mysterious "no retailers" with no explanation why. Uses
-  // the exact same beatId/territoryId-level matching executiveBeat reads by, so this warning can
-  // never disagree with what the Executive will actually see.
+  // Founder-final rule (23-Aug): a normal publish of a Beat with zero active retailers mapped is
+  // now BLOCKED outright (previously only a soft warning, which let empty PUBLISHED plans keep
+  // accumulating in normal operation). Uses the exact same beatId/territoryId-level matching
+  // executiveBeat reads by, so this can never disagree with what the Executive would actually see.
   const retailerCount = await prisma.seeraRetailer.count({
     where: {
       salespersonId: plan.employeeId,
@@ -657,6 +663,8 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
       ],
     },
   });
+  if (retailerCount === 0)
+    throw new FoundationError("BEAT_HAS_NO_RETAILERS", "This Beat has no active retailers mapped. Map at least one retailer before publishing.", 409);
   const updated = await prisma.seeraJourneyPlan.update({ where: { id: plan.id }, data: { status: "PUBLISHED" } });
   await prisma.notification.create({
     data: {
@@ -670,7 +678,7 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
     },
   });
   await recordAudit(prisma, { actorId, action: "journey_plan.published", entityType: "SeeraJourneyPlan", entityId: plan.id, afterState: { retailerCount } });
-  return { ...updated, retailerCount, retailerWarning: retailerCount === 0 };
+  return { ...updated, retailerCount };
 }
 
 export async function duplicateBeatPlan(
@@ -774,13 +782,29 @@ export async function managerBeatPlans(prisma: PrismaClient, actorId: string, in
   ]);
   const geoName = new Map(geographies.map((g) => [g.id, g.name]));
   const empName = new Map(employees.map((e) => [e.id, e.name ?? e.email]));
-  return plans.map((p) => ({
+  // Founder-final rule (23-Aug, "Before Publish show: Retailers in this plan: N"): computed for
+  // every listed plan (not just at the moment of publish) so a Manager sees the gap on a DRAFT
+  // before ever clicking Publish, not only as a rejection afterward. Same beatId/marketId/
+  // territoryId matching createBeatPlan/publishBeatPlan/executiveBeat all already share.
+  const retailerCounts = await Promise.all(
+    plans.map((p) =>
+      prisma.seeraRetailer.count({
+        where: {
+          salespersonId: p.employeeId,
+          lifecycle: "ACTIVE",
+          OR: [...(p.beatId ? [{ beatId: p.beatId }] : []), { marketId: p.geographyId }, ...(p.territoryId ? [{ territoryId: p.territoryId }] : [])],
+        },
+      }),
+    ),
+  );
+  return plans.map((p, i) => ({
     ...p,
     employeeName: empName.get(p.employeeId) ?? p.employeeId,
     territoryName: p.territoryId ? geoName.get(p.territoryId) : undefined,
     beatName: p.beatId ? geoName.get(p.beatId) : undefined,
     geographyName: geoName.get(p.geographyId),
     isFuture: p.effectiveFrom > new Date(),
+    retailerCount: retailerCounts[i],
   }));
 }
 

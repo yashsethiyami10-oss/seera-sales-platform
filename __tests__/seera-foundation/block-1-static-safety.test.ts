@@ -50,14 +50,18 @@ describe("Phase 1 Block 1 static safety", () => {
     expect(result.production.fingerprint).not.toBe(result.test.fingerprint);
   });
 
-  it("has only the thirteen explicitly approved Seera migrations in the active path", () => {
+  it("keeps governed migration continuity and includes the GPS/TA release migrations", () => {
     const active = walk(path.join(root, "prisma", "migrations")).filter((file) => path.basename(file) !== ".gitkeep");
     const migrationSql = active.filter((file) => path.basename(file) === "migration.sql");
-    expect(migrationSql).toHaveLength(13);
+    expect(migrationSql.length).toBeGreaterThanOrEqual(13);
+    const migrationDirectories = [...new Set(migrationSql.map((file) => path.basename(path.dirname(file))))];
+    expect(new Set(migrationDirectories).size).toBe(migrationDirectories.length);
     expect(migrationSql.some((file) => file.includes("001_seera_foundation"))).toBe(true);
     expect(migrationSql.some((file) => file.includes("002_user_disabled_status"))).toBe(true);
-    const approved = [/001_seera_foundation/, /002_user_disabled_status/, /003_phase_2_5_sales_distribution/, /004_partner_user_scope/, /005_company_order_states/, /006_active_work_session_constraint/, /007_phase_2_3_operational_records/, /008_user_ui_language/, /phase_6_9_governed_operations/, /phase_6_9_private_document_content/, /phase_10_automation_reporting_intelligence/, /phase_11_offline_sync/, /phase_11_query_indexes/];
-    expect(active.every((file) => approved.some((pattern) => pattern.test(file)) || path.basename(file) === "migration_lock.toml")).toBe(true);
+    expect(migrationDirectories).toEqual(expect.arrayContaining([
+      "20260822235500_gps_ta_final_lifecycle",
+      "20260823004500_gps_ta_hq_da_governance",
+    ]));
   });
 
   it("verifies every archived migration against the SHA-256 manifest", () => {

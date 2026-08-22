@@ -18,6 +18,7 @@ type Plan = {
   effectiveFrom: string;
   effectiveTo: string | null;
   status: string;
+  retailerCount?: number;
   notes: string | null;
   isFuture: boolean;
 };
@@ -72,17 +73,11 @@ export function BeatPlannerActions({
     setBusy(true);
     setMessage("");
     try {
-      const result = await send(body);
-      // Final Master Revision (Beat/Route add-on, 22-Aug): publishBeatPlan now reports whether the
-      // published Beat/Route actually resolves to any of this Executive's retailers — surfaced
-      // here so the Manager sees the gap immediately, at publish time, instead of the Executive
-      // silently seeing an empty route later with no explanation.
-      const warning = (result as { retailerWarning?: boolean } | null)?.retailerWarning
-        ? hi
-          ? " चेतावनी: इस बीट/मार्ग के लिए वर्तमान में कोई खुदरा विक्रेता मैप नहीं है।"
-          : " Warning: this Beat/Route currently has no retailers mapped."
-        : "";
-      setMessage((successMessage ?? (hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully.")) + warning);
+      // Founder-final rule (23-Aug): publishing a Beat with zero active retailers mapped is now
+      // BLOCKED server-side (createBeatPlan/publishBeatPlan throw BEAT_HAS_NO_RETAILERS) rather
+      // than a soft warning after the fact — the catch block below surfaces that message directly.
+      await send(body);
+      setMessage(successMessage ?? (hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully."));
       router.refresh();
       return true;
     } catch (error) {
@@ -221,6 +216,14 @@ export function BeatPlannerActions({
               </p>
               <p>
                 {hi ? "स्थिति" : "Status"}: <strong>{p.status}</strong>
+                {typeof p.retailerCount === "number" && (
+                  <>
+                    {" · "}
+                    <span className={p.retailerCount === 0 ? styles.shortHint : undefined}>
+                      {hi ? `इस योजना में रिटेलर्स: ${p.retailerCount}` : `Retailers in this plan: ${p.retailerCount}`}
+                    </span>
+                  </>
+                )}
                 {p.distributorNameSnapshot ? ` · ${hi ? "वितरक" : "Distributor"}: ${p.distributorNameSnapshot}${p.distributorId ? "" : ` (${hi ? "असहेजा नाम" : "unsaved name"})`}` : ""}
                 {p.notes ? ` · ${p.notes}` : ""}
               </p>

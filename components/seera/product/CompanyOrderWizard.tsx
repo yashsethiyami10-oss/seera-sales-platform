@@ -40,13 +40,41 @@ function PaymentProofPanel({ language, superStockistId, orderId, orderNumber, am
     [fileId, setFileId] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [done, setDone] = useState(false);
+    [done, setDone] = useState<{ amount: number; reference: string; submittedAt: string } | null>(null);
 
+  // P0-4 (23-Aug): a single static sentence ("Payment proof submitted — waiting for Accounts
+  // verification.") was the ENTIRE post-submission screen — no order number, no amount, no
+  // timestamp, no next action. Replaced with a real status summary matching the Founder's exact
+  // required fields, with a clear primary next action (view the order in the Recent orders list
+  // below, which already live-updates via router.refresh()) rather than "Place another order"
+  // reading as the only meaningful thing to do next.
   if (done)
     return (
-      <p className={styles.cardTotal} data-tone="ok">
-        {hi ? "भुगतान प्रमाण जमा — Accounts समीक्षा की प्रतीक्षा।" : "Payment proof submitted — waiting for Accounts verification."}
-      </p>
+      <div className={styles.notice} data-ok="true">
+        <ul>
+          <li>{hi ? "ऑर्डर दर्ज हुआ ✓" : "ORDER PLACED ✓"}</li>
+          <li>{hi ? "भुगतान प्रमाण जमा ✓" : "PAYMENT PROOF SUBMITTED ✓"}</li>
+          <li>{hi ? "Accounts सत्यापन — लंबित" : "ACCOUNTS VERIFICATION — PENDING"}</li>
+        </ul>
+        <p className={styles.cardTotal}>
+          {hi ? "कंपनी ऑर्डर नंबर" : "Company Order Number"}: <strong>{orderNumber}</strong>
+          <br />
+          {hi ? "ऑर्डर राशि" : "Order Amount"}: ₹{done.amount.toFixed(2)}
+          <br />
+          {hi ? "बैंक / UTR संदर्भ" : "Bank / UTR reference"}: {done.reference}
+          <br />
+          {hi ? "प्रमाण जमा किया गया" : "Proof submitted at"}: {done.submittedAt}
+        </p>
+        <div className={styles.cardActions}>
+          <button
+            type="button"
+            className={styles.primaryBig}
+            onClick={() => document.getElementById("recent-company-orders")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            {hi ? "ऑर्डर विवरण देखें" : "VIEW ORDER DETAILS"}
+          </button>
+        </div>
+      </div>
     );
 
   return (
@@ -55,18 +83,20 @@ function PaymentProofPanel({ language, superStockistId, orderId, orderNumber, am
       onSubmit={(e) => {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
+        const amount = Number(f.get("amount") || amountDue);
+        const reference = String(f.get("reference") || "");
         setBusy(true);
         setError("");
         void post("submit-payment-proof", {
           superStockistId,
           orderId,
-          amount: Number(f.get("amount") || amountDue),
-          reference: String(f.get("reference") || ""),
+          amount,
+          reference,
           fileId: fileId || undefined,
           idempotencyKey: key(),
         })
           .then(() => {
-            setDone(true);
+            setDone({ amount, reference, submittedAt: new Date().toLocaleString(hi ? "hi-IN" : "en-IN") });
             router.refresh();
           })
           .catch((err) => setError(err instanceof Error ? err.message : "Could not submit proof"))
@@ -124,12 +154,19 @@ export function CompanyOrderWizard({
     [cart, setCart] = useState<CartLine[]>([]),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [submitted, setSubmitted] = useState<{ id: string; orderNumber: string; total: number } | null>(null);
+    [submitted, setSubmitted] = useState<{ id: string; orderNumber: string; total: number } | null>(null),
+    // P0-1 (23-Aug): ADD TO ORDER previously mutated local cart state with ZERO visible feedback —
+    // the Review cart section only renders once cart.length > 0, below the fold, so a click that
+    // "worked" looked identical to one that silently did nothing. justAddedSkuId drives a transient
+    // ADDED state on the exact button clicked; the persistent "In cart: N" line on every card (see
+    // cartQuantity below) is the non-transient confirmation that survives after the flash clears.
+    [justAddedSkuId, setJustAddedSkuId] = useState<string | null>(null);
 
   const visible = catalog.filter((c) => c.brand === brand);
   const byId = new Map(catalog.map((c) => [c.skuId, c]));
   const cartWithDetail = cart.map((line) => ({ ...line, item: byId.get(line.skuId) })).filter((l) => l.item);
   const estimatedTotal = cartWithDetail.reduce((sum, l) => sum + (l.item!.rate ?? 0) * l.quantity, 0);
+  const cartQuantity = (skuId: string) => cart.find((l) => l.skuId === skuId)?.quantity ?? 0;
 
   const addToCart = (skuId: string) => {
     const quantity = qtyDraft[skuId] ?? 1;
@@ -139,6 +176,8 @@ export function CompanyOrderWizard({
       if (existing) return c.map((l) => (l.skuId === skuId ? { ...l, quantity: l.quantity + quantity } : l));
       return [...c, { skuId, quantity }];
     });
+    setJustAddedSkuId(skuId);
+    window.setTimeout(() => setJustAddedSkuId((current) => (current === skuId ? null : current)), 1500);
   };
 
   if (submitted)
@@ -203,6 +242,11 @@ export function CompanyOrderWizard({
                 <span className="rate">₹{item.rate!.toFixed(2)} / {item.orderUnit}</span>
               )}
               {item.scheme && <small className="scheme">{item.scheme}</small>}
+              {cartQuantity(item.skuId) > 0 && (
+                <small style={{ color: "#177245", fontWeight: 800 }}>
+                  {hi ? `कार्ट में: ${cartQuantity(item.skuId)} ${item.orderUnit}` : `In cart: ${cartQuantity(item.skuId)} ${item.orderUnit}`}
+                </small>
+              )}
               <div className="addRow">
                 <input
                   type="number"
@@ -211,9 +255,16 @@ export function CompanyOrderWizard({
                   disabled={item.unavailable}
                   value={qtyDraft[item.skuId] ?? 1}
                   onChange={(e) => setQtyDraft((q) => ({ ...q, [item.skuId]: Number(e.target.value) }))}
+                  aria-label={hi ? "मात्रा" : "Quantity"}
                 />
-                <button type="button" disabled={item.unavailable} onClick={() => addToCart(item.skuId)}>
-                  {hi ? "ऑर्डर में जोड़ें" : "ADD TO ORDER"}
+                <button
+                  type="button"
+                  disabled={item.unavailable}
+                  data-added={justAddedSkuId === item.skuId}
+                  onClick={() => addToCart(item.skuId)}
+                  aria-live="polite"
+                >
+                  {justAddedSkuId === item.skuId ? (hi ? "जोड़ा गया ✓" : "ADDED ✓") : hi ? "ऑर्डर में जोड़ें" : "ADD TO ORDER"}
                 </button>
               </div>
             </article>
@@ -291,7 +342,7 @@ export function CompanyOrderWizard({
       )}
 
       {recentOrders.length > 0 && (
-        <section>
+        <section id="recent-company-orders">
           <h2>{hi ? "हाल के कंपनी ऑर्डर" : "Recent Company orders"}</h2>
           {recentOrders.map((o) => (
             <article key={o.id} className={styles.orderCard}>

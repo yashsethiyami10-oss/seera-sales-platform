@@ -50,6 +50,7 @@ import { BeatPlannerActions } from "./BeatPlannerActions";
 import { UnmappedRetailersPanel } from "./UnmappedRetailersPanel";
 import { RetailerCleanupPanel } from "./RetailerCleanupPanel";
 import { unmappedRetailers, retailerCleanupOverview } from "@/lib/sales-distribution/retailer-lifecycle-service";
+import { resolveManagerOperationalScope, resolveExecutiveOperationalScope } from "@/lib/sales-distribution/scope";
 import { FieldForceAssignmentPanel } from "./FieldForceAssignmentPanel";
 import { AssignDistributorToExecutivePanel } from "./AssignDistributorToExecutivePanel";
 import { CompleteFieldForceSetupPanel } from "./CompleteFieldForceSetupPanel";
@@ -2428,7 +2429,7 @@ export async function OperationalWorkspace({
     // resolves. A small redundant session lookup (sessionForContext, cheap/indexed, same filter
     // executiveDashboard already uses internally) is folded into THIS batch instead, so
     // workingDistributor/visit can run in their own single follow-up Promise.all — 2 stages total.
-    const [dashboardData, beat, distributorFollowUp, skus, authorizedDistributors, sessionForContext, beatNodes] = await Promise.all([
+    const [dashboardData, beat, distributorFollowUp, skus, authorizedDistributors, sessionForContext, executiveScope] = await Promise.all([
       executiveDashboard(db, userId, now),
       executiveBeat(db, userId, "today", now),
       executiveDistributorFollowUp(db, userId, now),
@@ -2439,18 +2440,18 @@ export async function OperationalWorkspace({
         orderBy: { startedAt: "desc" },
         select: { id: true, workingDistributorId: true },
       }),
-      // Final Retailer Cleanup + Handover (22-Aug): real, existing Beat nodes only (never
-      // freshly-typed/guessed geography) — offered on Add Customer so a real retailer created
-      // going forward starts with proper geography instead of joining the null/null/null gap the
-      // previous 16 test retailers all had.
-      db.seeraGeographyNode.findMany({
-        where: { level: "BEAT" },
-        select: { id: true, name: true, parentId: true },
-        orderBy: { name: "asc" },
-        take: 300,
-      }),
+      // Final Production Closure (23-Aug), P0-12: this Executive's own authoritative Territory
+      // scope — resolved once here, then used to fetch ONLY the Beats within it below (never every
+      // Beat globally, which is exactly how a Bhilwara Executive's Add Customer form could offer
+      // Jhansi Beats before). Empty (no Territory ever assigned) is an explicit empty list.
+      resolveExecutiveOperationalScope(db, userId),
     ]);
     const session = dashboardData.session;
+    // Final Retailer Cleanup + Handover (22-Aug), scoped by P0-12: real, existing, ACTIVE Beat
+    // nodes WITHIN this Executive's own authorized Territory scope only.
+    const beatNodes = executiveScope.unrestricted
+      ? await db.seeraGeographyNode.findMany({ where: { level: "BEAT", status: "ACTIVE" }, select: { id: true, name: true, parentId: true }, orderBy: { name: "asc" }, take: 300 })
+      : await db.seeraGeographyNode.findMany({ where: { level: "BEAT", status: "ACTIVE", id: { in: executiveScope.beatIds } }, select: { id: true, name: true, parentId: true }, orderBy: { name: "asc" } });
     // Firm Name — Town labels (spec: never show an ambiguous firm name alone — two of the Ratan
     // distributors are both literally "Sahu Kirana", distinguishable only by town).
     const distributorLabel = (d: { legalName: string; tradeName: string | null; addresses: unknown }) => {
@@ -2715,16 +2716,35 @@ export async function OperationalWorkspace({
     // reads in this file (delivered-sales, instructions) — final audit fix, was the only one of the
     // four narrowed to a single literal value.
     const assignments = await db.seeraAssignment.findMany({ where: { assignmentType: { in: ["MANAGER_TEAM", "TEAM"] }, targetId: userId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, select: { subjectId: true } });
-    const [executives, territories, beats, places, distributors, plans, unmapped, beatNodesForAssignment] = await Promise.all([
+    // Final Production Closure (23-Aug): root cause of Awdhesh (Jhansi) seeing Bhilwara
+    // distributors — this screen used to query Territory/Beat suggestions via the completely
+    // unscoped geographySuggestions() and distributors via a raw global findMany with no
+    // geography filter at all. resolveManagerOperationalScope is the one authoritative resolver
+    // (lib/sales-distribution/scope.ts) every Manager-facing geography read must now go through —
+    // empty scope (no Territory ever assigned to this Manager/their team) means an explicitly
+    // empty list here, never a fallback to "show everything".
+    const managerScope = await resolveManagerOperationalScope(db, userId);
+    const [executives, territoryNodes, beatNodesScoped, places, distributorPartners, plans, unmapped, beatNodesForAssignment] = await Promise.all([
       db.user.findMany({ where: { id: { in: assignments.map((x) => x.subjectId) }, status: "ACTIVE" }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
-      geographySuggestions(db, userId, "TERRITORY"),
-      geographySuggestions(db, userId, "BEAT"),
+      managerScope.unrestricted
+        ? db.seeraGeographyNode.findMany({ where: { level: "TERRITORY", status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 300 })
+        : db.seeraGeographyNode.findMany({ where: { level: "TERRITORY", status: "ACTIVE", id: { in: managerScope.territoryIds } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      managerScope.unrestricted
+        ? db.seeraGeographyNode.findMany({ where: { level: "BEAT", status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 300 })
+        : db.seeraGeographyNode.findMany({ where: { level: "BEAT", status: "ACTIVE", id: { in: managerScope.beatIds } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
       db.seeraGeographyNode.findMany({ where: { level: { in: [...GEOGRAPHY_TYPES] }, status: "ACTIVE" }, select: { name: true }, orderBy: { name: "asc" }, take: 300 }),
-      db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 250 }),
+      managerScope.unrestricted
+        ? db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 250 })
+        : db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE", id: { in: managerScope.distributorIds } }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" } }),
       managerBeatPlans(db, userId),
       unmappedRetailers(db, userId),
-      db.seeraGeographyNode.findMany({ where: { level: "BEAT" }, select: { id: true, name: true, parentId: true }, orderBy: { name: "asc" }, take: 300 }),
+      managerScope.unrestricted
+        ? db.seeraGeographyNode.findMany({ where: { level: "BEAT", status: "ACTIVE" }, select: { id: true, name: true, parentId: true }, orderBy: { name: "asc" }, take: 300 })
+        : db.seeraGeographyNode.findMany({ where: { level: "BEAT", status: "ACTIVE", id: { in: managerScope.beatIds } }, select: { id: true, name: true, parentId: true }, orderBy: { name: "asc" } }),
     ]);
+    const territories = territoryNodes;
+    const beats = beatNodesScoped;
+    const distributors = distributorPartners;
     const unmappedBeatTerritoryIds = [...new Set(beatNodesForAssignment.map((b) => b.parentId).filter((x): x is string => Boolean(x)))];
     const unmappedBeatTerritories = unmappedBeatTerritoryIds.length
       ? await db.seeraGeographyNode.findMany({ where: { id: { in: unmappedBeatTerritoryIds } }, select: { id: true, name: true } })
@@ -2756,6 +2776,7 @@ export async function OperationalWorkspace({
           effectiveFrom: p.effectiveFrom.toISOString(),
           effectiveTo: p.effectiveTo ? p.effectiveTo.toISOString() : null,
           status: p.status,
+          retailerCount: p.retailerCount,
           notes: p.notes,
           isFuture: p.isFuture,
         }))}

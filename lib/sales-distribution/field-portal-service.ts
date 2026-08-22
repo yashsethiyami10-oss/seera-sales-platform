@@ -489,7 +489,7 @@ export async function createRetailer(
   // an EXPLICIT input.distributorId — the fallback (anyOwn) path can never newly point at Company
   // Direct unless it already did, and setCompanyDirectEligibility() blocks disabling eligibility
   // while any such retailer still exists, so the fallback can't smuggle in a stale grant.
-  const [similar, anyOwn, cdPartnerId] = await Promise.all([
+  const [similar, anyOwn, activeSession, cdPartnerId] = await Promise.all([
     input.confirmDuplicate
       ? Promise.resolve([])
       : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile }),
@@ -500,6 +500,11 @@ export async function createRetailer(
           select: { distributorId: true },
           orderBy: { createdAt: "desc" },
         }),
+    // Final Production Closure (23-Aug), P0-6: same authoritative "Active Work Session ->
+    // workingDistributorId" default createRetailerAndCheckIn now uses — this path has no
+    // workSessionId input, so the actor's own currently-ACTIVE session (if any) is looked up
+    // directly instead.
+    input.distributorId ? Promise.resolve(null) : db.seeraWorkSession.findFirst({ where: { employeeId: actorId, status: "ACTIVE" }, select: { workingDistributorId: true } }),
     input.distributorId ? companyDirectPartnerId(db) : Promise.resolve(null),
   ]);
   timing.stage("duplicate_and_distributor_lookup");
@@ -512,7 +517,7 @@ export async function createRetailer(
     );
   if (input.distributorId && cdPartnerId && input.distributorId === cdPartnerId && !(await isCompanyDirectEligible(db, actorId)))
     throw new FoundationError("COMPANY_DIRECT_NOT_ELIGIBLE", "You are not authorized to assign retailers to Company Direct", 403);
-  const distributorId = input.distributorId ?? anyOwn?.distributorId ?? undefined;
+  const distributorId = input.distributorId ?? activeSession?.workingDistributorId ?? anyOwn?.distributorId ?? undefined;
   const retailer = await db.$transaction(async (tx) => {
     // Real unique-indexed lookup (SeeraRetailer.idempotencyKey), not the previous unindexed
     // notes:{contains} LIKE scan — matches the SeeraVisit/SeeraFollowUp idempotency precedent.
@@ -647,7 +652,12 @@ export async function createRetailerAndCheckIn(
   // open visit is this retry's own prior visit.
   if (open && open.retailerId !== existingByKey?.id)
     throw new FoundationError("OPEN_VISIT_EXISTS", "Checkout the current retailer first", 409);
-  const distributorId = input.distributorId ?? anyOwn?.distributorId ?? undefined;
+  // Final Production Closure (23-Aug), P0-6: "Active Work Session -> workingDistributorId is the
+  // default authoritative Distributor context" — this used to fall back to anyOwn?.distributorId
+  // (whatever distributor this Executive's most-recently-created retailer, EVER, happened to use,
+  // possibly from a completely different working day) instead of TODAY's actual chosen working
+  // Distributor, which `session` above already carries and had simply never been read for this.
+  const distributorId = input.distributorId ?? session.workingDistributorId ?? anyOwn?.distributorId ?? undefined;
   timing.stage("pre_transaction_validation");
   // PERFORMANCE PHASE 2 (P0 Add Customer SLO): existingByKey was ALREADY fetched above (as part
   // of the same batched Promise.all) — re-querying it again inside the transaction was a genuinely

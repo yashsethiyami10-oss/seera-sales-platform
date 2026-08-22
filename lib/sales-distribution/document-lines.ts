@@ -212,12 +212,24 @@ export function assertLinesTaxConfigured(lines: CommercialLineSnapshot[]) {
     );
 }
 
+// Final Production Closure (23-Aug), P0-15: `subtotal` here is gross-before-discount
+// (rate*quantity summed across lines) — for a GST-INCLUSIVE line (every Distributor/S.S.
+// quotation, and MUV brand elsewhere) that gross figure IS the tax-inclusive amount, not the
+// taxable value. Every call site used to compute the document's "Taxable total" as
+// `subtotal - discountTotal`, which for an inclusive line silently returned the GROSS total
+// (identical to the line's own lineTotal) instead of the actual taxable value the line snapshot
+// had already correctly derived (l.taxableValue, via deriveInclusiveTax/deriveExclusiveTax in
+// buildLineSnapshots above) — a real production document showed "Taxable total" equal to the
+// GRAND TOTAL instead of grandTotal-minus-GST. `taxableTotal` is now summed directly from each
+// line's own already-correct taxableValue, the same authoritative field CGST/SGST/IGST are
+// themselves split from (see taxSplit) — never re-derived from the gross figure a second time.
 export function totalsOf(lines: CommercialLineSnapshot[]) {
   const subtotal = lines.reduce((sum, l) => sum + l.rate * l.quantity, 0);
+  const taxableTotal = lines.reduce((sum, l) => sum + l.taxableValue, 0);
   const grandTotal = lines.reduce((sum, l) => sum + l.lineTotal, 0);
   const taxTotal = lines.reduce((sum, l) => sum + l.taxAmount, 0);
   const discountTotal = lines.reduce((sum, l) => sum + (l.rate * l.quantity * l.discountPct) / 100, 0);
-  return { subtotal, discountTotal, taxTotal, grandTotal };
+  return { subtotal, taxableTotal, discountTotal, taxTotal, grandTotal };
 }
 
 // PDF correctness fix (Founder UAT): issued documents were rendering raw JSON like

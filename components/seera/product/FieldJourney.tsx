@@ -546,8 +546,13 @@ function OrderLineItemsEditor({
                 value={line.skuId}
                 onChange={(event) => {
                   const chosen = skuById.get(event.target.value);
+                  // Final Production Closure (23-Aug), P0-14: the governed wholesale default is the
+                  // SKU's case unit (Cake -> BOX, Powder -> BAG) — PC stays available as the
+                  // secondary option in the "Sell by" selector above, but must never be what a
+                  // product change silently resets the line back to.
+                  const defaultUom = chosen && chosen.caseUnit && chosen.unitsPerCase > 1 ? chosen.caseUnit : "PC";
                   setLines((current) =>
-                    current.map((item) => (item.key === line.key ? { ...item, skuId: event.target.value, rate: chosen?.rate || item.rate, uom: "PC" } : item)),
+                    current.map((item) => (item.key === line.key ? { ...item, skuId: event.target.value, rate: chosen?.rate || item.rate, uom: defaultUom } : item)),
                   );
                 }}
                 required

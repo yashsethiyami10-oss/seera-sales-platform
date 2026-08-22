@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { FoundationError } from "@/lib/foundation/errors";
+import { effectivePermissions as effectivePermissionsFor } from "@/lib/foundation/authorization-service";
 
 export async function notifyPartyUsers(
   db: PrismaClient | Prisma.TransactionClient,
@@ -174,4 +175,70 @@ export async function isCompanyDirectEligible(prisma: PrismaClient, userId: stri
 export async function companyDirectPartnerId(prisma: PrismaClient): Promise<string | null> {
   const partner = await prisma.seeraPartner.findFirst({ where: { type: "COMPANY_DIRECT" }, select: { id: true } });
   return partner?.id ?? null;
+}
+
+// ============================================================================
+// AUTHORITATIVE OPERATIONAL GEOGRAPHY SCOPE (Final Production Closure, 23-Aug)
+// ============================================================================
+//
+// Root cause of the Manoj/Bhilwara <-> Neeraj/Jhansi cross-geography leakage: the assignment
+// mechanism (SeeraAssignment{assignmentType:"EXECUTIVE_TERRITORY"}, see operational-service.ts's
+// assignExecutiveTerritory) already existed — Founder/Admin could already assign a Sales
+// Executive/Manager to a Territory — but NOTHING anywhere ever read it. geographySuggestions(),
+// Beat Planner's raw distributor query, and every other Territory/Beat/Distributor selector simply
+// returned every ACTIVE global row to any user holding network:manage. This is the single
+// authoritative resolver every one of those call sites must now go through instead — no
+// screen-specific broad fallback, and an employee with zero territory assignments gets an
+// EXPLICITLY EMPTY scope (never "show everything").
+async function employeeTerritoryIds(prisma: PrismaClient, employeeId: string): Promise<string[]> {
+  const now = new Date();
+  const rows = await prisma.seeraAssignment.findMany({
+    where: { assignmentType: "EXECUTIVE_TERRITORY", subjectId: employeeId, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
+    select: { targetId: true },
+  });
+  return [...new Set(rows.map((r) => r.targetId))];
+}
+
+async function scopeFromTerritoryIds(prisma: PrismaClient, territoryIds: string[]) {
+  if (!territoryIds.length) return { territoryIds: [] as string[], beatIds: [] as string[], distributorIds: [] as string[] };
+  const [beats, partners] = await Promise.all([
+    prisma.seeraGeographyNode.findMany({ where: { level: "BEAT", parentId: { in: territoryIds }, status: "ACTIVE" }, select: { id: true } }),
+    prisma.seeraPartner.findMany({ where: { type: { in: ["DISTRIBUTOR", "SUPER_STOCKIST"] }, lifecycle: "ACTIVE", territoryIds: { hasSome: territoryIds } }, select: { id: true } }),
+  ]);
+  return { territoryIds, beatIds: beats.map((b) => b.id), distributorIds: partners.map((p) => p.id) };
+}
+
+// A Founder/Admin acts across every territory by design (they ARE the scope authority) — every
+// resolver below exempts system:super_admin/master:manage from geography restriction entirely,
+// rather than requiring every caller to remember to skip scoping for Founder/Admin themselves.
+async function isGeographyUnrestricted(prisma: PrismaClient, actorId: string): Promise<boolean> {
+  const permissions = await effectivePermissionsFor(prisma, actorId);
+  return permissions.has("system:super_admin") || permissions.has("master:manage");
+}
+
+export type OperationalGeographyScope = { territoryIds: string[]; beatIds: string[]; distributorIds: string[]; unrestricted: boolean };
+
+// A Sales Executive's own authorized geography — governs Today/Beat & Route/Add Customer/
+// Distributor search/Orders. Empty (unrestricted:false, territoryIds:[]) until Founder/Admin
+// explicitly assigns the Executive to at least one Territory via "Territories & beats".
+export async function resolveExecutiveOperationalScope(prisma: PrismaClient, executiveId: string): Promise<OperationalGeographyScope> {
+  if (await isGeographyUnrestricted(prisma, executiveId)) return { territoryIds: [], beatIds: [], distributorIds: [], unrestricted: true };
+  const territoryIds = await employeeTerritoryIds(prisma, executiveId);
+  return { ...(await scopeFromTerritoryIds(prisma, territoryIds)), unrestricted: false };
+}
+
+// A Sales Manager's authorized geography — the UNION of their own direct Territory
+// assignment (if Founder assigned the Manager one directly, e.g. "Awdhesh -> Jhansi Division")
+// and every one of their team's Territory assignments. Governs Beat Planner, Manager Retailing,
+// Joint Working, Distributor/S.S. search and oversight.
+export async function resolveManagerOperationalScope(prisma: PrismaClient, managerId: string): Promise<OperationalGeographyScope> {
+  if (await isGeographyUnrestricted(prisma, managerId)) return { territoryIds: [], beatIds: [], distributorIds: [], unrestricted: true };
+  const teamAssignments = await prisma.seeraAssignment.findMany({
+    where: { assignmentType: { in: ["MANAGER_TEAM", "TEAM"] }, targetId: managerId, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
+    select: { subjectId: true },
+  });
+  const employeeIds = [managerId, ...teamAssignments.map((a) => a.subjectId)];
+  const perEmployee = await Promise.all(employeeIds.map((id) => employeeTerritoryIds(prisma, id)));
+  const territoryIds = [...new Set(perEmployee.flat())];
+  return { ...(await scopeFromTerritoryIds(prisma, territoryIds)), unrestricted: false };
 }
