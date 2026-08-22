@@ -30,7 +30,7 @@ export function FinanceControlActions({
     allocate: hi ? "सत्यापित भुगतान आवंटित करें" : "Allocate verified payment",
     reverse: hi ? "पोस्ट की गई प्रविष्टि पलटें" : "Reverse posted entry",
     "settle-claim": hi ? "दावा निपटान" : "Settle claim",
-    "approve-ta": hi ? "TA स्वीकृत और पोस्ट करें" : "Approve and post TA",
+    "approve-ta": hi ? "स्वीकृत TA भुगतान दर्ज करें" : "Mark approved TA paid",
     "decide-credit-extension": hi ? "क्रेडिट विस्तार तय करें" : "Decide credit extension",
   }[kind];
   return (
@@ -96,12 +96,13 @@ export function FinanceControlActions({
             else {
               url = "/api/travel/operations";
               body = {
-                action: "approve-pay",
+                action: "pay",
                 payload: {
                   claimId: String(form.get("primary")),
                   employeePartyId: String(form.get("secondary")),
                   companyPartyId: companyId,
                   idempotencyKey: key,
+                  paymentReference: String(form.get("paymentReference")),
                 },
               };
             }
@@ -222,6 +223,12 @@ export function FinanceControlActions({
               step="0.01"
               defaultValue="0"
             />
+          </label>
+        )}
+        {kind === "approve-ta" && (
+          <label>
+            {hi ? "भुगतान संदर्भ" : "Payment reference"}
+            <input name="paymentReference" minLength={2} required />
           </label>
         )}
         {kind !== "approve-ta" && (

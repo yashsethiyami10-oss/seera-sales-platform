@@ -410,14 +410,30 @@ enum ReconciliationStatus {
 
 enum TaClaimStatus {
   DRAFT
+  READY_FOR_REVIEW
+  TRAVEL_REVIEW_REQUIRED
   SUBMITTED
   MANAGER_VERIFIED
   MANAGER_REJECTED
+  RETURNED
+  SENT_TO_ACCOUNTS
   ACCOUNTS_APPROVED
   ACCOUNTS_REJECTED
   PAID
   CLOSED
   DISPUTED
+}
+
+enum TravelPolicyType {
+  PER_KM
+  FIXED_DAILY
+  PER_KM_PLUS_FIXED
+  NONE
+}
+
+enum TravelPolicyStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum PartnerLifecycleAction {
@@ -2035,7 +2051,10 @@ model SeeraClaimSettlement {
 model SeeraTravelPolicy {
   id             String    @id @default(cuid())
   vehicleType    String
-  ratePerKm      Decimal   @db.Decimal(12, 2)
+  policyType     TravelPolicyType @default(PER_KM)
+  employeeRole   String?
+  status         TravelPolicyStatus @default(ACTIVE)
+  ratePerKm      Decimal   @default(0) @db.Decimal(12, 2)
   fixedAllowance Decimal?  @db.Decimal(12, 2)
   dailyAllowance Decimal?  @db.Decimal(12, 2)
   eligibility    Json
@@ -2071,7 +2090,7 @@ model SeeraTaClaim {
   employeeId           String
   managerId            String?
   claimDate            DateTime
-  travelEstimateId     String?
+  travelEstimateId     String?       @unique
   originalDistanceKm   Decimal       @db.Decimal(12, 3)
   claimedDistanceKm    Decimal       @db.Decimal(12, 3)
   approvedDistanceKm   Decimal?      @db.Decimal(12, 3)
@@ -2086,11 +2105,11 @@ model SeeraTaClaim {
   otherExpenseAmount   Decimal       @default(0) @db.Decimal(14, 2)
   otherExpenseNote     String?
   rateSnapshot         Json
-  travelAmount         Decimal       @db.Decimal(14, 2)
+  travelAmount         Decimal?      @db.Decimal(14, 2)
   tollAmount           Decimal       @default(0) @db.Decimal(14, 2)
   parkingAmount        Decimal       @default(0) @db.Decimal(14, 2)
   dailyAllowance       Decimal       @default(0) @db.Decimal(14, 2)
-  totalClaimed         Decimal       @db.Decimal(14, 2)
+  totalClaimed         Decimal?      @db.Decimal(14, 2)
   totalApproved        Decimal?      @db.Decimal(14, 2)
   deviationReason      String?
   remarks              String?
@@ -2098,6 +2117,14 @@ model SeeraTaClaim {
   status               TaClaimStatus @default(DRAFT)
   managerVerifiedById  String?
   accountsApprovedById String?
+  paidById             String?
+  policyStatus         String        @default("CONFIGURED")
+  gpsReviewRequired    Boolean       @default(false)
+  approvedAt           DateTime?
+  sentToAccountsAt     DateTime?
+  returnedAt           DateTime?
+  paymentReference     String?
+  amountPaid           Decimal?      @db.Decimal(14, 2)
   idempotencyKey       String        @unique
   submittedAt          DateTime?
   paidAt               DateTime?

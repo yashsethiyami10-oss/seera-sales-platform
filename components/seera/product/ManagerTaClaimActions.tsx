@@ -186,8 +186,8 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                     setMessage("");
                     try {
                       await send("/api/travel/operations", {
-                        action: "verify",
-                        payload: { claimId: c.id, approvedDistanceKm: Number(form.get("distance")), reason: String(form.get("reason")) },
+                        action: "approve",
+                        payload: { claimId: c.id, eligibleDistanceKm: Number(form.get("distance")), reason: String(form.get("reason")) },
                       });
                       setMessage(hi ? "सत्यापित किया गया।" : "Verified.");
                       router.refresh();
@@ -224,6 +224,19 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                 >
                   {hi ? "अस्वीकार करें" : "Reject"}
                 </button>
+                <button
+                  disabled={busy}
+                  type="button"
+                  onClick={(event) => {
+                    const form = new FormData(event.currentTarget.closest("form")!);
+                    void (async () => {
+                      setBusy(true); setMessage("");
+                      try { await send("/api/travel/operations", { action: "return", payload: { claimId: c.id, reason: String(form.get("reason")) } }); setMessage(hi ? "स्पष्टीकरण के लिए लौटाया गया।" : "Returned for clarification."); router.refresh(); }
+                      catch (error) { setMessage(error instanceof Error ? error.message : "Action failed"); }
+                      finally { setBusy(false); }
+                    })();
+                  }}
+                >{hi ? "वापस करें" : "Return"}</button>
               </form>
             </li>
           ))}

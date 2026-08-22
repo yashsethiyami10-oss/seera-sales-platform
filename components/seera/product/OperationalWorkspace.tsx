@@ -53,7 +53,9 @@ import { unmappedRetailers, retailerCleanupOverview } from "@/lib/sales-distribu
 import { FieldForceAssignmentPanel } from "./FieldForceAssignmentPanel";
 import { AssignDistributorToExecutivePanel } from "./AssignDistributorToExecutivePanel";
 import { CompleteFieldForceSetupPanel } from "./CompleteFieldForceSetupPanel";
-import { MyTaClaimActions, TeamTaClaimsPanel } from "./ManagerTaClaimActions";
+import { TeamTaClaimsPanel } from "./ManagerTaClaimActions";
+import { TravelPolicyActions } from "./TravelPolicyActions";
+import { TravelAdjustmentActions } from "./TravelAdjustmentActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
 import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments, territoriesAndBeats, activeExecutiveTerritoryAssignments } from "@/lib/sales-distribution/operational-service";
 import { companyDirectEligibilityRoster } from "@/lib/sales-distribution/distributor-management-service";
@@ -83,7 +85,8 @@ import { executiveAuthorizedDistributors } from "@/lib/sales-distribution/scope"
 import { managerDsrRollup, managerDsrDetail, managerTeamScorecard, managerAlerts, managerDeliveredSales, jointWorkLinkedActivity, managerSalesAttribution, managerDashboardSummary, managerEndDaySummary, prospectTimeline, teamSyncStatus, managerMappedDistributors, managerDistributorCollectionsSnapshot, managerDistributorSnapshot } from "@/lib/sales-distribution/manager-service";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { ManagerDistributorOversightPanel } from "./ManagerDistributorOversightPanel";
-import { myTaClaims, teamTaClaimsForVerification } from "@/lib/sales-distribution/travel-lifecycle-service";
+import { teamTaClaimsForVerification } from "@/lib/sales-distribution/travel-lifecycle-service";
+import { accountsTravelClaims, travelReport } from "@/lib/sales-distribution/travel-claim-service";
 import { listOfflineQueue } from "@/lib/phase-11/offline-sync-service";
 import { IssueInstructionActions, RespondInstructionActions } from "./InstructionActions";
 import { SyncRetryButton } from "./SyncRetryButton";
@@ -1371,7 +1374,7 @@ function TaDaSummaryPanel({
     <section className={styles.panel}>
       <div>
         <small>{hi ? "यात्रा भत्ता और दैनिक भत्ता" : "TRAVEL & DAILY ALLOWANCE"}</small>
-        <h2>{hi ? "मेरा टीए और डीए (इस माह)" : "My TA & DA (this month)"}</h2>
+        <h2>{hi ? "मेरी यात्रा (इस माह)" : "My Travel (this month)"}</h2>
       </div>
       <p className={styles.readOnly}>
         {summary.ratePerKm == null
@@ -1403,19 +1406,26 @@ function TaDaSummaryPanel({
           <thead>
             <tr>
               <th>{hi ? "दिनांक" : "Date"}</th>
+              <th>{hi ? "प्रारंभ / समाप्त" : "Start / End"}</th>
+              <th>{hi ? "विज़िट" : "Visits"}</th>
               <th>{hi ? "दूरी (किमी)" : "Distance (km)"}</th>
+              <th>{hi ? "योग्य किमी" : "Eligible km"}</th>
               <th>{hi ? "टीए" : "TA"}</th>
               <th>{hi ? "डीए योग्य" : "DA eligible"}</th>
               <th>{hi ? "डीए" : "DA"}</th>
               <th>{hi ? "HQ प्रारंभ / वापसी" : "HQ start / return"}</th>
               <th>{hi ? "अपवाद" : "Exceptions"}</th>
+              <th>{hi ? "स्थिति" : "Status"}</th>
             </tr>
           </thead>
           <tbody>
             {summary.rows.map((row) => (
               <tr key={row.sessionId}>
                 <td>{row.date.toLocaleDateString(hi ? "hi-IN" : "en-IN")}</td>
+                <td>{row.startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} / {row.endTime?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) ?? "—"}</td>
+                <td>{row.visits}</td>
                 <td>{row.gpsDistanceKm.toFixed(1)}</td>
+                <td>{row.eligibleDistanceKm.toFixed(1)}</td>
                 <td>{row.taAmount == null ? "—" : `₹${row.taAmount.toLocaleString("en-IN")}`}</td>
                 <td>{row.daEligible ? (hi ? "हाँ" : "Yes") : hi ? "नहीं" : "No"}</td>
                 <td>{row.daAmount == null ? "—" : `₹${row.daAmount.toLocaleString("en-IN")}`}</td>
@@ -1424,6 +1434,7 @@ function TaDaSummaryPanel({
                   {row.hqReturn == null ? "—" : row.hqReturn ? "✓" : "!"}
                 </td>
                 <td>{row.exceptions.length ? row.exceptions.join(", ") : "—"}</td>
+                <td>{row.status}{row.gpsReviewRequired ? " · GPS REVIEW" : ""}</td>
               </tr>
             ))}
           </tbody>
@@ -1434,8 +1445,25 @@ function TaDaSummaryPanel({
           {hi ? "इस माह अभी तक कोई कार्य दिवस दर्ज नहीं हुआ।" : "No work days recorded yet this month."}
         </p>
       )}
+      <TravelAdjustmentActions language={language} records={summary.rows.filter((row) => row.claimId && ["RETURNED", "TRAVEL_REVIEW_REQUIRED", "MANAGER_REJECTED"].includes(row.status)).map((row) => ({ claimId: row.claimId!, date: row.date.toISOString(), calculatedKm: row.gpsDistanceKm, requestedKm: row.eligibleDistanceKm, status: row.status }))} />
     </section>
   );
+}
+
+function TravelReportPanel({ language, report }: { language: "EN" | "HI"; report: Awaited<ReturnType<typeof travelReport>> }) {
+  const hi = language === "HI";
+  return <section className={styles.section}>
+    <div><small>{hi ? "यात्रा और टीए रिपोर्ट" : "TRAVEL & TA REPORT"}</small><h2>{hi ? "अधिकृत सारांश" : "Authoritative summary"}</h2></div>
+    <form method="get" className={styles.filters} style={{ gridColumn: "1/-1" }}><label>{hi ? "से" : "From"}<input type="date" name="from" /></label><label>{hi ? "तक" : "To"}<input type="date" name="to" /></label><label>{hi ? "कर्मचारी" : "Employee"}<select name="employee"><option value="">{hi ? "सभी" : "All"}</option>{report.rows.map((row) => <option key={row.employeeId} value={row.employeeId}>{row.employeeName}</option>)}</select></label><label>{hi ? "प्रबंधक" : "Manager"}<select name="manager"><option value="">{hi ? "सभी" : "All"}</option>{[...new Map(report.rows.filter((row) => row.managerId).map((row) => [row.managerId!, row.managerName ?? row.managerId!])).entries()].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>{hi ? "भूमिका" : "Role"}<select name="role"><option value="">{hi ? "सभी" : "All"}</option><option>SALES_EXECUTIVE</option><option>SALES_MANAGER</option></select></label><label>{hi ? "स्थिति" : "Status"}<select name="status"><option value="">{hi ? "सभी" : "All"}</option><option>READY_FOR_REVIEW</option><option>TRAVEL_REVIEW_REQUIRED</option><option>SENT_TO_ACCOUNTS</option><option>PAID</option><option>MANAGER_REJECTED</option><option>RETURNED</option></select></label><button>{hi ? "लागू करें" : "Apply"}</button></form>
+    <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}><table><thead><tr>
+      <th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "भूमिका" : "Role"}</th><th>{hi ? "प्रबंधक" : "Manager"}</th><th>{hi ? "कार्य दिवस" : "Working days"}</th><th>{hi ? "यात्रा दिवस" : "Travel days"}</th><th>{hi ? "विज़िट" : "Visits"}</th><th>{hi ? "गणना किमी" : "Calculated km"}</th><th>{hi ? "योग्य किमी" : "Eligible km"}</th><th>{hi ? "स्वीकृत" : "Approved TA"}</th><th>{hi ? "अकाउंट्स" : "Sent to Accounts"}</th><th>{hi ? "भुगतान" : "Paid"}</th><th>{hi ? "लंबित" : "Pending"}</th><th>{hi ? "अपवाद" : "Exceptions"}</th>
+    </tr></thead><tbody>{report.rows.map((row) => <tr key={row.employeeId}><td>{row.employeeName}</td><td>{row.role}</td><td>{row.managerName ?? "—"}</td><td>{row.workingDays}</td><td>{row.travelDays}</td><td>{row.visits}</td><td>{row.calculatedKm.toFixed(1)}</td><td>{row.eligibleKm.toFixed(1)}</td><td>₹{row.approvedTa.toLocaleString("en-IN")}</td><td>₹{row.sentToAccounts.toLocaleString("en-IN")}</td><td>₹{row.paid.toLocaleString("en-IN")}</td><td>₹{row.pending.toLocaleString("en-IN")}</td><td>{row.exceptions}</td></tr>)}</tbody></table></div>
+  </section>;
+}
+
+function AccountsTravelHistory({ language, claims }: { language: "EN" | "HI"; claims: Awaited<ReturnType<typeof accountsTravelClaims>> }) {
+  const hi = language === "HI";
+  return <section className={styles.section}><div><small>{hi ? "अकाउंट्स यात्रा" : "ACCOUNTS TRAVEL"}</small><h2>{hi ? "लंबित भुगतान और इतिहास" : "Pending payment and history"}</h2></div><div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}><table><thead><tr><th>{hi ? "दावा" : "Claim"}</th><th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "दिनांक" : "Date"}</th><th>{hi ? "गणना किमी" : "Calculated km"}</th><th>{hi ? "योग्य किमी" : "Eligible km"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "स्थिति" : "Status"}</th></tr></thead><tbody>{claims.map((claim) => <tr key={claim.id}><td>{claim.claimNumber}</td><td>{claim.employeeId}</td><td>{claim.claimDate.toLocaleDateString(hi ? "hi-IN" : "en-IN")}</td><td>{Number(claim.originalDistanceKm).toFixed(1)}</td><td>{Number(claim.approvedDistanceKm ?? claim.claimedDistanceKm).toFixed(1)}</td><td>{claim.totalApproved == null ? "Policy not configured" : `₹${Number(claim.totalApproved).toLocaleString("en-IN")}`}</td><td>{claim.status}</td></tr>)}</tbody></table></div></section>;
 }
 
 function BeatRoutePanel({
@@ -3089,6 +3117,11 @@ export async function OperationalWorkspace({
         }))}
       />
     );
+  } else if (portal === "founder-admin" && item.slug === "ta-expenses") {
+    const reportTo = query.to ? new Date(query.to) : new Date();
+    const reportFrom = query.from ? new Date(query.from) : new Date(reportTo.getFullYear(), reportTo.getMonth(), 1);
+    const report = await travelReport(db, userId, { scope: "ORGANIZATION", from: reportFrom, to: reportTo, employeeId: query.employee || undefined, managerId: query.manager || undefined, role: query.role || undefined, status: query.status || undefined });
+    workflow = <><TravelPolicyActions language={language} /><TravelReportPanel language={language} report={report} /></>;
   } else if (
     portal === "accounts" &&
     ["payments", "payment-inbox", "reconciliation"].includes(item.slug)
@@ -3292,7 +3325,7 @@ export async function OperationalWorkspace({
     permissions.has("ta_claim:approve")
   ) {
     const claims = await db.seeraTaClaim.findMany({
-      where: { status: "MANAGER_VERIFIED", employeeId: { not: userId } },
+      where: { status: "SENT_TO_ACCOUNTS", employeeId: { not: userId } },
       orderBy: { claimDate: "asc" },
       take: 50,
     });
@@ -3330,8 +3363,9 @@ export async function OperationalWorkspace({
       orderBy: { effectiveFrom: "desc" },
       select: { ownerId: true },
     });
+    const history = await accountsTravelClaims(db, userId, "HISTORY");
     workflow = company ? (
-      <FinanceControlActions
+      <><FinanceControlActions
         kind="approve-ta"
         language={language}
         primary={claims.map((x) => ({
@@ -3348,8 +3382,8 @@ export async function OperationalWorkspace({
           label: x.name ?? x.email,
         }))}
         companyId={company.ownerId}
-      />
-    ) : null;
+      /><AccountsTravelHistory language={language} claims={history} /></>
+    ) : <AccountsTravelHistory language={language} claims={history} />;
   } else if (
     portal === "accounts" &&
     ["outstanding", "ageing"].includes(item.slug) &&
@@ -3390,11 +3424,14 @@ export async function OperationalWorkspace({
       />
     );
   } else if (portal === "sales-manager" && item.slug === "ta-verification") {
-    const claims = await teamTaClaimsForVerification(db, userId);
+    const reportTo = query.to ? new Date(query.to) : new Date();
+    const reportFrom = query.from ? new Date(query.from) : new Date(reportTo.getFullYear(), reportTo.getMonth(), 1);
+    const [claims, report] = await Promise.all([
+      teamTaClaimsForVerification(db, userId),
+      travelReport(db, userId, { scope: "TEAM", from: reportFrom, to: reportTo, employeeId: query.employee || undefined, status: query.status || undefined }),
+    ]);
     workflow = (
-      <TeamTaClaimsPanel
-        language={language}
-        claims={claims.map((x) => ({
+      <><TeamTaClaimsPanel language={language} claims={claims.map((x) => ({
           id: x.id,
           claimNumber: x.claimNumber,
           claimDate: x.claimDate.toISOString(),
@@ -3406,46 +3443,14 @@ export async function OperationalWorkspace({
           hotelStay: x.hotelStay,
           hotelAmount: Number(x.hotelAmount ?? 0),
           employeeName: x.employeeName,
-        }))}
-      />
+        }))}/><TravelReportPanel language={language} report={report} /></>
     );
   } else if (portal === "sales-manager" && item.slug === "my-ta") {
     const now = new Date();
-    const [estimates, existingClaims, policies, claims] = await Promise.all([
-      db.seeraTravelEstimate.findMany({ where: { employeeId: userId }, orderBy: { estimateDate: "desc" }, take: 30 }),
-      db.seeraTaClaim.findMany({ where: { employeeId: userId }, select: { travelEstimateId: true } }),
-      db.seeraTravelPolicy.findMany({
-        where: { effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
-        select: { vehicleType: true },
-        distinct: ["vehicleType"],
-      }),
-      myTaClaims(db, userId),
-    ]);
-    const claimedEstimateIds = new Set(existingClaims.map((c) => c.travelEstimateId));
-    const claimable = estimates.filter((e) => !claimedEstimateIds.has(e.id));
-    workflow = (
-      <MyTaClaimActions
-        language={language}
-        claimableSessions={claimable.map((e) => ({
-          value: e.workSessionId,
-          label: `${e.estimateDate.toLocaleDateString(hi ? "hi-IN" : "en-IN")} · ${Number(e.distanceKm).toFixed(1)} km`,
-          distanceKm: Number(e.distanceKm),
-        }))}
-        vehicleTypes={policies.map((p) => p.vehicleType)}
-        claims={claims.map((c) => ({
-          id: c.id,
-          claimNumber: c.claimNumber,
-          claimDate: c.claimDate.toISOString(),
-          vehicleType: c.vehicleType,
-          claimedDistanceKm: Number(c.claimedDistanceKm),
-          totalClaimed: Number(c.totalClaimed),
-          status: c.status,
-          purpose: c.purpose,
-          hotelStay: c.hotelStay,
-          hotelAmount: Number(c.hotelAmount ?? 0),
-        }))}
-      />
-    );
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const summary = await executiveTaDaMonthlySummary(db, userId, userId, monthStart, monthEnd);
+    workflow = <TaDaSummaryPanel language={language} summary={summary} />;
   } else if (
     portal === "sales-manager" &&
     item.slug === "collections" &&

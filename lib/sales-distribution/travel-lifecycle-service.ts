@@ -19,7 +19,7 @@ export async function myTaClaims(db: PrismaClient, actorId: string) {
 // amount, status), not an empty/blind dropdown.
 export async function teamTaClaimsForVerification(db: PrismaClient, managerId: string) {
   await authorize(db, { actorId: managerId, permission: "ta_claim:verify" });
-  const claims = await db.seeraTaClaim.findMany({ where: { managerId, status: "SUBMITTED" }, orderBy: { claimDate: "asc" }, take: 60 });
+  const claims = await db.seeraTaClaim.findMany({ where: { managerId, status: { in: ["READY_FOR_REVIEW", "TRAVEL_REVIEW_REQUIRED", "RETURNED"] } }, orderBy: { claimDate: "asc" }, take: 60 });
   const employees = await db.user.findMany({ where: { id: { in: [...new Set(claims.map((c) => c.employeeId))] } }, select: { id: true, name: true, email: true } });
   const nameFor = new Map(employees.map((e) => [e.id, e.name ?? e.email]));
   return claims.map((c) => ({ ...c, employeeName: nameFor.get(c.employeeId) ?? c.employeeId }));

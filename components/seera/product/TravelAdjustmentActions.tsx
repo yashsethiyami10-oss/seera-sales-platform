@@ -1,0 +1,10 @@
+"use client";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import styles from "./WorkflowActions.module.css";
+
+export function TravelAdjustmentActions({ language, records }: { language: "EN" | "HI"; records: Array<{ claimId: string; date: string; calculatedKm: number; requestedKm: number; status: string }> }) {
+  const hi = language === "HI"; const router = useRouter(); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
+  if (!records.length) return null;
+  return <section className={styles.panel}><div><small>{hi ? "दूरी स्पष्टीकरण" : "DISTANCE CLARIFICATION"}</small><h2>{hi ? "समायोजन अनुरोध" : "Request adjustment"}</h2></div>{records.map((record) => <form key={record.claimId} onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); void (async () => { setBusy(true); try { const response = await fetch("/api/travel/operations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "correction", payload: { claimId: record.claimId, correctedDistanceKm: Number(form.get("distance")), reason: String(form.get("reason")), evidenceFileIds: [] } }) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result?.error?.message ?? "Action failed"); setMessage(hi ? "अनुरोध दर्ज किया गया।" : "Adjustment request recorded."); router.refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Action failed"); } finally { setBusy(false); } })(); }}><p>{new Date(record.date).toLocaleDateString(hi ? "hi-IN" : "en-IN")} · {hi ? "गणना" : "Calculated"} {record.calculatedKm.toFixed(1)} km · {record.status}</p><label>{hi ? "अनुरोधित योग्य किमी" : "Requested eligible km"}<input name="distance" type="number" min="0" step="0.1" defaultValue={record.requestedKm} required /></label><label>{hi ? "कारण" : "Reason"}<input name="reason" minLength={3} required /></label><button disabled={busy}>{hi ? "अनुरोध भेजें" : "Send request"}</button></form>)}{message && <p role="status">{message}</p>}</section>;
+}

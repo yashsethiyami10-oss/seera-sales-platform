@@ -118,7 +118,7 @@ export async function recomputeSessionDistance(db: Db, employeeId: string, workS
   const protectedClaim = existingEstimate ? await db.seeraTaClaim.findFirst({
     where: {
       travelEstimateId: existingEstimate.id,
-      status: { in: ["MANAGER_VERIFIED", "ACCOUNTS_APPROVED", "PAID", "CLOSED"] },
+      status: { in: ["SENT_TO_ACCOUNTS", "MANAGER_VERIFIED", "ACCOUNTS_APPROVED", "PAID", "CLOSED"] },
     },
     select: { id: true },
   }) : null;
@@ -209,33 +209,40 @@ export async function executiveTaDaMonthlySummary(
   const estimates = await db.seeraTravelEstimate.findMany({
     where: { workSessionId: { in: sessions.map((s) => s.id) } },
   });
+  const claims = await db.seeraTaClaim.findMany({ where: { travelEstimateId: { in: estimates.map((e) => e.id) } } });
   const estimateBySession = new Map(estimates.map((e) => [e.workSessionId, e]));
+  const claimByEstimate = new Map(claims.map((claim) => [claim.travelEstimateId, claim]));
   const rows = sessions.map((session) => {
     const estimate = estimateBySession.get(session.id);
+    const claim = estimate ? claimByEstimate.get(estimate.id) : undefined;
     const gpsDistanceKm = estimate ? Number(estimate.distanceKm) : 0;
     const hasActivity = session.visits.length > 0 || gpsDistanceKm > 0;
     const dayEnded = session.status === "ENDED";
     const daEligible = dayEnded && hasActivity;
-    const taAmount = ratePerKm == null ? null : Math.round(gpsDistanceKm * ratePerKm * 100) / 100;
-    const daAmount = dailyAllowance == null ? null : daEligible ? dailyAllowance : 0;
+    const taAmount = claim?.policyStatus === "CONFIGURED" ? Number(claim.totalApproved ?? claim.totalClaimed) : null;
+    const daAmount = claim?.policyStatus === "CONFIGURED" ? Number(claim.dailyAllowance) : null;
     return {
       sessionId: session.id,
       date: session.startedAt,
       startTime: session.startedAt,
       endTime: session.endedAt,
+      visits: session.visits.length,
       hqStart: session.startInsideGeofence,
       hqReturn: session.returnedToHq,
       gpsDistanceKm,
-      eligibleDistanceKm: gpsDistanceKm,
+      eligibleDistanceKm: Number(claim?.approvedDistanceKm ?? claim?.claimedDistanceKm ?? gpsDistanceKm),
       ratePerKm,
       taAmount,
       daEligible,
       daAmount,
-      totalTaDa: taAmount == null || daAmount == null ? null : taAmount + daAmount,
+      totalTaDa: taAmount,
       exceptions: [session.startExceptionReason, session.endExceptionReason].filter(Boolean),
       gpsConfidence: estimate ? "ESTIMATED_FROM_CHECKPOINTS" : "NO_SAMPLES",
       distanceMethod: "CHECKPOINT_HAVERSINE_ESTIMATE",
-      policyStatus: policy ? "CONFIGURED" : "POLICY_NOT_CONFIGURED",
+      policyStatus: claim?.policyStatus ?? (policy ? "CONFIGURED" : "POLICY_NOT_CONFIGURED"),
+      status: claim?.status ?? (session.status === "ENDED" ? "FINALIZATION_PENDING" : "IN_PROGRESS"),
+      gpsReviewRequired: claim?.gpsReviewRequired ?? false,
+      claimId: claim?.id ?? null,
     };
   });
   return {
@@ -246,9 +253,9 @@ export async function executiveTaDaMonthlySummary(
     dailyAllowance,
     rows,
     totals: {
-      taAmount: policy ? rows.reduce((s, r) => s + (r.taAmount ?? 0), 0) : null,
-      daAmount: policy ? rows.reduce((s, r) => s + (r.daAmount ?? 0), 0) : null,
-      totalTaDa: policy ? rows.reduce((s, r) => s + (r.totalTaDa ?? 0), 0) : null,
+      taAmount: rows.some((r) => r.policyStatus === "CONFIGURED") ? rows.reduce((s, r) => s + (r.taAmount ?? 0), 0) : null,
+      daAmount: rows.some((r) => r.policyStatus === "CONFIGURED") ? rows.reduce((s, r) => s + (r.daAmount ?? 0), 0) : null,
+      totalTaDa: rows.some((r) => r.policyStatus === "CONFIGURED") ? rows.reduce((s, r) => s + (r.totalTaDa ?? 0), 0) : null,
       eligibleDays: rows.filter((r) => r.daEligible).length,
     },
   };

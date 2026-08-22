@@ -18,6 +18,7 @@ import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, cano
 import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors, companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
 import { deriveInclusiveTax, deriveExclusiveTax, priceModeForBrand } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
+import { finalizeDailyTravelClaim } from "./travel-claim-service";
 import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
 import { assertCompanyDispatchAvailable, postCompanyDispatchStockAndCogs } from "@/lib/manufacturing/company-stock-service";
 
@@ -430,6 +431,15 @@ export async function endFieldDay(
   // is also the governed response for a genuine double-submit (Section 7 of the P0 directive):
   // never re-mutate, never report a generic failure for a day that is already durably closed.
   if (owned.status === "ENDED") {
+    try {
+      const estimate = await recomputeSessionDistance(prisma, actorId, sessionId);
+      if (estimate) await finalizeDailyTravelClaim(prisma, actorId, sessionId);
+    } catch (error) {
+      operationalLog("error", "workflow.endFieldDay.retry_finalize_failed", {
+        operationId, actorId, sessionId,
+        errorName: error instanceof Error ? error.name : "unknown",
+      });
+    }
     logOutcome("already_ended");
     return { alreadyEnded: true as const };
   }
@@ -511,7 +521,8 @@ export async function endFieldDay(
       });
     }
     try {
-      await recomputeSessionDistance(prisma, actorId, sessionId);
+      const estimate = await recomputeSessionDistance(prisma, actorId, sessionId);
+      if (estimate) await finalizeDailyTravelClaim(prisma, actorId, sessionId);
       mark("END_DAY_08_DISTANCE_RECOMPUTE");
     } catch (error) {
       mark("END_DAY_08_DISTANCE_RECOMPUTE_FAILED");
