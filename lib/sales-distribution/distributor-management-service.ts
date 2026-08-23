@@ -604,6 +604,42 @@ export async function updateDistributorCreditPolicy(
   });
 }
 
+// Final 100% Closure (23-Aug): territoryIds was already a real, governed column — set at
+// creation (createDistributor/createSuperStockist) and already consumed for routing/scope
+// (workflow-service.ts's auto-routing, scope.ts's resolveManagerOperationalScope) — but there was
+// no path to correct/complete it on an EXISTING partner. Production audit found every existing
+// Distributor/S.S. had territoryIds:[] regardless of which real operational geography they
+// actually serve, which is exactly why a Manager's scoped Distributor list came back empty even
+// once Territory assignments existed. Founder/Admin only (master:manage) — this reassigns which
+// Territories a partner is visible/routable within, a governance decision, not routine partner
+// self-service.
+export async function updatePartnerTerritories(
+  prisma: PrismaClient,
+  actorId: string,
+  input: { partnerId: string; territoryIds: string[]; reason: string },
+) {
+  await authorize(prisma, { actorId, permission: "master:manage" });
+  if (!input.reason.trim()) throw new FoundationError("TERRITORY_REASON_REQUIRED", "A reason is required to change a partner's Territory scope", 400);
+  const partner = await prisma.seeraPartner.findUnique({ where: { id: input.partnerId } });
+  if (!partner) throw new FoundationError("PARTNER_NOT_FOUND", "That partner account could not be found", 404);
+  if (input.territoryIds.length) {
+    const found = await prisma.seeraGeographyNode.findMany({ where: { id: { in: input.territoryIds }, level: "TERRITORY" } });
+    if (found.length !== new Set(input.territoryIds).size)
+      throw new FoundationError("GEOGRAPHY_NODE_NOT_FOUND", "One or more selected Territories do not exist", 404);
+  }
+  const updated = await prisma.seeraPartner.update({ where: { id: input.partnerId }, data: { territoryIds: input.territoryIds } });
+  await recordAudit(prisma, {
+    actorId,
+    action: "partner.territories_updated",
+    entityType: "SeeraPartner",
+    entityId: partner.id,
+    reason: input.reason,
+    beforeState: { territoryIds: partner.territoryIds },
+    afterState: { territoryIds: input.territoryIds },
+  });
+  return updated;
+}
+
 // STAGE 14 — Distributor Closure Stock Settlement. Founder decision: "No routine Company return
 // program. Only Distributor Closure Stock Settlement" — replaces the previous silent write-off,
 // where transitionPartnerLifecycle's obligations.stock/advances/pendingClaims were hardcoded to 0
