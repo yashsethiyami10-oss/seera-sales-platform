@@ -6,6 +6,7 @@ import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
 import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import {
   createCompanyOrder,
+  cancelCompanyOrder,
   createDistributorReplenishment,
   fulfilDistributorReplenishment,
   fulfilRetailerOrder,
@@ -52,6 +53,7 @@ const body = z.object({
     "inventory-movement",
     "reconcile-stock",
     "company-order",
+    "cancel-company-order",
     "complete-delivery",
     "create-distributor-replenishment",
     "fulfil-distributor-replenishment",
@@ -335,7 +337,10 @@ export async function POST(request: Request) {
           })
           .parse(payload),
       );
-    else {
+    else if (action === "cancel-company-order") {
+      const v = z.object({ superStockistId: z.string(), orderId: z.string(), reason: z.string().min(3) }).parse(payload);
+      result = await cancelCompanyOrder(prisma, user.id, v.superStockistId, v);
+    } else {
       const v = z
         .object({
           superStockistId: z.string(),

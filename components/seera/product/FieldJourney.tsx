@@ -1676,11 +1676,14 @@ export function FieldJourney({
               <>
                 <strong>{hi ? "योजनाबद्ध ग्राहक" : "PLANNED CUSTOMERS"}</strong>
                 <div className={styles.beatList}>
-                  {beatRetailers.map((retailer) => (
+                  {beatRetailers.map((retailer, index) => (
                     <div className={styles.beatCard} key={retailer.id}>
                       <header>
                         <div>
-                          <h3>{retailer.businessName}</h3>
+                          {/* Final closure (23-Aug), Part 1: array order now reflects the frozen
+                              publish-time stop sequence (see executiveBeat, field-portal-service.ts)
+                              — surfaced as a visible visit-order number. */}
+                          <h3>{index + 1}. {retailer.businessName}</h3>
                           <p className="meta">
                             {retailer.ownerName ?? "—"} · {retailer.mobile ?? (hi ? "मोबाइल नहीं" : "No mobile")}
                           </p>

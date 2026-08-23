@@ -4763,7 +4763,11 @@ export async function OperationalWorkspace({
       ]);
       const priceBySkuId = new Map(pricedVersions.map((p) => [p.skuId, Number(p.amount)]));
       const schemeNoteBySkuId = await activeSchemeNotesForSkus(db, allSkus.map((x) => x.id), "COMPANY_TO_SS_DISPLAY_ONLY", now);
-      const statusOf = (o: (typeof recentCompanyOrders)[number]): "PAYMENT_REQUIRED" | "PROOF_SUBMITTED" | "VERIFIED" | "DISPATCHED" => {
+      const statusOf = (o: (typeof recentCompanyOrders)[number]): "PAYMENT_REQUIRED" | "PROOF_SUBMITTED" | "VERIFIED" | "DISPATCHED" | "CANCELLED" => {
+        // Final closure (23-Aug), Part 17: CANCELLED must be its own terminal bucket — without this
+        // check a cancelled order fell through to the PAYMENT_REQUIRED default, showing "Payment
+        // required" (and the Cancel Order button) for an order that's already cancelled.
+        if (o.status === "CANCELLED") return "CANCELLED";
         if (["DISPATCHED", "PARTIAL_DELIVERED", "DELIVERED"].includes(o.status)) return "DISPATCHED";
         if (o.status === "CONFIRMED") return "VERIFIED";
         const proof = o.paymentProofs[0];

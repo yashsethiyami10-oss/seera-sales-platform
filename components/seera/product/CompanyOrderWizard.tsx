@@ -16,7 +16,7 @@ async function post(action: string, payload: unknown) {
   return d;
 }
 
-export type CompanyOrderStatusCard = { id: string; orderNumber: string; status: "PAYMENT_REQUIRED" | "PROOF_SUBMITTED" | "VERIFIED" | "DISPATCHED"; total: number; placedAt: string };
+export type CompanyOrderStatusCard = { id: string; orderNumber: string; status: "PAYMENT_REQUIRED" | "PROOF_SUBMITTED" | "VERIFIED" | "DISPATCHED" | "CANCELLED"; total: number; placedAt: string };
 
 // RUN 2B: rate/pack/scheme are display-only — the server always re-derives the authoritative
 // COMPANY_TO_SS price itself in createCompanyOrder (workflow-service.ts), so nothing here is
@@ -128,6 +128,51 @@ function PaymentProofPanel({ language, superStockistId, orderId, orderNumber, am
       <button disabled={busy} className={styles.primaryBig}>
         {hi ? "भुगतान प्रमाण जमा करें" : "SUBMIT PAYMENT PROOF"}
       </button>
+      {error && <p role="status" className={styles.cardError}>{error}</p>}
+    </form>
+  );
+}
+
+// Final closure (23-Aug), Part 17: the S.S.-facing entry point for cancelCompanyOrder
+// (workflow-service.ts) — a real gap surfaced by the same-day pricing regression needing a way to
+// correct two stale test orders. Requires a reason (governed, audited) and a confirmation step
+// before submitting, matching the destructive-action pattern used elsewhere in this portal.
+function CancelOrderButton({ language, superStockistId, orderId }: { language: "EN" | "HI"; superStockistId: string; orderId: string }) {
+  const hi = language === "HI",
+    router = useRouter(),
+    [confirming, setConfirming] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+
+  if (!confirming)
+    return (
+      <button type="button" onClick={() => setConfirming(true)} style={{ marginTop: 8 }}>
+        {hi ? "ऑर्डर रद्द करें" : "Cancel Order"}
+      </button>
+    );
+
+  return (
+    <form
+      style={{ display: "grid", gap: 8, marginTop: 8 }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const reason = String(new FormData(e.currentTarget).get("reason") || "");
+        setBusy(true);
+        setError("");
+        void post("cancel-company-order", { superStockistId, orderId, reason })
+          .then(() => router.refresh())
+          .catch((err) => setError(err instanceof Error ? err.message : "Could not cancel order"))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <label>
+        {hi ? "रद्द करने का कारण" : "Reason for cancellation"}
+        <input name="reason" minLength={3} required />
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="submit" disabled={busy}>{hi ? "पुष्टि करें और रद्द करें" : "Confirm cancellation"}</button>
+        <button type="button" disabled={busy} onClick={() => setConfirming(false)}>{hi ? "वापस" : "Back"}</button>
+      </div>
       {error && <p role="status" className={styles.cardError}>{error}</p>}
     </form>
   );
@@ -352,9 +397,15 @@ export function CompanyOrderWizard({
                   <small>₹{o.total.toFixed(2)} · {o.placedAt}</small>
                 </div>
                 <span className={styles.badge}>
-                  {hi ? { PAYMENT_REQUIRED: "भुगतान आवश्यक", PROOF_SUBMITTED: "प्रमाण जमा", VERIFIED: "सत्यापित", DISPATCHED: "डिस्पैच" }[o.status] : o.status.replace("_", " ")}
+                  {hi ? { PAYMENT_REQUIRED: "भुगतान आवश्यक", PROOF_SUBMITTED: "प्रमाण जमा", VERIFIED: "सत्यापित", DISPATCHED: "डिस्पैच", CANCELLED: "रद्द" }[o.status] : o.status.replace("_", " ")}
                 </span>
               </header>
+              {/* Final closure (23-Aug), Part 17: only eligible while no payment proof exists yet
+                  (matches cancelCompanyOrder's own server-side ORDER_NOT_CANCELLABLE rule exactly —
+                  this button is a convenience, not the security boundary). */}
+              {o.status === "PAYMENT_REQUIRED" && (
+                <CancelOrderButton language={language} superStockistId={superStockistId} orderId={o.id} />
+              )}
             </article>
           ))}
         </section>

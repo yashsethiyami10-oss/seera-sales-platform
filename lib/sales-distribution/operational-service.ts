@@ -604,6 +604,9 @@ export async function createBeatPlan(
         },
       });
       if (input.publish) {
+        // Atomic with the PUBLISHED status set above (same transaction) — a plan can never end up
+        // PUBLISHED without its immutable stop snapshot, or vice versa.
+        await createPlanStops(tx, plan.id, input.employeeId, { OR: [{ beatId: beat.id }, { marketId: geography.id }, { territoryId: territory.id }] });
         await tx.notification.create({
           data: {
             recipientId: input.employeeId,
@@ -632,6 +635,35 @@ export async function createBeatPlan(
   }
 }
 
+// Final closure (23-Aug), Part 1: the one place a plan's immutable retailer-stop membership gets
+// created — called atomically with the SAME status change to PUBLISHED (same transaction) from
+// both createBeatPlan's publish:true path and publishBeatPlan, so a plan can never end up
+// PUBLISHED without its stops, or vice versa. Snapshots exactly the fields the Executive's read
+// model (executiveBeat) needs to render a stop without re-deriving anything from the CURRENT
+// (mutable) retailer record — sequence is businessName order, matching what the Manager already
+// saw as the resolved retailer list at publish time.
+async function createPlanStops(tx: Prisma.TransactionClient, planId: string, employeeId: string, matchWhere: Prisma.SeeraRetailerWhereInput) {
+  const retailers = await tx.seeraRetailer.findMany({
+    where: { salespersonId: employeeId, lifecycle: "ACTIVE", ...matchWhere },
+    orderBy: { businessName: "asc" },
+  });
+  if (!retailers.length) return 0;
+  const result = await tx.seeraJourneyPlanStop.createMany({
+    data: retailers.map((r, index) => ({
+      planId,
+      retailerId: r.id,
+      sequence: index + 1,
+      retailerNameSnapshot: r.businessName,
+      mobileSnapshot: r.mobile ?? r.normalizedMobile ?? undefined,
+      addressSnapshot: r.address as Prisma.InputJsonValue,
+      beatIdSnapshot: r.beatId,
+      territoryIdSnapshot: r.territoryId,
+      distributorIdSnapshot: r.distributorId,
+    })),
+  });
+  return result.count;
+}
+
 async function ownedFuturePlan(prisma: PrismaClient, actorId: string, planId: string) {
   const plan = await prisma.seeraJourneyPlan.findFirst({ where: { id: planId, ownerId: actorId, status: { not: "CANCELLED" } } });
   if (!plan) throw new FoundationError("PLAN_SCOPE_DENIED", "Plan outside Manager scope", 403);
@@ -648,37 +680,36 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
     prisma.seeraGeographyNode.findUnique({ where: { id: plan.geographyId } }),
     plan.beatId ? prisma.seeraGeographyNode.findUnique({ where: { id: plan.beatId } }) : null,
   ]);
+  const matchWhere: Prisma.SeeraRetailerWhereInput = {
+    OR: [
+      ...(plan.beatId ? [{ beatId: plan.beatId }] : []),
+      { marketId: plan.geographyId },
+      ...(plan.territoryId ? [{ territoryId: plan.territoryId }] : []),
+    ],
+  };
   // Founder-final rule (23-Aug): a normal publish of a Beat with zero active retailers mapped is
-  // now BLOCKED outright (previously only a soft warning, which let empty PUBLISHED plans keep
-  // accumulating in normal operation). Uses the exact same beatId/territoryId-level matching
-  // executiveBeat reads by, so this can never disagree with what the Executive would actually see.
-  const retailerCount = await prisma.seeraRetailer.count({
-    where: {
-      salespersonId: plan.employeeId,
-      lifecycle: "ACTIVE",
-      OR: [
-        ...(plan.beatId ? [{ beatId: plan.beatId }] : []),
-        { marketId: plan.geographyId },
-        ...(plan.territoryId ? [{ territoryId: plan.territoryId }] : []),
-      ],
-    },
+  // BLOCKED outright. Publish (status change) + immutable stop snapshot creation now happen in ONE
+  // transaction — a plan can never end up PUBLISHED without its stops, or vice versa (Part 1).
+  return prisma.$transaction(async (tx) => {
+    const retailerCount = await tx.seeraRetailer.count({ where: { salespersonId: plan.employeeId, lifecycle: "ACTIVE", ...matchWhere } });
+    if (retailerCount === 0)
+      throw new FoundationError("BEAT_HAS_NO_RETAILERS", "This Beat has no active retailers mapped. Map at least one retailer before publishing.", 409);
+    const updated = await tx.seeraJourneyPlan.update({ where: { id: plan.id }, data: { status: "PUBLISHED" } });
+    await createPlanStops(tx, plan.id, plan.employeeId, matchWhere);
+    await tx.notification.create({
+      data: {
+        recipientId: plan.employeeId,
+        title: "Beat plan published",
+        body: `${beat?.name ?? geography?.name ?? "Your route"} has been assigned to your route plan.`,
+        type: "FOUNDATION",
+        entityType: "SeeraJourneyPlan",
+        entityId: plan.id,
+        payload: { actionPath: "/portal/sales-executive/beat" },
+      },
+    });
+    await recordAudit(tx, { actorId, action: "journey_plan.published", entityType: "SeeraJourneyPlan", entityId: plan.id, afterState: { retailerCount } });
+    return { ...updated, retailerCount };
   });
-  if (retailerCount === 0)
-    throw new FoundationError("BEAT_HAS_NO_RETAILERS", "This Beat has no active retailers mapped. Map at least one retailer before publishing.", 409);
-  const updated = await prisma.seeraJourneyPlan.update({ where: { id: plan.id }, data: { status: "PUBLISHED" } });
-  await prisma.notification.create({
-    data: {
-      recipientId: plan.employeeId,
-      title: "Beat plan published",
-      body: `${beat?.name ?? geography?.name ?? "Your route"} has been assigned to your route plan.`,
-      type: "FOUNDATION",
-      entityType: "SeeraJourneyPlan",
-      entityId: plan.id,
-      payload: { actionPath: "/portal/sales-executive/beat" },
-    },
-  });
-  await recordAudit(prisma, { actorId, action: "journey_plan.published", entityType: "SeeraJourneyPlan", entityId: plan.id, afterState: { retailerCount } });
-  return { ...updated, retailerCount };
 }
 
 export async function duplicateBeatPlan(
@@ -838,6 +869,10 @@ export async function submitPaymentProof(prisma: PrismaClient, actorId: string, 
   await requirePartyMembership(prisma, actorId, superStockistId, "SUPER_STOCKIST");
   const order = await prisma.seeraSalesOrder.findFirst({ where: { id: input.orderId, buyerPartnerId: superStockistId, type: "COMPANY_REPLENISHMENT" } });
   if (!order) throw new FoundationError("ORDER_SCOPE_DENIED", "Company order scope denied", 403);
+  // Final closure (23-Aug), Part 17: a CANCELLED order must accept no further fulfilment action,
+  // including a payment proof — cancelCompanyOrder (workflow-service.ts) already only permits
+  // cancelling an order with no proof on file yet, so this closes the reverse direction.
+  if (order.status === "CANCELLED") throw new FoundationError("ORDER_NOT_CANCELLABLE", "This order has been cancelled and can no longer accept a payment proof", 409);
   return prisma.seeraPaymentProof.upsert({ where: { idempotencyKey: input.idempotencyKey }, update: {}, create: { orderId: order.id, amount: input.amount, reference: input.reference, fileId: input.fileId, status: "SUBMITTED", submittedById: actorId, idempotencyKey: input.idempotencyKey } });
 }
 

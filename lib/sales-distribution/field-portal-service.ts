@@ -1056,24 +1056,25 @@ export async function executiveBeat(
       effectiveFrom: { lte: windowEnd },
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
     },
+    // stops (Final closure, 23-Aug, Part 1): the immutable membership frozen at publish time — a
+    // plan WITH stops must read its retailer list from here, never re-derived from the CURRENT
+    // mutable retailer.beatId/territoryId/marketId (editing a retailer's Beat after publish must
+    // not silently change what the Executive already saw for this plan).
+    include: { stops: { orderBy: { sequence: "asc" } } },
     orderBy: { effectiveFrom: "desc" },
   });
   timing.stage("plans");
-  // Final Master Revision (Beat/Route add-on, 22-Aug) fix: this used to collect ONLY
-  // plan.geographyId (the leaf VILLAGE/TOWN/.../OTHER node createBeatPlan creates under the Beat)
-  // and match it against retailer.beatId/marketId/territoryId indiscriminately. But
-  // SeeraRetailer.beatId/.territoryId are populated with the actual BEAT-level/TERRITORY-level node
-  // ids (see seed-routing-fixtures.ts), a DIFFERENT level of the geography tree than the plan's leaf
-  // geographyId — so a real PUBLISHED plan with real retailers mapped to its Beat could never match,
-  // regardless of date range. Compare each field at its OWN matching level instead: retailer.beatId
-  // against plan.beatId, retailer.territoryId against plan.territoryId, and retailer.marketId
-  // against plan.geographyId (kept as a defensive extra match — marketId is otherwise never written
-  // anywhere today, so this is inert, not a regression risk).
-  const beatIds = [...new Set(plans.map((plan) => plan.beatId).filter((id): id is string => Boolean(id)))];
-  const territoryIds = [...new Set(plans.map((plan) => plan.territoryId).filter((id): id is string => Boolean(id)))];
-  const geographyIds = [...new Set(plans.map((plan) => plan.geographyId))];
-  const hasGeographyMatch = beatIds.length > 0 || territoryIds.length > 0 || geographyIds.length > 0;
-  const [visitsToday, retailers] = await Promise.all([
+  // Plans published before this migration carry no stops at all — fall back to the previous
+  // live-matching behavior for exactly those (never for a plan that DOES have stops), so nothing
+  // already published goes silently empty the moment this deploys.
+  const legacyPlans = plans.filter((plan) => plan.stops.length === 0);
+  const stopRetailerIds = [...new Set(plans.flatMap((plan) => plan.stops.map((s) => s.retailerId)))];
+  const beatIds = [...new Set(legacyPlans.map((plan) => plan.beatId).filter((id): id is string => Boolean(id)))];
+  const territoryIds = [...new Set(legacyPlans.map((plan) => plan.territoryId).filter((id): id is string => Boolean(id)))];
+  const geographyIds = [...new Set(legacyPlans.map((plan) => plan.geographyId))];
+  const hasLegacyGeographyMatch = beatIds.length > 0 || territoryIds.length > 0 || geographyIds.length > 0;
+  const hasAnyPlanMatch = stopRetailerIds.length > 0 || hasLegacyGeographyMatch;
+  const [visitsToday, stopRetailers, legacyRetailers] = await Promise.all([
     db.seeraVisit.findMany({
       where: {
         workSession: { employeeId: actorId },
@@ -1083,7 +1084,11 @@ export async function executiveBeat(
       },
       select: { retailerId: true, outcome: true },
     }),
-    hasGeographyMatch
+    // No lifecycle/scope re-check here on purpose — a stop is authoritative published membership;
+    // the retailer's CURRENT record is fetched purely for fresh display fields (name/mobile/
+    // address), never to decide whether it still belongs on this plan.
+    stopRetailerIds.length ? db.seeraRetailer.findMany({ where: { id: { in: stopRetailerIds } } }) : Promise.resolve([]),
+    hasLegacyGeographyMatch
       ? db.seeraRetailer.findMany({
           where: {
             salespersonId: actorId,
@@ -1096,13 +1101,21 @@ export async function executiveBeat(
           },
           orderBy: { businessName: "asc" },
         })
-      : range === "today"
+      : range === "today" && !hasAnyPlanMatch
         ? db.seeraRetailer.findMany({
             where: { salespersonId: actorId, lifecycle: "ACTIVE" },
             orderBy: { businessName: "asc" },
           })
         : Promise.resolve([]),
   ]);
+  // stopRetailerIds is already in stop-sequence order (built from stops sorted by `sequence`
+  // above) — preserved here rather than re-sorted by name, since sequence is the Manager's
+  // intended visit order, not alphabetical.
+  const stopRetailerById = new Map(stopRetailers.map((r) => [r.id, r]));
+  const retailers = [
+    ...stopRetailerIds.map((id) => stopRetailerById.get(id)).filter((r): r is NonNullable<typeof r> => Boolean(r)),
+    ...legacyRetailers,
+  ];
   timing.stage("visits_and_retailers");
   const visitStatus = new Map(visitsToday.map((v) => [v.retailerId, v.outcome]));
   const openFollowUps = retailers.length

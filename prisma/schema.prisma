@@ -1749,11 +1749,37 @@ model SeeraJourneyPlan {
   deviationReason String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  stops           SeeraJourneyPlanStop[]
 
   @@unique([employeeId, dayOfWeek, geographyId, effectiveFrom])
   @@index([employeeId, effectiveFrom, effectiveTo])
   @@index([status, effectiveFrom])
   @@map("seera_journey_plans")
+}
+
+// Final closure (23-Aug), Part 1: a PUBLISHED plan previously carried only beatId/territoryId/date
+// — the Executive's actual retailer list was re-derived LIVE every read from the CURRENT mutable
+// SeeraRetailer.beatId/territoryId/marketId, so editing a retailer's Beat mapping after a plan
+// published silently changed what the Executive saw for an already-handed-off day. This is the
+// immutable membership frozen atomically at publish time (see createBeatPlan/publishBeatPlan,
+// operational-service.ts) — created together with the PUBLISHED status change or not at all.
+model SeeraJourneyPlanStop {
+  id                    String   @id @default(cuid())
+  planId                String
+  plan                  SeeraJourneyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  retailerId            String
+  sequence              Int
+  retailerNameSnapshot  String
+  mobileSnapshot        String?
+  addressSnapshot       Json?
+  beatIdSnapshot        String?
+  territoryIdSnapshot   String?
+  distributorIdSnapshot String?
+  createdAt             DateTime @default(now())
+
+  @@unique([planId, retailerId])
+  @@index([planId, sequence])
+  @@map("seera_journey_plan_stops")
 }
 
 model SeeraTarget {

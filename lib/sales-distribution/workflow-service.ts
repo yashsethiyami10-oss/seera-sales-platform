@@ -2087,6 +2087,51 @@ export async function createCompanyOrder(
   });
 }
 
+// Final closure (23-Aug), Part 16/17: Company Orders had no cancellation path at all — a genuine
+// gap, surfaced by two real orders needing correction after the same-day 25x pricing regression
+// (see company-order-catalog.ts). Governed, narrow, and safe by construction rather than a raw
+// status flip: only reachable while the order is still SUBMITTED (i.e. before any payment proof
+// has moved it forward — the moment a proof exists, correction must go through the proof
+// REJECTED/resubmission path or a governed financial reversal, never a silent cancel). The S.S.
+// that placed the order, or Founder/Admin, may cancel; the historical row/snapshot/audit trail is
+// never deleted, only its status changes and it is excluded from active/outstanding queues by
+// virtue of that status (every such query already filters or displays status explicitly).
+export async function cancelCompanyOrder(
+  prisma: PrismaClient,
+  actorId: string,
+  superStockistId: string,
+  input: { orderId: string; reason: string },
+) {
+  await authorize(prisma, { actorId, permission: "company_replenishment:create" });
+  const permissions = await effectivePermissions(prisma, actorId);
+  if (!permissions.has("system:super_admin")) await requirePartyMembership(prisma, actorId, superStockistId, "SUPER_STOCKIST");
+  if (!input.reason.trim()) throw new FoundationError("CANCEL_REASON_REQUIRED", "A reason is required to cancel an order", 400);
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.seeraSalesOrder.findFirst({ where: { id: input.orderId, buyerPartnerId: superStockistId, type: "COMPANY_REPLENISHMENT" } });
+    if (!order) throw new FoundationError("ORDER_SCOPE_DENIED", "Company order scope denied", 403);
+    if (order.status !== "SUBMITTED")
+      throw new FoundationError(
+        "ORDER_NOT_CANCELLABLE",
+        `Only a SUBMITTED order with no payment proof yet can be cancelled (current status: ${order.status}). A paid or in-progress order requires a governed financial reversal, not cancellation.`,
+        409,
+      );
+    const existingProof = await tx.seeraPaymentProof.findFirst({ where: { orderId: order.id } });
+    if (existingProof)
+      throw new FoundationError("ORDER_NOT_CANCELLABLE", "This order already has a payment proof on file — reject/resubmit the proof instead of cancelling the order", 409);
+    const updated = await tx.seeraSalesOrder.update({ where: { id: order.id }, data: { status: "CANCELLED" } });
+    await recordAudit(tx, {
+      actorId,
+      action: "company_order.cancelled",
+      entityType: "SeeraSalesOrder",
+      entityId: order.id,
+      reason: input.reason,
+      beforeState: { status: order.status, total: order.total.toString() },
+      afterState: { status: "CANCELLED" },
+    });
+    return updated;
+  });
+}
+
 // Company never holds governed inventory in this system (InventoryPartyType only has DISTRIBUTOR
 // and SUPER_STOCKIST — Company is the ultimate, effectively-unlimited source), so a Company order
 // has no seller-side reservation to release/OUT the way dispatchAllocatedOrder does for a
