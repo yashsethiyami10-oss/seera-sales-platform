@@ -1,28 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { COMPANY_ORDER_UNIT_OVERRIDES, companyOrderLineMultiplier } from "@/lib/sales-distribution/company-order-catalog";
 
-// Final 100% Closure (23-Aug), Part 12: Powder default UOM = BAG, derived from the governed
-// per-kg/per-PC base rate × pack factor — never a separately stored/superseded BAG price version.
-describe("Company Order Powder BAG pricing — derived, never duplicated", () => {
-  it("Powder 1kg SKUs default to BAG(25), not PCS", () => {
-    expect(COMPANY_ORDER_UNIT_OVERRIDES["SEERA-POWDER-1KG"]).toMatchObject({ orderUnit: "BAG", unitsPerOrderUnit: 25, basis: "PER_PC" });
-    expect(COMPANY_ORDER_UNIT_OVERRIDES["SEERA-SHINEPLUS-POWDER-1KG"]).toMatchObject({ orderUnit: "BAG", unitsPerOrderUnit: 25, basis: "PER_PC" });
+// Final 100% Closure (23-Aug), Part 12: Powder default UOM = BAG(25kg), matching the SAME
+// PACK_TOTAL convention every other Company Order SKU (Cake, Shine Plus 3kg/5kg, Bartan) already
+// uses — the governed COMPANY_TO_SS price IS the full bag price already (confirmed against the
+// live production price version AND real historical order lines predating this change, e.g. a
+// real order priced quantity:1 at ₹1,400 for SEERA-POWDER-1KG). An earlier version of this fix
+// wrongly assumed the price was a per-kg base rate needing x25 multiplication (based on a stale
+// seed-script comment, not the live governed price) — that caused a real 25x overcharge in
+// production before being caught and reverted; see company-order-catalog.ts's own correction note.
+describe("Company Order Powder BAG pricing — same PACK_TOTAL convention as every other SKU, no multiplication", () => {
+  it("Powder 1kg SKUs default to BAG(25), PACK_TOTAL basis (not PER_PC)", () => {
+    expect(COMPANY_ORDER_UNIT_OVERRIDES["SEERA-POWDER-1KG"]).toMatchObject({ orderUnit: "BAG", unitsPerOrderUnit: 25 });
+    expect(COMPANY_ORDER_UNIT_OVERRIDES["SEERA-POWDER-1KG"].basis).toBeUndefined();
+    expect(COMPANY_ORDER_UNIT_OVERRIDES["SEERA-SHINEPLUS-POWDER-1KG"]).toMatchObject({ orderUnit: "BAG", unitsPerOrderUnit: 25 });
+    expect(COMPANY_ORDER_UNIT_OVERRIDES["SEERA-SHINEPLUS-POWDER-1KG"].basis).toBeUndefined();
   });
 
-  it("derives the BAG rate as governed base rate x pack factor — exact Founder-specified figures", () => {
-    const powderBaseRate = 56.5;
-    const shineBaseRate = 46;
-    expect(powderBaseRate * companyOrderLineMultiplier("SEERA-POWDER-1KG")).toBeCloseTo(1412.5, 2);
-    expect(shineBaseRate * companyOrderLineMultiplier("SEERA-SHINEPLUS-POWDER-1KG")).toBeCloseTo(1150, 2);
+  it("the governed price is charged directly, never multiplied by the pack factor (closes the 25x overcharge regression)", () => {
+    const livePowderPrice = 1165.26;
+    const liveShinePrice = 953.39;
+    expect(livePowderPrice * companyOrderLineMultiplier("SEERA-POWDER-1KG")).toBeCloseTo(livePowderPrice, 2);
+    expect(liveShinePrice * companyOrderLineMultiplier("SEERA-SHINEPLUS-POWDER-1KG")).toBeCloseTo(liveShinePrice, 2);
   });
 
-  it("changing the governed base rate automatically changes the derived BAG rate (no separate stored value to go stale)", () => {
-    const newBaseRate = 60;
-    expect(newBaseRate * companyOrderLineMultiplier("SEERA-POWDER-1KG")).toBeCloseTo(1500, 2);
-  });
-
-  it("every pre-existing PACK_TOTAL-basis SKU is completely unaffected (multiplier 1, no behavior change)", () => {
-    for (const code of ["SEERA-CAKE-BLUE", "SEERA-CAKE-WHITE", "SEERA-YUVA-CAKE-BLUE", "SEERA-SHINEPLUS-POWDER-3KG", "SEERA-SHINEPLUS-POWDER-5KG", "SEERA-BARTAN-300G", "SEERA-BARTAN-500G"]) {
+  it("every Company Order SKU with a governed override has multiplier 1 — quantity always means pack count, price is always the pack total", () => {
+    for (const code of Object.keys(COMPANY_ORDER_UNIT_OVERRIDES)) {
       expect(companyOrderLineMultiplier(code)).toBe(1);
     }
   });
