@@ -204,10 +204,15 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   // ---- Item table ----
   const cols = [
     { key: "sr", label: "Sr.", width: 18, align: "left" as const },
-    { key: "item", label: "Item / Variant / Pack", width: 122, align: "left" as const },
+    { key: "item", label: "Item / Variant / Pack", width: 98, align: "left" as const },
     { key: "hsn", label: "HSN", width: 34, align: "left" as const },
     { key: "qty", label: "Qty", width: 30, align: "right" as const },
-    { key: "unit", label: "Unit", width: 34, align: "left" as const },
+    // Commercial UOM (Billing/Quotation Finalization, 23-Aug) made this column's real content much
+    // wider than the old "180 g" / "PCS" strings it was sized for — e.g. "10 BOX (400 PC)". Widened
+    // from the old 34pt (stolen from "item", which already wraps) and now wrapped the same way the
+    // item column always has been, rather than guessing a fixed width that a future long pack string
+    // could still overflow. See the rowLineCount computation below, which now accounts for both.
+    { key: "unit", label: "Unit", width: 58, align: "left" as const },
     { key: "rate", label: "Rate", width: 46, align: "right" as const },
     { key: "disc", label: "Disc %", width: 32, align: "right" as const },
     { key: "taxable", label: "Taxable", width: 50, align: "right" as const },
@@ -225,6 +230,7 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
     }
   }
   const itemCol = positioned.find((c) => c.key === "item")!;
+  const unitCol = positioned.find((c) => c.key === "unit")!;
   const drawTableHeader = () => {
     ensureRoom(30);
     const headerY = y;
@@ -239,7 +245,8 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   drawTableHeader();
   snapshot.lines.forEach((item, index) => {
     const nameLines = wrap(item.description, latin, 7.5, itemCol.width - 6);
-    const rowLineCount = Math.max(1, nameLines.length);
+    const unitLines = wrap(item.unit, latin, 7.5, unitCol.width - 6);
+    const rowLineCount = Math.max(1, nameLines.length, unitLines.length);
     const rowHeight = rowLineCount * 9.5 + 6;
     ensureRoom(rowHeight + 4);
     if (y === PAGE[1] - MARGIN) drawTableHeader(); // continued on a new page
@@ -249,7 +256,6 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
       sr: String(index + 1),
       hsn: item.hsn ?? "—",
       qty: String(item.quantity),
-      unit: item.unit,
       rate: money(item.rate, snapshot.currency),
       disc: item.discount ? item.discount.toFixed(1) : "—",
       taxable: money(item.taxableValue, snapshot.currency),
@@ -261,6 +267,10 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
     positioned.forEach((c) => {
       if (c.key === "item") {
         nameLines.forEach((line, li) => text(line, c.x + 3, cellY - li * 9.5, { size: 7.5 }));
+        return;
+      }
+      if (c.key === "unit") {
+        unitLines.forEach((line, li) => text(line, c.x + 3, cellY - li * 9.5, { size: 7.5 }));
         return;
       }
       const v = values[c.key] ?? "";
