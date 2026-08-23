@@ -54,17 +54,39 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 // allocateOrderStock/dispatchAllocatedOrder. A RETAILER_ORDER line is never passed through this
 // conversion (multiplier is implicitly 1 — it's already piece-denominated by design).
 export type CompanyOrderUnit = "PCS" | "BOX" | "BAG";
-export const COMPANY_ORDER_UNIT_OVERRIDES: Record<string, { orderUnit: CompanyOrderUnit; unitsPerOrderUnit?: number; rateBasis: string }> = {
+// `basis` (Final 100% Closure, 23-Aug): distinguishes what SeeraPriceVersion.amount (COMPANY_TO_SS)
+// actually represents for this SKU — "PACK_TOTAL" (the default, and every pre-existing entry below)
+// means the stored amount IS ALREADY the full Box/Bag price (e.g. Cake Blue's ₹298 is the whole
+// 40-pc box, not ₹298/pc) — order total stays exactly `amount * quantity`, quantity = pack count,
+// UNCHANGED from before this field existed. "PER_PC" means the stored amount is the per-piece/per-kg
+// governed base rate and must be MULTIPLIED by unitsPerOrderUnit to get the price for one ordered
+// unit of `orderUnit` — see companyOrderLineMultiplier below, the single place this multiplication
+// happens (both the catalog DISPLAY rate and the actual charged order total derive from the exact
+// same function, so they can never disagree). Introduced specifically so Powder 1kg's governed
+// ₹56.50/₹46 PER-KG base rate can default to a BAG(25) order unit — Founder-approved formula:
+// BAG rate = governed base PC rate × pack factor — WITHOUT superseding/duplicating the base
+// COMPANY_TO_SS price version itself (that stays exactly what Founder approved, per-kg).
+export const COMPANY_ORDER_UNIT_OVERRIDES: Record<string, { orderUnit: CompanyOrderUnit; unitsPerOrderUnit?: number; rateBasis: string; basis?: "PACK_TOTAL" | "PER_PC" }> = {
   "SEERA-CAKE-BLUE": { orderUnit: "BOX", unitsPerOrderUnit: 40, rateBasis: "Rate per Box of 40 pcs (180g each)" },
   "SEERA-CAKE-WHITE": { orderUnit: "BOX", unitsPerOrderUnit: 40, rateBasis: "Rate per Box of 40 pcs (150g each)" },
   "SEERA-YUVA-CAKE-BLUE": { orderUnit: "BOX", unitsPerOrderUnit: 40, rateBasis: "Rate per Box of 40 pcs (170g each)" },
-  "SEERA-POWDER-1KG": { orderUnit: "PCS", unitsPerOrderUnit: 1, rateBasis: "Founder rate ₹56.50/kg — 1 pc = 1 kg exactly for this pack, so PCS rate = kg rate" },
-  "SEERA-SHINEPLUS-POWDER-1KG": { orderUnit: "PCS", unitsPerOrderUnit: 1, rateBasis: "Founder rate ₹46/kg — 1 pc = 1 kg exactly for this pack, so PCS rate = kg rate" },
+  "SEERA-POWDER-1KG": { orderUnit: "BAG", unitsPerOrderUnit: 25, basis: "PER_PC", rateBasis: "Governed base rate ₹56.50/kg (PC) × pack factor 25 = ₹1,412.50/BAG — derived live from the base rate, never a separately stored BAG price" },
+  "SEERA-SHINEPLUS-POWDER-1KG": { orderUnit: "BAG", unitsPerOrderUnit: 25, basis: "PER_PC", rateBasis: "Governed base rate ₹46/kg (PC) × pack factor 25 = ₹1,150/BAG — derived live from the base rate, never a separately stored BAG price" },
   "SEERA-SHINEPLUS-POWDER-3KG": { orderUnit: "BAG", unitsPerOrderUnit: 10, rateBasis: "Rate is for the full 10-pc pack — Founder explicit: NOT per piece" },
   "SEERA-SHINEPLUS-POWDER-5KG": { orderUnit: "BAG", unitsPerOrderUnit: 6, rateBasis: "Rate is for the full 6-pc pack — Founder explicit: NOT per piece" },
   "SEERA-BARTAN-300G": { orderUnit: "BOX", unitsPerOrderUnit: 36, rateBasis: "Rate per Box of 36 pcs" },
   "SEERA-BARTAN-500G": { orderUnit: "BOX", unitsPerOrderUnit: 24, rateBasis: "Rate per Box of 24 pcs" },
 };
+
+// Single source of truth for the PER_PC -> pack-total conversion — used identically by the catalog
+// DISPLAY rate (OperationalWorkspace.tsx) and the actual charged order total (createCompanyOrder,
+// workflow-service.ts), so they can never independently drift or disagree. Returns 1 (no-op) for
+// every PACK_TOTAL-basis SKU (the default), which is every SKU that existed before this field —
+// zero behavior change for those.
+export function companyOrderLineMultiplier(skuCode: string): number {
+  const override = COMPANY_ORDER_UNIT_OVERRIDES[skuCode];
+  return override?.basis === "PER_PC" ? (override.unitsPerOrderUnit ?? 1) : 1;
+}
 
 // The one conversion boundary between commercial order-unit quantities (Boxes/Bags, as ordered) and
 // canonical physical pieces (the single basis the shared inventory ledger must use — see the STAGE 12

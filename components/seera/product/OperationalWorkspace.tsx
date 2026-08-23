@@ -36,7 +36,7 @@ import { DistributorMoneyPanel } from "./DistributorMoneyPanel";
 import { IncomingStockCards } from "./IncomingStockCards";
 import { OrderFromSSWizard } from "./OrderFromSSWizard";
 import { CompanyOrderWizard, type CompanyCatalogItem } from "./CompanyOrderWizard";
-import { COMPANY_ORDER_UNIT_OVERRIDES, DEFAULT_MUV_ORDER_UNIT, activeSchemeNotesForSkus, activeRetailerCatalog } from "@/lib/sales-distribution/company-order-catalog";
+import { COMPANY_ORDER_UNIT_OVERRIDES, DEFAULT_MUV_ORDER_UNIT, activeSchemeNotesForSkus, activeRetailerCatalog, companyOrderLineMultiplier } from "@/lib/sales-distribution/company-order-catalog";
 import { formatAddress, priceModeForBrand, deriveInclusiveTax, deriveExclusiveTax } from "@/lib/sales-distribution/document-lines";
 import { distributorOrderLineAvailability, superStockistStockSummary, distributorReceiptStatus } from "@/lib/sales-distribution/super-stockist-easy-mode-service";
 import { PaymentProofReviewActions } from "./PaymentProofReviewActions";
@@ -4772,7 +4772,10 @@ export async function OperationalWorkspace({
       };
       const catalog: CompanyCatalogItem[] = allSkus.map((x) => {
         const override = COMPANY_ORDER_UNIT_OVERRIDES[x.code];
-        const rate = priceBySkuId.get(x.id) ?? null;
+        const baseRate = priceBySkuId.get(x.id);
+        // Same governed multiplier createCompanyOrder actually charges with (companyOrderLineMultiplier)
+        // — the displayed rate and the real charged total can never disagree.
+        const rate = baseRate != null ? baseRate * companyOrderLineMultiplier(x.code) : null;
         return {
           skuId: x.id,
           brand: x.brand,

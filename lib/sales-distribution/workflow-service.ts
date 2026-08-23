@@ -14,7 +14,7 @@ import {
 } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { resolveDistributorPurchaseRate } from "./distributor-pricing";
-import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, canonicalPiecesToWholesaleOrderUnit } from "./company-order-catalog";
+import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, canonicalPiecesToWholesaleOrderUnit, companyOrderLineMultiplier } from "./company-order-catalog";
 import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors, companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
 import { deriveInclusiveTax, deriveExclusiveTax, priceModeForBrand } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
@@ -2038,7 +2038,12 @@ export async function createCompanyOrder(
     "SUPER_STOCKIST",
   );
   if (!input.lines.length || input.lines.some((line)=>line.quantity<=0)) throw new FoundationError("INVALID_ORDER_LINES","At least one positive order line is required",400);
-  const now=new Date(), snapshots=await Promise.all(input.lines.map(async(line)=>{const sku=await prisma.seeraSku.findFirst({where:{id:line.skuId,status:"ACTIVE"}});if(!sku)throw new FoundationError("SKU_UNAVAILABLE","An ordered SKU is unavailable",409);const price=await prisma.seeraPriceVersion.findFirst({where:{skuId:sku.id,tier:"COMPANY_TO_SS",status:"ACTIVE",effectiveFrom:{lte:now},OR:[{effectiveTo:null},{effectiveTo:{gt:now}}]},orderBy:{effectiveFrom:"desc"}});if(!price)throw new FoundationError("PRICE_UNAVAILABLE",`No active Super Stockist price for ${sku.code}`,409);return{sku,price,quantity:line.quantity,total:Number(price.amount)*line.quantity};}));
+  // `companyOrderLineMultiplier` (Final 100% Closure, 23-Aug): the ONE place a PER_PC-basis SKU's
+  // governed base rate (e.g. Powder 1kg's ₹56.50/kg) gets multiplied into its actual BAG(25) order
+  // price — server-side, from the SAME governed table the catalog display reads, never from
+  // anything the S.S. client submits. Every pre-existing PACK_TOTAL SKU gets multiplier 1 (a no-op),
+  // so this line is byte-identical in effect to before for every SKU that isn't Powder 1kg.
+  const now=new Date(), snapshots=await Promise.all(input.lines.map(async(line)=>{const sku=await prisma.seeraSku.findFirst({where:{id:line.skuId,status:"ACTIVE"}});if(!sku)throw new FoundationError("SKU_UNAVAILABLE","An ordered SKU is unavailable",409);const price=await prisma.seeraPriceVersion.findFirst({where:{skuId:sku.id,tier:"COMPANY_TO_SS",status:"ACTIVE",effectiveFrom:{lte:now},OR:[{effectiveTo:null},{effectiveTo:{gt:now}}]},orderBy:{effectiveFrom:"desc"}});if(!price)throw new FoundationError("PRICE_UNAVAILABLE",`No active Super Stockist price for ${sku.code}`,409);const effectiveRate=Number(price.amount)*companyOrderLineMultiplier(sku.code);return{sku,price,quantity:line.quantity,total:effectiveRate*line.quantity};}));
   const subtotal=snapshots.reduce((sum,line)=>sum+line.total,0);
   // RUN 2B resume Section 12: currently always 0 in practice (no real Seera/MUV SKU has a governed
   // taxRate yet — see RUN 2B report), but derives real embedded tax the moment one is configured,
