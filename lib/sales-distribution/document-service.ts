@@ -61,7 +61,7 @@ export async function issueSystemDocument(db: PrismaClient, actorId: string, inp
   });
 }
 
-function snapshotForPdf(document: Awaited<ReturnType<PrismaClient["seeraCommercialDocument"]["findUniqueOrThrow"]>>): IssuedDocumentSnapshot {
+async function snapshotForPdf(db: PrismaClient, document: Awaited<ReturnType<PrismaClient["seeraCommercialDocument"]["findUniqueOrThrow"]>>): Promise<IssuedDocumentSnapshot> {
   const terms = document.paymentTermsSnapshot as { text?: string } | null;
   const issuerGstin = (document.issuerSnapshot as { gstin?: string } | null)?.gstin;
   const buyerGstin = (document.buyerSnapshot as { gstin?: string } | null)?.gstin;
@@ -93,13 +93,26 @@ function snapshotForPdf(document: Awaited<ReturnType<PrismaClient["seeraCommerci
     }
     return raw as IssuedDocumentSnapshot["lines"][number];
   });
-  return { type: document.type, documentNumber: document.documentNumber, issueDate: (document.issueDate ?? document.issuedAt ?? document.createdAt).toISOString().slice(0, 10), issuer: document.issuerSnapshot as IssuedDocumentSnapshot["issuer"], buyer: document.buyerSnapshot as IssuedDocumentSnapshot["buyer"], orderReference: document.orderId ?? undefined, lines, subtotal: Number(document.subtotal), taxableTotal: Number(document.taxableTotal), cgstTotal: Number(document.cgstTotal), sgstTotal: Number(document.sgstTotal), igstTotal: Number(document.igstTotal), grandTotal: Number(document.grandTotal), currency: document.currency, paymentTerms: terms?.text };
+  let originalDocumentNumber: string | undefined, originalDocumentDate: string | undefined;
+  if (document.originalDocumentId) {
+    const original = await db.seeraCommercialDocument.findUnique({ where: { id: document.originalDocumentId }, select: { documentNumber: true, issueDate: true, issuedAt: true, createdAt: true } });
+    if (original) {
+      originalDocumentNumber = original.documentNumber;
+      originalDocumentDate = (original.issueDate ?? original.issuedAt ?? original.createdAt).toISOString().slice(0, 10);
+    }
+  }
+  // supplySnapshot.notes is where createBillingDraft (billing-service.ts) stores the free-text
+  // reason a Credit/Debit Note is required to carry (see NOTE_REASON_REQUIRED there) — the PDF
+  // renderer has always supported a `notes` line, it was just never wired up from the stored
+  // record, so a Credit Note's mandatory reason silently never reached the printed document.
+  const supplyNotes = (document.supplySnapshot as { notes?: string } | null)?.notes;
+  return { type: document.type, documentNumber: document.documentNumber, issueDate: (document.issueDate ?? document.issuedAt ?? document.createdAt).toISOString().slice(0, 10), issuer: document.issuerSnapshot as IssuedDocumentSnapshot["issuer"], buyer: document.buyerSnapshot as IssuedDocumentSnapshot["buyer"], orderReference: document.orderId ?? undefined, lines, subtotal: Number(document.subtotal), taxableTotal: Number(document.taxableTotal), cgstTotal: Number(document.cgstTotal), sgstTotal: Number(document.sgstTotal), igstTotal: Number(document.igstTotal), grandTotal: Number(document.grandTotal), currency: document.currency, paymentTerms: terms?.text, notes: supplyNotes, validUntil: document.validUntil ? document.validUntil.toISOString().slice(0, 10) : undefined, originalDocumentNumber, originalDocumentDate };
 }
 
 export async function downloadDocument(db: PrismaClient, actorId: string, documentId: string) {
   await authorize(db, { actorId, permission: "document:view_scoped" }); const document = await db.seeraCommercialDocument.findUniqueOrThrow({ where: { id: documentId } });
   if (!(await canAccessDocument(db, actorId, document))) throw new FoundationError("DOCUMENT_SCOPE_DENIED", "Document scope denied", 403);
-  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); const bytes = await renderIssuedDocumentPdf(snapshotForPdf(document)); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes, mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
+  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); const bytes = await renderIssuedDocumentPdf(await snapshotForPdf(db, document)); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes, mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
   if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404); const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } }); if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes: new Uint8Array(file.contentBytes), mimeType: file.mimeType, filename: file.originalName };
 }
 
@@ -160,7 +173,7 @@ export async function sendDocumentViaWhatsApp(
   let bytes: Uint8Array, mimeType: string, filename: string;
   if (document.source === "SYSTEM_GENERATED") {
     if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be shared", 409);
-    bytes = await renderIssuedDocumentPdf(snapshotForPdf(document));
+    bytes = await renderIssuedDocumentPdf(await snapshotForPdf(db, document));
     mimeType = "application/pdf";
     filename = documentPdfFilename({ type: document.type, documentNumber: document.documentNumber });
   } else {
@@ -227,7 +240,7 @@ export async function downloadValidatedShare(db: PrismaClient, grantId: string) 
   const grant = await db.seeraDocumentShareGrant.findFirst({ where: { id: grantId, revokedAt: null, expiresAt: { gt: new Date() }, accessCount: { gt: 0 } }, include: { document: true } });
   if (!grant) throw new FoundationError("SHARE_ACCESS_DENIED", "Secure share unavailable", 403);
   const document = grant.document;
-  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); return { bytes: await renderIssuedDocumentPdf(snapshotForPdf(document)), mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
+  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); return { bytes: await renderIssuedDocumentPdf(await snapshotForPdf(db, document)), mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
   if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404); const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } }); if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404); return { bytes: new Uint8Array(file.contentBytes), mimeType: file.mimeType, filename: file.originalName };
 }
 

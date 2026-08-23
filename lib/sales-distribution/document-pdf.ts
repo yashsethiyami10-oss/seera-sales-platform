@@ -14,7 +14,49 @@ export type IssuedDocumentSnapshot = {
   orderReference?: string; lines: DocumentLineSnapshot[]; subtotal: number; taxableTotal: number;
   cgstTotal: number; sgstTotal: number; igstTotal: number; grandTotal: number; currency?: string;
   paymentTerms?: string; notes?: string;
+  // Billing/Quotation Finalization (23-Aug): validUntil is real Prisma data (SeeraCommercialDocument.
+  // validUntil) that already existed but was silently dropped before reaching the PDF — Quotations
+  // only. originalDocumentNumber/Date resolve a Credit/Debit Note's real originalDocumentId link (the
+  // invoice it corrects) so the printed document names what it's against, never invented for a
+  // document type that has no such link.
+  validUntil?: string;
+  originalDocumentNumber?: string;
+  originalDocumentDate?: string;
 };
+
+// Indian numbering (Lakh/Crore), standard on printed Indian commercial documents — every rupee
+// figure on this PDF is INR (money() above hardcodes "Rs." for the same reason), so no other
+// numbering convention applies here.
+const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+function twoDigitWords(n: number): string {
+  if (n < 20) return ONES[n]!;
+  return `${TENS[Math.floor(n / 10)]}${n % 10 ? ` ${ONES[n % 10]}` : ""}`;
+}
+function threeDigitWords(n: number): string {
+  if (n < 100) return twoDigitWords(n);
+  return `${ONES[Math.floor(n / 100)]} Hundred${n % 100 ? ` ${twoDigitWords(n % 100)}` : ""}`;
+}
+function integerWords(n: number): string {
+  if (n === 0) return "Zero";
+  const crore = Math.floor(n / 10000000);
+  const lakh = Math.floor((n % 10000000) / 100000);
+  const thousand = Math.floor((n % 100000) / 1000);
+  const rest = n % 1000;
+  const parts: string[] = [];
+  if (crore) parts.push(`${threeDigitWords(crore)} Crore`);
+  if (lakh) parts.push(`${threeDigitWords(lakh)} Lakh`);
+  if (thousand) parts.push(`${threeDigitWords(thousand)} Thousand`);
+  if (rest) parts.push(threeDigitWords(rest));
+  return parts.join(" ");
+}
+export function amountInWords(value: number, currency = "INR"): string {
+  const rupees = Math.floor(Math.abs(value));
+  const paise = Math.round((Math.abs(value) - rupees) * 100);
+  const unit = currency === "INR" ? "Rupees" : currency;
+  const words = `${unit} ${integerWords(rupees)} Only`;
+  return paise ? `${unit} ${integerWords(rupees)} and ${twoDigitWords(paise)} Paise Only` : words;
+}
 
 const devanagari = /[ऀ-ॿ]/;
 const safeFile = (name: string) => path.join(process.cwd(), "node_modules", "@fontsource", name);
@@ -107,8 +149,20 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   rightText(title, MARGIN + CONTENT_WIDTH, headerTop - 14, { size: 17, strong: true, color: BRAND });
   rightText(snapshot.documentNumber, MARGIN + CONTENT_WIDTH, headerTop - 30, { size: 10, strong: true });
   rightText(`Date: ${snapshot.issueDate}`, MARGIN + CONTENT_WIDTH, headerTop - 44, { size: 9, color: MUTED });
-  if (snapshot.orderReference) rightText(`Order ref: ${snapshot.orderReference}`, MARGIN + CONTENT_WIDTH, headerTop - 56, { size: 8, color: MUTED });
-  y = headerTop - 68;
+  let headerLineY = headerTop - 56;
+  if (snapshot.validUntil) {
+    rightText(`Valid until: ${snapshot.validUntil}`, MARGIN + CONTENT_WIDTH, headerLineY, { size: 8, color: MUTED });
+    headerLineY -= 12;
+  }
+  if (snapshot.orderReference) {
+    rightText(`Order ref: ${snapshot.orderReference}`, MARGIN + CONTENT_WIDTH, headerLineY, { size: 8, color: MUTED });
+    headerLineY -= 12;
+  }
+  if (snapshot.originalDocumentNumber) {
+    rightText(`Against Invoice: ${snapshot.originalDocumentNumber}${snapshot.originalDocumentDate ? ` (${snapshot.originalDocumentDate})` : ""}`, MARGIN + CONTENT_WIDTH, headerLineY, { size: 8, color: MUTED });
+    headerLineY -= 12;
+  }
+  y = Math.min(headerTop - 68, headerLineY - 12);
   page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + CONTENT_WIDTH, y }, thickness: 1.2, color: BRAND });
   y -= 18;
 
@@ -241,6 +295,15 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   totalsRow("GRAND TOTAL", money(snapshot.grandTotal, snapshot.currency), { strong: true, size: 13 });
   y -= 8;
 
+  // ---- Amount in words ----
+  ensureRoom(16);
+  const wordsLine = wrap(`Amount in words: ${amountInWords(snapshot.grandTotal, snapshot.currency)}`, latin, 8, CONTENT_WIDTH);
+  wordsLine.forEach((l) => {
+    text(l, MARGIN, y, { size: 8, strong: true, color: MUTED });
+    y -= 11;
+  });
+  y -= 4;
+
   // ---- Terms / notes ----
   if (snapshot.paymentTerms) {
     ensureRoom(16);
@@ -252,6 +315,18 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
     text(`Notes: ${snapshot.notes}`, MARGIN, y, { size: 8.5, maxWidth: CONTENT_WIDTH });
     y -= 14;
   }
+
+  // ---- Signatory block ----
+  ensureRoom(60);
+  y -= 8;
+  const sigWidth = 180;
+  const sigX = MARGIN + CONTENT_WIDTH - sigWidth;
+  text(`For ${snapshot.issuer.tradeName ?? snapshot.issuer.legalName}`, sigX, y, { size: 8.5, strong: true });
+  y -= 42;
+  page.drawLine({ start: { x: sigX, y }, end: { x: sigX + sigWidth, y }, thickness: 0.6, color: RULE });
+  y -= 10;
+  text("Authorised Signatory / Seal", sigX, y, { size: 7.5, color: MUTED });
+  y -= 16;
 
   // ---- Footer ----
   ensureRoom(20);

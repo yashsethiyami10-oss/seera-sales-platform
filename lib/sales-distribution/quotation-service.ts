@@ -360,8 +360,15 @@ export async function convertQuotationToOrder(
   await requireIssuerScope(prisma, actorId, document.issuerType, document.issuerId);
   if (document.status !== "ACCEPTED")
     throw new FoundationError("QUOTATION_NOT_ACCEPTED", "Only an accepted quotation can be converted", 409);
-  if (document.convertedOrderId)
+  // Retry-safety (Billing/Quotation Finalization, 23-Aug): a retry after the FIRST conversion already
+  // succeeded must return that SAME order, not an error — a network retry or double submit must never
+  // read as a failure once the quotation is genuinely already converted (mirrors the idempotencyKey
+  // check below, which only catches a retry that reuses the exact same key).
+  if (document.convertedOrderId) {
+    const existingOrder = await prisma.seeraSalesOrder.findUnique({ where: { id: document.convertedOrderId } });
+    if (existingOrder) return existingOrder;
     throw new FoundationError("QUOTATION_ALREADY_CONVERTED", "This quotation was already converted", 409);
+  }
   if (document.validUntil && document.validUntil < new Date())
     throw new FoundationError("QUOTATION_EXPIRED", "This quotation has already expired", 409);
   const lines = document.lineSnapshot as unknown as QuotationLineSnapshot[];

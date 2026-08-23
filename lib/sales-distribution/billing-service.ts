@@ -55,6 +55,33 @@ async function loadOwnedDocument(db: PrismaClient, documentId: string) {
   return document;
 }
 
+// Founder rule: a Credit Note can never reduce an invoice by more than what's still eligible —
+// original grandTotal minus every OTHER already-ISSUED Credit Note against the same original
+// (excludeDocumentId lets issueBillingDraft re-check a draft against itself without double-counting
+// its own prior draft total). Checked both at draft time (early feedback) and again at issue time
+// inside the transaction (the authoritative, race-safe gate — two drafts against the same invoice
+// could otherwise both pass the early check and jointly over-credit it).
+async function assertWithinRemainingCredit(
+  db: Prisma.TransactionClient | PrismaClient,
+  originalDocumentId: string,
+  candidateGrandTotal: number,
+  excludeDocumentId?: string,
+) {
+  const original = await db.seeraCommercialDocument.findUnique({ where: { id: originalDocumentId }, select: { grandTotal: true } });
+  if (!original) throw new FoundationError("ORIGINAL_DOCUMENT_SCOPE_DENIED", "Original document is unavailable", 403);
+  const priorCredits = await db.seeraCommercialDocument.aggregate({
+    where: { originalDocumentId, type: "CREDIT_NOTE", status: "ISSUED", ...(excludeDocumentId ? { id: { not: excludeDocumentId } } : {}) },
+    _sum: { grandTotal: true },
+  });
+  const remaining = Number(original.grandTotal) - Number(priorCredits._sum.grandTotal ?? 0);
+  if (candidateGrandTotal > remaining + 0.01)
+    throw new FoundationError(
+      "CREDIT_EXCEEDS_REMAINING",
+      `Credit Note amount (Rs.${candidateGrandTotal.toFixed(2)}) exceeds the remaining eligible credit (Rs.${remaining.toFixed(2)}) against this invoice`,
+      409,
+    );
+}
+
 export async function createBillingDraft(
   prisma: PrismaClient,
   actorId: string,
@@ -80,8 +107,17 @@ export async function createBillingDraft(
       "A Credit Note or Debit Note must reference the original document it corrects",
       400,
     );
+  // Founder rule (Billing/Quotation Finalization, 23-Aug): a governed reduction/reversal against an
+  // issued invoice must always carry a stated reason — never a silent adjustment.
+  if ((input.type === "CREDIT_NOTE" || input.type === "DEBIT_NOTE") && !input.notes?.trim())
+    throw new FoundationError(
+      "NOTE_REASON_REQUIRED",
+      "A Credit Note or Debit Note must state a reason",
+      400,
+    );
+  let original: Awaited<ReturnType<PrismaClient["seeraCommercialDocument"]["findFirst"]>> = null;
   if (input.originalDocumentId) {
-    const original = await prisma.seeraCommercialDocument.findFirst({
+    original = await prisma.seeraCommercialDocument.findFirst({
       where: { id: input.originalDocumentId, issuerId: input.issuerId, status: { not: "DRAFT" } },
     });
     if (!original)
@@ -91,6 +127,8 @@ export async function createBillingDraft(
   if (existing) return existing;
   const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
   const totals = totalsOf(lines);
+  if (input.type === "CREDIT_NOTE" && input.originalDocumentId)
+    await assertWithinRemainingCredit(prisma, input.originalDocumentId, totals.grandTotal);
   const [issuerSnapshot, buyerSnapshot] = await Promise.all([
     partySnapshot(prisma, input.issuerType, input.issuerId),
     partySnapshot(prisma, input.buyerType, input.buyerId),
@@ -146,8 +184,12 @@ export async function updateBillingDraft(
   await requireIssuerScope(prisma, actorId, document.issuerType, document.issuerId);
   if (document.status !== "DRAFT")
     throw new FoundationError("DOCUMENT_NOT_DRAFT", "Only a draft document can be edited", 409);
+  if ((document.type === "CREDIT_NOTE" || document.type === "DEBIT_NOTE") && !input.notes?.trim())
+    throw new FoundationError("NOTE_REASON_REQUIRED", "A Credit Note or Debit Note must state a reason", 400);
   const lines = await buildLineSnapshots(prisma, input.lines, { enforceTax: false });
   const totals = totalsOf(lines);
+  if (document.type === "CREDIT_NOTE" && document.originalDocumentId)
+    await assertWithinRemainingCredit(prisma, document.originalDocumentId, totals.grandTotal, document.id);
   const issuerGstin = (document.issuerSnapshot as { gstin?: string } | null)?.gstin;
   const buyerGstin = (document.buyerSnapshot as { gstin?: string } | null)?.gstin;
   const split = taxSplit(issuerGstin, buyerGstin, totals.taxTotal);
@@ -224,6 +266,11 @@ export async function issueBillingDraft(prisma: PrismaClient, actorId: string, d
     } as Prisma.InputJsonValue;
   }
   return prisma.$transaction(async (tx) => {
+    // Authoritative, race-safe re-check inside the transaction: two drafts against the same
+    // invoice could each pass createBillingDraft's/updateBillingDraft's early check and still
+    // jointly over-credit it if issued concurrently — this is the gate that actually prevents that.
+    if (type === "CREDIT_NOTE" && document.originalDocumentId)
+      await assertWithinRemainingCredit(tx, document.originalDocumentId, Number(document.grandTotal), document.id);
     const fy = financialYear(now);
     const sequence = await tx.seeraDocumentSequence.upsert({
       where: {

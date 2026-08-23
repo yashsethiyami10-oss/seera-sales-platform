@@ -3601,6 +3601,8 @@ export async function OperationalWorkspace({
           rate: Number(x.prices[0]?.amount ?? x.mrp),
           taxRate: x.taxRate == null ? null : Number(x.taxRate),
           brand: x.brand,
+          unitsPerCase: x.unitsPerCase,
+          caseUnit: x.unitsPerCase > 1 ? (x.unitType === "g" ? "BOX" : x.unitType === "kg" ? "BAG" : null) : null,
         }))}
         quotations={quotations.map((q) => ({
           id: q.id,
@@ -3653,6 +3655,15 @@ export async function OperationalWorkspace({
       orderBy: { createdAt: "desc" },
       take: 50,
     });
+    // Billing/Quotation Finalization (23-Aug): per-invoice already-credited total, so BillingActions
+    // can show "remaining eligible credit" before a Credit Note is even drafted — same aggregate
+    // billing-service.ts's assertWithinRemainingCredit enforces server-side at draft/issue time.
+    const creditedByOriginal = await db.seeraCommercialDocument.groupBy({
+      by: ["originalDocumentId"],
+      where: { originalDocumentId: { in: documents.map((d) => d.id) }, type: "CREDIT_NOTE", status: "ISSUED" },
+      _sum: { grandTotal: true },
+    });
+    const creditedMap = new Map(creditedByOriginal.map((c) => [c.originalDocumentId as string, Number(c._sum.grandTotal ?? 0)]));
     workflow = (
       <BillingActions
         language={language}
@@ -3669,6 +3680,8 @@ export async function OperationalWorkspace({
           rate: Number(x.prices[0]?.amount ?? x.mrp),
           taxRate: x.taxRate == null ? null : Number(x.taxRate),
           brand: x.brand,
+          unitsPerCase: x.unitsPerCase,
+          caseUnit: x.unitsPerCase > 1 ? (x.unitType === "g" ? "BOX" : x.unitType === "kg" ? "BAG" : null) : null,
         }))}
         orders={recentOrders.map((o) => ({
           value: o.id,
@@ -3686,6 +3699,7 @@ export async function OperationalWorkspace({
           cgstTotal: Number(d.cgstTotal),
           sgstTotal: Number(d.sgstTotal),
           igstTotal: Number(d.igstTotal),
+          creditedTotal: creditedMap.get(d.id) ?? 0,
         }))}
       />
     );

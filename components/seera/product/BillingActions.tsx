@@ -8,10 +8,28 @@ type Option = { value: string; label: string };
 // taxRate null (not 0) means "no governed GST rate configured yet" — kept distinct from a
 // legitimate 0%-rated SKU (Founder UAT fix, mirrors QuotationActions.tsx's own comment: a coerced
 // `?? 0` made the server's TAX_CONFIGURATION_REQUIRED gate unreachable from this UI).
-type Sku = { value: string; label: string; rate: number; taxRate: number | null; brand: string };
+type Sku = { value: string; label: string; rate: number; taxRate: number | null; brand: string; unitsPerCase: number; caseUnit: "BOX" | "BAG" | null };
 // Mirrors priceModeForBrand in lib/sales-distribution/document-lines.ts — see QuotationActions.tsx's
 // identical local copy for why this isn't imported from that module client-side.
 const isGstInclusiveBrand = (brand: string) => /^muv$/i.test(brand.trim());
+// Commercial UOM (Billing/Quotation Finalization, 23-Aug) — identical convention to
+// QuotationActions.tsx's own toBasePcLine (itself mirroring FieldJourney.tsx's order line): the
+// editor collects quantity/rate at whichever unit the user picks, this converts to the base-PC
+// quantity/per-PC rate document-lines.ts's buildLineSnapshots has always expected. Gross value is
+// invariant under the conversion, so no tax/preview math changes.
+type EditableLine = { key: string; skuId: string; quantity: number; rate: number; discountPct: number; taxRate: number | null; uom: string };
+function toBasePcLine(line: EditableLine, skuByValue: Map<string, Sku>) {
+  const sku = skuByValue.get(line.skuId);
+  const packFactor = line.uom !== "PC" && sku && sku.unitsPerCase > 1 ? sku.unitsPerCase : 1;
+  return {
+    skuId: line.skuId,
+    quantity: line.quantity * packFactor,
+    rate: packFactor > 1 ? line.rate / packFactor : line.rate,
+    discountPct: line.discountPct,
+    taxRate: line.taxRate,
+    uom: packFactor > 1 ? { unit: line.uom, packFactor, uomQuantity: line.quantity } : undefined,
+  };
+}
 // Mirrors buildLineSnapshots' per-line math exactly (document-lines.ts) — see QuotationActions.tsx's
 // identical local copy for the full rationale.
 function taxBreakdownPreview(rate: number, quantity: number, discountPct: number, taxRate: number | null, inclusive: boolean) {
@@ -37,6 +55,7 @@ type BillingDoc = {
   cgstTotal: number;
   sgstTotal: number;
   igstTotal: number;
+  creditedTotal: number;
 };
 const key = () => crypto.randomUUID();
 async function post(action: string, payload: unknown) {
@@ -73,9 +92,10 @@ export function BillingActions({
     [message, setMessage] = useState(""),
     [type, setType] = useState("TAX_INVOICE"),
     [originalDocumentId, setOriginalDocumentId] = useState(""),
-    [lines, setLines] = useState([
-      { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null as number | null },
-    ]);
+    [lines, setLines] = useState<EditableLine[]>([
+      { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null, uom: "PC" },
+    ]),
+    skuByValue = new Map(skus.map((s) => [s.value, s]));
   const isNote = type === "CREDIT_NOTE" || type === "DEBIT_NOTE";
   const issuedDocuments = documents.filter((d) => d.status !== "DRAFT");
   const run = async (action: string, payload: unknown) => {
@@ -167,13 +187,7 @@ export function BillingActions({
             idempotencyKey: key(),
             lines: lines
               .filter((l) => l.skuId && l.quantity > 0)
-              .map(({ skuId, quantity, rate, discountPct, taxRate }) => ({
-                skuId,
-                quantity,
-                rate,
-                discountPct,
-                taxRate,
-              })),
+              .map((l) => toBasePcLine(l, skuByValue)),
           });
         }}
       >
@@ -251,6 +265,18 @@ export function BillingActions({
                 </option>
               ))}
             </select>
+            {type === "CREDIT_NOTE" && originalDocumentId && (() => {
+              const original = issuedDocuments.find((d) => d.id === originalDocumentId);
+              if (!original) return null;
+              const remaining = original.grandTotal - original.creditedTotal;
+              return (
+                <small>
+                  {hi
+                    ? `मूल राशि ₹${original.grandTotal.toFixed(2)} · पहले से क्रेडिट ₹${original.creditedTotal.toFixed(2)} · शेष पात्र क्रेडिट ₹${remaining.toFixed(2)}`
+                    : `Original ₹${original.grandTotal.toFixed(2)} · Already credited ₹${original.creditedTotal.toFixed(2)} · Remaining eligible credit ₹${remaining.toFixed(2)}`}
+                </small>
+              );
+            })()}
           </label>
         )}
         {lines.map((line, index) => (
@@ -262,10 +288,14 @@ export function BillingActions({
                 value={line.skuId}
                 onChange={(e) => {
                   const sku = skus.find((s) => s.value === e.target.value);
+                  // Mirrors QuotationActions.tsx: default to the SKU's governed case unit when one
+                  // exists, PC stays available as the secondary "Sell by" option.
+                  const defaultUom = sku && sku.caseUnit && sku.unitsPerCase > 1 ? sku.caseUnit : "PC";
                   setLine(line.key, {
                     skuId: e.target.value,
                     rate: sku?.rate ?? 0,
                     taxRate: sku?.taxRate ?? null,
+                    uom: defaultUom,
                   });
                 }}
                 required
@@ -278,8 +308,20 @@ export function BillingActions({
                 ))}
               </select>
             </label>
+            {(() => {
+              const sku = skus.find((s) => s.value === line.skuId);
+              return sku && sku.caseUnit && sku.unitsPerCase > 1 ? (
+                <label>
+                  {hi ? "बेचें" : "Sell by"}
+                  <select value={line.uom} onChange={(e) => setLine(line.key, { uom: e.target.value })}>
+                    <option value="PC">{hi ? "पीस" : "PC"}</option>
+                    <option value={sku.caseUnit}>{sku.caseUnit} ({sku.unitsPerCase} PC)</option>
+                  </select>
+                </label>
+              ) : null;
+            })()}
             <label>
-              {hi ? "मात्रा" : "Quantity"}
+              {hi ? "मात्रा" : "Quantity"} {line.uom !== "PC" ? `(${line.uom})` : ""}
               <input
                 type="number"
                 min="1"
@@ -288,9 +330,13 @@ export function BillingActions({
                 onChange={(e) => setLine(line.key, { quantity: Number(e.target.value) })}
                 required
               />
+              {(() => {
+                const sku = skus.find((s) => s.value === line.skuId);
+                return sku && line.uom !== "PC" ? <small>{`= ${line.quantity * sku.unitsPerCase} PC`}</small> : null;
+              })()}
             </label>
             <label>
-              {hi ? "दर" : "Rate"}
+              {hi ? `दर / ${line.uom}` : `Rate / ${line.uom}`}
               <input
                 type="number"
                 min="0"
@@ -350,7 +396,7 @@ export function BillingActions({
           onClick={() =>
             setLines((current) => [
               ...current,
-              { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null as number | null },
+              { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null, uom: "PC" },
             ])
           }
         >
@@ -361,8 +407,8 @@ export function BillingActions({
           <input name="paymentTerms" />
         </label>
         <label>
-          {hi ? "टिप्पणी" : "Notes"}
-          <input name="notes" />
+          {isNote ? (hi ? "कारण" : "Reason") : hi ? "टिप्पणी" : "Notes"}
+          <input name="notes" required={isNote} />
         </label>
         <button disabled={busy || !issuers.length || !buyers.length || !skus.length}>
           {hi ? "ड्राफ्ट सहेजें" : "Save draft"}

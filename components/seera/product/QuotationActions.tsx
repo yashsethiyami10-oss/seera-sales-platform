@@ -32,7 +32,7 @@ function taxBreakdownPreview(rate: number, quantity: number, discountPct: number
 // legitimate 0%-rated SKU (Founder UAT fix: a coerced `?? 0` here made the server's
 // TAX_CONFIGURATION_REQUIRED gate unreachable, since a submitted line always looked "configured".
 // Both the SKU's own display and the submit gate below now check `== null`, not falsy).
-type Sku = { value: string; label: string; rate: number; taxRate: number | null; brand: string };
+type Sku = { value: string; label: string; rate: number; taxRate: number | null; brand: string; unitsPerCase: number; caseUnit: "BOX" | "BAG" | null };
 type QuotationLine = {
   skuId: string;
   productNameSnapshot: string;
@@ -44,6 +44,24 @@ type QuotationLine = {
   lineTotal: number;
   priceMode: "GST_INCLUSIVE" | "GST_EXCLUSIVE";
 };
+// Commercial UOM (Billing/Quotation Finalization, 23-Aug): the SAME PC/BOX/BAG convention
+// FieldJourney.tsx's toBasePcLine already established — the line editor collects quantity/rate at
+// whichever unit the user picks (uom), and this converts to the base-PC quantity/per-PC rate
+// document-lines.ts's buildLineSnapshots has always expected, exactly like toBasePcLine does. Gross
+// value (rate*quantity) is invariant under the conversion, so no tax/preview math changes.
+type EditableLine = { key: string; skuId: string; quantity: number; rate: number; discountPct: number; taxRate: number | null; uom: string };
+function toBasePcLine(line: EditableLine, skuByValue: Map<string, Sku>) {
+  const sku = skuByValue.get(line.skuId);
+  const packFactor = line.uom !== "PC" && sku && sku.unitsPerCase > 1 ? sku.unitsPerCase : 1;
+  return {
+    skuId: line.skuId,
+    quantity: line.quantity * packFactor,
+    rate: packFactor > 1 ? line.rate / packFactor : line.rate,
+    discountPct: line.discountPct,
+    taxRate: line.taxRate,
+    uom: packFactor > 1 ? { unit: line.uom, packFactor, uomQuantity: line.quantity } : undefined,
+  };
+}
 type Quotation = {
   id: string;
   documentNumber: string;
@@ -87,9 +105,10 @@ export function QuotationActions({
     router = useRouter(),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
-    [lines, setLines] = useState([
-      { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null as number | null },
-    ]);
+    [lines, setLines] = useState<EditableLine[]>([
+      { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null, uom: "PC" },
+    ]),
+    skuByValue = new Map(skus.map((s) => [s.value, s]));
   const run = async (action: string, payload: unknown) => {
     setBusy(true);
     setMessage("");
@@ -177,13 +196,7 @@ export function QuotationActions({
             idempotencyKey: key(),
             lines: lines
               .filter((l) => l.skuId && l.quantity > 0)
-              .map(({ skuId, quantity, rate, discountPct, taxRate }) => ({
-                skuId,
-                quantity,
-                rate,
-                discountPct,
-                taxRate,
-              })),
+              .map((l) => toBasePcLine(l, skuByValue)),
           });
         }}
       >
@@ -236,17 +249,35 @@ export function QuotationActions({
                 value={line.skuId}
                 onChange={(v) => {
                   const sku = skus.find((s) => s.value === v);
+                  // Final Production Closure parity, P0-14 (Billing/Quotation Finalization, 23-Aug):
+                  // default to the SKU's governed case unit (Cake -> BOX, Powder -> BAG) when one
+                  // exists, exactly like FieldJourney.tsx's order line — PC stays available as the
+                  // secondary "Sell by" option, never the silent reset on product change.
+                  const defaultUom = sku && sku.caseUnit && sku.unitsPerCase > 1 ? sku.caseUnit : "PC";
                   setLine(line.key, {
                     skuId: v,
                     rate: sku?.rate ?? 0,
                     taxRate: sku?.taxRate ?? null,
+                    uom: defaultUom,
                   });
                 }}
                 required
               />
             </label>
+            {(() => {
+              const sku = skus.find((s) => s.value === line.skuId);
+              return sku && sku.caseUnit && sku.unitsPerCase > 1 ? (
+                <label>
+                  {hi ? "बेचें" : "Sell by"}
+                  <select value={line.uom} onChange={(e) => setLine(line.key, { uom: e.target.value })}>
+                    <option value="PC">{hi ? "पीस" : "PC"}</option>
+                    <option value={sku.caseUnit}>{sku.caseUnit} ({sku.unitsPerCase} PC)</option>
+                  </select>
+                </label>
+              ) : null;
+            })()}
             <label>
-              {hi ? "मात्रा" : "Quantity"}
+              {hi ? "मात्रा" : "Quantity"} {line.uom !== "PC" ? `(${line.uom})` : ""}
               <input
                 type="number"
                 min="1"
@@ -255,9 +286,13 @@ export function QuotationActions({
                 onChange={(e) => setLine(line.key, { quantity: Number(e.target.value) })}
                 required
               />
+              {(() => {
+                const sku = skus.find((s) => s.value === line.skuId);
+                return sku && line.uom !== "PC" ? <small>{`= ${line.quantity * sku.unitsPerCase} PC`}</small> : null;
+              })()}
             </label>
             <label>
-              {hi ? "दर / विक्रय मूल्य (GST सहित)" : "Rate / Selling Price (Incl. GST)"}
+              {hi ? `दर / ${line.uom} (GST सहित)` : `Rate / ${line.uom} (Incl. GST)`}
               <input
                 type="number"
                 min="0"
@@ -311,7 +346,7 @@ export function QuotationActions({
           onClick={() =>
             setLines((current) => [
               ...current,
-              { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null as number | null },
+              { key: key(), skuId: "", quantity: 1, rate: 0, discountPct: 0, taxRate: null, uom: "PC" },
             ])
           }
         >

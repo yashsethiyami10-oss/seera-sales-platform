@@ -5,6 +5,15 @@ import { FoundationError } from "@/lib/foundation/errors";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+// Commercial UOM (Billing/Quotation Finalization, 23-Aug): mirrors the SAME
+// convention workflow-service.ts's OrderLineInput/toBasePcLine (FieldJourney.tsx) already
+// established for retailer/company orders — `quantity`/`rate` here are ALWAYS the base-PC figures
+// (the client converts a BOX/BAG-scoped entry to base PC before submitting, exactly like
+// toBasePcLine does), and `uom` is purely the human-readable record of what was actually quoted
+// (unit label + pack factor + the UOM-scoped quantity the user typed). No pricing math in this file
+// branches on `uom` — it only changes what packSnapshot renders as.
+export type CommercialLineUom = { unit: string; packFactor: number; uomQuantity: number };
+
 export type CommercialLineInput = {
   skuId: string;
   quantity: number;
@@ -15,6 +24,7 @@ export type CommercialLineInput = {
   // `taxRate: null` for those lines (QuotationActions.tsx/BillingActions.tsx's line state defaults
   // to null, not undefined) rather than omitting the key.
   taxRate?: number | null;
+  uom?: CommercialLineUom;
 };
 
 // Single shared, testable source of truth for the zod shape backing every quotation/billing draft
@@ -30,6 +40,7 @@ export const commercialLineInputSchema = z.object({
   rate: z.number().nonnegative(),
   discountPct: z.number().min(0).max(100).optional(),
   taxRate: z.number().min(0).max(100).nullable().optional(),
+  uom: z.object({ unit: z.string(), packFactor: z.number().positive(), uomQuantity: z.number().positive() }).optional(),
 });
 
 export type PriceMode = "GST_INCLUSIVE" | "GST_EXCLUSIVE";
@@ -55,6 +66,7 @@ export type CommercialLineSnapshot = {
   // legitimately contain unconfigured lines (Founder/Admin hasn't set GST/HSN for that SKU yet);
   // an ISSUED document must not.
   taxConfigured: boolean;
+  uom?: CommercialLineUom;
 };
 
 // GSTIN's first 2 characters are the official GST state code (e.g. "27" = Maharashtra) — a
@@ -181,7 +193,7 @@ export async function buildLineSnapshots(
         skuId: sku.id,
         skuCodeSnapshot: sku.code,
         productNameSnapshot: sku.productName,
-        packSnapshot: `${sku.packSize} ${sku.unitType}`,
+        packSnapshot: line.uom ? `${line.uom.uomQuantity} ${line.uom.unit} (${line.quantity} PC)` : `${sku.packSize} ${sku.unitType}`,
         mrpSnapshot: Number(sku.mrp),
         hsnSnapshot: sku.hsn ?? "",
         quantity: line.quantity,
@@ -193,6 +205,7 @@ export async function buildLineSnapshots(
         taxAmount,
         lineTotal,
         taxConfigured,
+        uom: line.uom,
       };
     }),
   );

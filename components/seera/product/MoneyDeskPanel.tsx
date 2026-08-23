@@ -38,6 +38,11 @@ type HomeData = {
   cashBankToday: { treasuryAccountId: string; name: string; kind: string; balance: number; movedToday: number }[];
   canApprove: boolean;
   canVoid: boolean;
+  salesDistribution: {
+    pendingPaymentProofs: { id: string; orderNumber: string; partyName: string; amount: string | number; reference: string; submittedAt: string; actionPath: string }[];
+    pendingTaClaims: { id: string; claimNumber: string; employeeName: string; amount: string | number | null; sentToAccountsAt: string | null; actionPath: string }[];
+    recentEntries: { id: string; entryNumber: string; type: string; amount: string | number; postedAt: string | null; reason: string }[];
+  };
 };
 
 const FIELD_LABEL: Record<string, { en: string; hi: string; type: "text" | "number" | "date" | "select-material" | "select-location" | "select-vendor" | "select-bill" | "select-return" | "select-unit" | "checkbox" }> = {
@@ -285,6 +290,49 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
             <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "कारण" : "Reason"}</th></tr></thead>
             <tbody>
               {home.needsAttention.map((t) => <tr key={t.id}><td>{t.transactionNumber}</td><td>{t.purposeCode}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {(home.salesDistribution.pendingPaymentProofs.length > 0 || home.salesDistribution.pendingTaClaims.length > 0) && (
+        <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
+          <strong>{hi ? "बिक्री एवं वितरण — लंबित कार्य" : "Sales & Distribution — pending actions"}</strong>
+          <table>
+            <thead><tr><th>{hi ? "प्रकार" : "Type"}</th><th>#</th><th>{hi ? "पार्टी / कर्मचारी" : "Party / Employee"}</th><th>{hi ? "राशि" : "Amount"}</th><th></th></tr></thead>
+            <tbody>
+              {home.salesDistribution.pendingPaymentProofs.map((p) => (
+                <tr key={`proof-${p.id}`}>
+                  <td>{hi ? "एस.एस. भुगतान प्रमाण" : "S.S. Payment Proof"}</td>
+                  <td>{p.orderNumber}</td>
+                  <td>{p.partyName}</td>
+                  <td>{money(p.amount)}</td>
+                  <td><a href={p.actionPath}>{hi ? "समीक्षा करें" : "Review"}</a></td>
+                </tr>
+              ))}
+              {home.salesDistribution.pendingTaClaims.map((c) => (
+                <tr key={`ta-${c.id}`}>
+                  <td>{hi ? "टीए प्रतिपूर्ति" : "TA Reimbursement"}</td>
+                  <td>{c.claimNumber}</td>
+                  <td>{c.employeeName}</td>
+                  <td>{money(c.amount)}</td>
+                  <td><a href={c.actionPath}>{hi ? "भुगतान करें" : "Pay"}</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {home.salesDistribution.recentEntries.length > 0 && (
+        <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
+          <strong>{hi ? "हाल की बिक्री एवं वितरण गतिविधि" : "Recent Sales & Distribution activity"}</strong>
+          <table>
+            <thead><tr><th>#</th><th>{hi ? "प्रकार" : "Type"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "विवरण" : "Reason"}</th></tr></thead>
+            <tbody>
+              {home.salesDistribution.recentEntries.map((e) => (
+                <tr key={e.id}><td>{e.entryNumber}</td><td>{e.type}</td><td>{money(e.amount)}</td><td>{e.reason}</td></tr>
+              ))}
             </tbody>
           </table>
         </div>

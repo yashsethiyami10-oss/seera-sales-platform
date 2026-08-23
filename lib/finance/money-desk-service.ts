@@ -437,12 +437,83 @@ const HANDLERS: Record<string, Handler> = {
 // shows. Needs Attention surfaces exceptions explicitly rather than hiding
 // them: transactions stuck in POSTING with a recorded failure (safe to
 // retry), and approvals waiting more than a day.
+// Final closure (23-Aug), Money Desk finalization: the Sales & Distribution domain (S.S. company-
+// order payments, TA reimbursements, Credit Notes) posts its own financial effect through
+// SeeraFinancialEntry (financial-service.ts/document-service.ts/travel-claim-service.ts) — a
+// completely separate, already-correct ledger from the Manufacturing/Vendor domain's
+// SeeraJournalLine Money Desk itself posts to. This is a READ-ONLY bridge, not a second accounting
+// engine: it surfaces what's pending/recent in that OTHER ledger so Accounts sees everything in one
+// place, but every action link routes to that domain's own existing, already-governed screen
+// (payment-inbox, ta-expenses) — Money Desk never re-implements verify/pay logic for these, and
+// therefore can never double-post against them.
+const EMPTY_SALES_DISTRIBUTION_BRIDGE = { pendingPaymentProofs: [], pendingTaClaims: [], recentEntries: [] } as const;
+
+async function salesDistributionBridge(db: PrismaClient, viewAll: boolean) {
+  // Company-wide S.S. payment / TA / document activity is Accounts-scope data, not per-requester —
+  // mirror moneyDeskHome's own viewAll split rather than leaking it to a non-Accounts Money Desk user.
+  if (!viewAll) return EMPTY_SALES_DISTRIBUTION_BRIDGE;
+  const [pendingProofs, pendingTaClaims, recentEntries] = await Promise.all([
+    db.seeraPaymentProof.findMany({
+      where: { status: { in: ["SUBMITTED", "UNDER_REVIEW"] } },
+      include: { order: { select: { orderNumber: true, buyerPartnerId: true } } },
+      orderBy: { submittedAt: "asc" },
+      take: 25,
+    }),
+    db.seeraTaClaim.findMany({
+      where: { status: "SENT_TO_ACCOUNTS" },
+      select: { id: true, claimNumber: true, employeeId: true, totalApproved: true, sentToAccountsAt: true },
+      orderBy: { sentToAccountsAt: "asc" },
+      take: 25,
+    }),
+    db.seeraFinancialEntry.findMany({
+      where: { status: "POSTED", OR: [{ taClaimId: { not: null } }, { type: { in: ["ADVANCE", "REIMBURSEMENT", "CREDIT_NOTE", "DEBIT_NOTE", "INVOICE"] } }] },
+      orderBy: { postedAt: "desc" },
+      take: 15,
+    }),
+  ]);
+  const proofPartnerIds = [...new Set(pendingProofs.map((p) => p.order.buyerPartnerId).filter((id): id is string => Boolean(id)))];
+  const claimEmployeeIds = pendingTaClaims.map((c) => c.employeeId);
+  const [partners, employees] = await Promise.all([
+    db.seeraPartner.findMany({ where: { id: { in: proofPartnerIds } }, select: { id: true, legalName: true, tradeName: true } }),
+    db.user.findMany({ where: { id: { in: claimEmployeeIds } }, select: { id: true, name: true, email: true } }),
+  ]);
+  const partnerName = new Map(partners.map((p) => [p.id, p.tradeName ?? p.legalName]));
+  const employeeName = new Map(employees.map((e) => [e.id, e.name ?? e.email]));
+  return {
+    pendingPaymentProofs: pendingProofs.map((p) => ({
+      id: p.id,
+      orderNumber: p.order.orderNumber,
+      partyName: (p.order.buyerPartnerId ? partnerName.get(p.order.buyerPartnerId) : undefined) ?? p.order.buyerPartnerId ?? "—",
+      amount: p.amount,
+      reference: p.reference,
+      submittedAt: p.submittedAt,
+      actionPath: "/portal/accounts/payment-inbox",
+    })),
+    pendingTaClaims: pendingTaClaims.map((c) => ({
+      id: c.id,
+      claimNumber: c.claimNumber,
+      employeeName: employeeName.get(c.employeeId) ?? c.employeeId,
+      amount: c.totalApproved,
+      sentToAccountsAt: c.sentToAccountsAt,
+      actionPath: "/portal/accounts/ta-expenses",
+    })),
+    recentEntries: recentEntries.map((e) => ({
+      id: e.id,
+      entryNumber: e.entryNumber,
+      type: e.type,
+      amount: e.amount,
+      postedAt: e.postedAt,
+      reason: e.reason,
+    })),
+  };
+}
+
 export async function moneyDeskHome(db: PrismaClient, actorId: string) {
   const { permissions } = await authorize(db, { actorId, permission: "money_desk:view" });
   const viewAll = permissions.has("money_desk:view_all") || permissions.has("system:super_admin");
   const scope = viewAll ? {} : { requestedById: actorId };
 
-  const [recent, pendingApproval, stuckPosting, treasuryAccounts, todayLines] = await Promise.all([
+  const [recent, pendingApproval, stuckPosting, treasuryAccounts, todayLines, salesDistribution] = await Promise.all([
     db.seeraMoneyDeskTransaction.findMany({ where: scope, orderBy: { createdAt: "desc" }, take: 25 }),
     db.seeraMoneyDeskTransaction.findMany({ where: { ...scope, status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" } }),
     db.seeraMoneyDeskTransaction.findMany({ where: { ...scope, status: "POSTING", failureReason: { not: null } }, orderBy: { createdAt: "asc" } }),
@@ -452,6 +523,7 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
       where: { treasuryAccountId: { not: null }, journal: { status: "POSTED", date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } },
       _sum: { debit: true, credit: true },
     }),
+    salesDistributionBridge(db, viewAll),
   ]);
 
   // Opening-today + today's net movement, per treasury account — a real, if
@@ -482,6 +554,7 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
     cashBankToday,
     canApprove: permissions.has("money_desk:approve") || permissions.has("system:super_admin"),
     canVoid: permissions.has("money_desk:reverse") || permissions.has("system:super_admin"),
+    salesDistribution,
   };
 }
 
