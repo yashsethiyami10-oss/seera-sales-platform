@@ -59,13 +59,14 @@ async function main() {
     lines: [{ skuId: process.env.PROOF_SKU_ID ?? "", quantity: 1 }],
     idempotencyKey: `uat-payment-proof-${Date.now()}`,
   });
-  const order = orderResult.body as { id: string; orderNumber: string; total: number };
-  console.log("[ORDER] status:", orderResult.status, "orderNumber:", order.orderNumber, "total:", order.total, "(expected 1412.5 for 1 BAG of SEERA-POWDER-1KG)");
+  const order = orderResult.body as { id: string; orderNumber: string; total: string | number };
+  const totalAmount = Number(order.total);
+  console.log("[ORDER] status:", orderResult.status, "orderNumber:", order.orderNumber, "total:", totalAmount, "(post-fix expected: the governed BAG price directly, no 25x multiplication)");
 
   const proofResult = await call(ssCookie, "/api/distribution/operations", "submit-payment-proof", {
     superStockistId,
     orderId: order.id,
-    amount: order.total,
+    amount: totalAmount,
     reference: "UAT-LIVE-PROOF-REF-001",
     idempotencyKey: `uat-proof-${Date.now()}`,
   });
