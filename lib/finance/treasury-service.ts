@@ -32,6 +32,24 @@ export async function listTreasuryAccounts(db: PrismaClient, actorId: string) {
   return db.seeraTreasuryAccount.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
 }
 
+// Treasury Accounts management screen needs both states in view (spec section 4:
+// "Create / View / Activate-Deactivate") — every other reader (Money Desk pickers,
+// Money In/Out/Transfer forms) deliberately keeps using listTreasuryAccounts()'s
+// active-only filter so a deactivated account can never be selected for a new
+// transaction while still being visible/reactivatable from Treasury Accounts.
+export async function listAllTreasuryAccounts(db: PrismaClient, actorId: string) {
+  await authorize(db, { actorId, permission: "gl:view" });
+  return db.seeraTreasuryAccount.findMany({ orderBy: [{ isActive: "desc" }, { name: "asc" }] });
+}
+
+export async function setTreasuryAccountActive(db: PrismaClient, actorId: string, input: { treasuryAccountId: string; isActive: boolean }) {
+  await authorize(db, { actorId, permission: "treasury_account:manage" });
+  const before = await db.seeraTreasuryAccount.findUniqueOrThrow({ where: { id: input.treasuryAccountId } });
+  const account = await db.seeraTreasuryAccount.update({ where: { id: input.treasuryAccountId }, data: { isActive: input.isActive } });
+  await recordAudit(db, { actorId, action: input.isActive ? "finance.treasury_account.activated" : "finance.treasury_account.deactivated", entityType: "SeeraTreasuryAccount", entityId: account.id, beforeState: { isActive: before.isActive }, afterState: { isActive: account.isActive } });
+  return account;
+}
+
 async function treasuryCoa(db: PrismaClient, treasuryAccountId: string) {
   const account = await db.seeraTreasuryAccount.findUniqueOrThrow({ where: { id: treasuryAccountId } });
   const coa = await db.seeraChartOfAccount.findUniqueOrThrow({ where: { id: account.chartOfAccountId } });

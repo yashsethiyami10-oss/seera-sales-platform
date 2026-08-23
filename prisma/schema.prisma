@@ -2563,6 +2563,14 @@ model SeeraExpense {
   documentFileId         String?
   isReimbursable         Boolean       @default(false)
   employeeId             String?
+  // Money Desk maturity pass (23-Aug): loose reference to SeeraGeographyNode (level:"TERRITORY") —
+  // same cross-domain-trace convention as SeeraVendorBill.sourceGrnId (Finance/Manufacturing stay
+  // separate domains; this is just the pointer between them, no FK, no merge). Null is a real,
+  // intentional state ("Corporate"/central expense, e.g. a pan-India ad campaign or HQ rent) —
+  // never force-filled. Kept as its own field rather than overloading `dimensionId` (which already
+  // means "department" elsewhere — expenseByDepartment) so Territory and department stay queryable
+  // independently, exactly as the spec asked ("keep category and group separate").
+  territoryId            String?
   recurringTemplateId    String?
   // FINANCE QUICK ENTRY: what kind of entry this was AT THE TIME OF ENTRY
   // (EXPENSE/ADVANCE/REIMBURSEMENT/SALARY/PAYMENT/OTHER) — purely descriptive
@@ -2585,6 +2593,7 @@ model SeeraExpense {
   @@index([employeeId])
   @@index([categoryId, date])
   @@index([entryType, date])
+  @@index([territoryId, date])
   @@map("seera_expenses")
 }
 

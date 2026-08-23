@@ -4,7 +4,7 @@ import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
 import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { FoundationError } from "@/lib/foundation/errors";
-import { salesRegister, companyFacingParties, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct } from "@/lib/finance/reports-service";
+import { salesRegister, companyFacingParties, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct } from "@/lib/finance/reports-service";
 import { financeGlobalSearch } from "@/lib/finance/search-service";
 import { financialIntelligenceFeed } from "@/lib/finance/intelligence-service";
 import { journalDetail, recentJournals } from "@/lib/finance/journal-service";
@@ -57,6 +57,9 @@ export async function GET(request: Request) {
         break;
       case "expense-by-department":
         result = await expenseByDepartment(prisma, user.id, { from, to });
+        break;
+      case "expense-by-territory":
+        result = await expenseByTerritory(prisma, user.id, { from, to });
         break;
       case "expense-trend":
         result = await monthlyExpenseTrend(prisma, user.id, Number(url.searchParams.get("months") ?? 6));

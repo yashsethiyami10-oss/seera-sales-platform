@@ -239,6 +239,10 @@ const HANDLERS: Record<string, Handler> = {
       treasuryAccountId: txn.treasuryAccountId ?? undefined,
       partyName: txn.counterpartyName ?? undefined,
       employeeId: (formData.employeeId as string) ?? undefined,
+      // Governed override (Money Desk maturity pass, 23-Aug) — left blank, this auto-derives from
+      // employeeId inside quickEntryCreate; an operator can still override with an explicit
+      // territory when the source doesn't already know it (e.g. no employee on the entry).
+      territoryId: (formData.territoryId as string) || undefined,
       remark: txn.description ?? undefined,
       documentFileId: txn.documentFileId ?? undefined,
       idempotencyKey: txn.idempotencyKey,
@@ -566,13 +570,17 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
 // is convenience data, never the security boundary.
 export async function moneyDeskSupportingData(db: PrismaClient, actorId: string) {
   await authorize(db, { actorId, permission: "money_desk:view" });
-  const [treasuryAccounts, vendors, materials, locations, pendingReturnRequests, openVendorBills] = await Promise.all([
+  const [treasuryAccounts, vendors, materials, locations, pendingReturnRequests, openVendorBills, territories] = await Promise.all([
     db.seeraTreasuryAccount.findMany({ where: { isActive: true }, select: { id: true, name: true, kind: true, chartOfAccountId: true } }),
     db.seeraVendor.findMany({ where: { isActive: true }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 200 }),
     db.seeraManufacturingMaterial.findMany({ select: { id: true, code: true, name: true, baseUnit: true }, orderBy: { name: "asc" }, take: 500 }),
     db.seeraManufacturingLocation.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
     db.seeraReturnRequest.findMany({ where: { status: "APPROVED", creditNoteRequested: true, refundJournalId: null }, select: { id: true, requestNumber: true, reason: true, retailerId: true }, orderBy: { createdAt: "desc" }, take: 100 }),
     db.seeraVendorBill.findMany({ where: { status: { in: ["APPROVED", "PARTIALLY_PAID"] } }, select: { id: true, billNumber: true, vendorId: true, grossAmount: true, paidAmount: true }, orderBy: { dueDate: "asc" }, take: 200 }),
+    // Territory picker (Money Desk maturity pass, 23-Aug) — same SeeraGeographyNode{level:TERRITORY}
+    // rows the Sales & Distribution domain already governs (Beat Planner, Executive assignment);
+    // Money Desk reads this, it never maintains its own copy of geography.
+    db.seeraGeographyNode.findMany({ where: { level: "TERRITORY", status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   const treasuryCoaIds = treasuryAccounts.map((t) => t.chartOfAccountId);
   const treasuryCoas = await db.seeraChartOfAccount.findMany({ where: { id: { in: treasuryCoaIds } }, select: { id: true, code: true } });
@@ -584,5 +592,6 @@ export async function moneyDeskSupportingData(db: PrismaClient, actorId: string)
     locations,
     pendingReturnRequests,
     openVendorBills: openVendorBills.map((b) => ({ id: b.id, billNumber: b.billNumber, vendorId: b.vendorId, due: Number(b.grossAmount) - Number(b.paidAmount) })),
+    territories,
   };
 }

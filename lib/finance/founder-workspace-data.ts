@@ -3,7 +3,7 @@ import { FoundationError } from "@/lib/foundation/errors";
 import { listAccounts } from "./chart-of-accounts";
 import { listDimensions } from "./dimension-service";
 import { trialBalance } from "./journal-service";
-import { listTreasuryAccounts } from "./treasury-service";
+import { listTreasuryAccounts, listAllTreasuryAccounts } from "./treasury-service";
 import { listVendors, payablesView } from "./vendor-service";
 import { listExpenseCategories, expensesPendingApproval, listRecentExpenses } from "./expense-service";
 import { listBudgets } from "./budget-service";
@@ -62,6 +62,7 @@ export async function financeWorkspaceData(db: PrismaClient, actorId: string) {
     chartOfAccounts,
     dimensions,
     treasuryAccounts,
+    allTreasuryAccounts,
     vendors,
     payables,
     expenseCategories,
@@ -89,6 +90,7 @@ export async function financeWorkspaceData(db: PrismaClient, actorId: string) {
     tryOrNull(() => listAccounts(db, actorId)),
     tryOrNull(() => listDimensions(db, actorId)),
     tryOrNull(() => listTreasuryAccounts(db, actorId)),
+    tryOrNull(() => listAllTreasuryAccounts(db, actorId)),
     tryOrNull(() => listVendors(db, actorId)),
     tryOrNull(() => payablesView(db, actorId)),
     tryOrNull(() => listExpenseCategories(db, actorId)),
@@ -114,7 +116,7 @@ export async function financeWorkspaceData(db: PrismaClient, actorId: string) {
     tryOrNull(() => financialIntelligenceFeed(db, actorId)),
   ]);
 
-  return serializeDecimals({ chartOfAccounts, dimensions, treasuryAccounts, vendors, payables, expenseCategories, pendingExpenseApprovals, recentExpenses, budgets, loans, fixedAssets, capital, openingBalances, approvalPolicies, periods, periodChecklist, trial, pnl, bs, cf, forecast30, gst, periodCode, recurringDue, recurringTemplates, approvalQueue, intelligence });
+  return serializeDecimals({ chartOfAccounts, dimensions, treasuryAccounts, allTreasuryAccounts, vendors, payables, expenseCategories, pendingExpenseApprovals, recentExpenses, budgets, loans, fixedAssets, capital, openingBalances, approvalPolicies, periods, periodChecklist, trial, pnl, bs, cf, forecast30, gst, periodCode, recurringDue, recurringTemplates, approvalQueue, intelligence });
 }
 
 export type FinanceWorkspaceData = Awaited<ReturnType<typeof financeWorkspaceData>>;

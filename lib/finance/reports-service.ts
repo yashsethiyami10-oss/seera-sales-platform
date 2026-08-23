@@ -80,6 +80,25 @@ export async function expenseByDepartment(db: PrismaClient, actorId: string, inp
   return expenses.map((e) => ({ dimensionId: e.dimensionId, name: e.dimensionId ? (nameById.get(e.dimensionId) ?? e.dimensionId) : "Unassigned", total: Number(e._sum.amount ?? 0) })).sort((a, b) => b.total - a.total);
 }
 
+// Territory Expense Summary (Money Desk maturity pass, 23-Aug spec §14/§28) — mirrors
+// expenseByDepartment's exact groupBy pattern, just against `territoryId` instead of
+// `dimensionId`. A null territoryId is a real state (Corporate/central expense — pan-India
+// marketing, HQ salary, etc.), reported explicitly as "Corporate" rather than dropped or
+// force-mapped to a fabricated territory.
+export async function expenseByTerritory(db: PrismaClient, actorId: string, input: { from: Date; to: Date }) {
+  await authorize(db, { actorId, permission: "financial_statements:view" });
+  const [assigned, unassignedTotal, territories] = await Promise.all([
+    db.seeraExpense.groupBy({ by: ["territoryId"], where: { status: "POSTED", date: { gte: input.from, lte: input.to }, territoryId: { not: null } }, _sum: { amount: true } }),
+    db.seeraExpense.aggregate({ where: { status: "POSTED", date: { gte: input.from, lte: input.to }, territoryId: null }, _sum: { amount: true } }),
+    db.seeraGeographyNode.findMany({ where: { level: "TERRITORY" }, select: { id: true, name: true } }),
+  ]);
+  const nameById = new Map(territories.map((t) => [t.id, t.name]));
+  const rows = assigned.map((e) => ({ territoryId: e.territoryId as string, name: nameById.get(e.territoryId as string) ?? e.territoryId, total: Number(e._sum.amount ?? 0) }));
+  const corporateTotal = Number(unassignedTotal._sum.amount ?? 0);
+  if (corporateTotal > 0) rows.push({ territoryId: null as unknown as string, name: "Corporate", total: corporateTotal });
+  return rows.sort((a, b) => b.total - a.total);
+}
+
 export async function monthlyExpenseTrend(db: PrismaClient, actorId: string, months: number) {
   await authorize(db, { actorId, permission: "financial_statements:view" });
   const now = new Date();

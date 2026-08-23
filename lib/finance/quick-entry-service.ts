@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { createExpense, submitExpense, postExpense } from "./expense-service";
+import { resolveExecutiveOperationalScope } from "@/lib/sales-distribution/scope";
 
 // SEERA FINANCE OS — QUICK ENTRY: a single, simple entry point ("choose what
 // this is for -> amount -> optional receipt -> Save") that still goes
@@ -89,6 +90,23 @@ async function resolveTreasuryAccount(db: PrismaClient, input: { paymentMode: st
   throw new FoundationError("TREASURY_ACCOUNT_REQUIRED", "Select an account for this payment mode", 400);
 }
 
+// Territory auto-derivation (Money Desk maturity pass, 23-Aug): "do not ask Accounts to reselect
+// information the source already knows" — when the entry names an employee and no territory was
+// explicitly chosen, derive it from that employee's OWN governed Territory assignment (the SAME
+// resolver Beat Planner/Manager Retailing already use — see scope.ts's comment on the Manoj/
+// Bhilwara <-> Neeraj/Jhansi leak this fixed elsewhere). An explicit `territoryId` on the input
+// always wins (governed override — audited via createExpense's own recordAudit afterState, same as
+// every other Quick Entry field). An employee with zero/multiple/unrestricted territory scope, or
+// no employee at all, correctly resolves to `undefined` — a real Corporate/central expense, never
+// guessed.
+async function resolveExpenseTerritory(db: PrismaClient, input: { territoryId?: string; employeeId?: string }): Promise<string | undefined> {
+  if (input.territoryId) return input.territoryId;
+  if (!input.employeeId) return undefined;
+  const scope = await resolveExecutiveOperationalScope(db, input.employeeId);
+  if (scope.unrestricted || scope.territoryIds.length !== 1) return undefined;
+  return scope.territoryIds[0];
+}
+
 export async function quickEntryCreate(
   db: PrismaClient,
   actorId: string,
@@ -105,6 +123,7 @@ export async function quickEntryCreate(
     partyId?: string;
     partyName?: string;
     employeeId?: string;
+    territoryId?: string;
     remark?: string;
     documentFileId?: string;
     idempotencyKey: string;
@@ -121,6 +140,7 @@ export async function quickEntryCreate(
 
   const treasuryAccount = await resolveTreasuryAccount(db, input);
   const treasuryCoa = await db.seeraChartOfAccount.findUniqueOrThrow({ where: { id: treasuryAccount.chartOfAccountId } });
+  const territoryId = await resolveExpenseTerritory(db, input);
 
   const label = ENTRY_TYPE_LABEL[input.entryType];
   const expense = await createExpense(db, actorId, {
@@ -130,6 +150,7 @@ export async function quickEntryCreate(
     payeeId: input.partyId ?? input.employeeId,
     payeeName: input.partyName,
     categoryId: category.id,
+    territoryId,
     paymentMode: input.paymentMode,
     treasuryAccountId: treasuryAccount.id,
     description: [label, category.name, input.remark].filter(Boolean).join(" — "),

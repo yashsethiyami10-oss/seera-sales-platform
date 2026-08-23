@@ -30,6 +30,7 @@ type SupportingData = {
   locations: { id: string; code: string; name: string }[];
   pendingReturnRequests: { id: string; requestNumber: string; reason: string; retailerId: string | null }[];
   openVendorBills: { id: string; billNumber: string; vendorId: string; due: number }[];
+  territories: { id: string; name: string }[];
 };
 type HomeData = {
   recentTransactions: { id: string; transactionNumber: string; purposeCode: string; direction: Direction; status: string; amount: string | number; date: string; requestedById: string; counterpartyName: string | null; failureReason: string | null }[];
@@ -63,7 +64,6 @@ const FIELD_LABEL: Record<string, { en: string; hi: string; type: "text" | "numb
   retailerId: { en: "Retailer (optional)", hi: "रिटेलर (वैकल्पिक)", type: "text" },
   sourceReturnRequestId: { en: "Return request", hi: "वापसी अनुरोध", type: "select-return" },
   adjustmentAccountCode: { en: "Account code", hi: "खाता कोड", type: "text" },
-  employeeId: { en: "Employee", hi: "कर्मचारी", type: "text" },
   usefulLifeMonths: { en: "Useful life (months)", hi: "उपयोगी जीवन (महीने)", type: "number" },
   residualValue: { en: "Residual value", hi: "अवशिष्ट मूल्य", type: "number" },
   category: { en: "Category", hi: "श्रेणी", type: "text" },
@@ -126,6 +126,11 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
       }
     }
     formData.paymentMode = direction === "CASH_IN" || direction === "CASH_OUT" ? "CASH" : "BANK";
+    // Universal Employee/Territory fields aren't part of every purpose's own requiredFields/
+    // optionalFields list (e.g. Diesel/Freight don't declare "employeeId"), so the loop above skips
+    // them for those purposes — read explicitly here instead, same convention as treasuryAccountId.
+    if (!formData.employeeId) { const emp = String(f.get("employeeId") || ""); if (emp) formData.employeeId = emp; }
+    if (!formData.territoryId) { const terr = String(f.get("territoryId") || ""); if (terr) formData.territoryId = terr; }
     setBusy(true);
     setMessage(null);
     void post("money-desk-create", {
@@ -216,9 +221,29 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
               <label>{hi ? "राशि" : "Amount"}<input name="amount" type="number" step="0.01" min="0.01" required /></label>
               <label>
                 {hi ? "खाता" : "Treasury account"}
-                <select name="treasuryAccountId">
-                  <option value="">{hi ? "चुनें" : "Choose"}</option>
-                  {supporting.treasuryAccounts.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
+                {supporting.treasuryAccounts.length === 0 ? (
+                  <span className={styles.emptyHint}>{hi ? "कोई ट्रेजरी खाता कॉन्फ़िगर नहीं है।" : "No Treasury Accounts configured."}</span>
+                ) : (
+                  <select name="treasuryAccountId">
+                    <option value="">{hi ? "चुनें" : "Choose"}</option>
+                    {supporting.treasuryAccounts.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
+                  </select>
+                )}
+              </label>
+              {/* Employee/Territory (Money Desk maturity pass, 23-Aug): universal, purpose-agnostic
+                  optional fields — Territory is governed override only; leaving it blank auto-derives
+                  from the selected Employee's own Territory assignment server-side, so Accounts never
+                  re-enters geography the source already knows (spec §14/§16). Employee is `required`
+                  only when the selected purpose actually declares it (e.g. Salary). */}
+              <label>
+                {hi ? "कर्मचारी (वैकल्पिक)" : "Employee (optional)"}
+                <input name="employeeId" required={selectedPurpose.requiredFields.includes("employeeId")} placeholder={hi ? "कर्मचारी आईडी" : "Employee id"} />
+              </label>
+              <label>
+                {hi ? "क्षेत्र / टेरिटरी (वैकल्पिक)" : "Territory (optional)"}
+                <select name="territoryId" defaultValue="">
+                  <option value="">{hi ? "स्वतः / कॉर्पोरेट" : "Auto-derive / Corporate"}</option>
+                  {supporting.territories.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </label>
               {[...selectedPurpose.requiredFields, ...selectedPurpose.optionalFields].map((field) => {

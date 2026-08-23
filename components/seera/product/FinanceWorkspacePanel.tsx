@@ -590,14 +590,27 @@ function EmployeesSection() {
 // ---------------------------------------------------------------------------
 function BankSection({ ctx }: { ctx: Ctx }) {
   const { data, run, busy } = ctx;
+  const accounts = data.allTreasuryAccounts ?? data.treasuryAccounts ?? [];
   return (
     <div>
       <div className={styles.tableWrap}>
         <table>
-          <thead><tr><th>Account</th><th>Kind</th><th>Code</th></tr></thead>
+          <thead><tr><th>Account</th><th>Kind</th><th>Code</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {(data.treasuryAccounts ?? []).length === 0 && <tr><td colSpan={3}>No treasury accounts yet.</td></tr>}
-            {(data.treasuryAccounts ?? []).map((t) => <tr key={t.id}><td>{t.name}</td><td>{t.kind}</td><td>{t.code}</td></tr>)}
+            {accounts.length === 0 && <tr><td colSpan={5}>No treasury accounts yet.</td></tr>}
+            {accounts.map((t) => (
+              <tr key={t.id}>
+                <td>{t.name}</td>
+                <td>{t.kind}</td>
+                <td>{t.code}</td>
+                <td>{t.isActive ? "Active" : "Inactive"}</td>
+                <td>
+                  <button type="button" disabled={busy} onClick={() => run("set-treasury-account-active", { treasuryAccountId: t.id, isActive: !t.isActive }, t.isActive ? "Account deactivated." : "Account activated.")}>
+                    {t.isActive ? "DEACTIVATE" : "ACTIVATE"}
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -1443,6 +1456,7 @@ function ReportsCenterSection() {
   const [to, setTo] = useState(isoDate(new Date()));
   const { data: byCategory } = useReportOnDemand<{ categoryId: string; categoryName: string; total: number }[]>("expense-by-category", { from, to }, [from, to]);
   const { data: byDept } = useReportOnDemand<{ dimensionId: string | null; name: string; total: number }[]>("expense-by-department", { from, to }, [from, to]);
+  const { data: byTerritory } = useReportOnDemand<{ territoryId: string | null; name: string; total: number }[]>("expense-by-territory", { from, to }, [from, to]);
   const { data: ageing } = useReportOnDemand<{ rows: { partyId: string; name: string; outstandingTotal: number }[]; buckets: Record<string, number> }>("receivables-ageing", {}, []);
   const { data: bySS } = useReportOnDemand<{ partyId: string; name: string; total: number }[]>("sales-by-ss", { from, to }, [from, to]);
   const { data: byProduct } = useReportOnDemand<{ product: string; total: number }[]>("sales-by-product", { from, to }, [from, to]);
@@ -1456,6 +1470,8 @@ function ReportsCenterSection() {
       <div className={styles.tableWrap}><table><tbody>{byCategory?.map((c) => <tr key={c.categoryId}><td>{c.categoryName}</td><td>{money(c.total)}</td></tr>)}</tbody></table></div>
       <h4>Expense by Department <button type="button" disabled={!byDept?.length} onClick={() => exportCsv("expense-by-department", byDept ?? [])}>EXPORT CSV</button></h4>
       <div className={styles.tableWrap}><table><tbody>{byDept?.map((d) => <tr key={d.dimensionId ?? "none"}><td>{d.name}</td><td>{money(d.total)}</td></tr>)}</tbody></table></div>
+      <h4>Territory Expense Summary <button type="button" disabled={!byTerritory?.length} onClick={() => exportCsv("expense-by-territory", byTerritory ?? [])}>EXPORT CSV</button></h4>
+      <div className={styles.tableWrap}><table><tbody>{byTerritory?.map((t) => <tr key={t.territoryId ?? "corporate"}><td>{t.name}</td><td>{money(t.total)}</td></tr>)}</tbody></table></div>
       <h4>Receivables Ageing <button type="button" disabled={!ageing?.rows.length} onClick={() => exportCsv("receivables-ageing", ageing?.rows ?? [])}>EXPORT CSV</button></h4>
       {ageing && <p>Not due {money(ageing.buckets.NOT_DUE)} · 1-30d {money(ageing.buckets["1_30"])} · 31-60d {money(ageing.buckets["31_60"])} · 61-90d {money(ageing.buckets["61_90"])} · 90+d {money(ageing.buckets["90_PLUS"])}</p>}
       <h4>Company Sales by S.S. <button type="button" disabled={!bySS?.length} onClick={() => exportCsv("sales-by-ss", bySS ?? [])}>EXPORT CSV</button></h4>

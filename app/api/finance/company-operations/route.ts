@@ -7,7 +7,7 @@ import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { createAccount, updateAccount, seedDefaultChartOfAccounts } from "@/lib/finance/chart-of-accounts";
 import { createDimension, seedDefaultDimensions } from "@/lib/finance/dimension-service";
 import { postJournal, reverseJournal } from "@/lib/finance/journal-service";
-import { createTreasuryAccount, recordMoneyIn, recordMoneyOut, transferFunds, commitBankStatementImport, confirmBankMatch, unmatchBankLine, suggestBankMatches } from "@/lib/finance/treasury-service";
+import { createTreasuryAccount, recordMoneyIn, recordMoneyOut, transferFunds, commitBankStatementImport, confirmBankMatch, unmatchBankLine, suggestBankMatches, setTreasuryAccountActive } from "@/lib/finance/treasury-service";
 import { createVendor, updateVendor, createVendorBill, recordVendorPayment } from "@/lib/finance/vendor-service";
 import { createExpenseCategory, createExpense, submitExpense, decideExpense, postExpense, payExpensePayable, reverseExpense, createRecurringExpenseTemplate, generateExpenseFromRecurringTemplate, skipRecurringOccurrence, setRecurringTemplateActive } from "@/lib/finance/expense-service";
 import { quickEntryCreate, QUICK_ENTRY_TYPES } from "@/lib/finance/quick-entry-service";
@@ -28,7 +28,7 @@ const ACTIONS = [
   "bootstrap-coa", "bootstrap-dimensions", "bootstrap-approval-policies",
   "create-account", "update-account", "create-dimension",
   "post-manual-journal", "reverse-journal",
-  "create-treasury-account", "money-in", "money-out", "transfer-funds",
+  "create-treasury-account", "set-treasury-account-active", "money-in", "money-out", "transfer-funds",
   "import-bank-statement", "confirm-bank-match", "unmatch-bank-line", "suggest-bank-matches",
   "create-vendor", "update-vendor", "create-vendor-bill", "record-vendor-payment",
   "create-expense-category", "create-expense", "submit-expense", "decide-expense", "post-expense", "pay-expense-payable", "reverse-expense",
@@ -87,6 +87,11 @@ export async function POST(request: Request) {
       case "create-treasury-account":
         result = await createTreasuryAccount(prisma, user.id, z.object({ kind: z.enum(["BANK", "CASH"]), code: z.string(), name: z.string(), bankName: z.string().optional(), accountType: z.string().optional(), maskedAccountNumber: z.string().optional(), ifsc: z.string().optional(), openingBalance: z.number().optional(), openingBalanceDate: z.coerce.date().optional() }).parse(payload));
         break;
+      case "set-treasury-account-active": {
+        const v = z.object({ treasuryAccountId: z.string(), isActive: z.boolean() }).parse(payload);
+        result = await setTreasuryAccountActive(prisma, user.id, v);
+        break;
+      }
       case "money-in":
         result = await recordMoneyIn(prisma, user.id, z.object({ type: z.enum(["CUSTOMER_ADVANCE", "INVOICE_RECEIPT", "OTHER_OPERATING_REVENUE", "OTHER_INCOME", "REFUND_RECOVERY", "BANK_INTEREST", "OTHER_RECEIPT"]), date: z.coerce.date(), amount: z.number(), treasuryAccountId: z.string(), partyType: z.string().optional(), partyId: z.string().optional(), mode: z.string(), reference: z.string().optional(), description: z.string().optional(), dimensionId: z.string().optional(), idempotencyKey: z.string() }).parse(payload));
         break;

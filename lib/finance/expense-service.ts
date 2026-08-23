@@ -24,12 +24,12 @@ export async function listExpenseCategories(db: PrismaClient, actorId: string) {
 export async function createExpense(
   db: PrismaClient,
   actorId: string,
-  input: { date: Date; amount: number; payeeType: string; payeeId?: string; payeeName?: string; categoryId: string; dimensionId?: string; paymentMode: string; treasuryAccountId?: string; gstTreatment?: string; description?: string; documentFileId?: string; isReimbursable?: boolean; employeeId?: string; entryType?: string; idempotencyKey: string },
+  input: { date: Date; amount: number; payeeType: string; payeeId?: string; payeeName?: string; categoryId: string; dimensionId?: string; territoryId?: string; paymentMode: string; treasuryAccountId?: string; gstTreatment?: string; description?: string; documentFileId?: string; isReimbursable?: boolean; employeeId?: string; entryType?: string; idempotencyKey: string },
 ) {
   await authorize(db, { actorId, permission: "expense:create" });
   if (input.amount <= 0) throw new FoundationError("INVALID_AMOUNT", "Amount must be positive", 400);
   const expense = await db.seeraExpense.create({
-    data: { expenseNumber: financeNumberFor("EXP", input.idempotencyKey), date: input.date, amount: input.amount, payeeType: input.payeeType, payeeId: input.payeeId, payeeName: input.payeeName, categoryId: input.categoryId, dimensionId: input.dimensionId, paymentMode: input.paymentMode, treasuryAccountId: input.treasuryAccountId, gstTreatment: input.gstTreatment ?? "NONE", description: input.description, documentFileId: input.documentFileId, isReimbursable: input.isReimbursable ?? false, employeeId: input.employeeId, entryType: input.entryType ?? "EXPENSE", status: "DRAFT", requestedById: actorId, idempotencyKey: input.idempotencyKey },
+    data: { expenseNumber: financeNumberFor("EXP", input.idempotencyKey), date: input.date, amount: input.amount, payeeType: input.payeeType, payeeId: input.payeeId, payeeName: input.payeeName, categoryId: input.categoryId, dimensionId: input.dimensionId, territoryId: input.territoryId, paymentMode: input.paymentMode, treasuryAccountId: input.treasuryAccountId, gstTreatment: input.gstTreatment ?? "NONE", description: input.description, documentFileId: input.documentFileId, isReimbursable: input.isReimbursable ?? false, employeeId: input.employeeId, entryType: input.entryType ?? "EXPENSE", status: "DRAFT", requestedById: actorId, idempotencyKey: input.idempotencyKey },
   });
   await recordAudit(db, { actorId, action: "finance.expense.created", entityType: "SeeraExpense", entityId: expense.id, afterState: { amount: input.amount, categoryId: input.categoryId } });
   return expense;
