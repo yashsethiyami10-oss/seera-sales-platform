@@ -166,6 +166,7 @@ const EXISTING_CATEGORY_GROUPING: Record<string, { parentGroup: string; requires
   "5210": { parentGroup: "SALES_MARKETING", requiresParty: true }, // Travel
   "5000": { parentGroup: "PURCHASE_OPERATIONS", receiptPolicy: "RECOMMENDED" }, // Raw Material
   "5010": { parentGroup: "PURCHASE_OPERATIONS", receiptPolicy: "RECOMMENDED" }, // Packaging Material
+  "5030": { parentGroup: "FACTORY", receiptPolicy: "RECOMMENDED" }, // Warehousing
   "5230": { parentGroup: "OTHER" }, // Miscellaneous
 };
 

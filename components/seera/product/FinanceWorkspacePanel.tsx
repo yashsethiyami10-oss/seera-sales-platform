@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import type { FinanceWorkspaceData } from "@/lib/finance/founder-workspace-data";
+import { PartyLedgerStatement } from "./PartyLedgerStatement";
 
 async function post(action: string, payload: unknown) {
   const r = await fetch("/api/finance/company-operations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) });
@@ -118,7 +119,7 @@ const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
   categories: [],
   employees: [],
   money: [{ key: "bank", label: "Bank & Cash" }, { key: "moneyin", label: "Money In" }, { key: "moneyout", label: "Money Out" }, { key: "transfer", label: "Transfer" }, { key: "statement", label: "Statement Import" }, { key: "reconcile", label: "Reconciliation" }, { key: "journals", label: "Recent Journals" }],
-  sales: [{ key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledger" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
+  sales: [{ key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledgers" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
   purchases: [{ key: "vendors", label: "Vendors & Bills" }, { key: "expenses", label: "Expenses" }, { key: "recurring", label: "Recurring Expenses" }, { key: "payroll", label: "Payroll" }, { key: "marketing", label: "Marketing Spend" }],
   control: [{ key: "budgets", label: "Budgets" }, { key: "approvals", label: "Approvals" }, { key: "capital", label: "Capital & Drawings" }, { key: "loans", label: "Loans" }, { key: "assets", label: "Fixed Assets" }, { key: "period", label: "Period Close" }],
   statements: [{ key: "trial", label: "Trial Balance" }, { key: "pl", label: "P&L" }, { key: "bs", label: "Balance Sheet" }, { key: "cf", label: "Cash Flow" }, { key: "forecast", label: "Forecast" }, { key: "gst", label: "GST Control" }],
@@ -179,7 +180,7 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
         {group === "money" && section === "reconcile" && <ReconciliationSection ctx={ctx} />}
         {group === "money" && section === "journals" && <RecentJournalsSection />}
         {group === "sales" && section === "register" && <SalesRegisterSection />}
-        {group === "sales" && section === "ledger" && <PartyLedgerSection />}
+        {group === "sales" && section === "ledger" && <PartyLedgerStatement />}
         {group === "sales" && section === "advances" && <CustomerAdvancesSection />}
         {group === "sales" && section === "receipts" && <ReceiptsSection />}
         {group === "purchases" && section === "vendors" && <VendorsSection ctx={ctx} />}
@@ -862,36 +863,6 @@ function SalesRegisterSection() {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-function PartyLedgerSection() {
-  const { data: parties } = useReportOnDemand<{ id: string; name: string }[]>("parties", {}, []);
-  const [partyId, setPartyId] = useState("");
-  const { data: ledger, loading, err } = useReportOnDemand<{ balance: number; debit: number; credit: number; outstandingTotal: number; advancesAndUnapplied: number; transactions: { entryNumber: string; type: string; amount: string; postedAt: string; reason: string }[] }>("party-ledger", { partyId }, [partyId]);
-  return (
-    <div>
-      <label>Company customer / S.S.<select value={partyId} onChange={(e) => setPartyId(e.target.value)}>
-        <option value="">Select…</option>
-        {(parties ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select></label>
-      {partyId && loading && <p>Loading…</p>}
-      {err && <p role="status" data-ok="false">{err}</p>}
-      {partyId && ledger && (
-        <>
-          <p>Balance {money(ledger.balance)} · Outstanding {money(ledger.outstandingTotal)} · Advances/Unapplied {money(ledger.advancesAndUnapplied)}</p>
-          <div className={styles.tableWrap}>
-            <table>
-              <thead><tr><th>Entry</th><th>Type</th><th>Amount</th><th>Date</th><th>Reason</th></tr></thead>
-              <tbody>
-                {ledger.transactions.length === 0 && <tr><td colSpan={5}>No transactions.</td></tr>}
-                {ledger.transactions.map((t) => <tr key={t.entryNumber}><td>{t.entryNumber}</td><td>{t.type}</td><td>{money(Number(t.amount))}</td><td>{fmtDate(t.postedAt)}</td><td>{t.reason}</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
     </div>
   );
 }

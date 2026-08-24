@@ -13,16 +13,33 @@ async function post(action: string, payload: unknown) {
 const money = (v: number | string | null | undefined) => `₹${Math.round(Number(v ?? 0)).toLocaleString("en-IN")}`;
 
 type Direction = "CASH_IN" | "CASH_OUT" | "BANK_IN" | "BANK_OUT" | "ADJUSTMENT";
+type PurposeGroup = "RECEIPTS" | "PROCUREMENT" | "EMPLOYEE" | "LOGISTICS" | "PREMISES_ADMIN" | "MARKETING" | "FINANCE" | "OTHER";
 type PurposeDef = {
   code: string;
   label: string;
   hindiLabel: string;
+  group: PurposeGroup;
   allowedDirections: Direction[];
   requiredFields: string[];
   optionalFields: string[];
   documentPolicy: "REQUIRED" | "OPTIONAL" | "NONE";
   description: string;
 };
+
+// Founder-visual-review fix (§6): the Money Out picker used to be one long flat vertical list of
+// technical purpose codes. Grouped into the same business categories the Founder actually asked
+// for, rendered as labeled sections rather than a single <ul>.
+const GROUP_LABEL: Record<PurposeGroup, { en: string; hi: string }> = {
+  RECEIPTS: { en: "Receipts", hi: "प्राप्तियां" },
+  PROCUREMENT: { en: "Procurement", hi: "खरीद" },
+  EMPLOYEE: { en: "Employee", hi: "कर्मचारी" },
+  LOGISTICS: { en: "Logistics", hi: "लॉजिस्टिक्स" },
+  PREMISES_ADMIN: { en: "Premises / Admin", hi: "परिसर / प्रशासन" },
+  MARKETING: { en: "Marketing", hi: "मार्केटिंग" },
+  FINANCE: { en: "Finance", hi: "वित्त" },
+  OTHER: { en: "Other", hi: "अन्य" },
+};
+const GROUP_ORDER: PurposeGroup[] = ["PROCUREMENT", "EMPLOYEE", "LOGISTICS", "PREMISES_ADMIN", "MARKETING", "FINANCE", "OTHER", "RECEIPTS"];
 type SupportingData = {
   treasuryAccounts: { id: string; name: string; kind: string; coaCode: string }[];
   vendors: { id: string; name: string }[];
@@ -89,7 +106,19 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
     const wanted: Direction[] = openDirection === "IN" ? ["CASH_IN", "BANK_IN"] : ["CASH_OUT", "BANK_OUT", "ADJUSTMENT"];
     return purposes.filter((p) => p.allowedDirections.some((d) => wanted.includes(d)));
   }, [openDirection, purposes]);
+  const purposeGroupsForDirection = useMemo(() => {
+    const groups = new Map<PurposeGroup, PurposeDef[]>();
+    for (const p of purposesForDirection) {
+      if (!groups.has(p.group)) groups.set(p.group, []);
+      groups.get(p.group)!.push(p);
+    }
+    return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => ({ group: g, items: groups.get(g)! }));
+  }, [purposesForDirection]);
   const selectedPurpose = purposes.find((p) => p.code === purposeCode);
+  const purposeLabel = useMemo(() => {
+    const byCode = new Map(purposes.map((p) => [p.code, hi ? p.hindiLabel : p.label]));
+    return (code: string) => byCode.get(code) ?? code;
+  }, [purposes, hi]);
 
   function closeForm() {
     setOpenDirection(null);
@@ -197,17 +226,21 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
           {!selectedPurpose ? (
             <div className={styles.list}>
               <strong>{hi ? "उद्देश्य चुनें" : "Choose what this is for"}</strong>
-              <ul className={styles.list}>
-                {purposesForDirection.map((p) => (
-                  <li key={p.code}>
-                    <button type="button" className={styles.secondaryBig} onClick={() => setPurposeCode(p.code)}>
-                      {hi ? p.hindiLabel : p.label}
-                    </button>
-                    <p><small>{p.description}</small></p>
-                  </li>
-                ))}
-              </ul>
-              <button type="button" className={styles.secondaryBig} onClick={closeForm}>{hi ? "रद्द करें" : "Cancel"}</button>
+              {purposeGroupsForDirection.map(({ group, items }) => (
+                <div key={group} style={{ marginTop: "0.75rem" }}>
+                  {purposeGroupsForDirection.length > 1 && <small style={{ display: "block", opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.04em" }}>{hi ? GROUP_LABEL[group].hi : GROUP_LABEL[group].en}</small>}
+                  <ul className={styles.list} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.5rem" }}>
+                    {items.map((p) => (
+                      <li key={p.code} style={{ listStyle: "none" }}>
+                        <button type="button" className={styles.secondaryBig} title={p.description} onClick={() => setPurposeCode(p.code)} style={{ width: "100%" }}>
+                          {hi ? p.hindiLabel : p.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <button type="button" className={styles.secondaryBig} onClick={closeForm} style={{ marginTop: "0.75rem" }}>{hi ? "रद्द करें" : "Cancel"}</button>
             </div>
           ) : (
             <form onSubmit={submitForm}>
@@ -296,7 +329,7 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
             <tbody>
               {home.pendingApprovals.map((t) => (
                 <tr key={t.id}>
-                  <td>{t.transactionNumber}</td><td>{t.purposeCode}</td><td>{money(t.amount)}</td>
+                  <td>{t.transactionNumber}</td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td>
                   <td>
                     <button type="button" disabled={decisionBusyId === t.id} onClick={() => decide(t.id, "APPROVED")}>{hi ? "स्वीकृत" : "Approve"}</button>{" "}
                     <button type="button" disabled={decisionBusyId === t.id} onClick={() => decide(t.id, "REJECTED")}>{hi ? "अस्वीकृत" : "Reject"}</button>
@@ -314,7 +347,7 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
           <table>
             <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "कारण" : "Reason"}</th></tr></thead>
             <tbody>
-              {home.needsAttention.map((t) => <tr key={t.id}><td>{t.transactionNumber}</td><td>{t.purposeCode}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
+              {home.needsAttention.map((t) => <tr key={t.id}><td>{t.transactionNumber}</td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
             </tbody>
           </table>
         </div>
@@ -370,7 +403,7 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
           <tbody>
             {home.recentTransactions.length === 0 && <tr><td colSpan={5}>{hi ? "कोई लेनदेन नहीं।" : "No transactions yet."}</td></tr>}
             {home.recentTransactions.map((t) => (
-              <tr key={t.id}><td>{t.transactionNumber}</td><td>{t.purposeCode}</td><td>{t.direction}</td><td>{money(t.amount)}</td><td>{t.status}</td></tr>
+              <tr key={t.id}><td>{t.transactionNumber}</td><td>{purposeLabel(t.purposeCode)}</td><td>{t.direction}</td><td>{money(t.amount)}</td><td>{t.status}</td></tr>
             ))}
           </tbody>
         </table>

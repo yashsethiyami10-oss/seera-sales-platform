@@ -22,14 +22,6 @@ export async function salesRegister(db: PrismaClient, actorId: string, input: { 
   });
 }
 
-// Party Ledger selector — Company-facing parties only (Super Stockists); S.S.
-// -> Distributor credit is intentionally never a selectable "Company" party.
-export async function companyFacingParties(db: PrismaClient, actorId: string) {
-  await authorize(db, { actorId, permission: "ledger:view" });
-  const partners = await db.seeraPartner.findMany({ where: { type: "SUPER_STOCKIST" }, orderBy: { legalName: "asc" }, select: { id: true, legalName: true, tradeName: true } });
-  return partners.map((p) => ({ id: p.id, name: p.tradeName ?? p.legalName }));
-}
-
 export async function customerAdvanceRegister(db: PrismaClient, actorId: string) {
   await authorize(db, { actorId, permission: "financial_statements:view" });
   const payments = await db.seeraPaymentRecord.findMany({ where: { payeeType: "COMPANY", status: { in: ["VERIFIED", "PARTIALLY_MATCHED"] } }, include: { allocations: { where: { status: "ACTIVE" } } }, orderBy: { paymentDate: "desc" } });

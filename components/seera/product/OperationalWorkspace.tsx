@@ -4196,7 +4196,7 @@ export async function OperationalWorkspace({
       const [home, supporting] = await Promise.all([moneyDeskHome(db, userId), moneyDeskSupportingData(db, userId)]);
       const purposes = MONEY_DESK_PURPOSE_CODES.map((code) => {
         const def = purposeDefinition(code);
-        return { code: def.code, label: def.label, hindiLabel: def.hindiLabel, allowedDirections: def.allowedDirections, requiredFields: def.requiredFields, optionalFields: def.optionalFields, documentPolicy: def.documentPolicy, description: def.description };
+        return { code: def.code, label: def.label, hindiLabel: def.hindiLabel, group: def.group, allowedDirections: def.allowedDirections, requiredFields: def.requiredFields, optionalFields: def.optionalFields, documentPolicy: def.documentPolicy, description: def.description };
       });
       workflow = <MoneyDeskPanel language={language} purposes={purposes} supporting={supporting} home={home as never} />;
     } catch (error) {

@@ -17,6 +17,10 @@ import type { FinanceApprovalCategory } from "@prisma/client";
 
 export type MoneyDeskDirection = "CASH_IN" | "CASH_OUT" | "BANK_IN" | "BANK_OUT" | "ADJUSTMENT";
 export type MoneyDeskCounterpartyType = "VENDOR" | "EMPLOYEE" | "CUSTOMER" | "RETAILER" | "NONE";
+// Founder-visual-review grouping (Money Desk maturity pass, 24-Aug §6): the Money Out picker
+// must render as business category cards, not one long flat vertical list. RECEIPTS is used by
+// the two Money In purposes; every Money Out purpose falls into exactly one of the rest.
+export type MoneyDeskPurposeGroup = "RECEIPTS" | "PROCUREMENT" | "EMPLOYEE" | "LOGISTICS" | "PREMISES_ADMIN" | "MARKETING" | "FINANCE" | "OTHER";
 export type MoneyDeskFieldKey =
   | "counterpartyId" | "counterpartyName" | "vendorInvoiceNumber" | "invoiceDate" | "dueDate"
   | "materialId" | "quantity" | "unit" | "locationId" | "unitCost" | "manufactureDate" | "expiryDate"
@@ -27,6 +31,7 @@ export type MoneyDeskPurposeDefinition = {
   code: string;
   label: string;
   hindiLabel: string;
+  group: MoneyDeskPurposeGroup;
   allowedDirections: MoneyDeskDirection[];
   counterpartyType: MoneyDeskCounterpartyType;
   requiredFields: MoneyDeskFieldKey[];
@@ -57,6 +62,7 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     code: "PUR-RM",
     label: "Raw Material Purchase",
     hindiLabel: "कच्चा माल खरीद",
+    group: "PROCUREMENT",
     allowedDirections: ["CASH_OUT", "BANK_OUT", "ADJUSTMENT"],
     counterpartyType: "VENDOR",
     requiredFields: ["counterpartyId", "counterpartyName", "materialId", "quantity", "unit", "locationId", "vendorInvoiceNumber", "invoiceDate", "dueDate", "taxable"],
@@ -74,6 +80,7 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     code: "PAY-VEN",
     label: "Vendor Payment",
     hindiLabel: "विक्रेता भुगतान",
+    group: "PROCUREMENT",
     allowedDirections: ["CASH_OUT", "BANK_OUT"],
     counterpartyType: "VENDOR",
     requiredFields: ["counterpartyId", "billId"],
@@ -90,6 +97,7 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     code: "REC-INS",
     label: "Institutional Receipt",
     hindiLabel: "संस्थागत प्राप्ति",
+    group: "RECEIPTS",
     allowedDirections: ["CASH_IN", "BANK_IN"],
     counterpartyType: "CUSTOMER",
     requiredFields: ["counterpartyName"],
@@ -106,6 +114,7 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     code: "SALE-OFF",
     label: "Factory / Offline Sale",
     hindiLabel: "फैक्ट्री / ऑफलाइन बिक्री",
+    group: "RECEIPTS",
     allowedDirections: ["CASH_IN", "BANK_IN"],
     counterpartyType: "CUSTOMER",
     requiredFields: ["counterpartyName", "skuLines"],
@@ -127,6 +136,7 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     code: "SAL-EMP",
     label: "Salary",
     hindiLabel: "वेतन",
+    group: "EMPLOYEE",
     allowedDirections: ["CASH_OUT", "BANK_OUT"],
     counterpartyType: "EMPLOYEE",
     requiredFields: ["employeeId"],
@@ -147,15 +157,27 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
   // categoryCode is left undefined so the handler falls through to
   // quickEntryCreate's own existing manual-category mechanism (lands safely
   // on 5230 Miscellaneous, never force-mapped to the wrong account).
-  "EXP-FUEL": expenseDef("EXP-FUEL", "Fuel", "ईंधन", "QE-DIESEL"),
-  "EXP-RENT": expenseDef("EXP-RENT", "Rent", "किराया", "QE-OFFICE-RENT"),
-  "EXP-COURIER": expenseDef("EXP-COURIER", "Courier", "कूरियर", "QE-COURIER"),
-  "EXP-PACK": { ...expenseDef("EXP-PACK", "Packaging", "पैकेजिंग", "QE-PACKING-EXPENSE"), description: "Packaging expense. If Manufacturing treats this specific packaging as stocked material, it must be entered through Raw Material Purchase / GRN instead — flagged for the operator, not silently guessed." },
-  "EXP-MKT": expenseDef("EXP-MKT", "Marketing", "मार्केटिंग", "QE-PROMOTION"),
+  "EXP-FUEL": expenseDef("EXP-FUEL", "Diesel / Fuel", "ईंधन", "QE-DIESEL", "LOGISTICS"),
+  "EXP-FREIGHT": expenseDef("EXP-FREIGHT", "Freight", "भाड़ा", "5020", "LOGISTICS"),
+  "EXP-VEHICLE": expenseDef("EXP-VEHICLE", "Vehicle Maintenance", "वाहन रखरखाव", "QE-VEHICLE-REPAIR", "LOGISTICS"),
+  "EXP-RENT": expenseDef("EXP-RENT", "Rent", "किराया", "QE-OFFICE-RENT", "PREMISES_ADMIN"),
+  "EXP-ELECTRICITY": expenseDef("EXP-ELECTRICITY", "Electricity", "बिजली", "5140", "PREMISES_ADMIN"),
+  "EXP-WAREHOUSE": expenseDef("EXP-WAREHOUSE", "Warehouse", "गोदाम", "5030", "PREMISES_ADMIN"),
+  "EXP-COURIER": expenseDef("EXP-COURIER", "Courier / Delivery", "कूरियर", "QE-COURIER", "LOGISTICS"),
+  "EXP-PACK": { ...expenseDef("EXP-PACK", "Packaging", "पैकेजिंग", "QE-PACKING-EXPENSE", "OTHER"), description: "Packaging expense. If Manufacturing treats this specific packaging as stocked material, it must be entered through Raw Material Purchase / GRN instead — flagged for the operator, not silently guessed." },
+  "EXP-MKT": expenseDef("EXP-MKT", "Marketing", "मार्केटिंग", "QE-PROMOTION", "MARKETING"),
+  "EXP-ADVERTISEMENT": expenseDef("EXP-ADVERTISEMENT", "Advertisement", "विज्ञापन", "5080", "MARKETING"),
+  // EMI (spec §9): "If Loan Repayment already exists, map it into Money Desk EMI category without
+  // duplicate posting" — QE-LOAN-REPAYMENT (chart-of-accounts.ts) already exists and posts the
+  // correct Dr Loans(2050)/Cr Cash-or-Bank effect; this purpose is only a friendlier guided front
+  // door onto that same category, never a second loan/EMI accounting path.
+  "EXP-EMI": expenseDef("EXP-EMI", "EMI / Loan Repayment", "ईएमआई / ऋण चुकौती", "QE-LOAN-REPAYMENT", "FINANCE"),
+  "EXP-REIMBURSEMENT": { ...expenseDef("EXP-REIMBURSEMENT", "Employee Expense Reimbursement", "कर्मचारी व्यय प्रतिपूर्ति", "QE-STAFF-REIMBURSEMENT", "EMPLOYEE"), quickEntryType: "REIMBURSEMENT", requiredFields: ["counterpartyName"], optionalFields: [] },
   "AST-MCH": {
     code: "AST-MCH",
     label: "Machinery / Fixed Asset",
     hindiLabel: "मशीनरी / स्थायी संपत्ति",
+    group: "OTHER",
     allowedDirections: ["CASH_OUT", "BANK_OUT"],
     counterpartyType: "VENDOR",
     requiredFields: ["counterpartyName", "category"],
@@ -169,13 +191,14 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     gstApplicable: true,
     description: "Machinery or other capital asset purchase — always capitalized as a real Fixed Asset, never blindly expensed.",
   },
-  "EXP-OFFICE": expenseDef("EXP-OFFICE", "Office Expense", "कार्यालय व्यय", "QE-OFFICE-EXPENSE"),
-  "EXP-TRAVEL": expenseDef("EXP-TRAVEL", "Travel", "यात्रा", undefined),
-  "EXP-UTILITY": expenseDef("EXP-UTILITY", "Utility", "उपयोगिता", undefined),
+  "EXP-OFFICE": expenseDef("EXP-OFFICE", "Office Expense", "कार्यालय व्यय", "QE-OFFICE-EXPENSE", "PREMISES_ADMIN"),
+  "EXP-TRAVEL": expenseDef("EXP-TRAVEL", "Travel (Other)", "यात्रा", undefined, "OTHER"),
+  "EXP-UTILITY": expenseDef("EXP-UTILITY", "Utility", "उपयोगिता", undefined, "PREMISES_ADMIN"),
   "REFUND": {
     code: "REFUND",
     label: "Refund",
     hindiLabel: "धनवापसी",
+    group: "OTHER",
     allowedDirections: ["CASH_OUT", "BANK_OUT"],
     counterpartyType: "CUSTOMER",
     requiredFields: ["counterpartyName", "sourceReturnRequestId"],
@@ -192,6 +215,7 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     code: "ADJ-GOV",
     label: "Governed Adjustment",
     hindiLabel: "नियंत्रित समायोजन",
+    group: "OTHER",
     allowedDirections: ["ADJUSTMENT"],
     counterpartyType: "NONE",
     requiredFields: ["adjustmentAccountCode"],
@@ -207,8 +231,9 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
   },
   "OTHER": {
     code: "OTHER",
-    label: "Other",
-    hindiLabel: "अन्य",
+    label: "Misc / Manual Entry",
+    hindiLabel: "विविध / मैन्युअल प्रविष्टि",
+    group: "OTHER",
     allowedDirections: ["CASH_IN", "CASH_OUT", "BANK_IN", "BANK_OUT"],
     counterpartyType: "NONE",
     requiredFields: [],
@@ -224,11 +249,12 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
   },
 };
 
-function expenseDef(code: string, label: string, hindiLabel: string, categoryCode: string | undefined): MoneyDeskPurposeDefinition {
+function expenseDef(code: string, label: string, hindiLabel: string, categoryCode: string | undefined, group: MoneyDeskPurposeGroup): MoneyDeskPurposeDefinition {
   return {
     code,
     label,
     hindiLabel,
+    group,
     allowedDirections: ["CASH_OUT", "BANK_OUT"],
     counterpartyType: "NONE",
     requiredFields: [],

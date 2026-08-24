@@ -4,14 +4,14 @@ import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
 import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { FoundationError } from "@/lib/foundation/errors";
-import { salesRegister, companyFacingParties, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct } from "@/lib/finance/reports-service";
+import { salesRegister, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct } from "@/lib/finance/reports-service";
 import { financeGlobalSearch } from "@/lib/finance/search-service";
 import { financialIntelligenceFeed } from "@/lib/finance/intelligence-service";
 import { journalDetail, recentJournals } from "@/lib/finance/journal-service";
 import { loanLedger } from "@/lib/finance/loan-asset-service";
 import { financeApprovalQueue } from "@/lib/finance/approval-policy-service";
 import { financeDocumentVault, financeDocumentsFor, type FinanceDocumentEntityType } from "@/lib/finance/document-service";
-import { ledgerReadModel } from "@/lib/sales-distribution/financial-service";
+import { partyLedgerStatement, ledgerPartyOptions, assertKnownPartyType } from "@/lib/finance/party-ledger-service";
 import { listRecurringTemplates } from "@/lib/finance/expense-service";
 import { payrollRegister } from "@/lib/finance/payroll-service";
 import { quickEntryCategories, categoryLedger, employeeFinancial360, searchEmployees } from "@/lib/finance/quick-entry-service";
@@ -34,15 +34,6 @@ export async function GET(request: Request) {
       case "sales-register":
         result = await salesRegister(prisma, user.id, { from, to });
         break;
-      case "parties":
-        result = await companyFacingParties(prisma, user.id);
-        break;
-      case "party-ledger": {
-        const partyId = url.searchParams.get("partyId");
-        if (!partyId) throw new FoundationError("PARTY_ID_REQUIRED", "partyId is required", 400);
-        result = await ledgerReadModel(prisma, user.id, { partyType: "SUPER_STOCKIST", partyId });
-        break;
-      }
       case "customer-advances":
         result = await customerAdvanceRegister(prisma, user.id);
         break;
@@ -128,6 +119,18 @@ export async function GET(request: Request) {
         const employeeId = url.searchParams.get("employeeId");
         if (!employeeId) throw new FoundationError("EMPLOYEE_ID_REQUIRED", "employeeId is required", 400);
         result = await employeeFinancial360(prisma, user.id, employeeId);
+        break;
+      }
+      case "ledger-parties": {
+        const partyType = assertKnownPartyType(url.searchParams.get("partyType"));
+        result = await ledgerPartyOptions(prisma, user.id, partyType);
+        break;
+      }
+      case "party-ledger-statement": {
+        const partyType = assertKnownPartyType(url.searchParams.get("partyType"));
+        const partyId = url.searchParams.get("partyId");
+        if (!partyId) throw new FoundationError("PARTY_ID_REQUIRED", "partyId is required", 400);
+        result = await partyLedgerStatement(prisma, user.id, { partyType, partyId, from, to });
         break;
       }
       case "documents-for": {
