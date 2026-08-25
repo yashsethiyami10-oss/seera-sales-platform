@@ -1,6 +1,6 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import type { FinanceWorkspaceData } from "@/lib/finance/founder-workspace-data";
 import { PartyLedgerStatement } from "./PartyLedgerStatement";
@@ -128,8 +128,14 @@ const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
 
 export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: FinanceWorkspaceData }) {
   const router = useRouter();
-  const [group, setGroup] = useState<Group>("overview");
-  const [section, setSection] = useState<string>("");
+  // Bidirectional navigation (Founder closure pass, 24-Aug §7): a Money Desk transaction's "View
+  // Ledger" link needs a REAL deep link into this panel's Ledgers tab with the right party
+  // pre-selected — read the initial group/section (and, for Ledgers, partyType/partyId) from the
+  // URL once on mount rather than always defaulting to Overview.
+  const searchParams = useSearchParams();
+  const initialGroup = (searchParams.get("group") as Group | null) ?? "overview";
+  const [group, setGroup] = useState<Group>(GROUPS.includes(initialGroup) ? initialGroup : "overview");
+  const [section, setSection] = useState<string>(searchParams.get("section") ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const isFounder = portal === "founder-admin" || portal === "company-admin";
@@ -145,13 +151,24 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
   }
   const ctx: Ctx = { portal, isFounder, data, busy, run, router };
 
-  useEffect(() => { setSection(GROUP_SECTIONS[group][0]?.key ?? ""); }, [group]);
+  const mountedWithDeepLink = useRef(Boolean(searchParams.get("section")));
+  useEffect(() => {
+    if (mountedWithDeepLink.current) { mountedWithDeepLink.current = false; return; }
+    setSection(GROUP_SECTIONS[group][0]?.key ?? "");
+  }, [group]);
 
   return (
     <section className={styles.panel}>
-      <div>
-        <small>{isFounder ? "FOUNDER FINANCE" : "ACCOUNTS"}</small>
-        <h2>Company Finance</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div>
+          <small>{isFounder ? "FOUNDER FINANCE" : "ACCOUNTS"}</small>
+          <h2>Company Finance</h2>
+        </div>
+        {/* One Finance Control Centre, not two disconnected products (§2) — Money Desk's guided
+            transaction entry stays its own route (a separate, narrower money_desk:* permission gate
+            than financial_statements:view), but every screen cross-links to the other so the
+            Founder never has to remember which one has what. */}
+        <a href={`/portal/${portal}/money-desk`} style={{ fontSize: "0.85rem" }}>{"Open Money Desk (guided entry) →"}</a>
       </div>
       <div className={styles.inlineActions} role="tablist" aria-label="Finance groups">
         {visibleGroups.map((g) => (
@@ -180,7 +197,7 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
         {group === "money" && section === "reconcile" && <ReconciliationSection ctx={ctx} />}
         {group === "money" && section === "journals" && <RecentJournalsSection />}
         {group === "sales" && section === "register" && <SalesRegisterSection />}
-        {group === "sales" && section === "ledger" && <PartyLedgerStatement />}
+        {group === "sales" && section === "ledger" && <PartyLedgerStatement portal={portal} />}
         {group === "sales" && section === "advances" && <CustomerAdvancesSection />}
         {group === "sales" && section === "receipts" && <ReceiptsSection />}
         {group === "purchases" && section === "vendors" && <VendorsSection ctx={ctx} />}
@@ -1428,6 +1445,7 @@ function ReportsCenterSection() {
   const { data: byCategory } = useReportOnDemand<{ categoryId: string; categoryName: string; total: number }[]>("expense-by-category", { from, to }, [from, to]);
   const { data: byDept } = useReportOnDemand<{ dimensionId: string | null; name: string; total: number }[]>("expense-by-department", { from, to }, [from, to]);
   const { data: byTerritory } = useReportOnDemand<{ territoryId: string | null; name: string; total: number }[]>("expense-by-territory", { from, to }, [from, to]);
+  const { data: byCostCentre } = useReportOnDemand<{ costCentre: string; total: number }[]>("cost-centre-summary", { from, to }, [from, to]);
   const { data: ageing } = useReportOnDemand<{ rows: { partyId: string; name: string; outstandingTotal: number }[]; buckets: Record<string, number> }>("receivables-ageing", {}, []);
   const { data: bySS } = useReportOnDemand<{ partyId: string; name: string; total: number }[]>("sales-by-ss", { from, to }, [from, to]);
   const { data: byProduct } = useReportOnDemand<{ product: string; total: number }[]>("sales-by-product", { from, to }, [from, to]);
@@ -1443,6 +1461,8 @@ function ReportsCenterSection() {
       <div className={styles.tableWrap}><table><tbody>{byDept?.map((d) => <tr key={d.dimensionId ?? "none"}><td>{d.name}</td><td>{money(d.total)}</td></tr>)}</tbody></table></div>
       <h4>Territory Expense Summary <button type="button" disabled={!byTerritory?.length} onClick={() => exportCsv("expense-by-territory", byTerritory ?? [])}>EXPORT CSV</button></h4>
       <div className={styles.tableWrap}><table><tbody>{byTerritory?.map((t) => <tr key={t.territoryId ?? "corporate"}><td>{t.name}</td><td>{money(t.total)}</td></tr>)}</tbody></table></div>
+      <h4>Cost Centre Summary (Territory-less expenses only) <button type="button" disabled={!byCostCentre?.length} onClick={() => exportCsv("cost-centre-summary", byCostCentre ?? [])}>EXPORT CSV</button></h4>
+      <div className={styles.tableWrap}><table><tbody>{byCostCentre?.map((c) => <tr key={c.costCentre}><td>{c.costCentre}</td><td>{money(c.total)}</td></tr>)}</tbody></table></div>
       <h4>Receivables Ageing <button type="button" disabled={!ageing?.rows.length} onClick={() => exportCsv("receivables-ageing", ageing?.rows ?? [])}>EXPORT CSV</button></h4>
       {ageing && <p>Not due {money(ageing.buckets.NOT_DUE)} · 1-30d {money(ageing.buckets["1_30"])} · 31-60d {money(ageing.buckets["31_60"])} · 61-90d {money(ageing.buckets["61_90"])} · 90+d {money(ageing.buckets["90_PLUS"])}</p>}
       <h4>Company Sales by S.S. <button type="button" disabled={!bySS?.length} onClick={() => exportCsv("sales-by-ss", bySS ?? [])}>EXPORT CSV</button></h4>

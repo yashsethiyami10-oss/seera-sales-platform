@@ -1,5 +1,6 @@
 "use client";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import styles from "./WorkflowActions.module.css";
 
 async function getReport(report: string, params: Record<string, string> = {}) {
@@ -12,7 +13,10 @@ async function getReport(report: string, params: Record<string, string> = {}) {
 
 const money = (v: number | null | undefined) => `₹${Math.round(Number(v ?? 0)).toLocaleString("en-IN")}`;
 const fmtDate = (v: string | null | undefined) => (v ? new Date(v).toLocaleDateString("en-IN") : "—");
-const isoDate = (v: Date) => v.toISOString().slice(0, 10);
+// Local-calendar-date, not UTC: `.toISOString()` would show "yesterday" for any IST (UTC+5:30)
+// user between midnight and 5:30am, silently excluding today's transactions from the default
+// statement window.
+const isoDate = (v: Date) => `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
 
 // Same client-side export convention as FinanceWorkspacePanel's exportCsv — exports exactly the
 // filtered rows currently on screen, so CSV values can never drift from what the UI shows.
@@ -34,7 +38,7 @@ type PartyType = "DISTRIBUTOR" | "SUPER_STOCKIST" | "VENDOR" | "EMPLOYEE";
 const PARTY_TYPE_LABEL: Record<PartyType, string> = { DISTRIBUTOR: "Distributor", SUPER_STOCKIST: "Super Stockist", VENDOR: "Vendor", EMPLOYEE: "Employee" };
 
 type LedgerLine = { skuCode: string; product: string; pack: string; uom: string; quantity: number; rate: number; taxable: number; gst: number; lineTotal: number };
-type LedgerRow = { id: string; date: string; particulars: string; voucher: string; debit: number; credit: number; balance: number; sourceType: string; sourceId: string; reason?: string | null; territory?: string | null; treasury?: string | null; paymentReference?: string | null; createdBy?: string | null; postedAt: string | null; lines?: LedgerLine[] | null };
+type LedgerRow = { id: string; date: string; particulars: string; voucher: string; debit: number; credit: number; balance: number; sourceType: string; sourceId: string; reason?: string | null; territory?: string | null; costCentre?: string | null; treasury?: string | null; paymentReference?: string | null; createdBy?: string | null; postedAt: string | null; lines?: LedgerLine[] | null; moneyDeskTransactionId?: string | null };
 type Statement = { party: { id: string; name: string; type: PartyType; address?: string | null; mobile?: string | null; gstin?: string | null; territory?: string | null }; period: { from: string; to: string }; normalSide: "DEBIT" | "CREDIT"; openingBalance: number; rows: LedgerRow[]; totals: { debit: number; credit: number; closingBalance: number } };
 
 function balanceText(v: number, normalSide: "DEBIT" | "CREDIT") {
@@ -43,10 +47,14 @@ function balanceText(v: number, normalSide: "DEBIT" | "CREDIT") {
   return `${money(Math.abs(v))} ${isNormal ? "Dr" : "Cr"}`;
 }
 
-export function PartyLedgerStatement() {
-  const [partyType, setPartyType] = useState<PartyType>("DISTRIBUTOR");
+export function PartyLedgerStatement({ portal }: { portal: string }) {
+  // Bidirectional navigation (§7): a Money Desk transaction / other screen can deep-link here with
+  // ?partyType=VENDOR&partyId=xxx already selected, instead of always landing on the empty picker.
+  const searchParams = useSearchParams();
+  const deepLinkPartyType = searchParams.get("partyType") as PartyType | null;
+  const [partyType, setPartyType] = useState<PartyType>(deepLinkPartyType && deepLinkPartyType in PARTY_TYPE_LABEL ? deepLinkPartyType : "DISTRIBUTOR");
   const [parties, setParties] = useState<{ id: string; name: string }[]>([]);
-  const [partyId, setPartyId] = useState("");
+  const [partyId, setPartyId] = useState(searchParams.get("partyId") ?? "");
   const [from, setFrom] = useState(isoDate(new Date(Date.now() - 90 * 86_400_000)));
   const [to, setTo] = useState(isoDate(new Date()));
   const [statement, setStatement] = useState<Statement | null>(null);
@@ -57,9 +65,9 @@ export function PartyLedgerStatement() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
 
+  const hasDeepLinkedParty = useRef(Boolean(deepLinkPartyType && searchParams.get("partyId")));
   useEffect(() => {
-    setPartyId("");
-    setStatement(null);
+    if (hasDeepLinkedParty.current) { hasDeepLinkedParty.current = false; } else { setPartyId(""); setStatement(null); }
     getReport("ledger-parties", { partyType }).then(setParties).catch(() => setParties([]));
   }, [partyType]);
 
@@ -144,7 +152,7 @@ export function PartyLedgerStatement() {
           <div className="money-desk-no-print" style={{ display: "flex", gap: "0.5rem", margin: "0.75rem 0" }}>
             {pdfUrl && <a href={pdfUrl} target="_blank" rel="noreferrer"><button type="button">DOWNLOAD PDF</button></a>}
             <button type="button" onClick={() => window.print()}>PRINT</button>
-            <button type="button" onClick={() => exportCsv(`ledger-${statement.party.name}`, filteredRows.map((r) => ({ Date: fmtDate(r.date), Particulars: r.particulars, Voucher: r.voucher, Debit: r.debit, Credit: r.credit, Balance: r.balance, "Source Type": r.sourceType, "Source Reference": r.sourceId, Territory: r.territory ?? "", Treasury: r.treasury ?? "" })))}>DOWNLOAD CSV</button>
+            <button type="button" onClick={() => exportCsv(`ledger-${statement.party.name}`, filteredRows.map((r) => ({ Date: fmtDate(r.date), Particulars: r.particulars, Voucher: r.voucher, Debit: r.debit, Credit: r.credit, Balance: r.balance, "Source Type": r.sourceType, "Source Reference": r.sourceId, Territory: r.territory ?? "", "Cost Centre": r.costCentre ?? "", Treasury: r.treasury ?? "" })))}>DOWNLOAD CSV</button>
             <button type="button" onClick={handleShare}>SHARE</button>
           </div>
           {shareNote && <p role="status" data-ok="false">{shareNote}</p>}
@@ -183,12 +191,14 @@ export function PartyLedgerStatement() {
                             <div style={{ padding: "0.5rem 0" }}>
                               {r.reason && <p><strong>Reason:</strong> {r.reason}</p>}
                               {r.territory && <p><strong>Territory:</strong> {r.territory}</p>}
+                              {!r.territory && r.costCentre && <p><strong>Cost Centre:</strong> {r.costCentre}</p>}
                               {r.treasury && <p><strong>Treasury:</strong> {r.treasury}</p>}
                               {r.paymentReference && <p><strong>Payment Reference:</strong> {r.paymentReference}</p>}
                               {r.createdBy && <p><strong>Created By:</strong> {r.createdBy}</p>}
                               {r.postedAt && <p><strong>Posted At:</strong> {new Date(r.postedAt).toLocaleString("en-IN")}</p>}
                               <p><strong>Source:</strong> {r.sourceType.replace(/^Seera/, "")}
                                 {r.sourceType === "SeeraCommercialDocument" && <> — <a href={`/api/documents/${r.sourceId}/download`} target="_blank" rel="noreferrer">View Document</a></>}
+                                {r.moneyDeskTransactionId && <> — <a href={`/portal/${portal}/money-desk/${r.moneyDeskTransactionId}`}>View Money Desk Transaction</a></>}
                               </p>
                               {r.lines && r.lines.length > 0 && (
                                 <div className={styles.tableWrap}>

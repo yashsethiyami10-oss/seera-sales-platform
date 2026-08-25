@@ -1,7 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { FoundationError } from "@/lib/foundation/errors";
-import { ledgerReadModel } from "@/lib/sales-distribution/financial-service";
+import { ledgerReadModel, partyOutstanding } from "@/lib/sales-distribution/financial-service";
+import { deriveCostCentre } from "./cost-centre";
 
 // SEERA PROFESSIONAL LEDGER — the one shared running-balance statement engine for every party
 // type (Distributor, Super Stockist, Vendor, Employee). Founder visual review (24-Aug §17):
@@ -27,12 +28,36 @@ export type LedgerRow = {
   sourceId: string;
   reason?: string | null;
   territory?: string | null;
+  costCentre?: string | null;
   treasury?: string | null;
   paymentReference?: string | null;
   createdBy?: string | null;
   postedAt: string | null;
   lines?: LedgerLine[] | null;
+  // Bidirectional Ledger -> Money Desk link (Founder closure pass, 24-Aug §7). Only set when a
+  // real SeeraMoneyDeskTransaction genuinely caused this row (Vendor Payment/Bill via PAY-VEN or
+  // RAW_MATERIAL_PURCHASE, Expense via any quick-entry purpose) — never fabricated for rows a
+  // different pathway posted (e.g. a Guided Distributor Receipt, which intentionally reuses the
+  // pre-existing recordPayment/verifyPayment pipeline, not Money Desk's own transaction table).
+  moneyDeskTransactionId?: string | null;
 };
+
+// Reverse-resolves "which SeeraMoneyDeskTransaction produced this downstream record", so a Ledger
+// row can link back to the same Transaction Detail page its own "View Ledger" link points forward
+// from. Bounded to the transactions `where` already narrows down (one vendor / one employee's
+// worth), not a full-table scan.
+async function moneyDeskLinksFor(db: PrismaClient, where: { counterpartyType: "VENDOR"; counterpartyId: string } | { formData: { path: string[]; equals: string } }): Promise<Map<string, string>> {
+  const txns = await db.seeraMoneyDeskTransaction.findMany({ where, select: { id: true, downstreamRefs: true } });
+  const linkByRefId = new Map<string, string>();
+  for (const t of txns) {
+    const refs = (t.downstreamRefs ?? {}) as Record<string, unknown>;
+    for (const key of ["expenseId", "vendorPaymentId", "paymentId", "billId"] as const) {
+      const v = refs[key];
+      if (typeof v === "string") linkByRefId.set(v, t.id);
+    }
+  }
+  return linkByRefId;
+}
 
 export type PartyLedgerStatement = {
   party: { id: string; name: string; type: LedgerPartyType; address?: string | null; mobile?: string | null; gstin?: string | null; territory?: string | null };
@@ -161,10 +186,11 @@ async function distributorOrSsLedger(db: PrismaClient, actorId: string, partyTyp
 
 async function vendorLedger(db: PrismaClient, actorId: string, vendorId: string, from: Date, to: Date): Promise<PartyLedgerStatement> {
   await authorize(db, { actorId, permission: "vendor:manage" });
-  const [vendor, bills, payments] = await Promise.all([
+  const [vendor, bills, payments, moneyDeskLinks] = await Promise.all([
     db.seeraVendor.findUniqueOrThrow({ where: { id: vendorId } }),
     db.seeraVendorBill.findMany({ where: { vendorId, status: { not: "CANCELLED" } } }),
     db.seeraVendorPayment.findMany({ where: { vendorId } }),
+    moneyDeskLinksFor(db, { counterpartyType: "VENDOR", counterpartyId: vendorId }),
   ]);
   const treasuryIds = [...new Set(payments.map((p) => p.treasuryAccountId))];
   const treasuries = treasuryIds.length ? await db.seeraTreasuryAccount.findMany({ where: { id: { in: treasuryIds } }, select: { id: true, name: true } }) : [];
@@ -184,6 +210,7 @@ async function vendorLedger(db: PrismaClient, actorId: string, vendorId: string,
     reason: b.description,
     postedAt: b.createdAt.toISOString(),
     lines: null,
+    moneyDeskTransactionId: moneyDeskLinks.get(b.id) ?? null,
   }));
   const paymentRows: Omit<LedgerRow, "balance">[] = payments.map((p) => ({
     id: p.id,
@@ -198,6 +225,7 @@ async function vendorLedger(db: PrismaClient, actorId: string, vendorId: string,
     treasury: treasuryNameById.get(p.treasuryAccountId) ?? null,
     postedAt: p.createdAt.toISOString(),
     lines: null,
+    moneyDeskTransactionId: moneyDeskLinks.get(p.id) ?? null,
   }));
 
   const { openingBalance, rows, totals } = partitionAndRunningBalance([...billRows, ...paymentRows], from, to, "CREDIT");
@@ -213,19 +241,23 @@ async function vendorLedger(db: PrismaClient, actorId: string, vendorId: string,
 
 async function employeeLedger(db: PrismaClient, actorId: string, employeeId: string, from: Date, to: Date): Promise<PartyLedgerStatement> {
   await authorize(db, { actorId, permission: "expense:create" });
-  const [employee, expenses, claims] = await Promise.all([
+  const [employee, expenses, claims, moneyDeskLinks] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: employeeId }, select: { id: true, name: true, email: true } }),
     db.seeraExpense.findMany({ where: { employeeId, status: "POSTED" } }),
     db.seeraTaClaim.findMany({ where: { employeeId, totalApproved: { not: null } } }),
+    moneyDeskLinksFor(db, { formData: { path: ["employeeId"], equals: employeeId } }),
   ]);
   const territoryIds = [...new Set(expenses.map((e) => e.territoryId).filter((id): id is string => !!id))];
   const treasuryIds = [...new Set(expenses.map((e) => e.treasuryAccountId).filter((id): id is string => !!id))];
-  const [territories, treasuries] = await Promise.all([
+  const categoryIds = [...new Set(expenses.map((e) => e.categoryId))];
+  const [territories, treasuries, categories] = await Promise.all([
     territoryIds.length ? db.seeraGeographyNode.findMany({ where: { id: { in: territoryIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
     treasuryIds.length ? db.seeraTreasuryAccount.findMany({ where: { id: { in: treasuryIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+    categoryIds.length ? db.seeraExpenseCategory.findMany({ where: { id: { in: categoryIds } }, select: { id: true, chartOfAccountId: true, parentGroup: true } }) : Promise.resolve([]),
   ]);
   const territoryNameById = new Map(territories.map((t) => [t.id, t.name]));
   const treasuryNameById = new Map(treasuries.map((t) => [t.id, t.name]));
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
 
   // Immediate cash items (Salary/Advance/Reimbursement/Other) are already fully settled at
   // posting time in this schema — no separate payable record exists for them. Shown as a
@@ -242,37 +274,67 @@ async function employeeLedger(db: PrismaClient, actorId: string, employeeId: str
     sourceType: "SeeraExpense",
     sourceId: e.id,
     reason: e.description,
-    territory: e.territoryId ? (territoryNameById.get(e.territoryId) ?? null) : "Corporate",
+    territory: e.territoryId ? (territoryNameById.get(e.territoryId) ?? null) : null,
+    costCentre: deriveCostCentre(categoryById.get(e.categoryId), Boolean(e.territoryId)),
     treasury: e.treasuryAccountId ? (treasuryNameById.get(e.treasuryAccountId) ?? null) : null,
     postedAt: e.createdAt.toISOString(),
     lines: null,
+    moneyDeskTransactionId: moneyDeskLinks.get(e.id) ?? null,
   }));
 
   // TA/DA claims genuinely have a payable->payment gap (approved, then paid later) — a real
   // credit (payable) row when approved, and a real debit (payment) row only once actually paid.
   // The two amounts (totalApproved vs amountPaid) are never assumed equal or split by ratio; an
   // unpaid claim correctly leaves an outstanding credit balance on the ledger.
+  //
+  // TA vs DA presentation (Founder closure pass, 24-Aug §10): "do not display one confusing
+  // combined TA/DA line" — DA policy is still pending (daEligible/daAmount are null/false for
+  // essentially every real claim today), so the common case renders a single, correctly-named "TA
+  // Reimbursement Payable" line. Only when a claim genuinely carries a real, eligible daAmount does
+  // a SEPARATE "DA Reimbursement Payable" row appear — sized so the two rows always sum to exactly
+  // totalApproved (never a fabricated ratio split of unrelated hotel/toll/other components). The
+  // existing ₹2/km TA rate computation itself is untouched — this only changes how the already-
+  // computed totalApproved is presented on the ledger.
   const claimRows: Omit<LedgerRow, "balance">[] = [];
   for (const c of claims) {
     const approvedDate = c.approvedAt ?? c.sentToAccountsAt ?? c.claimDate;
+    const totalApproved = Number(c.totalApproved ?? 0);
+    const hasRealDa = c.daEligible === true && Number(c.daAmount ?? 0) > 0;
+    const daAmount = hasRealDa ? Number(c.daAmount) : 0;
+    const taAmount = totalApproved - daAmount;
     claimRows.push({
-      id: `${c.id}:payable`,
+      id: `${c.id}:ta-payable`,
       date: approvedDate.toISOString(),
-      particulars: "TA / DA Claim Payable",
+      particulars: "TA Reimbursement Payable",
       voucher: c.claimNumber,
       debit: 0,
-      credit: Number(c.totalApproved ?? 0),
+      credit: taAmount,
       sourceType: "SeeraTaClaim",
       sourceId: c.id,
       reason: c.purpose,
       postedAt: approvedDate.toISOString(),
       lines: null,
     });
+    if (hasRealDa) {
+      claimRows.push({
+        id: `${c.id}:da-payable`,
+        date: approvedDate.toISOString(),
+        particulars: "DA Reimbursement Payable",
+        voucher: c.claimNumber,
+        debit: 0,
+        credit: daAmount,
+        sourceType: "SeeraTaClaim",
+        sourceId: c.id,
+        reason: c.purpose,
+        postedAt: approvedDate.toISOString(),
+        lines: null,
+      });
+    }
     if (c.paidAt && c.amountPaid) {
       claimRows.push({
         id: `${c.id}:payment`,
         date: c.paidAt.toISOString(),
-        particulars: "TA / DA Claim Payment",
+        particulars: hasRealDa ? "TA & DA Reimbursement Payment" : "TA Reimbursement Payment",
         voucher: c.claimNumber,
         debit: Number(c.amountPaid),
         credit: 0,
@@ -315,6 +377,16 @@ export async function ledgerPartyOptions(db: PrismaClient, actorId: string, part
   await authorize(db, { actorId, permission: "expense:create" });
   const employees = await db.user.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true }, take: 500 });
   return employees.map((e) => ({ id: e.id, name: e.name ?? e.email }));
+}
+
+// Guided Money In (Founder closure pass, 24-Aug §4) — Step 3 needs "what does this party still
+// owe" to offer Outstanding Invoices for allocation. Reuses the SAME partyOutstanding() the party's
+// own Ledger/Credit screens already read, just gated to the Accounts/Founder oversight permission
+// instead of self-scope (this endpoint is for Accounts picking ANY party while recording a
+// receipt, not a party viewing its own position).
+export async function partyOutstandingForGuidedReceipt(db: PrismaClient, actorId: string, input: { partyType: "DISTRIBUTOR" | "SUPER_STOCKIST"; partyId: string }) {
+  await authorize(db, { actorId, permission: "finance_dashboard:view" });
+  return partyOutstanding(db, input.partyType, input.partyId, new Date());
 }
 
 export function assertKnownPartyType(value: string | null): LedgerPartyType {

@@ -29,6 +29,42 @@ export async function verifyPayment(db: PrismaClient, actorId: string, paymentId
   return db.$transaction(async (tx) => { const payment = await tx.seeraPaymentRecord.findUniqueOrThrow({ where: { id: paymentId } }); if (input.matchedAmount < 0 || input.matchedAmount > Number(payment.amountClaimed)) throw new FoundationError("INVALID_MATCHED_AMOUNT", "Matched amount exceeds claimed payment", 400); const status = input.matchedAmount === Number(payment.amountClaimed) ? "VERIFIED" : input.matchedAmount > 0 ? "PARTIALLY_MATCHED" : "REJECTED"; const result = await tx.seeraPaymentRecord.update({ where: { id: payment.id }, data: { amountMatched: input.matchedAmount, unappliedAmount: input.matchedAmount, status, reviewerId: actorId, reviewReason: input.reason, reviewedAt: new Date() } }); if(input.matchedAmount>0)await tx.seeraFinancialEntry.upsert({where:{idempotencyKey:`${payment.idempotencyKey}:verified-ledger`},update:{},create:{entryNumber:numberFor("ADV",payment.idempotencyKey),type:"ADVANCE",status:"POSTED",debitPartyType:payment.payeeType,debitPartyId:payment.payeeId,creditPartyType:payment.payerType,creditPartyId:payment.payerId,amount:input.matchedAmount,commercialSnapshot:{paymentNumber:payment.paymentNumber,reference:payment.reference},actorId,reason:input.reason,idempotencyKey:`${payment.idempotencyKey}:verified-ledger`,postedAt:new Date()}}); await recordAudit(tx, { actorId, action: "payment.verified", entityType: "SeeraPaymentRecord", entityId: payment.id, afterState: { matchedAmount: input.matchedAmount, status } }); return result; });
 }
 
+// GUIDED MONEY IN — Distributor/S.S. Receipt (Founder closure pass, 24-Aug §4). This is
+// deliberately an ORCHESTRATOR, not a new accounting effect: it calls the three ALREADY-governed
+// steps above (recordPayment -> verifyPayment -> allocateVerifiedPayment) in sequence, exactly the
+// same three steps Accounts already performs one screen at a time from the Payment Inbox. Each
+// step is independently transactional and permission-checked on its own — this function adds no
+// new posting logic, only a single guided call so the wizard can do "Review -> Post" once instead
+// of three separate round trips. If allocateToDocumentId is omitted, the receipt is posted as a
+// real on-account advance (never a fabricated invoice match) — matches Institutional Receipt's own
+// existing "when it isn't known, post as an unallocated advance" rule.
+export async function recordAndPostReceipt(db: PrismaClient, actorId: string, input: { payerType: string; payerId: string; payeeType: string; payeeId: string; amount: number; reference: string; paymentMode: string; paymentDate: Date; allocateToDocumentId?: string; reason: string; idempotencyKey: string }) {
+  if (input.amount <= 0) throw new FoundationError("INVALID_PAYMENT_AMOUNT", "Payment amount must be positive", 400);
+  const payment = await recordPayment(db, actorId, {
+    payerType: input.payerType,
+    payerId: input.payerId,
+    payeeType: input.payeeType,
+    payeeId: input.payeeId,
+    amountClaimed: input.amount,
+    reference: input.reference,
+    paymentMode: input.paymentMode,
+    paymentDate: input.paymentDate,
+    idempotencyKey: `${input.idempotencyKey}:record`,
+  });
+  // verifyPayment returns the UPDATED record (status VERIFIED/PARTIALLY_MATCHED/REJECTED) — this
+  // becomes the authoritative `payment` in the result, not the stale pre-verification snapshot
+  // `recordPayment` returned above.
+  const verifiedPayment = await verifyPayment(db, actorId, payment.id, { matchedAmount: input.amount, reason: input.reason });
+  let allocation = null;
+  if (input.allocateToDocumentId) {
+    const allocations = await allocateVerifiedPayment(db, actorId, payment.id, [
+      { documentId: input.allocateToDocumentId, amount: input.amount, idempotencyKey: `${input.idempotencyKey}:allocate`, reason: input.reason },
+    ]);
+    allocation = allocations[0] ?? null;
+  }
+  return { payment: verifiedPayment, allocation };
+}
+
 export async function allocateVerifiedPayment(db: PrismaClient, actorId: string, paymentId: string, allocations: { documentId: string; amount: number; idempotencyKey: string; reason: string }[]) {
   await authorize(db, { actorId, permission: "payment:allocate" });
   return db.$transaction(async (tx) => { const payment = await tx.seeraPaymentRecord.findUniqueOrThrow({ where: { id: paymentId }, include: { allocations: { where: { status: "ACTIVE" } } } }); if (!(["VERIFIED", "PARTIALLY_MATCHED", "ADVANCE_HELD"] as string[]).includes(payment.status)) throw new FoundationError("PAYMENT_NOT_VERIFIED", "Payment must be verified before allocation", 409); const requested = allocations.reduce((sum, item) => sum + item.amount, 0); if (allocations.some((item) => item.amount <= 0) || requested > Number(payment.unappliedAmount)) throw new FoundationError("PAYMENT_OVER_ALLOCATION", "Allocation exceeds unapplied payment", 409); const duplicate = await tx.seeraPaymentAllocation.findFirst({ where: { idempotencyKey: { in: allocations.map((item) => item.idempotencyKey) } } }); if (duplicate) throw new FoundationError("DUPLICATE_ALLOCATION", "Allocation already exists", 409); const documents = await tx.seeraCommercialDocument.findMany({ where: { id: { in: allocations.map((item) => item.documentId) }, buyerId: payment.payerId, issuerId: payment.payeeId, status: "ISSUED" }, select: { id: true } }); if (documents.length !== new Set(allocations.map((item) => item.documentId)).size) throw new FoundationError("ALLOCATION_SCOPE_DENIED", "Invoice scope mismatch", 403); const created = []; for (const item of allocations) { const allocation = await tx.seeraPaymentAllocation.create({ data: { paymentId, ...item, actorId } }); await postJournalForCompanyAllocation(tx, actorId, { id: allocation.id, documentId: item.documentId, amount: item.amount, idempotencyKey: item.idempotencyKey }); created.push(allocation); } await tx.seeraPaymentRecord.update({ where: { id: paymentId }, data: { unappliedAmount: { decrement: requested } } }); await recordAudit(tx, { actorId, action: "payment.allocated", entityType: "SeeraPaymentRecord", entityId: paymentId, afterState: { requested, documents: allocations.map((item) => item.documentId) } }); return created; });

@@ -4,14 +4,14 @@ import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
 import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { FoundationError } from "@/lib/foundation/errors";
-import { salesRegister, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct } from "@/lib/finance/reports-service";
+import { salesRegister, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, costCentreSummary, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct } from "@/lib/finance/reports-service";
 import { financeGlobalSearch } from "@/lib/finance/search-service";
 import { financialIntelligenceFeed } from "@/lib/finance/intelligence-service";
 import { journalDetail, recentJournals } from "@/lib/finance/journal-service";
 import { loanLedger } from "@/lib/finance/loan-asset-service";
 import { financeApprovalQueue } from "@/lib/finance/approval-policy-service";
 import { financeDocumentVault, financeDocumentsFor, type FinanceDocumentEntityType } from "@/lib/finance/document-service";
-import { partyLedgerStatement, ledgerPartyOptions, assertKnownPartyType } from "@/lib/finance/party-ledger-service";
+import { partyLedgerStatement, ledgerPartyOptions, assertKnownPartyType, partyOutstandingForGuidedReceipt } from "@/lib/finance/party-ledger-service";
 import { listRecurringTemplates } from "@/lib/finance/expense-service";
 import { payrollRegister } from "@/lib/finance/payroll-service";
 import { quickEntryCategories, categoryLedger, employeeFinancial360, searchEmployees } from "@/lib/finance/quick-entry-service";
@@ -52,6 +52,16 @@ export async function GET(request: Request) {
       case "expense-by-territory":
         result = await expenseByTerritory(prisma, user.id, { from, to });
         break;
+      case "cost-centre-summary":
+        result = await costCentreSummary(prisma, user.id, { from, to });
+        break;
+      case "party-outstanding": {
+        const partyType = url.searchParams.get("partyType");
+        const partyId = url.searchParams.get("partyId");
+        if ((partyType !== "DISTRIBUTOR" && partyType !== "SUPER_STOCKIST") || !partyId) throw new FoundationError("PARTY_ID_REQUIRED", "partyType (DISTRIBUTOR/SUPER_STOCKIST) and partyId are required", 400);
+        result = await partyOutstandingForGuidedReceipt(prisma, user.id, { partyType, partyId });
+        break;
+      }
       case "expense-trend":
         result = await monthlyExpenseTrend(prisma, user.id, Number(url.searchParams.get("months") ?? 6));
         break;

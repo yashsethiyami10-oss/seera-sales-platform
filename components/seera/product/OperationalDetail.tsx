@@ -21,6 +21,7 @@ import { canonicalDistributorExposure, superStockistDistributorCollectionsSnapsh
 import { companyOrderNextStep } from "@/lib/sales-distribution/business-rules";
 import { partnerObligationsPreview } from "@/lib/sales-distribution/travel-lifecycle-service";
 import { distributorClosureStockPosition } from "@/lib/sales-distribution/distributor-management-service";
+import { moneyDeskTransactionDetail } from "@/lib/finance/money-desk-service";
 
 type Field = { label: string; value: string };
 const money = (v: unknown) =>
@@ -95,6 +96,82 @@ export async function OperationalDetail({
         }
       />
     );
+  if (item.slug === "money-desk") {
+    const detail = await moneyDeskTransactionDetail(db, userId, id);
+    const ledgerHref = detail.ledgerLink ? `/portal/${portal}/finance-os?group=sales&section=ledger&partyType=${detail.ledgerLink.partyType}&partyId=${detail.ledgerLink.partyId}` : null;
+    return (
+      <>
+        {head(detail.transactionNumber)}
+        <section className={styles.card}>
+          <h3>{hi ? "लेनदेन सारांश" : "Transaction Summary"}</h3>
+          <Fields
+            items={[
+              { label: hi ? "उद्देश्य" : "Purpose", value: hi ? detail.purposeHindiLabel : detail.purposeLabel },
+              { label: hi ? "दिशा" : "Direction", value: detail.direction },
+              { label: hi ? "राशि" : "Amount", value: money(detail.amount) },
+              { label: hi ? "स्थिति" : "Status", value: detail.status },
+              { label: hi ? "तिथि" : "Transaction Date", value: text(detail.date) },
+              { label: hi ? "संदर्भ" : "Reference", value: text(detail.reference) },
+            ]}
+          />
+        </section>
+        {(detail.counterpartyName || detail.employee) && (
+          <section className={styles.card}>
+            <h3>{hi ? "पार्टी / कर्मचारी" : "Party / Employee"}</h3>
+            <Fields
+              items={[
+                ...(detail.counterpartyName ? [{ label: hi ? "पार्टी" : "Party", value: `${detail.counterpartyName}${detail.counterpartyType ? ` (${detail.counterpartyType})` : ""}` }] : []),
+                ...(detail.employee ? [{ label: hi ? "कर्मचारी" : "Employee", value: detail.employee.name }] : []),
+              ]}
+            />
+          </section>
+        )}
+        {detail.sourceDocuments.length > 0 && (
+          <section className={styles.card}>
+            <h3>{hi ? "स्रोत दस्तावेज़" : "Source Documents"}</h3>
+            <Fields items={detail.sourceDocuments.map((d) => ({ label: d.type, value: d.label }))} />
+          </section>
+        )}
+        <section className={styles.card}>
+          <h3>{hi ? "ट्रेजरी" : "Treasury"}</h3>
+          <Fields items={[{ label: hi ? "खाता" : "Account", value: detail.treasury ? `${detail.treasury.name} (${detail.treasury.kind})` : "—" }]} />
+        </section>
+        <section className={styles.card}>
+          <h3>{hi ? "क्षेत्र / कॉस्ट सेंटर" : "Territory / Cost Centre"}</h3>
+          <Fields items={[{ label: hi ? "मान" : "Value", value: detail.territory ?? detail.costCentre ?? "—" }]} />
+        </section>
+        {detail.lineItems.length > 0 && (
+          <section className={styles.card}>
+            <h3>{hi ? "उत्पाद / आइटम" : "Products / Items"}</h3>
+            <table className={styles.detail}>
+              <thead><tr><th>SKU</th><th>{hi ? "मात्रा" : "Qty"}</th><th>{hi ? "दर" : "Rate"}</th></tr></thead>
+              <tbody>{detail.lineItems.map((l, i) => <tr key={i}><td>{l.skuId}</td><td>{l.quantity}</td><td>{l.rate != null ? money(l.rate) : "—"}</td></tr>)}</tbody>
+            </table>
+          </section>
+        )}
+        <section className={styles.card}>
+          <h3>{hi ? "लेजर प्रभाव" : "Ledger Impact"}</h3>
+          {ledgerHref ? (
+            <p><Link className={styles.button} href={ledgerHref}>{hi ? `${detail.ledgerLink!.label} लेजर देखें` : `View ${detail.ledgerLink!.label} Ledger`}</Link></p>
+          ) : (
+            <p>{hi ? "इस लेनदेन का कोई पार्टी लेजर प्रभाव नहीं है (सामान्य खाता बही में पोस्ट)।" : "This transaction has no party-ledger effect (posted to the general ledger)."}</p>
+          )}
+        </section>
+        <section className={styles.card}>
+          <h3>{hi ? "ऑडिट" : "Audit"}</h3>
+          <Fields
+            items={[
+              { label: hi ? "बनाया गया" : "Created By", value: detail.requestedBy },
+              ...(detail.requiresApproval ? [{ label: hi ? "स्वतंत्र अनुमोदन" : "Requires Independent Approval", value: detail.isSelf ? (hi ? "हाँ — आप स्वयं इसे स्वीकृत नहीं कर सकते" : "Yes — you created this and cannot approve it yourself") : (hi ? "हाँ" : "Yes") }] : []),
+              ...(detail.approvedBy ? [{ label: hi ? "स्वीकृत द्वारा" : "Approved By", value: `${detail.approvedBy} (${text(detail.approvedAt)})` }] : []),
+              ...(detail.voidedBy ? [{ label: hi ? "रद्द किया गया" : "Voided By", value: `${detail.voidedBy} (${text(detail.voidedAt)}) — ${detail.voidReason ?? ""}` }] : []),
+              ...(detail.failureReason ? [{ label: hi ? "विफलता कारण" : "Failure Reason", value: detail.failureReason }] : []),
+            ]}
+          />
+        </section>
+      </>
+    );
+  }
   if (item.kind === "orders") {
     const x = await db.seeraSalesOrder.findFirst({
       where: {

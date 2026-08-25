@@ -21,6 +21,7 @@ import { createPayrollEntry, accruePayrollEntry, paySalary } from "@/lib/finance
 import { updateFinanceApprovalPolicy, seedDefaultFinanceApprovalPolicies, decideApproval } from "@/lib/finance/approval-policy-service";
 import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
 import { MONEY_DESK_PURPOSE_CODES } from "@/lib/finance/money-desk-registry";
+import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
 
@@ -42,6 +43,7 @@ const ACTIONS = [
   "create-payroll-entry", "accrue-payroll-entry", "pay-salary",
   "update-finance-approval-policy", "decide-finance-approval",
   "money-desk-create", "money-desk-decide-approval", "money-desk-void",
+  "guided-receipt",
 ] as const;
 
 const body = z.object({ action: z.enum(ACTIONS), payload: z.record(z.unknown()) });
@@ -288,6 +290,27 @@ export async function POST(request: Request) {
         result = await voidMoneyDeskTransaction(prisma, user.id, v.transactionId, v);
         break;
       }
+      case "guided-receipt":
+        result = await recordAndPostReceipt(
+          prisma,
+          user.id,
+          z
+            .object({
+              payerType: z.string(),
+              payerId: z.string(),
+              payeeType: z.string(),
+              payeeId: z.string(),
+              amount: z.number(),
+              reference: z.string(),
+              paymentMode: z.string(),
+              paymentDate: z.coerce.date(),
+              allocateToDocumentId: z.string().optional(),
+              reason: z.string(),
+              idempotencyKey: z.string(),
+            })
+            .parse(payload),
+        );
+        break;
     }
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

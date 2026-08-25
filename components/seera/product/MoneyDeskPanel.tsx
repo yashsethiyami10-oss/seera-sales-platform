@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import styles from "./WorkflowActions.module.css";
+import { GuidedMoneyIn } from "./GuidedMoneyIn";
 
 const key = () => crypto.randomUUID();
 async function post(action: string, payload: unknown) {
@@ -49,9 +50,10 @@ type SupportingData = {
   openVendorBills: { id: string; billNumber: string; vendorId: string; due: number }[];
   territories: { id: string; name: string }[];
 };
+type TxnRow = { id: string; transactionNumber: string; purposeCode: string; direction: Direction; status: string; amount: string | number; date: string; requestedById: string; counterpartyName: string | null; failureReason: string | null; employeeName?: string | null; territoryName?: string | null; treasuryName?: string | null };
 type HomeData = {
-  recentTransactions: { id: string; transactionNumber: string; purposeCode: string; direction: Direction; status: string; amount: string | number; date: string; requestedById: string; counterpartyName: string | null; failureReason: string | null }[];
-  pendingApprovals: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; requestedById: string }[];
+  recentTransactions: TxnRow[];
+  pendingApprovals: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; requestedById: string; isSelf?: boolean }[];
   needsAttention: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; failureReason: string | null }[];
   cashBankToday: { treasuryAccountId: string; name: string; kind: string; balance: number; movedToday: number }[];
   canApprove: boolean;
@@ -92,19 +94,48 @@ const FIELD_LABEL: Record<string, { en: string; hi: string; type: "text" | "numb
   gstin: { en: "GSTIN", hi: "जीएसटीएन", type: "text" },
 };
 
-export function MoneyDeskPanel({ language, purposes, supporting, home }: { language: "EN" | "HI"; purposes: PurposeDef[]; supporting: SupportingData; home: HomeData }) {
+// Rough, purpose-driven ledger-impact preview for the Review step — text only, computed from the
+// SAME registry data already loaded, never a second accounting calculation.
+function ledgerImpactPreview(purpose: PurposeDef, hi: boolean): string {
+  if (purpose.code === "PUR-RM") return hi ? "गोदाम स्टॉक + विक्रेता बिल/भुगतान बनेगा" : "Creates warehouse stock + a Vendor Bill/Payment";
+  if (purpose.code === "PAY-VEN") return hi ? "विक्रेता लेजर में डेबिट — बकाया कम होगा" : "Debit to Vendor Ledger — reduces payable";
+  if (purpose.code === "AST-MCH") return hi ? "स्थायी संपत्ति के रूप में पूंजीकृत" : "Capitalized as a Fixed Asset";
+  return hi ? "व्यय के रूप में पोस्ट — सामान्य खाता बही" : "Posted as an Expense — general ledger";
+}
+
+function OutFieldControl({ field, value, onChange, supporting, hi, required }: { field: string; value: string; onChange: (v: string) => void; supporting: SupportingData; hi: boolean; required: boolean }) {
+  const meta = FIELD_LABEL[field];
+  if (!meta) return null;
+  if (meta.type === "select-vendor") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>;
+  if (meta.type === "select-material") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}</select>;
+  if (meta.type === "select-location") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>;
+  if (meta.type === "select-bill") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.openVendorBills.map((b) => <option key={b.id} value={b.id}>{b.billNumber} — {money(b.due)} due</option>)}</select>;
+  if (meta.type === "select-return") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.pendingReturnRequests.map((r) => <option key={r.id} value={r.id}>{r.requestNumber} — {r.reason}</option>)}</select>;
+  if (meta.type === "select-unit") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{["KG", "GRAM", "LITRE", "ML", "PCS", "ROLL", "BOX", "BAG", "CARTON", "DRUM", "CAN", "METER", "OTHER"].map((u) => <option key={u} value={u}>{u}</option>)}</select>;
+  if (meta.type === "checkbox") return <input type="checkbox" checked={value === "on"} onChange={(e) => onChange(e.target.checked ? "on" : "")} />;
+  return <input value={value} onChange={(e) => onChange(e.target.value)} type={meta.type === "date" ? "date" : meta.type === "number" ? "number" : "text"} step={meta.type === "number" ? "0.01" : undefined} required={required} />;
+}
+
+export function MoneyDeskPanel({ language, portal, purposes, supporting, home }: { language: "EN" | "HI"; portal: string; purposes: PurposeDef[]; supporting: SupportingData; home: HomeData }) {
   const hi = language === "HI";
   const router = useRouter();
   const [openDirection, setOpenDirection] = useState<"IN" | "OUT" | null>(null);
   const [purposeCode, setPurposeCode] = useState<string>("");
+  const [outStep, setOutStep] = useState(0); // 0=business context, 1=treasury/payment, 2=territory/cost centre, 3=review
+  const [direction, setDirection] = useState<Direction | "">("");
+  const [amount, setAmount] = useState("");
+  const [treasuryAccountId, setTreasuryAccountId] = useState("");
+  const [documentFileId, setDocumentFileId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [territoryId, setTerritoryId] = useState("");
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [decisionBusyId, setDecisionBusyId] = useState<string | null>(null);
 
   const purposesForDirection = useMemo(() => {
-    if (!openDirection) return [];
-    const wanted: Direction[] = openDirection === "IN" ? ["CASH_IN", "BANK_IN"] : ["CASH_OUT", "BANK_OUT", "ADJUSTMENT"];
-    return purposes.filter((p) => p.allowedDirections.some((d) => wanted.includes(d)));
+    if (openDirection !== "OUT") return [];
+    return purposes.filter((p) => p.allowedDirections.some((d) => (["CASH_OUT", "BANK_OUT", "ADJUSTMENT"] as Direction[]).includes(d)));
   }, [openDirection, purposes]);
   const purposeGroupsForDirection = useMemo(() => {
     const groups = new Map<PurposeGroup, PurposeDef[]>();
@@ -119,68 +150,67 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
     const byCode = new Map(purposes.map((p) => [p.code, hi ? p.hindiLabel : p.label]));
     return (code: string) => byCode.get(code) ?? code;
   }, [purposes, hi]);
+  const businessFields = useMemo(() => (selectedPurpose ? [...selectedPurpose.requiredFields, ...selectedPurpose.optionalFields].filter((f) => f !== "employeeId" && f !== "territoryId") : []), [selectedPurpose]);
 
   function closeForm() {
     setOpenDirection(null);
     setPurposeCode("");
+    setOutStep(0);
+    setDirection("");
+    setAmount("");
+    setTreasuryAccountId("");
+    setDocumentFileId("");
+    setEmployeeId("");
+    setTerritoryId("");
+    setFieldValues({});
     setMessage(null);
   }
 
-  function submitForm(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!selectedPurpose) return;
-    const f = new FormData(e.currentTarget);
-    const direction = String(f.get("direction")) as Direction;
-    const amount = Number(f.get("amount"));
+  function pickPurpose(p: PurposeDef) {
+    setPurposeCode(p.code);
+    setDirection(p.allowedDirections[0] ?? "");
+    setOutStep(0);
+  }
+
+  function submitOut() {
+    if (!selectedPurpose || !direction) return;
     const formData: Record<string, unknown> = {};
-    for (const field of [...selectedPurpose.requiredFields, ...selectedPurpose.optionalFields]) {
-      const raw = f.get(field);
+    for (const field of businessFields) {
+      const raw = fieldValues[field];
       if (raw == null || raw === "") continue;
       const meta = FIELD_LABEL[field];
       if (field === "skuLines") {
-        formData.skuLines = String(raw)
-          .split(",")
-          .map((part) => part.trim())
-          .filter(Boolean)
-          .map((part) => {
-            const [skuId, quantity, rate] = part.split(":");
-            return { skuId, quantity: Number(quantity ?? 1), rate: rate ? Number(rate) : undefined };
-          });
+        formData.skuLines = raw.split(",").map((part) => part.trim()).filter(Boolean).map((part) => { const [skuId, quantity, rate] = part.split(":"); return { skuId, quantity: Number(quantity ?? 1), rate: rate ? Number(rate) : undefined }; });
       } else if (meta?.type === "checkbox") {
-        formData[field] = f.get(field) === "on";
+        formData[field] = raw === "on";
       } else if (meta?.type === "number") {
         formData[field] = Number(raw);
       } else {
-        formData[field] = String(raw);
+        formData[field] = raw;
       }
     }
     formData.paymentMode = direction === "CASH_IN" || direction === "CASH_OUT" ? "CASH" : "BANK";
-    // Universal Employee/Territory fields aren't part of every purpose's own requiredFields/
-    // optionalFields list (e.g. Diesel/Freight don't declare "employeeId"), so the loop above skips
-    // them for those purposes — read explicitly here instead, same convention as treasuryAccountId.
-    if (!formData.employeeId) { const emp = String(f.get("employeeId") || ""); if (emp) formData.employeeId = emp; }
-    if (!formData.territoryId) { const terr = String(f.get("territoryId") || ""); if (terr) formData.territoryId = terr; }
+    if (employeeId) formData.employeeId = employeeId;
+    if (territoryId) formData.territoryId = territoryId;
     setBusy(true);
     setMessage(null);
     void post("money-desk-create", {
       purposeCode: selectedPurpose.code,
       direction,
-      amount,
+      amount: Number(amount),
       date: new Date().toISOString(),
-      treasuryAccountId: String(f.get("treasuryAccountId") || "") || undefined,
+      treasuryAccountId: treasuryAccountId || undefined,
       counterpartyType: selectedPurpose.requiredFields.includes("counterpartyId") ? "VENDOR" : undefined,
       counterpartyId: (formData.counterpartyId as string) || undefined,
       counterpartyName: (formData.counterpartyName as string) || undefined,
       description: (formData.counterpartyName as string) || selectedPurpose.label,
-      documentFileId: (String(f.get("documentFileId") || "")) || undefined,
-      formData: {
-        ...formData,
-        treasuryAccountCoaCode: supporting.treasuryAccounts.find((t) => t.id === String(f.get("treasuryAccountId")))?.coaCode,
-      },
+      documentFileId: documentFileId || undefined,
+      formData: { ...formData, treasuryAccountCoaCode: supporting.treasuryAccounts.find((t) => t.id === treasuryAccountId)?.coaCode },
       idempotencyKey: key(),
     })
       .then((result) => {
         setMessage({ ok: true, text: hi ? `सहेजा गया — स्थिति: ${result.status}` : `Saved — status: ${result.status}` });
+        closeForm();
         router.refresh();
       })
       .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not save" }))
@@ -197,11 +227,16 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
       .finally(() => setDecisionBusyId(null));
   }
 
+  const OUT_STEP_LABEL = hi ? ["व्यवसाय विवरण", "ट्रेजरी / भुगतान", "क्षेत्र / कॉस्ट सेंटर", "समीक्षा"] : ["Business Context", "Treasury / Payment", "Territory / Cost Centre", "Review"];
+
   return (
     <section className={styles.panel}>
-      <div>
-        <small>{hi ? "मनी डेस्क" : "MONEY DESK"}</small>
-        <h2>{hi ? "पैसा प्रबंधन" : "Money Management"}</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div>
+          <small>{hi ? "मनी डेस्क" : "MONEY DESK"}</small>
+          <h2>{hi ? "पैसा प्रबंधन" : "Money Management"}</h2>
+        </div>
+        <a href={`/portal/${portal}/finance-os`} style={{ fontSize: "0.85rem" }}>{hi ? "फाइनेंस ओएस खोलें (लेजर, रिपोर्ट, विवरण) →" : "Open Finance OS (Ledgers, Reports, Statements) →"}</a>
       </div>
 
       <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
@@ -216,12 +251,20 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
         </table>
       </div>
 
-      <div style={{ gridColumn: "1/-1", display: "flex", gap: "0.75rem" }}>
-        <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
-        <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ RECORD MONEY OUT"}</button>
-      </div>
+      {!openDirection && (
+        <div style={{ gridColumn: "1/-1", display: "flex", gap: "0.75rem" }}>
+          <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
+          <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ RECORD MONEY OUT"}</button>
+        </div>
+      )}
 
-      {openDirection && (
+      {openDirection === "IN" && (
+        <div style={{ gridColumn: "1/-1" }}>
+          <GuidedMoneyIn language={language} treasuryAccounts={supporting.treasuryAccounts} onDone={closeForm} onCancel={closeForm} />
+        </div>
+      )}
+
+      {openDirection === "OUT" && (
         <div style={{ gridColumn: "1/-1" }}>
           {!selectedPurpose ? (
             <div className={styles.list}>
@@ -232,7 +275,7 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
                   <ul className={styles.list} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.5rem" }}>
                     {items.map((p) => (
                       <li key={p.code} style={{ listStyle: "none" }}>
-                        <button type="button" className={styles.secondaryBig} title={p.description} onClick={() => setPurposeCode(p.code)} style={{ width: "100%" }}>
+                        <button type="button" className={styles.secondaryBig} title={p.description} onClick={() => pickPurpose(p)} style={{ width: "100%" }}>
                           {hi ? p.hindiLabel : p.label}
                         </button>
                       </li>
@@ -243,83 +286,103 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
               <button type="button" className={styles.secondaryBig} onClick={closeForm} style={{ marginTop: "0.75rem" }}>{hi ? "रद्द करें" : "Cancel"}</button>
             </div>
           ) : (
-            <form onSubmit={submitForm}>
+            <div className={styles.list}>
               <p><strong>{hi ? selectedPurpose.hindiLabel : selectedPurpose.label}</strong> — {selectedPurpose.description}</p>
-              <label>
-                {hi ? "दिशा" : "Direction"}
-                <select name="direction" required defaultValue={selectedPurpose.allowedDirections[0]}>
-                  {selectedPurpose.allowedDirections.map((d) => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </label>
-              <label>{hi ? "राशि" : "Amount"}<input name="amount" type="number" step="0.01" min="0.01" required /></label>
-              <label>
-                {hi ? "खाता" : "Treasury account"}
-                {supporting.treasuryAccounts.length === 0 ? (
-                  <span className={styles.emptyHint}>{hi ? "कोई ट्रेजरी खाता कॉन्फ़िगर नहीं है।" : "No Treasury Accounts configured."}</span>
-                ) : (
-                  <select name="treasuryAccountId">
-                    <option value="">{hi ? "चुनें" : "Choose"}</option>
-                    {supporting.treasuryAccounts.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
-                  </select>
-                )}
-              </label>
-              {/* Employee/Territory (Money Desk maturity pass, 23-Aug): universal, purpose-agnostic
-                  optional fields — Territory is governed override only; leaving it blank auto-derives
-                  from the selected Employee's own Territory assignment server-side, so Accounts never
-                  re-enters geography the source already knows (spec §14/§16). Employee is `required`
-                  only when the selected purpose actually declares it (e.g. Salary). */}
-              <label>
-                {hi ? "कर्मचारी (वैकल्पिक)" : "Employee (optional)"}
-                <input name="employeeId" required={selectedPurpose.requiredFields.includes("employeeId")} placeholder={hi ? "कर्मचारी आईडी" : "Employee id"} />
-              </label>
-              <label>
-                {hi ? "क्षेत्र / टेरिटरी (वैकल्पिक)" : "Territory (optional)"}
-                <select name="territoryId" defaultValue="">
-                  <option value="">{hi ? "स्वतः / कॉर्पोरेट" : "Auto-derive / Corporate"}</option>
-                  {supporting.territories.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </label>
-              {[...selectedPurpose.requiredFields, ...selectedPurpose.optionalFields].map((field) => {
-                const meta = FIELD_LABEL[field];
-                if (!meta) return null;
-                const required = selectedPurpose.requiredFields.includes(field);
-                const labelText = `${hi ? meta.hi : meta.en}${required ? " *" : ""}`;
-                if (meta.type === "select-vendor") return (
-                  <label key={field}>{labelText}<select name={field} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
-                );
-                if (meta.type === "select-material") return (
-                  <label key={field}>{labelText}<select name={field} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}</select></label>
-                );
-                if (meta.type === "select-location") return (
-                  <label key={field}>{labelText}<select name={field} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label>
-                );
-                if (meta.type === "select-bill") return (
-                  <label key={field}>{labelText}<select name={field} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.openVendorBills.map((b) => <option key={b.id} value={b.id}>{b.billNumber} — {money(b.due)} due</option>)}</select></label>
-                );
-                if (meta.type === "select-return") return (
-                  <label key={field}>{labelText}<select name={field} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.pendingReturnRequests.map((r) => <option key={r.id} value={r.id}>{r.requestNumber} — {r.reason}</option>)}</select></label>
-                );
-                if (meta.type === "select-unit") return (
-                  <label key={field}>{labelText}<select name={field} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{["KG", "GRAM", "LITRE", "ML", "PCS", "ROLL", "BOX", "BAG", "CARTON", "DRUM", "CAN", "METER", "OTHER"].map((u) => <option key={u} value={u}>{u}</option>)}</select></label>
-                );
-                if (meta.type === "checkbox") return (
-                  <label key={field}><input name={field} type="checkbox" /> {labelText}</label>
-                );
-                return (
-                  <label key={field}>{labelText}<input name={field} type={meta.type === "date" ? "date" : meta.type === "number" ? "number" : "text"} step={meta.type === "number" ? "0.01" : undefined} required={required} /></label>
-                );
-              })}
-              {selectedPurpose.documentPolicy !== "NONE" && (
-                <label>{hi ? "दस्तावेज़ आईडी" : "Document file id"} {selectedPurpose.documentPolicy === "REQUIRED" ? "*" : ""}<input name="documentFileId" required={selectedPurpose.documentPolicy === "REQUIRED"} /></label>
+              <small>{hi ? `चरण ${outStep + 1} / 4 — ${OUT_STEP_LABEL[outStep]}` : `STEP ${outStep + 1} of 4 — ${OUT_STEP_LABEL[outStep]}`}</small>
+
+              {outStep === 0 && (
+                <div className={styles.list}>
+                  {selectedPurpose.allowedDirections.length > 1 && (
+                    <label>{hi ? "दिशा" : "Direction"}
+                      <select value={direction} onChange={(e) => setDirection(e.target.value as Direction)}>
+                        {selectedPurpose.allowedDirections.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  <label>{hi ? "राशि" : "Amount"}<input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+                  {businessFields.map((field) => {
+                    const meta = FIELD_LABEL[field];
+                    if (!meta) return null;
+                    const required = selectedPurpose.requiredFields.includes(field);
+                    return (
+                      <label key={field}>{`${hi ? meta.hi : meta.en}${required ? " *" : ""}`}
+                        <OutFieldControl field={field} value={fieldValues[field] ?? ""} onChange={(v) => setFieldValues((s) => ({ ...s, [field]: v }))} supporting={supporting} hi={hi} required={required} />
+                      </label>
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button type="button" className={styles.secondaryBig} onClick={closeForm}>{hi ? "रद्द करें" : "Cancel"}</button>
+                    <button type="button" className={styles.primaryBig} disabled={!amount || Number(amount) <= 0} onClick={() => setOutStep(1)}>{hi ? "आगे" : "Next"}</button>
+                  </div>
+                </div>
               )}
-              <button disabled={busy} className={styles.primaryBig}>{hi ? "सहेजें" : "SAVE"}</button>
-              <button type="button" className={styles.secondaryBig} disabled={busy} onClick={closeForm}>{hi ? "रद्द करें" : "Cancel"}</button>
-            </form>
+
+              {outStep === 1 && (
+                <div className={styles.list}>
+                  <label>{hi ? "खाता" : "Treasury account"}
+                    {supporting.treasuryAccounts.length === 0 ? (
+                      <span className={styles.emptyHint}>{hi ? "कोई ट्रेजरी खाता कॉन्फ़िगर नहीं है।" : "No Treasury Accounts configured."}</span>
+                    ) : (
+                      <select value={treasuryAccountId} onChange={(e) => setTreasuryAccountId(e.target.value)}>
+                        <option value="">{hi ? "चुनें" : "Choose"}</option>
+                        {supporting.treasuryAccounts.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
+                      </select>
+                    )}
+                  </label>
+                  {selectedPurpose.documentPolicy !== "NONE" && (
+                    <label>{hi ? "दस्तावेज़ आईडी" : "Document file id"} {selectedPurpose.documentPolicy === "REQUIRED" ? "*" : ""}<input value={documentFileId} onChange={(e) => setDocumentFileId(e.target.value)} /></label>
+                  )}
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button type="button" className={styles.secondaryBig} onClick={() => setOutStep(0)}>{hi ? "पीछे" : "Back"}</button>
+                    <button type="button" className={styles.primaryBig} disabled={selectedPurpose.documentPolicy === "REQUIRED" && !documentFileId} onClick={() => setOutStep(2)}>{hi ? "आगे" : "Next"}</button>
+                  </div>
+                </div>
+              )}
+
+              {outStep === 2 && (
+                <div className={styles.list}>
+                  <label>{hi ? "कर्मचारी (वैकल्पिक)" : "Employee (optional)"}
+                    <input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required={selectedPurpose.requiredFields.includes("employeeId")} placeholder={hi ? "कर्मचारी आईडी" : "Employee id"} />
+                  </label>
+                  <label>{hi ? "क्षेत्र / टेरिटरी (वैकल्पिक)" : "Territory (optional)"}
+                    <select value={territoryId} onChange={(e) => setTerritoryId(e.target.value)}>
+                      <option value="">{hi ? "स्वतः-व्युत्पन्न / कॉस्ट सेंटर" : "Auto-derive / Cost Centre"}</option>
+                      {supporting.territories.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </label>
+                  <p><small>{hi ? "टेरिटरी न चुनने पर कर्मचारी की टेरिटरी से स्वतः लिया जाएगा, अन्यथा एक कॉस्ट सेंटर (कॉर्पोरेट/हेड ऑफिस/गोदाम/मैन्युफैक्चरिंग) श्रेणी से स्वतः तय होगा — दोनों नहीं मांगे जाते।" : "Leaving Territory blank auto-derives it from the Employee when known; otherwise a Cost Centre (Corporate/Head Office/Warehouse/Manufacturing) is auto-derived from the category — never both, never asked twice."}</small></p>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button type="button" className={styles.secondaryBig} onClick={() => setOutStep(1)}>{hi ? "पीछे" : "Back"}</button>
+                    <button type="button" className={styles.primaryBig} onClick={() => setOutStep(3)}>{hi ? "समीक्षा करें" : "Review"}</button>
+                  </div>
+                </div>
+              )}
+
+              {outStep === 3 && (
+                <div className={styles.list}>
+                  <table>
+                    <tbody>
+                      <tr><td>{hi ? "उद्देश्य" : "Purpose"}</td><td>{hi ? selectedPurpose.hindiLabel : selectedPurpose.label}</td></tr>
+                      <tr><td>{hi ? "राशि" : "Amount"}</td><td>{money(amount)}</td></tr>
+                      <tr><td>{hi ? "ट्रेजरी" : "Treasury"}</td><td>{supporting.treasuryAccounts.find((t) => t.id === treasuryAccountId)?.name ?? "—"}</td></tr>
+                      {employeeId && <tr><td>{hi ? "कर्मचारी" : "Employee"}</td><td>{employeeId}</td></tr>}
+                      <tr><td>{hi ? "क्षेत्र" : "Territory"}</td><td>{supporting.territories.find((t) => t.id === territoryId)?.name ?? (hi ? "स्वतः / कॉस्ट सेंटर" : "Auto-derived / Cost Centre")}</td></tr>
+                      <tr><td>{hi ? "लेजर प्रभाव" : "Ledger Impact"}</td><td>{ledgerImpactPreview(selectedPurpose, hi)}</td></tr>
+                    </tbody>
+                  </table>
+                  {message && !message.ok && <p role="status" data-ok="false">{message.text}</p>}
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button type="button" className={styles.secondaryBig} disabled={busy} onClick={() => setOutStep(2)}>{hi ? "पीछे" : "Back"}</button>
+                    <button type="button" className={styles.primaryBig} disabled={busy} onClick={submitOut}>{busy ? (hi ? "पोस्ट हो रहा है…" : "Posting…") : (hi ? "पोस्ट करें" : "POST")}</button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
 
-      {message && <p role="status" data-ok={message.ok} className={message.ok ? undefined : styles.cardError} style={{ gridColumn: "1/-1" }}>{message.text}</p>}
+      {message && message.ok && <p role="status" data-ok={message.ok} style={{ gridColumn: "1/-1" }}>{message.text}</p>}
 
       {home.canApprove && home.pendingApprovals.length > 0 && (
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
@@ -329,10 +392,16 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
             <tbody>
               {home.pendingApprovals.map((t) => (
                 <tr key={t.id}>
-                  <td>{t.transactionNumber}</td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td>
+                  <td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td>
                   <td>
-                    <button type="button" disabled={decisionBusyId === t.id} onClick={() => decide(t.id, "APPROVED")}>{hi ? "स्वीकृत" : "Approve"}</button>{" "}
-                    <button type="button" disabled={decisionBusyId === t.id} onClick={() => decide(t.id, "REJECTED")}>{hi ? "अस्वीकृत" : "Reject"}</button>
+                    {t.isSelf ? (
+                      <span className={styles.emptyHint}>{hi ? "स्वतंत्र अनुमोदन आवश्यक — आपने यह लेनदेन बनाया" : "Requires Independent Approval — you created this transaction"}</span>
+                    ) : (
+                      <>
+                        <button type="button" disabled={decisionBusyId === t.id} onClick={() => decide(t.id, "APPROVED")}>{hi ? "स्वीकृत" : "Approve"}</button>{" "}
+                        <button type="button" disabled={decisionBusyId === t.id} onClick={() => decide(t.id, "REJECTED")}>{hi ? "अस्वीकृत" : "Reject"}</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -347,7 +416,7 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
           <table>
             <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "कारण" : "Reason"}</th></tr></thead>
             <tbody>
-              {home.needsAttention.map((t) => <tr key={t.id}><td>{t.transactionNumber}</td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
+              {home.needsAttention.map((t) => <tr key={t.id}><td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
             </tbody>
           </table>
         </div>
@@ -399,11 +468,19 @@ export function MoneyDeskPanel({ language, purposes, supporting, home }: { langu
       <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
         <strong>{hi ? "हाल के लेनदेन" : "Recent transactions"}</strong>
         <table>
-          <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "दिशा" : "Direction"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "स्थिति" : "Status"}</th></tr></thead>
+          <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "क्षेत्र" : "Territory"}</th><th>{hi ? "ट्रेजरी" : "Treasury"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "स्थिति" : "Status"}</th></tr></thead>
           <tbody>
-            {home.recentTransactions.length === 0 && <tr><td colSpan={5}>{hi ? "कोई लेनदेन नहीं।" : "No transactions yet."}</td></tr>}
+            {home.recentTransactions.length === 0 && <tr><td colSpan={7}>{hi ? "कोई लेनदेन नहीं।" : "No transactions yet."}</td></tr>}
             {home.recentTransactions.map((t) => (
-              <tr key={t.id}><td>{t.transactionNumber}</td><td>{purposeLabel(t.purposeCode)}</td><td>{t.direction}</td><td>{money(t.amount)}</td><td>{t.status}</td></tr>
+              <tr key={t.id}>
+                <td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td>
+                <td>{purposeLabel(t.purposeCode)}</td>
+                <td>{t.employeeName ?? "—"}</td>
+                <td>{t.territoryName ?? "—"}</td>
+                <td>{t.treasuryName ?? "—"}</td>
+                <td>{money(t.amount)}</td>
+                <td>{t.status}</td>
+              </tr>
             ))}
           </tbody>
         </table>

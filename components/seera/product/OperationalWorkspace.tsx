@@ -4198,7 +4198,7 @@ export async function OperationalWorkspace({
         const def = purposeDefinition(code);
         return { code: def.code, label: def.label, hindiLabel: def.hindiLabel, group: def.group, allowedDirections: def.allowedDirections, requiredFields: def.requiredFields, optionalFields: def.optionalFields, documentPolicy: def.documentPolicy, description: def.description };
       });
-      workflow = <MoneyDeskPanel language={language} purposes={purposes} supporting={supporting} home={home as never} />;
+      workflow = <MoneyDeskPanel language={language} portal={portal} purposes={purposes} supporting={supporting} home={home as never} />;
     } catch (error) {
       const incidentId = crypto.randomUUID();
       operationalLog("error", "money_desk.load_failed", { incidentId, actorId: userId, errorName: error instanceof Error ? error.name : "unknown" });

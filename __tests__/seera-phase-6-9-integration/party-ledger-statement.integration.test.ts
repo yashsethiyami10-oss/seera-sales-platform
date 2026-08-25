@@ -86,7 +86,10 @@ describe("guarded Professional Ledger — Vendor/Employee running balance, openi
 
     const beforePayment = await partyLedgerStatement(prisma, founder, { partyType: "EMPLOYEE", partyId: employee.id, from: new Date("2026-03-01"), to: new Date("2026-03-31") });
     expect(beforePayment.rows).toHaveLength(1);
-    expect(beforePayment.rows[0]!.particulars).toBe("TA / DA Claim Payable");
+    // TA vs DA presentation (Founder closure pass, 24-Aug §10): this claim has no real, eligible DA
+    // (daEligible/daAmount both unset), so it correctly renders as a single "TA Reimbursement
+    // Payable" line, not the old combined "TA / DA Claim Payable" label.
+    expect(beforePayment.rows[0]!.particulars).toBe("TA Reimbursement Payable");
     expect(beforePayment.totals.closingBalance).toBe(1000); // real outstanding Credit (payable) balance
 
     await prisma.seeraTaClaim.update({ where: { id: claim.id }, data: { paidAt: new Date("2026-03-05"), amountPaid: 1000, paymentReference: `PAY-${suffix}` } });

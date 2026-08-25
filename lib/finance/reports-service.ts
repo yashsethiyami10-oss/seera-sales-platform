@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { authorize } from "@/lib/foundation/authorization-service";
 import { ageingBucket } from "@/lib/sales-distribution/phase6-9-rules";
 import { partyOutstanding } from "@/lib/sales-distribution/financial-service";
+import { deriveCostCentre } from "./cost-centre";
 
 // Sales Register (spec §9/§10C) — reads the SAME authoritative Company
 // commercial documents Sales V1 already issues; never a parallel sales table.
@@ -89,6 +90,26 @@ export async function expenseByTerritory(db: PrismaClient, actorId: string, inpu
   const corporateTotal = Number(unassignedTotal._sum.amount ?? 0);
   if (corporateTotal > 0) rows.push({ territoryId: null as unknown as string, name: "Corporate", total: corporateTotal });
   return rows.sort((a, b) => b.total - a.total);
+}
+
+// Cost Centre Summary (Founder closure pass, 24-Aug §8-9) — coexists with, never duplicates,
+// Territory: an expense with a real Territory is excluded here entirely (it already has a "where");
+// only Territory-less expenses get a derived Cost Centre label. See cost-centre.ts for the
+// derivation rule and its one known honest limitation (Electricity can't distinguish Warehouse
+// from Head Office from category alone).
+export async function costCentreSummary(db: PrismaClient, actorId: string, input: { from: Date; to: Date }) {
+  await authorize(db, { actorId, permission: "financial_statements:view" });
+  const [expenses, categories] = await Promise.all([
+    db.seeraExpense.findMany({ where: { status: "POSTED", date: { gte: input.from, lte: input.to }, territoryId: null }, select: { amount: true, categoryId: true } }),
+    db.seeraExpenseCategory.findMany({ select: { id: true, chartOfAccountId: true, parentGroup: true } }),
+  ]);
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const totals = new Map<string, number>();
+  for (const expense of expenses) {
+    const costCentre = deriveCostCentre(categoryById.get(expense.categoryId), false) ?? "Corporate";
+    totals.set(costCentre, (totals.get(costCentre) ?? 0) + Number(expense.amount));
+  }
+  return [...totals.entries()].map(([costCentre, total]) => ({ costCentre, total })).sort((a, b) => b.total - a.total);
 }
 
 export async function monthlyExpenseTrend(db: PrismaClient, actorId: string, months: number) {

@@ -11,6 +11,7 @@ import { postJournal } from "./journal-service";
 import { createGrn, postGrn } from "@/lib/manufacturing/grn-service";
 import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
 import { placeRetailerOrder } from "@/lib/sales-distribution/workflow-service";
+import { deriveCostCentre } from "./cost-centre";
 
 // SEERA MONEY DESK — ORCHESTRATION ENGINE. "User enters the business
 // transaction. System decides the accounting." This file is the ONLY place a
@@ -484,11 +485,14 @@ async function salesDistributionBridge(db: PrismaClient, viewAll: boolean) {
   const partnerName = new Map(partners.map((p) => [p.id, p.tradeName ?? p.legalName]));
   const employeeName = new Map(employees.map((e) => [e.id, e.name ?? e.email]));
   return {
+    // `amount` is a Prisma Decimal on every raw row here too (see the identical note on
+    // moneyDeskHome's enrichRow above) — this whole object feeds the client MoneyDeskPanel via
+    // moneyDeskHome's `salesDistribution` field.
     pendingPaymentProofs: pendingProofs.map((p) => ({
       id: p.id,
       orderNumber: p.order.orderNumber,
       partyName: (p.order.buyerPartnerId ? partnerName.get(p.order.buyerPartnerId) : undefined) ?? p.order.buyerPartnerId ?? "—",
-      amount: p.amount,
+      amount: Number(p.amount),
       reference: p.reference,
       submittedAt: p.submittedAt,
       actionPath: "/portal/accounts/payment-inbox",
@@ -497,7 +501,7 @@ async function salesDistributionBridge(db: PrismaClient, viewAll: boolean) {
       id: c.id,
       claimNumber: c.claimNumber,
       employeeName: employeeName.get(c.employeeId) ?? c.employeeId,
-      amount: c.totalApproved,
+      amount: Number(c.totalApproved),
       sentToAccountsAt: c.sentToAccountsAt,
       actionPath: "/portal/accounts/ta-expenses",
     })),
@@ -505,10 +509,97 @@ async function salesDistributionBridge(db: PrismaClient, viewAll: boolean) {
       id: e.id,
       entryNumber: e.entryNumber,
       type: e.type,
-      amount: e.amount,
+      amount: Number(e.amount),
       postedAt: e.postedAt,
       reason: e.reason,
     })),
+  };
+}
+
+// TRANSACTION DETAIL (Founder closure pass, 24-Aug §6) — the missing drill-down page. Read-only;
+// resolves every raw id already present on the transaction (formData.employeeId/territoryId,
+// treasuryAccountId, downstreamRefs) into human-readable names/links, never a JSON dump. Same
+// scope rule as moneyDeskHome: a non-view_all actor may only open their OWN transactions.
+export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: string, transactionId: string) {
+  const { permissions } = await authorize(db, { actorId, permission: "money_desk:view" });
+  const viewAll = permissions.has("money_desk:view_all") || permissions.has("system:super_admin");
+  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
+  if (!viewAll && txn.requestedById !== actorId) throw new FoundationError("MONEY_DESK_SCOPE_DENIED", "This transaction is outside your scope", 403);
+
+  const def = purposeDefinition(txn.purposeCode);
+  const formData = (txn.formData ?? {}) as Record<string, unknown>;
+  const refs = (txn.downstreamRefs ?? {}) as Record<string, string | boolean | undefined>;
+  const employeeId = typeof formData.employeeId === "string" ? formData.employeeId : undefined;
+  const territoryId = typeof formData.territoryId === "string" ? formData.territoryId : undefined;
+
+  const [requestedBy, approvedBy, voidedBy, treasury, employee, territory, expense, vendorPayment, vendorBill] = await Promise.all([
+    db.user.findUnique({ where: { id: txn.requestedById }, select: { name: true, email: true } }),
+    txn.approvedById ? db.user.findUnique({ where: { id: txn.approvedById }, select: { name: true, email: true } }) : Promise.resolve(null),
+    txn.voidedById ? db.user.findUnique({ where: { id: txn.voidedById }, select: { name: true, email: true } }) : Promise.resolve(null),
+    txn.treasuryAccountId ? db.seeraTreasuryAccount.findUnique({ where: { id: txn.treasuryAccountId }, select: { name: true, kind: true } }) : Promise.resolve(null),
+    employeeId ? db.user.findUnique({ where: { id: employeeId }, select: { id: true, name: true, email: true } }) : Promise.resolve(null),
+    territoryId ? db.seeraGeographyNode.findUnique({ where: { id: territoryId }, select: { name: true } }) : Promise.resolve(null),
+    typeof refs.expenseId === "string" ? db.seeraExpense.findUnique({ where: { id: refs.expenseId } }) : Promise.resolve(null),
+    // Handler downstreamRefs shapes aren't uniform across purposes (VENDOR_PAYMENT returns
+    // `vendorPaymentId`, RAW_MATERIAL_PURCHASE's own payment sub-step returns `paymentId`) —
+    // check both rather than assuming one naming convention.
+    (() => { const id = refs.vendorPaymentId ?? refs.paymentId; return typeof id === "string" ? db.seeraVendorPayment.findUnique({ where: { id } }) : Promise.resolve(null); })(),
+    typeof refs.billId === "string" ? db.seeraVendorBill.findUnique({ where: { id: refs.billId } }) : Promise.resolve(null),
+  ]);
+  // SeeraVendorPayment/SeeraVendorBill have no Prisma relation back to SeeraVendor (vendorId is a
+  // loose reference, same convention as every other cross-domain pointer in this codebase) — the
+  // vendor's display name is resolved with its own lookup rather than a nonexistent `include`.
+  const vendorId = vendorPayment?.vendorId ?? vendorBill?.vendorId;
+  const [vendor, expenseCategory] = await Promise.all([
+    vendorId ? db.seeraVendor.findUnique({ where: { id: vendorId }, select: { legalName: true, tradeName: true } }) : Promise.resolve(null),
+    expense ? db.seeraExpenseCategory.findUnique({ where: { id: expense.categoryId }, select: { chartOfAccountId: true, parentGroup: true } }) : Promise.resolve(null),
+  ]);
+
+  // Ledger Impact — "View Ledger" only where the transaction resolves to a real, known party ledger
+  // (Vendor via a Vendor Payment/Bill, Employee via an Expense's own employeeId) — never a
+  // fabricated link for purposes that don't post to a party ledger at all (e.g. Fixed Asset).
+  let ledgerLink: { partyType: string; partyId: string; label: string } | null = null;
+  if (vendorPayment) ledgerLink = { partyType: "VENDOR", partyId: vendorPayment.vendorId, label: vendor?.tradeName ?? vendor?.legalName ?? "Vendor" };
+  else if (vendorBill) ledgerLink = { partyType: "VENDOR", partyId: vendorBill.vendorId, label: vendor?.tradeName ?? vendor?.legalName ?? "Vendor" };
+  else if (expense?.employeeId) ledgerLink = { partyType: "EMPLOYEE", partyId: expense.employeeId, label: employee?.name ?? employee?.email ?? "Employee" };
+  else if (employee) ledgerLink = { partyType: "EMPLOYEE", partyId: employee.id, label: employee.name ?? employee.email };
+
+  return {
+    id: txn.id,
+    transactionNumber: txn.transactionNumber,
+    purposeLabel: def.label,
+    purposeHindiLabel: def.hindiLabel,
+    direction: txn.direction,
+    status: txn.status,
+    amount: txn.amount,
+    date: txn.date,
+    reference: (formData.reference as string) ?? txn.description ?? null,
+    counterpartyName: txn.counterpartyName,
+    counterpartyType: txn.counterpartyType,
+    treasury: treasury ? { name: treasury.name, kind: treasury.kind } : null,
+    employee: employee ? { id: employee.id, name: employee.name ?? employee.email } : null,
+    territory: territory?.name ?? null,
+    costCentre: deriveCostCentre(expenseCategory, Boolean(territory)),
+    documentFileId: txn.documentFileId,
+    lineItems: Array.isArray(formData.skuLines) ? (formData.skuLines as { skuId: string; quantity: number; rate?: number }[]) : [],
+    sourceDocuments: [
+      expense ? { type: "Expense", label: expense.expenseNumber, id: expense.id } : null,
+      vendorBill ? { type: "Vendor Bill", label: vendorBill.billNumber, id: vendorBill.id } : null,
+      vendorPayment ? { type: "Vendor Payment", label: vendorPayment.paymentNumber, id: vendorPayment.id } : null,
+      typeof refs.orderId === "string" ? { type: "Order", label: refs.orderId, id: refs.orderId } : null,
+      typeof refs.grnId === "string" ? { type: "GRN", label: refs.grnId, id: refs.grnId } : null,
+    ].filter((x): x is { type: string; label: string; id: string } => x !== null),
+    ledgerLink,
+    requiresApproval: txn.status === "PENDING_APPROVAL",
+    requestedBy: requestedBy?.name ?? requestedBy?.email ?? "Unknown user",
+    isSelf: txn.requestedById === actorId,
+    approvedBy: approvedBy?.name ?? approvedBy?.email ?? null,
+    approvedAt: txn.approvedAt,
+    voidedBy: voidedBy?.name ?? voidedBy?.email ?? null,
+    voidedAt: txn.voidedAt,
+    voidReason: txn.voidReason,
+    failureReason: txn.failureReason,
+    createdAt: txn.createdAt,
   };
 }
 
@@ -551,10 +642,37 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
     movedToday: todayMovementByAccount.get(account.id) ?? 0,
   }));
 
+  // Human-readable row enrichment (Founder closure pass, 24-Aug §18) — "Founder should understand a
+  // transaction without knowing system codes." formData already carries employeeId/territoryId for
+  // every purpose that has them; resolve those + the treasury account to real names here so the UI
+  // never has to show a bare id.
+  const employeeIds = [...new Set(recent.map((t) => (t.formData as Record<string, unknown>)?.employeeId).filter((v): v is string => typeof v === "string"))];
+  const territoryIds = [...new Set(recent.map((t) => (t.formData as Record<string, unknown>)?.territoryId).filter((v): v is string => typeof v === "string"))];
+  const treasuryIds = [...new Set(recent.map((t) => t.treasuryAccountId).filter((v): v is string => Boolean(v)))];
+  const [employees, territories, treasuries] = await Promise.all([
+    employeeIds.length ? db.user.findMany({ where: { id: { in: employeeIds } }, select: { id: true, name: true, email: true } }) : Promise.resolve([]),
+    territoryIds.length ? db.seeraGeographyNode.findMany({ where: { id: { in: territoryIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+    treasuryIds.length ? db.seeraTreasuryAccount.findMany({ where: { id: { in: treasuryIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+  ]);
+  const employeeNameById = new Map(employees.map((e) => [e.id, e.name ?? e.email]));
+  const territoryNameById = new Map(territories.map((t) => [t.id, t.name]));
+  const treasuryNameById = new Map(treasuries.map((t) => [t.id, t.name]));
+  // `amount` is a Prisma Decimal instance on every raw row here — Next.js's Server->Client
+  // boundary (these three arrays feed straight into the client MoneyDeskPanel) can only pass plain
+  // objects, so a Decimal survives silently in dev (with a slow, spammy "Only plain objects..."
+  // console.error per row) but is NOT a documented-safe pattern; converting to a plain number here,
+  // once, is cheap and removes any ambiguity for every consumer.
+  const enrichRow = (t: (typeof recent)[number]) => {
+    const fd = (t.formData ?? {}) as Record<string, unknown>;
+    const empId = typeof fd.employeeId === "string" ? fd.employeeId : undefined;
+    const terrId = typeof fd.territoryId === "string" ? fd.territoryId : undefined;
+    return { ...t, amount: Number(t.amount), employeeName: empId ? (employeeNameById.get(empId) ?? null) : null, territoryName: terrId ? (territoryNameById.get(terrId) ?? null) : null, treasuryName: t.treasuryAccountId ? (treasuryNameById.get(t.treasuryAccountId) ?? null) : null };
+  };
+
   return {
-    recentTransactions: recent,
-    pendingApprovals: pendingApproval,
-    needsAttention: stuckPosting.map((t) => ({ id: t.id, transactionNumber: t.transactionNumber, purposeCode: t.purposeCode, amount: t.amount, failureReason: t.failureReason })),
+    recentTransactions: recent.map(enrichRow),
+    pendingApprovals: pendingApproval.map((t) => ({ ...t, amount: Number(t.amount), isSelf: t.requestedById === actorId })),
+    needsAttention: stuckPosting.map((t) => ({ id: t.id, transactionNumber: t.transactionNumber, purposeCode: t.purposeCode, amount: Number(t.amount), failureReason: t.failureReason })),
     cashBankToday,
     canApprove: permissions.has("money_desk:approve") || permissions.has("system:super_admin"),
     canVoid: permissions.has("money_desk:reverse") || permissions.has("system:super_admin"),
