@@ -1262,6 +1262,12 @@ model SeeraEmployeeHeadquarters {
 
 model SeeraDaPolicy {
   id             String             @id @default(cuid())
+  // Founder final DA policy (25-Aug) is per NAMED employee, not per role — e.g. Neeraj/Manoj/
+  // Awdhesh all hold SALES_EXECUTIVE/SALES_MANAGER-family roles but get different FULL_DAY amounts.
+  // employeeId is the primary scope going forward; employeeRole is kept for a possible future
+  // role-level default but is NOT used by the current governed resolution (never guessed/fallen
+  // back to — an employee with no employee-scoped ACTIVE policy resolves to POLICY_NOT_CONFIGURED).
+  employeeId     String?
   employeeRole   String?
   policyType     DaPolicyType
   amount         Decimal?           @db.Decimal(12, 2)
@@ -1271,8 +1277,9 @@ model SeeraDaPolicy {
   approvedById   String
   createdAt      DateTime           @default(now())
 
-  @@unique([employeeRole, policyType, effectiveFrom])
+  @@unique([employeeId, employeeRole, policyType, effectiveFrom])
   @@index([status, effectiveFrom, effectiveTo])
+  @@index([employeeId, status, effectiveFrom, effectiveTo])
   @@map("seera_da_policies")
 }
 
@@ -2209,6 +2216,10 @@ model SeeraTaClaim {
   taRatePerKm          Decimal?      @db.Decimal(12, 2)
   taAmount             Decimal?      @db.Decimal(14, 2)
   daEligible           Boolean?
+  dayClassification    DaPolicyType?
+  dayClassifiedById    String?
+  dayClassifiedAt      DateTime?
+  dayClassificationReason String?
   daPolicyId           String?
   daAmount             Decimal?      @db.Decimal(14, 2)
   daStatus             String        @default("NOT_EVALUATED")

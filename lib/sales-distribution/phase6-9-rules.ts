@@ -66,6 +66,21 @@ export function calculateGovernedTa(input: { policyType: TravelPolicyType; eligi
   return { travelAmount: money(perKm), fixedAllowance: money(fixed), total: money(perKm + fixed) };
 }
 export function assertTaVerifier(input: { employeeId: string; managerId?: string; verifierId: string; employeeRole: string }) { if (input.verifierId === input.employeeId) throw new Error("TA_SELF_APPROVAL_DENIED"); if (input.employeeRole === "SALES_MANAGER" && input.verifierId === input.managerId) throw new Error("MANAGER_CLAIM_REQUIRES_HIGHER_APPROVER"); }
+
+// DA (Daily Allowance) — a SEPARATE governed allowance from TA, Founder-final policy (25-Aug):
+// LOCAL_HQ -> 0 regardless of policy; OUTSTATION + HALF_DAY -> 0 by rule (never guessed, never a
+// policy lookup); OUTSTATION + FULL_DAY -> the employee's own configured FULL_DAY amount, or an
+// honest POLICY_NOT_CONFIGURED if none exists — never a fabricated/defaulted amount.
+export type DutyType = "UNCLASSIFIED" | "LOCAL_HQ" | "OUTSTATION";
+export type DayClassification = "HALF_DAY" | "FULL_DAY";
+export function calculateDa(input: { dutyType: DutyType; dayClassification: DayClassification | null; fullDayAmount: number | null }): { daEligible: boolean; daAmount: number; daStatus: string } {
+  if (input.dutyType !== "OUTSTATION") return { daEligible: false, daAmount: 0, daStatus: "NOT_APPLICABLE" };
+  if (!input.dayClassification) return { daEligible: true, daAmount: 0, daStatus: "PENDING_DAY_CLASSIFICATION" };
+  if (input.dayClassification === "HALF_DAY") return { daEligible: true, daAmount: 0, daStatus: "HALF_DAY_NOT_PAYABLE" };
+  if (input.fullDayAmount == null) return { daEligible: true, daAmount: 0, daStatus: "POLICY_NOT_CONFIGURED" };
+  if (input.fullDayAmount < 0) throw new Error("INVALID_DA_INPUT");
+  return { daEligible: true, daAmount: money(input.fullDayAmount), daStatus: "CONFIGURED" };
+}
 export function assertWorkingLocation(input: { workSessionActive: boolean; eventAt: Date; workStartedAt: Date; workEndedAt?: Date }) { if (!input.workSessionActive || input.eventAt < input.workStartedAt || (input.workEndedAt && input.eventAt > input.workEndedAt)) throw new Error("LOCATION_OUTSIDE_WORK_CONTEXT"); }
 
 export type ClosureObligations = { openOrders: number; outstanding: number; advances: number; stock: number; pendingClaims: number; activeUsers: number };

@@ -3,12 +3,34 @@ import { authorize } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { postLedgerEntry } from "./financial-service";
-import { calculateGovernedTa } from "./phase6-9-rules";
+import { calculateGovernedTa, calculateDa, type DutyType, type DayClassification } from "./phase6-9-rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
 async function activeHeadquarters(db: Db, employeeId: string, at: Date) {
   return db.seeraEmployeeHeadquarters.findFirst({ where: { employeeId, status: "ACTIVE", effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] }, orderBy: { effectiveFrom: "desc" } });
+}
+
+// DA policy resolution — employee-scoped only (never role-scoped, never guessed). Returns null if
+// no ACTIVE FULL_DAY policy exists for this exact employee at this date, which calculateDa() turns
+// into an honest POLICY_NOT_CONFIGURED rather than a fabricated amount.
+async function activeFullDayDaPolicy(db: Db, employeeId: string, at: Date) {
+  return db.seeraDaPolicy.findFirst({
+    where: { employeeId, policyType: "FULL_DAY", status: "ACTIVE", effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] },
+    orderBy: { effectiveFrom: "desc" },
+  });
+}
+
+// Resolves the full daEligible/dayClassification.../daPolicyId/daAmount/daStatus field set for a
+// claim given its current dutyType + dayClassification, used by finalize (initial state) and by
+// both classification steps (as each gate clears). UNCLASSIFIED duty is handled here rather than
+// inside calculateDa() — "duty not yet known" is a distinct upstream gate from "day type not yet
+// known", and collapsing them would hide which classification is still outstanding.
+async function resolveDaFields(db: Db, employeeId: string, dutyType: DutyType | "UNCLASSIFIED", dayClassification: DayClassification | null, at: Date) {
+  if (dutyType === "UNCLASSIFIED") return { daEligible: null, daPolicyId: null as string | null, daAmount: null as number | null, daStatus: "PENDING_DUTY_CLASSIFICATION" };
+  const policy = dutyType === "OUTSTATION" && dayClassification === "FULL_DAY" ? await activeFullDayDaPolicy(db, employeeId, at) : null;
+  const result = calculateDa({ dutyType, dayClassification, fullDayAmount: policy ? Number(policy.amount ?? 0) : null });
+  return { daEligible: result.daEligible, daPolicyId: policy?.id ?? null, daAmount: result.daStatus === "CONFIGURED" || result.daStatus === "HALF_DAY_NOT_PAYABLE" ? result.daAmount : null, daStatus: result.daStatus };
 }
 
 async function classifyFromGovernedGeography(db: Db, plannedGeographyId: string | null, headquartersGeographyId: string | null) {
@@ -77,8 +99,7 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
         fixedAllowance: Number(policy.fixedAllowance ?? policy.dailyAllowance ?? 0),
       })
     : null;
-  const daEligible = dutyType === "LOCAL_HQ" ? false : dutyType === "OUTSTATION" ? true : null;
-  const daStatus = dutyType === "LOCAL_HQ" ? "NOT_APPLICABLE" : dutyType === "OUTSTATION" ? "POLICY_NOT_CONFIGURED" : "PENDING_DUTY_CLASSIFICATION";
+  const daFields = await resolveDaFields(db, employeeId, dutyType, null, at);
   const status = source.reviewRequired ? "TRAVEL_REVIEW_REQUIRED" : "READY_FOR_REVIEW";
   const rateSnapshot = policy
     ? {
@@ -120,11 +141,12 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
       taMode: policy?.policyType,
       taRatePerKm: policy?.ratePerKm,
       taAmount: amounts?.travelAmount,
-      daEligible,
-      daPolicyId: null,
-      daAmount: null,
-      daStatus,
-      totalReimbursement: amounts?.total,
+      daEligible: daFields.daEligible,
+      dayClassification: null,
+      daPolicyId: daFields.daPolicyId,
+      daAmount: daFields.daAmount,
+      daStatus: daFields.daStatus,
+      totalReimbursement: amounts ? amounts.total + (daFields.daAmount ?? 0) : undefined,
     },
     create: {
       claimNumber: `TA-AUTO-${workSessionId.slice(-18)}`,
@@ -152,11 +174,12 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
       taMode: policy?.policyType,
       taRatePerKm: policy?.ratePerKm,
       taAmount: amounts?.travelAmount,
-      daEligible,
-      daPolicyId: null,
-      daAmount: null,
-      daStatus,
-      totalReimbursement: amounts?.total,
+      daEligible: daFields.daEligible,
+      dayClassification: null,
+      daPolicyId: daFields.daPolicyId,
+      daAmount: daFields.daAmount,
+      daStatus: daFields.daStatus,
+      totalReimbursement: amounts ? amounts.total + (daFields.daAmount ?? 0) : undefined,
       submittedAt: at,
       idempotencyKey: `auto-travel:${workSessionId}`,
     },
@@ -166,7 +189,7 @@ export async function finalizeDailyTravelClaim(db: PrismaClient, employeeId: str
     action: "ta.auto_finalized",
     entityType: "SeeraTaClaim",
     entityId: claim.id,
-    afterState: { workSessionId, distanceKm, policyStatus, status, dutyType, dutyClassificationSource, daStatus, warnings: source.warnings ?? [] },
+    afterState: { workSessionId, distanceKm, policyStatus, status, dutyType, dutyClassificationSource, daStatus: daFields.daStatus, warnings: source.warnings ?? [] },
   });
   return claim;
 }
@@ -183,20 +206,36 @@ export async function approveDailyTravel(db: PrismaClient, reviewerId: string, c
   await authorize(db, { actorId: reviewerId, permission: "ta_claim:verify" });
   const claim = await loadReviewable(db, reviewerId, claimId);
   if (claim.dutyType === "UNCLASSIFIED") throw new FoundationError("TA_DUTY_CLASSIFICATION_REQUIRED", "Local HQ or Outstation duty classification is required before approval", 409);
+  // DA gate (Founder final policy, 25-Aug): an OUTSTATION day must have its HALF_DAY/FULL_DAY
+  // classification resolved before the claim can go to Accounts — otherwise the payable amount
+  // would be sent for payment before DA eligibility is genuinely known.
+  if (claim.dutyType === "OUTSTATION" && !claim.dayClassification) throw new FoundationError("TA_DAY_CLASSIFICATION_REQUIRED", "Half Day / Full Day classification is required for an Outstation claim before approval", 409);
   if (input.eligibleDistanceKm < 0 || !input.reason.trim()) throw new FoundationError("INVALID_TA_APPROVAL", "Eligible distance and reason required", 400);
   const snapshot = claim.rateSnapshot as { policyType?: "PER_KM" | "FIXED_DAILY" | "PER_KM_PLUS_FIXED" | "NONE"; ratePerKm?: string | null; fixedAllowance?: string | null };
   const amounts = claim.policyStatus === "CONFIGURED" && snapshot.policyType
     ? calculateGovernedTa({ policyType: snapshot.policyType, eligibleKm: input.eligibleDistanceKm, ratePerKm: Number(snapshot.ratePerKm ?? 0), fixedAllowance: Number(snapshot.fixedAllowance ?? 0) })
     : null;
+  // Re-resolve DA fresh at approval time (not just trusting the finalize-time snapshot) — the
+  // Manager may have classified the day AFTER finalize, or a DA policy may have been configured
+  // in between. Once this claim moves to SENT_TO_ACCOUNTS the resulting daAmount is a frozen
+  // snapshot on the row itself; a later DA policy change never retroactively touches it.
   const now = new Date();
+  const daFields = await resolveDaFields(db, claim.employeeId, claim.dutyType as DutyType, claim.dayClassification as DayClassification | null, now);
+  if (claim.dutyType === "OUTSTATION" && claim.dayClassification === "FULL_DAY" && daFields.daStatus === "POLICY_NOT_CONFIGURED") throw new FoundationError("DA_POLICY_NOT_CONFIGURED", "No DA policy is configured for this employee — cannot approve a Full Day Outstation claim without a governed DA amount", 409);
+  const taTotal = amounts?.total ?? 0;
+  const totalApproved = amounts ? taTotal + (daFields.daAmount ?? 0) : undefined;
   const result = await db.seeraTaClaim.update({
     where: { id: claim.id },
     data: {
       approvedDistanceKm: input.eligibleDistanceKm,
       travelAmount: amounts?.travelAmount,
-      totalApproved: amounts?.total,
+      totalApproved,
       taAmount: amounts?.travelAmount,
-      totalReimbursement: amounts?.total,
+      daEligible: daFields.daEligible,
+      daPolicyId: daFields.daPolicyId,
+      daAmount: daFields.daAmount,
+      daStatus: daFields.daStatus,
+      totalReimbursement: totalApproved,
       status: "SENT_TO_ACCOUNTS",
       managerVerifiedById: reviewerId,
       approvedAt: now,
@@ -204,7 +243,7 @@ export async function approveDailyTravel(db: PrismaClient, reviewerId: string, c
       remarks: `${claim.remarks ?? ""}\nApproved: ${input.reason}`.trim(),
     },
   });
-  await recordAudit(db, { actorId: reviewerId, action: "ta.approved_sent_to_accounts", entityType: "SeeraTaClaim", entityId: claim.id, beforeState: { calculatedDistanceKm: claim.originalDistanceKm.toString() }, afterState: { eligibleDistanceKm: input.eligibleDistanceKm, totalApproved: amounts?.total ?? null } });
+  await recordAudit(db, { actorId: reviewerId, action: "ta.approved_sent_to_accounts", entityType: "SeeraTaClaim", entityId: claim.id, beforeState: { calculatedDistanceKm: claim.originalDistanceKm.toString() }, afterState: { eligibleDistanceKm: input.eligibleDistanceKm, taAmount: amounts?.total ?? null, daAmount: daFields.daAmount, totalApproved: totalApproved ?? null } });
   return result;
 }
 
@@ -212,9 +251,28 @@ export async function classifyDailyTravelDuty(db: PrismaClient, reviewerId: stri
   await authorize(db, { actorId: reviewerId, permission: "ta_claim:verify" });
   const claim = await loadReviewable(db, reviewerId, claimId);
   if (!input.reason.trim()) throw new FoundationError("TA_DUTY_REASON_REQUIRED", "Duty classification reason required", 400);
-  const daEligible = input.dutyType === "OUTSTATION";
-  const result = await db.seeraTaClaim.update({ where: { id: claim.id }, data: { dutyType: input.dutyType, dutyClassificationSource: "MANAGER_GOVERNED_CLASSIFICATION", classifiedById: reviewerId, classifiedAt: new Date(), classificationReason: `${input.reason}${input.reference ? ` (${input.reference})` : ""}`, daEligible, daPolicyId: null, daAmount: null, daStatus: daEligible ? "POLICY_NOT_CONFIGURED" : "NOT_APPLICABLE" } });
+  // Changing duty type invalidates any prior day classification (a LOCAL_HQ day never had one; an
+  // OUTSTATION reclassified to LOCAL_HQ must not keep a stale HALF_DAY/FULL_DAY on record).
+  const daFields = await resolveDaFields(db, claim.employeeId, input.dutyType, null, new Date());
+  const result = await db.seeraTaClaim.update({ where: { id: claim.id }, data: { dutyType: input.dutyType, dutyClassificationSource: "MANAGER_GOVERNED_CLASSIFICATION", classifiedById: reviewerId, classifiedAt: new Date(), classificationReason: `${input.reason}${input.reference ? ` (${input.reference})` : ""}`, dayClassification: null, dayClassifiedById: null, dayClassifiedAt: null, dayClassificationReason: null, daEligible: daFields.daEligible, daPolicyId: daFields.daPolicyId, daAmount: daFields.daAmount, daStatus: daFields.daStatus } });
   await recordAudit(db, { actorId: reviewerId, action: "ta.duty_classified", entityType: "SeeraTaClaim", entityId: claim.id, beforeState: { dutyType: claim.dutyType }, afterState: { dutyType: input.dutyType, source: "MANAGER_GOVERNED_CLASSIFICATION", reason: input.reason, reference: input.reference ?? null, daStatus: result.daStatus } });
+  return result;
+}
+
+// Half Day / Full Day classification (Founder final policy, 25-Aug §6) — a SEPARATE gate from duty
+// location. No automatic hours-based threshold exists or is invented here (no Founder-approved
+// duration rule exists in this codebase); a Manager must classify with a mandatory reason, exactly
+// the same governance pattern as classifyDailyTravelDuty. Only meaningful for an OUTSTATION day —
+// LOCAL_HQ's DA is unconditionally 0 regardless of day length.
+export async function classifyDailyAllowanceDayType(db: PrismaClient, reviewerId: string, claimId: string, input: { dayClassification: "HALF_DAY" | "FULL_DAY"; reason: string }) {
+  await authorize(db, { actorId: reviewerId, permission: "ta_claim:verify" });
+  const claim = await loadReviewable(db, reviewerId, claimId);
+  if (!input.reason.trim()) throw new FoundationError("TA_DAY_CLASSIFICATION_REASON_REQUIRED", "Half Day / Full Day classification reason required", 400);
+  if (claim.dutyType !== "OUTSTATION") throw new FoundationError("TA_DAY_CLASSIFICATION_NOT_APPLICABLE", "Day-length classification only applies to an Outstation duty day", 409);
+  const now = new Date();
+  const daFields = await resolveDaFields(db, claim.employeeId, "OUTSTATION", input.dayClassification, now);
+  const result = await db.seeraTaClaim.update({ where: { id: claim.id }, data: { dayClassification: input.dayClassification, dayClassifiedById: reviewerId, dayClassifiedAt: now, dayClassificationReason: input.reason, daEligible: daFields.daEligible, daPolicyId: daFields.daPolicyId, daAmount: daFields.daAmount, daStatus: daFields.daStatus } });
+  await recordAudit(db, { actorId: reviewerId, action: "ta.day_classified", entityType: "SeeraTaClaim", entityId: claim.id, beforeState: { dayClassification: claim.dayClassification }, afterState: { dayClassification: input.dayClassification, reason: input.reason, daStatus: result.daStatus, daAmount: result.daAmount?.toString() ?? null } });
   return result;
 }
 
@@ -310,6 +368,19 @@ export async function configureTravelPolicy(db: PrismaClient, actorId: string, i
   if ((needsRate && (input.ratePerKm == null || input.ratePerKm < 0)) || (needsFixed && (input.fixedAllowance == null || input.fixedAllowance < 0)) || (input.effectiveTo && input.effectiveTo <= input.effectiveFrom)) throw new FoundationError("INVALID_TRAVEL_POLICY", "Policy amounts and effective dates do not match the calculation mode", 400);
   const policy = await db.seeraTravelPolicy.create({ data: { employeeRole: input.employeeRole, vehicleType: input.vehicleType, policyType: input.policyType, ratePerKm: needsRate ? input.ratePerKm : 0, fixedAllowance: needsFixed ? input.fixedAllowance : null, dailyAllowance: needsFixed ? input.fixedAllowance : null, eligibility: { roles: input.employeeRole ? [input.employeeRole] : [], policyType: input.policyType }, effectiveFrom: input.effectiveFrom, effectiveTo: input.effectiveTo, status: input.status, approvedById: actorId } });
   await recordAudit(db, { actorId, action: "travel_policy.configured", entityType: "SeeraTravelPolicy", entityId: policy.id, afterState: { employeeRole: input.employeeRole, policyType: input.policyType, ratePerKm: input.ratePerKm ?? null, fixedAllowance: input.fixedAllowance ?? null, effectiveFrom: input.effectiveFrom.toISOString(), effectiveTo: input.effectiveTo?.toISOString() ?? null, status: input.status } });
+  return policy;
+}
+
+// DA policy configuration (Founder final policy, 25-Aug) — employee-scoped, effective-dated, same
+// governance shape as configureTravelPolicy/configureEmployeeHeadquarters. Deliberately does NOT
+// accept a bare name — callers resolve the employee's stable user id first (see the seed/config
+// script), so no employee name is ever hardcoded inside this function itself.
+export async function configureDaPolicy(db: PrismaClient, actorId: string, input: { employeeId: string; policyType: "HALF_DAY" | "FULL_DAY" | "OVERNIGHT"; amount: number; effectiveFrom: Date; effectiveTo?: Date; status: "ACTIVE" | "INACTIVE" }) {
+  await authorize(db, { actorId, permission: "travel_policy:manage" });
+  if (input.amount < 0 || (input.effectiveTo && input.effectiveTo <= input.effectiveFrom)) throw new FoundationError("INVALID_DA_POLICY", "DA amount and effective dates do not match the calculation mode", 400);
+  await db.user.findUniqueOrThrow({ where: { id: input.employeeId }, select: { id: true } });
+  const policy = await db.seeraDaPolicy.create({ data: { employeeId: input.employeeId, policyType: input.policyType, amount: input.amount, effectiveFrom: input.effectiveFrom, effectiveTo: input.effectiveTo, status: input.status, approvedById: actorId } });
+  await recordAudit(db, { actorId, action: "da_policy.configured", entityType: "SeeraDaPolicy", entityId: policy.id, afterState: { employeeId: input.employeeId, policyType: input.policyType, amount: input.amount, effectiveFrom: input.effectiveFrom.toISOString(), effectiveTo: input.effectiveTo?.toISOString() ?? null, status: input.status } });
   return policy;
 }
 

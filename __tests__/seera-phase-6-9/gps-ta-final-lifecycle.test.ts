@@ -5,7 +5,7 @@ vi.mock("@/lib/foundation/authorization-service", () => ({ authorize }));
 vi.mock("@/lib/foundation/audit-service", () => ({ recordAudit }));
 vi.mock("@/lib/sales-distribution/financial-service", () => ({ postLedgerEntry }));
 
-import { accountsTravelClaims, approveDailyTravel, classifyDailyTravelDuty, decideDailyTravel, finalizeDailyTravelClaim, payDailyTravel, travelReport } from "@/lib/sales-distribution/travel-claim-service";
+import { accountsTravelClaims, approveDailyTravel, classifyDailyAllowanceDayType, classifyDailyTravelDuty, decideDailyTravel, finalizeDailyTravelClaim, payDailyTravel, travelReport } from "@/lib/sales-distribution/travel-claim-service";
 
 const decimal = (value: number) => ({ toString: () => String(value), valueOf: () => value });
 
@@ -61,6 +61,62 @@ describe("final GPS/TA lifecycle", () => {
     const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim), update: vi.fn().mockImplementation(({ data }) => ({ ...claim, ...data })) } };
     await expect(approveDailyTravel(db as never, "manager-1", "c1", { eligibleDistanceKm: 5, reason: "self" })).rejects.toMatchObject({ code: "TA_SELF_APPROVAL_DENIED" });
     await expect(approveDailyTravel(db as never, "founder-1", "c1", { eligibleDistanceKm: 5, reason: "higher approval" })).resolves.toMatchObject({ status: "SENT_TO_ACCOUNTS" });
+  });
+
+  it("blocks approval of an Outstation claim until Half Day / Full Day is classified", async () => {
+    const claim = { id: "c1", employeeId: "e1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "OUTSTATION", dayClassification: null, originalDistanceKm: decimal(10), claimedDistanceKm: decimal(10), rateSnapshot: { policyType: "PER_KM", ratePerKm: "2" }, policyStatus: "CONFIGURED", remarks: null };
+    const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim) } };
+    await expect(approveDailyTravel(db as never, "m1", "c1", { eligibleDistanceKm: 10, reason: "ok" })).rejects.toMatchObject({ code: "TA_DAY_CLASSIFICATION_REQUIRED" });
+  });
+
+  it("Full Day Outstation approval sums TA + the employee's configured DA into totalApproved (Neeraj: ₹2/km + ₹150)", async () => {
+    const claim = { id: "c1", employeeId: "neeraj-1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "OUTSTATION", dayClassification: "FULL_DAY", originalDistanceKm: decimal(120), claimedDistanceKm: decimal(120), rateSnapshot: { policyType: "PER_KM", ratePerKm: "2" }, policyStatus: "CONFIGURED", remarks: null };
+    const update = vi.fn().mockImplementation(({ data }) => ({ ...claim, ...data }));
+    const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim), update }, seeraDaPolicy: { findFirst: vi.fn().mockResolvedValue({ id: "da-neeraj", amount: decimal(150) }) } };
+    const result = await approveDailyTravel(db as never, "m1", "c1", { eligibleDistanceKm: 120, reason: "Verified" });
+    expect(result.totalApproved).toBe(390); // 120km * 2 = 240 TA + 150 DA
+    expect(result.daAmount).toBe(150);
+    expect(result.daStatus).toBe("CONFIGURED");
+  });
+
+  it("refuses to approve a Full Day Outstation claim with no DA policy configured for that employee — never guesses an amount", async () => {
+    const claim = { id: "c1", employeeId: "unconfigured-1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "OUTSTATION", dayClassification: "FULL_DAY", originalDistanceKm: decimal(10), claimedDistanceKm: decimal(10), rateSnapshot: { policyType: "PER_KM", ratePerKm: "2" }, policyStatus: "CONFIGURED", remarks: null };
+    const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim) }, seeraDaPolicy: { findFirst: vi.fn().mockResolvedValue(null) } };
+    await expect(approveDailyTravel(db as never, "m1", "c1", { eligibleDistanceKm: 10, reason: "Verified" })).rejects.toMatchObject({ code: "DA_POLICY_NOT_CONFIGURED" });
+  });
+
+  it("Half Day Outstation approval never pays DA even with a configured Full Day policy present", async () => {
+    const claim = { id: "c1", employeeId: "neeraj-1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "OUTSTATION", dayClassification: "HALF_DAY", originalDistanceKm: decimal(50), claimedDistanceKm: decimal(50), rateSnapshot: { policyType: "PER_KM", ratePerKm: "2" }, policyStatus: "CONFIGURED", remarks: null };
+    const update = vi.fn().mockImplementation(({ data }) => ({ ...claim, ...data }));
+    const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim), update }, seeraDaPolicy: { findFirst: vi.fn() } };
+    const result = await approveDailyTravel(db as never, "m1", "c1", { eligibleDistanceKm: 50, reason: "Verified" });
+    expect(result.totalApproved).toBe(100); // 50km * 2 = 100 TA, DA = 0
+    expect(result.daAmount).toBe(0);
+    expect(result.daStatus).toBe("HALF_DAY_NOT_PAYABLE");
+    expect(db.seeraDaPolicy.findFirst).not.toHaveBeenCalled(); // Half Day never even looks up a policy
+  });
+
+  describe("classifyDailyAllowanceDayType — Half Day / Full Day gate (Founder final policy, 25-Aug)", () => {
+    it("rejects day classification for a claim that is not Outstation", async () => {
+      const claim = { id: "c1", employeeId: "e1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "LOCAL_HQ" };
+      const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim) } };
+      await expect(classifyDailyAllowanceDayType(db as never, "m1", "c1", { dayClassification: "FULL_DAY", reason: "test" })).rejects.toMatchObject({ code: "TA_DAY_CLASSIFICATION_NOT_APPLICABLE" });
+    });
+    it("requires a reason", async () => {
+      const claim = { id: "c1", employeeId: "e1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "OUTSTATION" };
+      const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim) } };
+      await expect(classifyDailyAllowanceDayType(db as never, "m1", "c1", { dayClassification: "FULL_DAY", reason: "" })).rejects.toMatchObject({ code: "TA_DAY_CLASSIFICATION_REASON_REQUIRED" });
+    });
+    it("Full Day resolves the employee-scoped DA policy (Manoj: ₹300)", async () => {
+      const claim = { id: "c1", employeeId: "manoj-1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "OUTSTATION", dayClassification: null };
+      const update = vi.fn().mockImplementation(({ data }) => ({ ...claim, ...data }));
+      const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim), update }, seeraDaPolicy: { findFirst: vi.fn().mockResolvedValue({ id: "da-manoj", amount: decimal(300) }) } };
+      const result = await classifyDailyAllowanceDayType(db as never, "m1", "c1", { dayClassification: "FULL_DAY", reason: "Confirmed overnight outstation" });
+      expect(result.dayClassification).toBe("FULL_DAY");
+      expect(result.daAmount).toBe(300);
+      expect(result.daStatus).toBe("CONFIGURED");
+      expect(db.seeraDaPolicy.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ employeeId: "manoj-1", policyType: "FULL_DAY" }) }));
+    });
   });
 
   it.each([["REJECT", "MANAGER_REJECTED"], ["RETURN", "RETURNED"]] as const)("supports Manager %s with a reason", async (decision, status) => {
@@ -119,14 +175,18 @@ describe("final GPS/TA lifecycle", () => {
       seeraTravelPolicy: { findFirst: vi.fn().mockResolvedValue({ id: "policy-2", policyType: "PER_KM", employeeRole: "SALES_EXECUTIVE", ratePerKm: decimal(2), fixedAllowance: null, dailyAllowance: null, vehicleType: "STANDARD_FIELD", effectiveFrom: new Date("2026-08-23T00:00:00Z"), effectiveTo: null }) },
       seeraTaClaim: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn().mockImplementation(({ create }) => ({ id: "claim-outstation", ...create })) },
     };
-    await expect(finalizeDailyTravelClaim(db as never, "exec-1", "session-outstation")).resolves.toMatchObject({ dutyType: "OUTSTATION", taAmount: 30, daEligible: true, daAmount: null, daStatus: "POLICY_NOT_CONFIGURED", totalReimbursement: 30 });
+    // DA (Founder final policy, 25-Aug): an OUTSTATION day is not yet DA-payable at finalize —
+    // Half Day / Full Day must be classified first (a separate gate from duty location), so this
+    // is honestly PENDING_DAY_CLASSIFICATION rather than jumping straight to POLICY_NOT_CONFIGURED.
+    await expect(finalizeDailyTravelClaim(db as never, "exec-1", "session-outstation")).resolves.toMatchObject({ dutyType: "OUTSTATION", taAmount: 30, daEligible: true, daAmount: null, daStatus: "PENDING_DAY_CLASSIFICATION", totalReimbursement: 30 });
   });
 
   it("requires independent Manager classification and preserves an audit trail", async () => {
     const claim = { id: "c1", employeeId: "e1", managerId: "m1", status: "READY_FOR_REVIEW", dutyType: "UNCLASSIFIED" };
     const db = { seeraTaClaim: { findUniqueOrThrow: vi.fn().mockResolvedValue(claim), update: vi.fn().mockImplementation(({ data }) => ({ ...claim, ...data })) } };
     await expect(classifyDailyTravelDuty(db as never, "e1", "c1", { dutyType: "LOCAL_HQ", reason: "self" })).rejects.toMatchObject({ code: "TA_SELF_APPROVAL_DENIED" });
-    await expect(classifyDailyTravelDuty(db as never, "m1", "c1", { dutyType: "OUTSTATION", reason: "Route outside HQ", reference: "plan-42" })).resolves.toMatchObject({ dutyType: "OUTSTATION", daEligible: true, daStatus: "POLICY_NOT_CONFIGURED" });
+    // Same DA gate as above — duty just became OUTSTATION, day-length isn't classified yet.
+    await expect(classifyDailyTravelDuty(db as never, "m1", "c1", { dutyType: "OUTSTATION", reason: "Route outside HQ", reference: "plan-42" })).resolves.toMatchObject({ dutyType: "OUTSTATION", daEligible: true, daStatus: "PENDING_DAY_CLASSIFICATION" });
     expect(recordAudit).toHaveBeenCalledWith(db, expect.objectContaining({ actorId: "m1", action: "ta.duty_classified", beforeState: { dutyType: "UNCLASSIFIED" } }));
   });
 

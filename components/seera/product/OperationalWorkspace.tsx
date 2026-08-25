@@ -3474,6 +3474,8 @@ export async function OperationalWorkspace({
           employeeName: x.employeeName,
           dutyType: x.dutyType,
           daStatus: x.daStatus,
+          dayClassification: x.dayClassification,
+          daAmount: x.daAmount != null ? Number(x.daAmount) : null,
         }))}/><TravelReportPanel language={language} report={report} /></>
     );
   } else if (portal === "sales-manager" && item.slug === "my-ta") {

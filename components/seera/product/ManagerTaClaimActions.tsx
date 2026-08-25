@@ -19,6 +19,8 @@ type Claim = {
   employeeName?: string;
   dutyType?: string;
   daStatus?: string;
+  dayClassification?: string | null;
+  daAmount?: number | null;
 };
 
 async function send(endpoint: string, body: unknown) {
@@ -178,7 +180,12 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                 {c.hotelStay ? ` · ${hi ? "होटल" : "Hotel"} ₹${c.hotelAmount.toLocaleString("en-IN")}` : ""}
                 {c.purpose ? ` · ${c.purpose}` : ""}
               </p>
-              <p>{hi ? "ड्यूटी" : "Duty"}: {c.dutyType ?? "UNCLASSIFIED"} · DA: {c.daStatus ?? "NOT_EVALUATED"}</p>
+              <p>
+                {hi ? "ड्यूटी" : "Duty"}: {c.dutyType ?? "UNCLASSIFIED"}
+                {c.dutyType === "OUTSTATION" && <> · {hi ? "दिन प्रकार" : "Day"}: {c.dayClassification ?? (hi ? "लंबित" : "PENDING")}</>}
+                {" · DA: "}
+                {c.daStatus === "CONFIGURED" ? `₹${(c.daAmount ?? 0).toLocaleString("en-IN")}` : c.daStatus === "HALF_DAY_NOT_PAYABLE" ? (hi ? "आधा दिन — देय नहीं" : "Half Day — Not Payable") : c.daStatus === "NOT_APPLICABLE" ? (hi ? "लागू नहीं" : "Not Applicable") : c.daStatus === "POLICY_NOT_CONFIGURED" ? (hi ? "नीति कॉन्फ़िगर नहीं है" : "Policy Not Configured") : (c.daStatus ?? "NOT_EVALUATED")}
+              </p>
               <form
                 className={styles.inlineActions}
                 onSubmit={(event) => {
@@ -212,12 +219,30 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                     const form = new FormData(event.currentTarget.closest("form")!);
                     void (async () => {
                       setBusy(true); setMessage("");
-                      try { await send("/api/travel/classification", { claimId: c.id, dutyType: String(form.get("dutyType")), reason: String(form.get("reason")) }); setMessage(hi ? "ड्यूटी वर्गीकृत की गई।" : "Duty classified."); router.refresh(); }
+                      try { await send("/api/travel/classification", { kind: "duty", claimId: c.id, dutyType: String(form.get("dutyType")), reason: String(form.get("reason")) }); setMessage(hi ? "ड्यूटी वर्गीकृत की गई।" : "Duty classified."); router.refresh(); }
                       catch (error) { setMessage(error instanceof Error ? error.message : "Action failed"); }
                       finally { setBusy(false); }
                     })();
                   }}
                 >{hi ? "ड्यूटी सेट करें" : "Set duty"}</button>
+                {c.dutyType === "OUTSTATION" && (
+                  <>
+                    <select name="dayClassification" defaultValue={c.dayClassification === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY"}><option value="HALF_DAY">HALF_DAY</option><option value="FULL_DAY">FULL_DAY</option></select>
+                    <button
+                      disabled={busy}
+                      type="button"
+                      onClick={(event) => {
+                        const form = new FormData(event.currentTarget.closest("form")!);
+                        void (async () => {
+                          setBusy(true); setMessage("");
+                          try { await send("/api/travel/classification", { kind: "day", claimId: c.id, dayClassification: String(form.get("dayClassification")), reason: String(form.get("reason")) }); setMessage(hi ? "दिन प्रकार निर्धारित किया गया।" : "Day type classified."); router.refresh(); }
+                          catch (error) { setMessage(error instanceof Error ? error.message : "Action failed"); }
+                          finally { setBusy(false); }
+                        })();
+                      }}
+                    >{hi ? "दिन प्रकार सेट करें" : "Set day type"}</button>
+                  </>
+                )}
                 <button disabled={busy}>{hi ? "सत्यापित करें" : "Verify"}</button>
                 <button
                   disabled={busy}
