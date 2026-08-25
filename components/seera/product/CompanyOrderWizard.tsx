@@ -178,7 +178,17 @@ function CancelOrderButton({ language, superStockistId, orderId }: { language: "
   );
 }
 
-type CartLine = { skuId: string; quantity: number };
+type CartLine = { skuId: string; quantity: number; commercialUom: string };
+
+// Per-line commercial UOM (Founder final policy, 25-Aug §15-22): display-only mirror of
+// resolveCompanyOrderLinePricing (workflow-service.ts/company-order-catalog.ts) — the server always
+// re-derives and charges the authoritative amount itself; this only lets the S.S. see what a PCS
+// selection will approximately cost BEFORE submitting, same "display never trusted for the actual
+// total" convention as the rest of this file.
+function displayRateFor(item: CompanyCatalogItem, uom: string): number {
+  if (uom === "PCS" && item.unitsPerOrderUnit > 1 && item.rate != null) return Math.round((item.rate / item.unitsPerOrderUnit + Number.EPSILON) * 100) / 100;
+  return item.rate ?? 0;
+}
 
 export function CompanyOrderWizard({
   language,
@@ -196,6 +206,7 @@ export function CompanyOrderWizard({
     brands = useMemo(() => [...new Set(catalog.map((c) => c.brand))].sort((a, b) => (a === "Seera" ? -1 : b === "Seera" ? 1 : a.localeCompare(b))), [catalog]),
     [brand, setBrand] = useState<string>(brands[0] ?? "Seera"),
     [qtyDraft, setQtyDraft] = useState<Record<string, number>>({}),
+    [uomDraft, setUomDraft] = useState<Record<string, string>>({}),
     [cart, setCart] = useState<CartLine[]>([]),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -210,16 +221,20 @@ export function CompanyOrderWizard({
   const visible = catalog.filter((c) => c.brand === brand);
   const byId = new Map(catalog.map((c) => [c.skuId, c]));
   const cartWithDetail = cart.map((line) => ({ ...line, item: byId.get(line.skuId) })).filter((l) => l.item);
-  const estimatedTotal = cartWithDetail.reduce((sum, l) => sum + (l.item!.rate ?? 0) * l.quantity, 0);
-  const cartQuantity = (skuId: string) => cart.find((l) => l.skuId === skuId)?.quantity ?? 0;
+  const estimatedTotal = cartWithDetail.reduce((sum, l) => sum + displayRateFor(l.item!, l.commercialUom) * l.quantity, 0);
+  const cartQuantity = (skuId: string, commercialUom: string) => cart.find((l) => l.skuId === skuId && l.commercialUom === commercialUom)?.quantity ?? 0;
 
   const addToCart = (skuId: string) => {
     const quantity = qtyDraft[skuId] ?? 1;
+    const item = byId.get(skuId);
+    const commercialUom = uomDraft[skuId] ?? item?.orderUnit ?? "PCS";
     if (!quantity || quantity <= 0) return;
     setCart((c) => {
-      const existing = c.find((l) => l.skuId === skuId);
-      if (existing) return c.map((l) => (l.skuId === skuId ? { ...l, quantity: l.quantity + quantity } : l));
-      return [...c, { skuId, quantity }];
+      // A line's UOM is part of its identity — ordering 2 BOX then separately 3 PC of the same SKU
+      // are two distinct commercial lines, never silently merged into one ambiguous quantity.
+      const existing = c.find((l) => l.skuId === skuId && l.commercialUom === commercialUom);
+      if (existing) return c.map((l) => (l === existing ? { ...l, quantity: l.quantity + quantity } : l));
+      return [...c, { skuId, quantity, commercialUom }];
     });
     setJustAddedSkuId(skuId);
     window.setTimeout(() => setJustAddedSkuId((current) => (current === skuId ? null : current)), 1500);
@@ -272,7 +287,10 @@ export function CompanyOrderWizard({
           ))}
         </div>
         <div className={styles.productGrid}>
-          {visible.map((item) => (
+          {visible.map((item) => {
+            const selectedUom = uomDraft[item.skuId] ?? item.orderUnit;
+            const canOfferPcs = item.unitsPerOrderUnit > 1 && item.orderUnit !== "PCS";
+            return (
             <article key={item.skuId} className={styles.productCard} data-unavailable={item.unavailable}>
               <strong>{item.productName}</strong>
               <small>{item.packDescription}</small>
@@ -284,15 +302,26 @@ export function CompanyOrderWizard({
               {item.unavailable ? (
                 <small style={{ color: "#a61f2a", fontWeight: 800 }}>{hi ? "मूल्य कॉन्फ़िगर नहीं" : "Price not configured yet"}</small>
               ) : (
-                <span className="rate">₹{item.rate!.toFixed(2)} / {item.orderUnit}</span>
+                <span className="rate">₹{displayRateFor(item, selectedUom).toFixed(2)} / {selectedUom}</span>
               )}
               {item.scheme && <small className="scheme">{item.scheme}</small>}
-              {cartQuantity(item.skuId) > 0 && (
+              {cartQuantity(item.skuId, selectedUom) > 0 && (
                 <small style={{ color: "#177245", fontWeight: 800 }}>
-                  {hi ? `कार्ट में: ${cartQuantity(item.skuId)} ${item.orderUnit}` : `In cart: ${cartQuantity(item.skuId)} ${item.orderUnit}`}
+                  {hi ? `कार्ट में: ${cartQuantity(item.skuId, selectedUom)} ${selectedUom}` : `In cart: ${cartQuantity(item.skuId, selectedUom)} ${selectedUom}`}
                 </small>
               )}
               <div className="addRow">
+                {canOfferPcs && (
+                  <select
+                    aria-label={hi ? "इकाई" : "Unit"}
+                    disabled={item.unavailable}
+                    value={selectedUom}
+                    onChange={(e) => setUomDraft((u) => ({ ...u, [item.skuId]: e.target.value }))}
+                  >
+                    <option value={item.orderUnit}>{item.orderUnit}</option>
+                    <option value="PCS">PCS</option>
+                  </select>
+                )}
                 <input
                   type="number"
                   min={1}
@@ -313,7 +342,8 @@ export function CompanyOrderWizard({
                 </button>
               </div>
             </article>
-          ))}
+            );
+          })}
           {!visible.length && <p className={styles.emptyHint}>{hi ? "इस ब्रांड में कोई सक्रिय उत्पाद नहीं।" : "No active products for this brand."}</p>}
         </div>
       </section>
@@ -339,15 +369,19 @@ export function CompanyOrderWizard({
               </thead>
               <tbody>
                 {cartWithDetail.map((l) => (
-                  <tr key={l.skuId}>
+                  <tr key={`${l.skuId}-${l.commercialUom}`}>
                     <td>{l.item!.productName}</td>
-                    <td>{l.quantity}</td>
-                    <td>{l.item!.orderUnit}</td>
-                    <td>₹{(l.item!.rate ?? 0).toFixed(2)}</td>
-                    <td>₹{((l.item!.rate ?? 0) * l.quantity).toFixed(2)}</td>
+                    <td>
+                      {l.quantity}
+                      {l.commercialUom === "PCS" && l.item!.unitsPerOrderUnit > 1 && <small style={{ display: "block", color: "#5a5a6e" }}>{hi ? `= ${l.quantity} PC (कैननिकल)` : `= ${l.quantity} PC (canonical)`}</small>}
+                      {l.commercialUom !== "PCS" && l.item!.unitsPerOrderUnit > 1 && <small style={{ display: "block", color: "#5a5a6e" }}>{`= ${l.quantity * l.item!.unitsPerOrderUnit} PC`}</small>}
+                    </td>
+                    <td>{l.commercialUom}</td>
+                    <td>₹{displayRateFor(l.item!, l.commercialUom).toFixed(2)}</td>
+                    <td>₹{(displayRateFor(l.item!, l.commercialUom) * l.quantity).toFixed(2)}</td>
                     <td>{l.item!.scheme ?? "—"}</td>
                     <td>
-                      <button type="button" onClick={() => setCart((c) => c.filter((x) => x.skuId !== l.skuId))}>
+                      <button type="button" onClick={() => setCart((c) => c.filter((x) => !(x.skuId === l.skuId && x.commercialUom === l.commercialUom)))}>
                         {hi ? "हटाएँ" : "Remove"}
                       </button>
                     </td>
@@ -369,7 +403,7 @@ export function CompanyOrderWizard({
               setError("");
               void post("company-order", {
                 superStockistId,
-                lines: cart,
+                lines: cart.map((l) => ({ skuId: l.skuId, quantity: l.quantity, commercialUom: l.commercialUom })),
                 idempotencyKey: key(),
               })
                 .then((order) => {

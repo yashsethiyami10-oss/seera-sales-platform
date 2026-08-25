@@ -14,7 +14,7 @@ import {
 } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { resolveDistributorPurchaseRate } from "./distributor-pricing";
-import { COMPANY_ORDER_UNIT_OVERRIDES, wholesaleOrderUnitToCanonicalPieces, canonicalPiecesToWholesaleOrderUnit, companyOrderLineMultiplier } from "./company-order-catalog";
+import { COMPANY_ORDER_UNIT_OVERRIDES, companyOrderLineMultiplier, orderLineAwareCanonicalPieces, orderLineAwareOrderUnits, resolveCompanyOrderLinePricing, type CompanyOrderUnit } from "./company-order-catalog";
 import { notifyPartyUsers, requirePartyMembership, executiveAuthorizedDistributors, companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
 import { deriveInclusiveTax, deriveExclusiveTax, priceModeForBrand } from "./document-lines";
 import { evaluateHqGeofence, recordGpsSample, recomputeSessionDistance } from "./field-travel-service";
@@ -33,7 +33,7 @@ import { assertCompanyDispatchAvailable, postCompanyDispatchStockAndCogs } from 
 // always the PAID amount only (the client has already excluded free units before this point) — so
 // every downstream subtotal/tax/lineTotal calculation is completely unaffected; freeBaseQuantity is
 // carried purely as informational snapshot data for the Distributor/documents to display.
-type OrderLineInput = { skuId: string; quantity: number; rate?: number; uom?: { unit: string; packFactor: number; uomQuantity: number }; scheme?: { freeQuantity: number; freeUom: string; freeBaseQuantity: number } };
+type OrderLineInput = { skuId: string; quantity: number; rate?: number; uom?: { unit: string; packFactor: number; uomQuantity: number }; scheme?: { freeQuantity: number; freeUom: string; freeBaseQuantity: number }; commercialUom?: CompanyOrderUnit };
 type ActorContext = {
   actorId: string;
   sourcePortal: string;
@@ -1626,7 +1626,7 @@ export async function allocateOrderStock(prisma:PrismaClient,actorId:string,inpu
       // reserves against is canonical pieces, so a wholesale line's delta must be converted before it
       // ever reaches the availability check or the RESERVE movement — a RETAILER_ORDER line is never
       // converted, since it's already pieces by design.
-      const deltaPieces=order.type==="RETAILER_ORDER"?delta:wholesaleOrderUnitToCanonicalPieces(line.skuCodeSnapshot,delta);
+      const deltaPieces=order.type==="RETAILER_ORDER"?delta:orderLineAwareCanonicalPieces(line,delta);
       if(delta>0){const movements=await tx.seeraInventoryMovement.findMany({where:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId},select:{direction:true,quantity:true},orderBy:{occurredAt:"asc"}});const position=inventoryPosition(movements.map((x)=>({direction:x.direction,quantity:Number(x.quantity)})));const short=deltaPieces>position.onHand-position.reserved;
         // Founder decision 22-Aug, extended in the Final Master Revision (Part 5) to
         // DISTRIBUTOR_REPLENISHMENT: stock stays an OPTIONAL operational record for BOTH the
@@ -1710,7 +1710,7 @@ export async function dispatchAllocatedOrder(
         // movements written to the physical stock ledger must use the SAME canonical-pieces
         // conversion allocateOrderStock used for the matching RESERVE, or the RELEASE never fully
         // cancels it out for a wholesale (Box/Bag) line. A RETAILER_ORDER line is never converted.
-        const quantityPieces = order.type === "RETAILER_ORDER" ? quantity : wholesaleOrderUnitToCanonicalPieces(line.skuCodeSnapshot, quantity);
+        const quantityPieces = order.type === "RETAILER_ORDER" ? quantity : orderLineAwareCanonicalPieces(line, quantity);
         await tx.seeraInventoryMovement.createMany({
           data: [
             {
@@ -1829,7 +1829,7 @@ export async function receiveIncomingOrder(prisma:PrismaClient,actorId:string,in
       // movements this aggregate reads back were written by this same converted path, so translating
       // their piece sum back to order-units here (rather than re-deriving from order-line fields) is
       // exact, not an approximation.
-      const previous=await tx.seeraInventoryMovement.aggregate({where:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,sourceType:"IncomingReceipt",sourceId:order.id,direction:"IN"},_sum:{quantity:true}}),already=canonicalPiecesToWholesaleOrderUnit(line.skuCodeSnapshot,Number(previous._sum.quantity??0)),expected=Number(line.dispatchedQuantity);if(receipt.quantity>expected-already)throw new FoundationError("OVER_RECEIPT_DENIED","Receipt exceeds the remaining dispatched quantity",409);if(receipt.quantity>0)await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"RECEIPT",direction:"IN",quantity:wholesaleOrderUnitToCanonicalPieces(line.skuCodeSnapshot,receipt.quantity),sourceType:"IncomingReceipt",sourceId:order.id,actorId,sourcePortal:input.partyType==="DISTRIBUTOR"?"distributor":"super-stockist",reason:input.reason?.trim()||"Confirmed incoming receipt",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});if(receipt.quantity<expected-already)shortages.push({lineId:line.id,skuId:line.skuId,expected:expected-already,received:receipt.quantity});}if(shortages.length){if(!input.reason?.trim())throw new FoundationError("SHORT_RECEIPT_REASON_REQUIRED","A reason is required for a short receipt",400);await tx.seeraClaim.create({data:{claimNumber:numberFor("SC",input.idempotencyKey),claimantType:input.partyType,claimantId:input.partyId,againstPartyType:order.sellerPartnerId?(input.partyType==="DISTRIBUTOR"?"SUPER_STOCKIST":"COMPANY"):"COMPANY",againstPartyId:order.sellerPartnerId??"SEERA_COMPANY",type:"SHORT_DELIVERY",sourceType:"SeeraSalesOrder",sourceId:order.id,details:{shortages,reason:input.reason},actorId,idempotencyKey:`${input.idempotencyKey}-claim`}});}await recordAudit(tx,{actorId,action:"incoming_stock.received",entityType:"SeeraSalesOrder",entityId:order.id,afterState:{partyId:input.partyId,shortages}});return{orderId:order.id,shortages};},{isolationLevel:"Serializable",timeout:15000});
+      const previous=await tx.seeraInventoryMovement.aggregate({where:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,sourceType:"IncomingReceipt",sourceId:order.id,direction:"IN"},_sum:{quantity:true}}),already=order.type==="RETAILER_ORDER"?Number(previous._sum.quantity??0):orderLineAwareOrderUnits(line,Number(previous._sum.quantity??0)),expected=Number(line.dispatchedQuantity);if(receipt.quantity>expected-already)throw new FoundationError("OVER_RECEIPT_DENIED","Receipt exceeds the remaining dispatched quantity",409);if(receipt.quantity>0)await tx.seeraInventoryMovement.create({data:{partyType:input.partyType,partyId:input.partyId,skuId:line.skuId,type:"RECEIPT",direction:"IN",quantity:order.type==="RETAILER_ORDER"?receipt.quantity:orderLineAwareCanonicalPieces(line,receipt.quantity),sourceType:"IncomingReceipt",sourceId:order.id,actorId,sourcePortal:input.partyType==="DISTRIBUTOR"?"distributor":"super-stockist",reason:input.reason?.trim()||"Confirmed incoming receipt",idempotencyKey:`${input.idempotencyKey}-${line.id}`}});if(receipt.quantity<expected-already)shortages.push({lineId:line.id,skuId:line.skuId,expected:expected-already,received:receipt.quantity});}if(shortages.length){if(!input.reason?.trim())throw new FoundationError("SHORT_RECEIPT_REASON_REQUIRED","A reason is required for a short receipt",400);await tx.seeraClaim.create({data:{claimNumber:numberFor("SC",input.idempotencyKey),claimantType:input.partyType,claimantId:input.partyId,againstPartyType:order.sellerPartnerId?(input.partyType==="DISTRIBUTOR"?"SUPER_STOCKIST":"COMPANY"):"COMPANY",againstPartyId:order.sellerPartnerId??"SEERA_COMPANY",type:"SHORT_DELIVERY",sourceType:"SeeraSalesOrder",sourceId:order.id,details:{shortages,reason:input.reason},actorId,idempotencyKey:`${input.idempotencyKey}-claim`}});}await recordAudit(tx,{actorId,action:"incoming_stock.received",entityType:"SeeraSalesOrder",entityId:order.id,afterState:{partyId:input.partyId,shortages}});return{orderId:order.id,shortages};},{isolationLevel:"Serializable",timeout:15000});
 }
 
 export async function recordInventoryMovement(
@@ -2043,7 +2043,14 @@ export async function createCompanyOrder(
   // price — server-side, from the SAME governed table the catalog display reads, never from
   // anything the S.S. client submits. Every pre-existing PACK_TOTAL SKU gets multiplier 1 (a no-op),
   // so this line is byte-identical in effect to before for every SKU that isn't Powder 1kg.
-  const now=new Date(), snapshots=await Promise.all(input.lines.map(async(line)=>{const sku=await prisma.seeraSku.findFirst({where:{id:line.skuId,status:"ACTIVE"}});if(!sku)throw new FoundationError("SKU_UNAVAILABLE","An ordered SKU is unavailable",409);const price=await prisma.seeraPriceVersion.findFirst({where:{skuId:sku.id,tier:"COMPANY_TO_SS",status:"ACTIVE",effectiveFrom:{lte:now},OR:[{effectiveTo:null},{effectiveTo:{gt:now}}]},orderBy:{effectiveFrom:"desc"}});if(!price)throw new FoundationError("PRICE_UNAVAILABLE",`No active Super Stockist price for ${sku.code}`,409);const effectiveRate=Number(price.amount)*companyOrderLineMultiplier(sku.code);return{sku,price,quantity:line.quantity,total:effectiveRate*line.quantity};}));
+  const now=new Date(), snapshots=await Promise.all(input.lines.map(async(line)=>{const sku=await prisma.seeraSku.findFirst({where:{id:line.skuId,status:"ACTIVE"}});if(!sku)throw new FoundationError("SKU_UNAVAILABLE","An ordered SKU is unavailable",409);const price=await prisma.seeraPriceVersion.findFirst({where:{skuId:sku.id,tier:"COMPANY_TO_SS",status:"ACTIVE",effectiveFrom:{lte:now},OR:[{effectiveTo:null},{effectiveTo:{gt:now}}]},orderBy:{effectiveFrom:"desc"}});if(!price)throw new FoundationError("PRICE_UNAVAILABLE",`No active Super Stockist price for ${sku.code}`,409);const effectiveRate=Number(price.amount)*companyOrderLineMultiplier(sku.code);
+    // Per-line commercial UOM (Founder final policy, 25-Aug §15-22): resolveCompanyOrderLinePricing
+    // is the ONE place packFactor is resolved (always server-side, governed) and PCS pricing is
+    // derived (packRate/packFactor, never a new price version). Every SKU that doesn't get an
+    // explicit commercialUom, or whose commercialUom equals its own default pack unit, computes
+    // byte-identically to before this feature existed.
+    const pricing=resolveCompanyOrderLinePricing(sku.code,effectiveRate,line.commercialUom,line.quantity);
+    return{sku,price,quantity:line.quantity,total:pricing.lineTotal,pricing};}));
   const subtotal=snapshots.reduce((sum,line)=>sum+line.total,0);
   // RUN 2B resume Section 12: currently always 0 in practice (no real Seera/MUV SKU has a governed
   // taxRate yet — see RUN 2B report), but derives real embedded tax the moment one is configured,
@@ -2067,20 +2074,29 @@ export async function createCompanyOrder(
       contractualCreditDays: 0,
       idempotencyKey: input.idempotencyKey,
       submittedAt: new Date(),
-      lines:{create:snapshots.map(({sku,price,quantity,total})=>{
-        // RUN 2B resume Section C: a canonical order-unit/conversion snapshot, captured at order
-        // time so later changes to COMPANY_ORDER_UNIT_OVERRIDES never retroactively alter what this
-        // historical line meant. Reuses the existing nullable schemeSnapshot JSON column — no schema
-        // change — since nothing else reads this column for COMPANY_REPLENISHMENT orders (only
-        // quotation-service.ts uses the same field name on a different model, for an unrelated
-        // discount-pct shape).
+      lines:{create:snapshots.map(({sku,price,quantity,total,pricing})=>{
+        // RUN 2B resume Section C, extended 25-Aug for per-line commercial UOM: a canonical
+        // order-unit/conversion snapshot, captured at order time so later changes to
+        // COMPANY_ORDER_UNIT_OVERRIDES never retroactively alter what this historical line meant.
+        // Reuses the existing nullable schemeSnapshot JSON column — no schema change — since nothing
+        // else reads this column for COMPANY_REPLENISHMENT orders. Field list is the Founder's own
+        // (§19): selectedUom/orderedUomQuantity/packFactor/canonicalPieceQuantity/displayRate/
+        // rateBasisUom, plus unitsPerOrderUnit/rateBasis kept for backward-compatible reads by any
+        // older display code still expecting the pre-25-Aug shape.
         const override = COMPANY_ORDER_UNIT_OVERRIDES[sku.code];
         const orderUnitSnapshot = {
-          orderUnit: override?.orderUnit ?? "PCS",
-          unitsPerOrderUnit: override?.unitsPerOrderUnit ?? 1,
+          orderUnit: pricing.rateBasisUom,
+          unitsPerOrderUnit: pricing.packFactor,
           rateBasis: override?.rateBasis ?? "Rate per piece",
+          selectedUom: pricing.selectedUom,
+          orderedUomQuantity: quantity,
+          packFactor: pricing.packFactor,
+          inventoryPackFactor: pricing.inventoryPackFactor,
+          canonicalPieceQuantity: pricing.canonicalPieceQuantity,
+          displayRate: pricing.displayRate,
+          rateBasisUom: pricing.rateBasisUom,
         };
-        return {skuId:sku.id,skuCodeSnapshot:sku.code,productNameSnapshot:sku.productName,packSnapshot:`${sku.packSize} ${sku.unitType}`,priceSnapshot:price.amount,mrpSnapshot:sku.mrp,schemeSnapshot:orderUnitSnapshot,taxSnapshot:sku.taxRate?{rate:sku.taxRate}:undefined,orderedQuantity:quantity,lineTotal:total};
+        return {skuId:sku.id,skuCodeSnapshot:sku.code,productNameSnapshot:sku.productName,packSnapshot:`${quantity} ${pricing.selectedUom} (${pricing.canonicalPieceQuantity} PC)`,priceSnapshot:price.amount,mrpSnapshot:sku.mrp,schemeSnapshot:orderUnitSnapshot,taxSnapshot:sku.taxRate?{rate:sku.taxRate}:undefined,orderedQuantity:quantity,lineTotal:total};
       })},
     },
     include:{lines:true},

@@ -238,6 +238,12 @@ export async function OperationalDetail({
                 <tr>
                   <th>SKU</th>
                   <th>Ordered</th>
+                  {x.type === "COMPANY_REPLENISHMENT" && (
+                    <>
+                      <th>Commercial UOM / Pack</th>
+                      <th>Rate</th>
+                    </>
+                  )}
                   <th>Accepted</th>
                   <th>Cancelled</th>
                   <th>Remaining</th>
@@ -256,6 +262,12 @@ export async function OperationalDetail({
                       <small>{l.productNameSnapshot}</small>
                     </td>
                     <td>{text(l.orderedQuantity)}</td>
+                    {x.type === "COMPANY_REPLENISHMENT" && (
+                      <>
+                        <td>{l.packSnapshot ?? "—"}</td>
+                        <td>{money(l.priceSnapshot)}</td>
+                      </>
+                    )}
                     <td>{text(l.acceptedQuantity)}</td>
                     <td>{text(l.cancelledQuantity)}</td>
                     <td>

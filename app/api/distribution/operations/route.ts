@@ -344,7 +344,7 @@ export async function POST(request: Request) {
       const v = z
         .object({
           superStockistId: z.string(),
-          lines: z.array(z.object({skuId:z.string().min(1),quantity:z.number().int().positive()})).min(1),
+          lines: z.array(z.object({skuId:z.string().min(1),quantity:z.number().int().positive(),commercialUom:z.enum(["PCS","BOX","BAG"]).optional()})).min(1),
           idempotencyKey: z.string(),
         })
         .parse(payload);

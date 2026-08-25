@@ -95,6 +95,61 @@ export function companyOrderLineMultiplier(skuCode: string): number {
   return override?.basis === "PER_PC" ? (override.unitsPerOrderUnit ?? 1) : 1;
 }
 
+const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+// Per-line commercial UOM (Founder final policy, 25-Aug §15-22) — an S.S. may order a Company Order
+// line in the SKU's default pack unit (BOX/BAG, unchanged current behavior) OR explicitly in PCS.
+// packFactor is ALWAYS resolved here, server-side, from the governed COMPANY_ORDER_UNIT_OVERRIDES
+// table — NEVER trusted from client input, so a line can never be mispriced by a client-submitted
+// pack factor. When PCS is selected, the per-piece rate is derived ONLY for that transaction's own
+// representation (packRate / packFactor) — the governed PACK_TOTAL price itself is never altered,
+// no new SeeraPriceVersion is ever created, and the line total is computed in one division+
+// multiplication step (never rounding the per-piece rate first and re-multiplying) to avoid
+// compounding rounding drift on the actually-charged amount. This is the one function guarding the
+// SKU-04 (5f/2ff) historic 25x pricing regression from ever recurring for a PCS-selected line.
+export type CompanyOrderLinePricing = {
+  selectedUom: CompanyOrderUnit;
+  // packFactor is the SKU's governed PHYSICAL pack size (e.g. 25 for Powder 1kg) — always the same
+  // regardless of what unit was selected, used for pricing derivation and display ("1 BAG = 25 PC").
+  // inventoryPackFactor is a DIFFERENT thing: how many canonical pieces one unit of `quantity`
+  // (as ordered, in `selectedUom`) represents — 1 when selectedUom is already PCS (quantity IS
+  // pieces), packFactor when selectedUom is the SKU's pack unit. Conflating these two was a real bug
+  // caught by this file's own integration test (a 4-PC line was posting 100 pieces to inventory,
+  // i.e. still multiplying by 25) — keep them as two distinct, clearly-named fields, never reuse one
+  // for the other's purpose again.
+  packFactor: number;
+  inventoryPackFactor: number;
+  canonicalPieceQuantity: number;
+  displayRate: number;
+  rateBasisUom: CompanyOrderUnit;
+  lineTotal: number;
+};
+export function resolveCompanyOrderLinePricing(skuCode: string, packRate: number, selectedUom: CompanyOrderUnit | undefined, quantity: number): CompanyOrderLinePricing {
+  const override = COMPANY_ORDER_UNIT_OVERRIDES[skuCode];
+  const defaultUnit = override?.orderUnit ?? "PCS";
+  const packFactor = override?.unitsPerOrderUnit ?? 1;
+  const uom = selectedUom ?? defaultUnit;
+  if (uom !== "PCS" && uom !== defaultUnit) throw new Error(`INVALID_COMPANY_ORDER_UOM: ${skuCode} only supports ${defaultUnit} or PCS, not ${uom}`);
+  if (uom === defaultUnit || packFactor <= 1) {
+    // Exactly today's behavior for every existing SKU — governed pack-total rate x pack quantity,
+    // byte-identical to before this feature existed. (packFactor<=1 means the SKU has no real pack
+    // to convert from at all — e.g. MUV items — so PCS is a no-op alias for the default unit.)
+    return { selectedUom: uom, packFactor, inventoryPackFactor: packFactor, canonicalPieceQuantity: quantity * packFactor, displayRate: packRate, rateBasisUom: defaultUnit, lineTotal: money(packRate * quantity) };
+  }
+  // S.S. explicitly chose PCS over the SKU's governed pack unit — `quantity` IS already pieces, so
+  // the inventory conversion factor is 1, even though packFactor (25) still describes the SKU's
+  // physical pack for pricing/display purposes.
+  return {
+    selectedUom: "PCS",
+    packFactor,
+    inventoryPackFactor: 1,
+    canonicalPieceQuantity: quantity,
+    displayRate: money(packRate / packFactor),
+    rateBasisUom: defaultUnit,
+    lineTotal: money((packRate / packFactor) * quantity),
+  };
+}
+
 // The one conversion boundary between commercial order-unit quantities (Boxes/Bags, as ordered) and
 // canonical physical pieces (the single basis the shared inventory ledger must use — see the STAGE 12
 // comment above). Never used for a RETAILER_ORDER line — those are already piece-denominated.
@@ -110,6 +165,36 @@ export function canonicalPiecesToWholesaleOrderUnit(skuCode: string, pieces: num
   const unitsPerOrderUnit = COMPANY_ORDER_UNIT_OVERRIDES[skuCode]?.unitsPerOrderUnit ?? 1;
   if (pieces % unitsPerOrderUnit !== 0) throw new Error(`INVENTORY_UNIT_CONVERSION_MISALIGNED: ${pieces} physical pieces is not an exact multiple of the governed pack size (${unitsPerOrderUnit}) for ${skuCode}`);
   return pieces / unitsPerOrderUnit;
+}
+
+// Per-line-aware inventory conversion (Founder final policy, 25-Aug §21) — the STATIC per-SKU-code
+// wholesaleOrderUnitToCanonicalPieces() above is only correct when every line of a SKU always uses
+// the SAME order unit, which was true before per-line PCS selection existed. Now a Company Order
+// line may deliberately be PCS while the SKU's default is BOX/BAG (or vice versa), so the
+// conversion factor for a delta on THIS line must come from what was actually selected/snapshotted
+// on the line itself, never re-derived from the SKU code alone (that would silently convert a
+// 3-PC line as if it were 3 BAG — a ~25x error in the wrong direction). Reads
+// schemeSnapshot.packFactor (new field, present on every line created after this pass) first, then
+// falls back to the older schemeSnapshot.unitsPerOrderUnit shape (present on every Company Order
+// line created before it, always equal to the SKU's default pack factor since no PCS selection
+// existed yet), then finally the static per-SKU table for any other line shape (RETAILER_ORDER
+// lines never reach this function at all — callers already branch on order.type first).
+function orderLinePackFactor(line: { skuCodeSnapshot: string; schemeSnapshot: unknown }): number {
+  // inventoryPackFactor (new field, 25-Aug) is authoritative when present — it correctly reads 1
+  // for a PCS-selected line even though the SKU's own physical pack factor is 25+. Older lines
+  // (created before per-line UOM existed) only ever have the plain unitsPerOrderUnit shape, which
+  // is always safe to use directly since no PCS selection existed yet for those.
+  const snapshot = (line.schemeSnapshot ?? {}) as { inventoryPackFactor?: number; unitsPerOrderUnit?: number };
+  return snapshot.inventoryPackFactor ?? snapshot.unitsPerOrderUnit ?? COMPANY_ORDER_UNIT_OVERRIDES[line.skuCodeSnapshot]?.unitsPerOrderUnit ?? 1;
+}
+export function orderLineAwareCanonicalPieces(line: { skuCodeSnapshot: string; schemeSnapshot: unknown }, orderUnitQuantityDelta: number): number {
+  return orderUnitQuantityDelta * orderLinePackFactor(line);
+}
+// Inverse of the above, per-line-aware — same non-guessing invariant as canonicalPiecesToWholesaleOrderUnit.
+export function orderLineAwareOrderUnits(line: { skuCodeSnapshot: string; schemeSnapshot: unknown }, pieces: number): number {
+  const packFactor = orderLinePackFactor(line);
+  if (pieces % packFactor !== 0) throw new Error(`INVENTORY_UNIT_CONVERSION_MISALIGNED: ${pieces} physical pieces is not an exact multiple of this line's own pack factor (${packFactor}) for ${line.skuCodeSnapshot}`);
+  return pieces / packFactor;
 }
 
 // MUV: no case-pack rate was ever supplied by the Founder for any MUV SKU — every MUV Company→S.S.
