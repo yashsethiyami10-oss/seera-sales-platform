@@ -5,7 +5,8 @@ import { seedDefaultChartOfAccounts } from "@/lib/finance/chart-of-accounts";
 import { createTreasuryAccount } from "@/lib/finance/treasury-service";
 import { createVendor, createVendorBill } from "@/lib/finance/vendor-service";
 import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
-import { partyLedgerStatement } from "@/lib/finance/party-ledger-service";
+import { partyLedgerStatement, ledgerPartyOptions } from "@/lib/finance/party-ledger-service";
+import { searchEmployees } from "@/lib/finance/quick-entry-service";
 import { createMoneyDeskTransaction, moneyDeskTransactionDetail } from "@/lib/finance/money-desk-service";
 import { deriveCostCentre } from "@/lib/finance/cost-centre";
 
@@ -116,5 +117,20 @@ describe("guarded Money Desk closure pass — Guided Receipt, Transaction Detail
     expect(da).toBeDefined();
     expect(da.credit).toBe(150);
     expect(ta.credit + da.credit).toBe(800);
+  });
+
+  it("Employee Ledger party picker and Salary/expense employee search exclude external-party portal logins (real bug found via Founder production UAT, 25-Aug)", async () => {
+    const retailerUser = roleUsers.get("RETAILER_USER")!;
+    const distributorOwner = roleUsers.get("DISTRIBUTOR_OWNER")!;
+    const salesExecutive = roleUsers.get("SALES_EXECUTIVE")!;
+
+    const employeeOptions = await ledgerPartyOptions(prisma, founder, "EMPLOYEE");
+    const optionIds = employeeOptions.map((o) => o.id);
+    expect(optionIds).not.toContain(retailerUser.id);
+    expect(optionIds).not.toContain(distributorOwner.id);
+    expect(optionIds).toContain(salesExecutive.id);
+
+    const searchResults = await searchEmployees(prisma, founder, "RETAILER_USER");
+    expect(searchResults.map((r) => r.id)).not.toContain(retailerUser.id);
   });
 });

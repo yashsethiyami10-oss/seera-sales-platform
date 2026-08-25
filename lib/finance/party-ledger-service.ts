@@ -3,6 +3,7 @@ import { authorize } from "@/lib/foundation/authorization-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { ledgerReadModel, partyOutstanding } from "@/lib/sales-distribution/financial-service";
 import { deriveCostCentre } from "./cost-centre";
+import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
 
 // SEERA PROFESSIONAL LEDGER — the one shared running-balance statement engine for every party
 // type (Distributor, Super Stockist, Vendor, Employee). Founder visual review (24-Aug §17):
@@ -375,7 +376,16 @@ export async function ledgerPartyOptions(db: PrismaClient, actorId: string, part
     return vendors.map((v) => ({ id: v.id, name: v.tradeName ?? v.legalName }));
   }
   await authorize(db, { actorId, permission: "expense:create" });
-  const employees = await db.user.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true }, take: 500 });
+  // Real production bug found via Founder UAT (25-Aug): querying every ACTIVE user with no role
+  // filter pulled in Retailer/Distributor/S.S. portal-login accounts too — a retailer's shop name
+  // (e.g. "Aadi Stationery") showed up as an "employee". Excludes every external-party portal role;
+  // see EXTERNAL_PARTY_PORTAL_ROLE_CODES.
+  const employees = await db.user.findMany({
+    where: { status: "ACTIVE", roleAssignments: { some: { status: "ACTIVE", role: { code: { notIn: [...EXTERNAL_PARTY_PORTAL_ROLE_CODES] } } } } },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true },
+    take: 500,
+  });
   return employees.map((e) => ({ id: e.id, name: e.name ?? e.email }));
 }
 

@@ -4,6 +4,7 @@ import { authorize, effectivePermissions } from "@/lib/foundation/authorization-
 import { FoundationError } from "@/lib/foundation/errors";
 import { createExpense, submitExpense, postExpense } from "./expense-service";
 import { resolveExecutiveOperationalScope } from "@/lib/sales-distribution/scope";
+import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
 
 // SEERA FINANCE OS — QUICK ENTRY: a single, simple entry point ("choose what
 // this is for -> amount -> optional receipt -> Save") that still goes
@@ -32,10 +33,14 @@ export async function searchEmployees(db: PrismaClient, actorId: string, q: stri
   await authorize(db, { actorId, permission: "expense:create" });
   const query = q.trim();
   if (query.length < 2) return [];
+  // Real production bug found via Founder UAT (25-Aug): "at least one active role assignment" also
+  // matches Retailer/Distributor/S.S. portal-login accounts (their only role IS that portal role),
+  // so a retailer's shop name could be picked as an "employee" for Salary/expense entry. Excludes
+  // every external-party portal role; see EXTERNAL_PARTY_PORTAL_ROLE_CODES.
   return db.user.findMany({
     where: {
       status: "ACTIVE",
-      roleAssignments: { some: { status: "ACTIVE" } },
+      roleAssignments: { some: { status: "ACTIVE", role: { code: { notIn: [...EXTERNAL_PARTY_PORTAL_ROLE_CODES] } } } },
       OR: [{ name: { contains: query, mode: "insensitive" } }, { email: { contains: query, mode: "insensitive" } }],
     },
     select: { id: true, name: true, email: true, roleAssignments: { where: { status: "ACTIVE" }, select: { role: { select: { name: true } } }, take: 1, orderBy: { assignedAt: "asc" } } },

@@ -22,6 +22,15 @@ export const PHASE_1_ROLES = [
 
 export const PHASE_1_ROLE_CODES = PHASE_1_ROLES.map(([code]) => code);
 
+// External-party portal-login roles (Founder production UAT, 25-Aug) — every one of these is a
+// `User` row that exists ONLY so a Retailer/Distributor/Super Stockist can log into their own
+// portal; it is never a real employee and must never appear where the app is enumerating "which
+// users are staff" (Employee Ledger picker, Salary/TA employee search, etc.). Real production
+// data surfaced this: without this exclusion, a query like `db.user.findMany({ status: "ACTIVE" })`
+// silently mixes real employees with retailer shop-name accounts ("Aadi Stationery" showing up as
+// an "employee").
+export const EXTERNAL_PARTY_PORTAL_ROLE_CODES = ["RETAILER_USER", "DISTRIBUTOR_OWNER", "DISTRIBUTOR_OPERATOR", "DISTRIBUTOR_DELIVERY_USER", "SUPER_STOCKIST_OWNER", "SUPER_STOCKIST_OPERATOR"] as const;
+
 export const PHASE_1_PERMISSIONS = [
   "system:super_admin", "user:view", "user:create", "user:update", "user:disable", "user:suspend",
   "user:reactivate", "role:view", "role:assign", "role:remove", "permission:view", "audit:view",
