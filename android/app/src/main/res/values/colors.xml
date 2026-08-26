@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the brand red used in public/icons/seera.svg and app/manifest.ts theme_color. -->
+    <color name="colorPrimary">#B91C1C</color>
+    <color name="colorPrimaryDark">#7F1414</color>
+    <color name="colorAccent">#F59E0B</color>
+</resources>
