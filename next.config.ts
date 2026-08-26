@@ -20,8 +20,17 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   // Only send the origin (not the full URL/path) as a Referer header to other sites.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Disables powerful browser features this app never uses.
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
+  // Camera/microphone stay fully disabled — the field-photo pipeline only ever uses
+  // <input type="file" capture>, never getUserMedia (confirmed repo-wide, zero matches), so
+  // disabling them is a genuine hardening with no functional cost. Geolocation MUST allow
+  // 'self': the Sales Executive checkpoint GPS flow (components/seera/product/gps.tsx,
+  // navigator.geolocation.getCurrentPosition) runs on these exact /portal/* routes, and an
+  // empty geolocation=() allowlist blocks it for the top-level document itself, not just
+  // iframes — confirmed live against production: getCurrentPosition rejected immediately with
+  // "Geolocation has been disabled in this document by permissions policy" (code 1), which the
+  // client maps to the same PERMISSION_DENIED UI state as a real user denial, so the outage
+  // silently passed as an ordinary "location permission denied" message and was never flagged.
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self), interest-cohort=()" },
   // Force HTTPS for a year, including subdomains, once this is actually served over HTTPS.
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "Content-Security-Policy", value: `default-src 'self'; ${scriptPolicy}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://res.cloudinary.com; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'` },
