@@ -202,10 +202,14 @@ export async function provisionPartnerLogin(prisma: PrismaClient, actorId: strin
 // same permission/audit/session-revocation pattern as setUserStatus/removeRole, returns the new
 // temporary password ONCE (never stored in plaintext, never re-shown), same convention
 // provisionPartnerLogin already established.
-export async function resetPartnerLoginPassword(prisma: PrismaClient, actorId: string, userId: string, reason: string) {
+export async function resetPartnerLoginPassword(prisma: PrismaClient, actorId: string, userId: string, reason: string, password?: string) {
   await authorize(prisma, { actorId, permission: "user:update" });
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  const temporaryPassword = generateTemporaryPassword();
+  // Optional override, same convention provisionPartnerLogin already established for a
+  // Founder-supplied password (e.g. one meeting a specific complexity preference for manual
+  // handoff) — every existing caller that omits it keeps the prior auto-generated behavior.
+  if (password != null && (password.length < 12 || password.length > 256)) throw new FoundationError("INVALID_TEMPORARY_PASSWORD", "Password must be 12-256 characters", 400);
+  const temporaryPassword = password ?? generateTemporaryPassword();
   await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(temporaryPassword), authorizationVersion: { increment: 1 } } });
   invalidateEffectivePermissionsCache(userId);
   await revokeAllSessions(prisma, userId, actorId, "PASSWORD_RESET");
