@@ -7,7 +7,11 @@ import type { CapacitorConfig } from "@capacitor/cli";
 const config: CapacitorConfig = {
   appId: "in.seeradetergent.sales",
   appName: "Seera",
-  webDir: "public",
+  // Deliberately NOT "public" — that's the shared Next.js static folder (storefront hero
+  // imagery etc., ~72MB) and none of it is ever rendered locally: server.url below makes the
+  // Bridge navigate straight to the real production origin on launch, always. Pointing webDir at
+  // this dedicated near-empty directory instead keeps that unrelated bloat out of the APK/AAB.
+  webDir: "android-webview-shell",
   server: {
     url: "https://www.seeradetergent.in",
     androidScheme: "https",
