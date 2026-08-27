@@ -1,7 +1,8 @@
 # Seera Android Release Strategy
 
 Status: V1 code-complete, physical-device UAT pending (Founder-required).
-Baseline commit: `ff74e74` + the offline/back-button/App-Links/size work in this pass.
+Baseline commit: `ff74e74` + offline/back-button/App-Links/size work + mobile Logout fix and
+server-driven app-update architecture (this pass).
 
 ## What this app is
 
@@ -137,14 +138,141 @@ not to trade field reliability for size. Play Store's own dynamic delivery (AAB 
 splits) already means no single install downloads unused ABI/density resources regardless of this
 setting.
 
-## Update strategy
+## Mobile Logout fix — proof this architecture actually works
 
-Because the app is a thin remote-loading shell, **the overwhelming majority of product changes
-need no app update at all** — a Server Action fix, a new portal screen, a pricing rule change, a
-UI tweak all ship the instant they're deployed to `www.seeradetergent.in`, exactly like the
-browser/PWA experience, with zero Play Store review wait. A new APK/AAB build (and Play Store
-release) is only needed when the **native shell itself** changes: permissions, app icon/splash,
-back-button/App-Links native behavior, minimum Android version, or adding a new native plugin
-(e.g. push notifications in Phase 1.1). Bump `versionCode`/`versionName` in
-`android/app/build.gradle` for each such release; the web app's own versioning is independent and
-unaffected.
+The mobile Logout visibility/accessibility fix (header overflow risk on narrow screens hiding the
+user/logout menu; the menu trigger had no `aria-label`, so a screen reader announced nothing
+useful once the name text is hidden on mobile) was implemented entirely in
+`components/seera/foundation/AppShell.tsx` and `AppShell.module.css` — no native code, no new
+Capacitor plugin, no AndroidManifest change. It ships the moment it's deployed to
+`www.seeradetergent.in`; **the currently-installed APK gets it on its next reload, with no
+reinstall**, because the WebView always loads that live URL (`server.url` in
+`capacitor.config.ts`) rather than a bundled copy of the UI. Verified directly (not just reasoned
+about): logged in against a local server as a review Sales Executive at a 360px mobile viewport,
+confirmed no horizontal header overflow, confirmed the user-menu trigger now has a real
+`aria-label` ("Sales Executive North One — My profile / Sign out"), confirmed tapping it reveals a
+fully on-screen Sign out button, then exercised the actual logout end-to-end: session cookie is
+cleared, `POST /api/auth/logout` revokes the session server-side (`revokeSession(...)`, a real DB
+write, not just a cookie clear), browser Back after logout lands on `/login?next=...` (never a
+cached dashboard — enforced by `/portal/*`'s `Cache-Control: private, no-store, max-age=0`, which
+also blocks Chromium bfcache), and a direct fetch of a protected portal route after logout returns
+a 307 redirect to login, confirmed server-side, not just a client-side UI illusion. Only the
+`page.goto`/`page.request` origin was `localhost` (a local dev server) — the fix itself is the
+literal file that's already deployed to production and live-verified separately (see "Server
+changes deployed this pass" below).
+
+## Server-driven app: what needs a new APK/AAB and what doesn't
+
+The app is deliberately a thin native shell, not a second implementation of Seera. Nearly
+everything a Founder or field rep actually experiences — dashboards, navigation, role menus,
+Logout placement, forms, retailer/order workflow UI, Money Desk, ledgers, reports, pricing/business
+rules, TA/DA presentation, most validation, every backend API, server-side security fixes,
+responsive layout — is server-rendered HTML/CSS/JS loaded fresh from `www.seeradetergent.in` on
+every page view, exactly like the browser/PWA experience. None of it is duplicated into native
+Android code, and none of it needs a new Play Store release to change.
+
+A new APK/AAB is required only when the **native shell itself** changes — anything that has to be
+compiled into the Android binary or declared in `AndroidManifest.xml`:
+
+| Change type | Server deploy only | New APK/AAB required |
+|---|---|---|
+| Logout button position/visibility | ✅ | |
+| Money Desk UI | ✅ | |
+| Pricing rule | ✅ | |
+| TA/DA logic/presentation | ✅ | |
+| Dashboards, navigation, role menus | ✅ | |
+| Retailer/order workflow forms | ✅ | |
+| Reports, ledgers, statements | ✅ | |
+| Most validation, backend APIs | ✅ | |
+| Server security fixes (e.g. the geolocation Permissions-Policy P0 fix) | ✅ | |
+| Responsive/mobile layout changes | ✅ | |
+| Launcher icon | | ✅ |
+| Splash screen | | ✅ |
+| Android permissions (Camera/GPS/etc.) | | ✅ |
+| `AndroidManifest.xml` changes | | ✅ |
+| Adding/changing a Capacitor/native plugin | | ✅ |
+| Native camera behavior changes | | ✅ |
+| Native geolocation plugin changes (not the web `navigator.geolocation` call itself) | | ✅ |
+| Native share-sheet behavior | | ✅ |
+| App Links intent-filter changes | | ✅ |
+| Push notifications (Phase 1.1) | | ✅ |
+| Minimum/target Android SDK version | | ✅ |
+| Native security configuration | | ✅ |
+| `applicationId` | | ✅ (never change this — see Version 1 policy below) |
+| Signing key/config | | ✅ (never change signing identity) |
+| Any Java/Kotlin native code | | ✅ |
+
+This is a hard architecture rule, not a guideline: do not duplicate server-driven features into
+native Android code "for speed" or "for offline" — the existing IndexedDB offline-queue
+architecture (see above) already covers the real offline need without native duplication.
+
+## App update system (versionCode-based, Play-Store-governed)
+
+`GET /api/app/version` (`app/api/app/version/route.ts`) is a public, unauthenticated, read-only
+endpoint — same class as `/api/health/*` — returning only non-sensitive version metadata:
+
+```json
+{ "android": { "latestVersionCode": 1, "latestVersionName": "1.0.0", "minimumSupportedVersionCode": 1, "updateRequired": false } }
+```
+
+Values come from `lib/seera/android-app-version-policy.ts`, a small hand-edited constants module —
+**not** a database table or admin UI, deliberately, since these numbers change only when a
+developer cuts an actual new native release (see Version 1 policy below), which is rare and always
+a manual, deliberate act.
+
+`lib/seera/app-update-check.tsx` (mounted in `AppShell.tsx` alongside `NativeShellBridge`, native-only
+no-op everywhere else) reads the app's own `versionCode` via `@capacitor/app`'s `App.getInfo()`
+(`build` field — Android's `versionCode`, confirmed from `@capacitor/app`'s own type definitions),
+fetches `/api/app/version?versionCode=<current>`, and compares **numeric versionCode only** —
+never the `versionName` string, exactly as specified:
+
+- **REQUIRED update** (`current < minimumSupportedVersionCode`): full-screen, non-dismissible
+  overlay ("Seera app update required" / Hindi equivalent) with an "Update App" button linking to
+  the Play Store listing. No bypass.
+- **OPTIONAL update** (`minimumSupportedVersionCode <= current < latestVersionCode`): small
+  non-blocking bottom banner ("New Seera app update available") with "Update" / "Later" — "Later"
+  is remembered for the session (`sessionStorage`) so it doesn't nag on every navigation. Field
+  work is never interrupted.
+- Neither state renders if `current >= latestVersionCode`.
+
+**Architecture prepared, not activated as blocking in production**, per instruction: since
+versionCode `1` is the only build that has ever existed, `minimumSupportedVersionCode` currently
+equals `latestVersionCode` (both `1`) — every installed app is trivially compliant today, so the
+required-update path is real, wired, end-to-end-testable code that simply has nothing to block yet.
+It becomes a real floor only when a Founder deliberately raises `minimumSupportedVersionCode` after
+a second native release exists and an older one needs to be retired — never automatically, never
+just because a newer version was published.
+
+The Play Store URL (`https://play.google.com/store/apps/details?id=in.seeradetergent.sales`) is
+hardcoded now even though no listing exists yet — a stable placeholder that starts working the
+moment the app is actually published, with no code change needed later.
+
+**Not built, deliberately**: no OTA/dynamic native-code update system. Native binary updates are
+Play-Store-governed only — this app will never download and swap in native code outside Google
+Play. Business/UI content updates through the existing server architecture described above; native
+shell updates go through Play Store, full stop.
+
+**One nuance worth recording**: the update-check feature itself depends on `@capacitor/app`, a
+native plugin already compiled into the APK from the back-button work earlier in this same pass —
+so it did not by itself require yet another native release on top of that. This is exactly the
+distinction the table above exists to make precise: adding a *new* native plugin capability is a
+native-release event; writing more JS that *uses* a capability already present in the installed
+build is not.
+
+## Version 1 policy
+
+`applicationId` (`in.seeradetergent.sales`) and the signing identity (`seera-release` keystore) are
+permanent — never change either for any future release; doing so would make the app appear as a
+different application to both Android and Play Store, breaking every existing install's ability to
+update. For the next native build, increment `versionCode` in `android/app/build.gradle` (and
+`android/keystore.properties`/the release keystore stay exactly as already generated). Do **not**
+bump `versionCode` for a server-only web deployment — per the table above, that's the overwhelming
+majority of changes and none of them touch the native shell at all.
+
+## Play Store distribution model (once a listing exists)
+
+Team members should not manually download/sideload APKs for routine releases once Play Store
+distribution is live — see `docs/seera/SEERA_ANDROID_PLAY_STORE_CHECKLIST.md` for the full
+submission checklist. Release track progression: **Internal testing → Closed testing →
+Production**. For each native update: upload the new signed AAB, increment `versionCode`, publish
+— the team receives it as a normal Play Store update, no manual distribution needed.
