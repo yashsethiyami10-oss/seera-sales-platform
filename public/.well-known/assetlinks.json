@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.seeradetergent.sales",
+      "sha256_cert_fingerprints": [
+        "32:AF:1C:44:47:19:FD:74:4C:AF:76:52:51:2F:19:1D:31:7D:E7:58:EA:80:AE:E7:C9:FE:0F:01:69:AA:1D:83",
+        "C6:AC:B4:A5:67:4D:77:DC:A7:7F:8B:3D:4D:3C:E0:5A:68:42:66:F3:69:A1:E5:C8:44:D7:BC:03:44:12:87:F8"
+      ]
+    }
+  }
+]

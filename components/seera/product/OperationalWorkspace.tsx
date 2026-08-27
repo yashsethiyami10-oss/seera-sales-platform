@@ -19,6 +19,7 @@ import { EmptyState, PageHeading } from "@/components/seera/foundation/States";
 import styles from "./ProductSurface.module.css";
 import { WorkflowActions } from "./WorkflowActions";
 import { FieldJourney } from "./FieldJourney";
+import { OfflineStatus } from "@/components/seera/phase-11/OfflineStatus";
 import { DistributionActions } from "./DistributionActions";
 import { DistributorOrderCards } from "./DistributorOrderCards";
 import { retailerOrderLineAvailability, distributorStockSummary } from "@/lib/sales-distribution/distributor-easy-mode-service";
@@ -2564,6 +2565,7 @@ export async function OperationalWorkspace({
           caseUnit: x.unitsPerCase > 1 ? (x.unitType === "g" ? "BOX" : x.unitType === "kg" ? "BAG" : null) : null,
         }))}
       />
+      <OfflineStatus language={language} />
       <DistributorFollowUpPanel language={language} entries={distributorFollowUp} />
       </>
     );

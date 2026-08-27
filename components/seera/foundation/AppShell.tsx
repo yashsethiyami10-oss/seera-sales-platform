@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Phase1Language, ShellNavItem } from "@/lib/foundation/phase1-ui";
 import { phase1Copy } from "@/lib/foundation/phase1-ui";
+import { NativeShellBridge } from "@/lib/seera/native-shell-bridge";
 import styles from "./AppShell.module.css";
 
 export function AppShell({ children, nav, language, user, role, portal, environment }: { children: React.ReactNode; nav: ShellNavItem[]; language: Phase1Language; user: { name: string; email: string }; role: string; portal: string; environment: string }) {
@@ -27,7 +28,7 @@ export function AppShell({ children, nav, language, user, role, portal, environm
   }
   const isMoreGroup = (group?: string) => group === "MORE" || group === "अधिक";
   const link = (item: ShellNavItem) => <Link key={item.href} href={item.href} data-active={active(item.href)} onClick={() => setOpen(false)}><span aria-hidden>{item.icon}</span>{item.label}</Link>;
-  return <div className={styles.shell}><button className={styles.mobileBackdrop} data-open={open} aria-label={t.close} onClick={() => setOpen(false)} /><aside className={styles.sidebar} data-open={open} aria-label="Primary navigation"><div className={styles.brand}><Image className={styles.brandLogo} src="/seera logo.png" alt="Seera" width={2560} height={1990} priority /><Image className={styles.brandTagline} src="/seera tagline.png" alt="Sarv Shaktiman" width={2172} height={724} priority /></div><nav className={styles.nav}>{sections.map((section, index) => {
+  return <div className={styles.shell}><NativeShellBridge /><button className={styles.mobileBackdrop} data-open={open} aria-label={t.close} onClick={() => setOpen(false)} /><aside className={styles.sidebar} data-open={open} aria-label="Primary navigation"><div className={styles.brand}><Image className={styles.brandLogo} src="/seera logo.png" alt="Seera" width={2560} height={1990} priority /><Image className={styles.brandTagline} src="/seera tagline.png" alt="Sarv Shaktiman" width={2172} height={724} priority /></div><nav className={styles.nav}>{sections.map((section, index) => {
     if (!section.group) return <span key={index}>{section.items.map(link)}</span>;
     const hasActiveItem = section.items.some((item) => active(item.href));
     return (
