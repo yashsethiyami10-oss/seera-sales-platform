@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import { GuidedMoneyIn } from "./GuidedMoneyIn";
+import { SmartFinanceEntry } from "./SmartFinanceEntry";
 
 const key = () => crypto.randomUUID();
 async function post(action: string, payload: unknown) {
@@ -50,7 +51,7 @@ type SupportingData = {
   openVendorBills: { id: string; billNumber: string; vendorId: string; due: number }[];
   territories: { id: string; name: string }[];
 };
-type TxnRow = { id: string; transactionNumber: string; purposeCode: string; direction: Direction; status: string; amount: string | number; date: string; requestedById: string; counterpartyName: string | null; failureReason: string | null; employeeName?: string | null; territoryName?: string | null; treasuryName?: string | null };
+type TxnRow = { id: string; transactionNumber: string; purposeCode: string; direction: Direction; status: string; amount: string | number; date: string; requestedById: string; counterpartyName: string | null; failureReason: string | null; employeeName?: string | null; territoryName?: string | null; treasuryName?: string | null; source?: string | null };
 type HomeData = {
   recentTransactions: TxnRow[];
   pendingApprovals: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; requestedById: string; isSelf?: boolean }[];
@@ -252,10 +253,14 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
       </div>
 
       {!openDirection && (
-        <div style={{ gridColumn: "1/-1", display: "flex", gap: "0.75rem" }}>
-          <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
-          <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ RECORD MONEY OUT"}</button>
-        </div>
+        <>
+          <SmartFinanceEntry language={language} territories={supporting.territories} purposes={purposes.map((p) => ({ code: p.code, label: p.label, hindiLabel: p.hindiLabel }))} />
+          <div style={{ gridColumn: "1/-1", display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+            <small style={{ opacity: 0.6 }}>{hi ? "या निर्देशित प्रविष्टि:" : "or use guided entry:"}</small>
+            <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
+            <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ RECORD MONEY OUT"}</button>
+          </div>
+        </>
       )}
 
       {openDirection === "IN" && (
@@ -473,7 +478,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
             {home.recentTransactions.length === 0 && <tr><td colSpan={7}>{hi ? "कोई लेनदेन नहीं।" : "No transactions yet."}</td></tr>}
             {home.recentTransactions.map((t) => (
               <tr key={t.id}>
-                <td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td>
+                <td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a>{t.source === "SMART_FINANCE" && <span title={hi ? "स्मार्ट फाइनेंस से" : "via Smart Finance"} style={{ marginLeft: 6, fontSize: "0.7rem", fontWeight: 800, color: "#4338ca" }}>⚡</span>}</td>
                 <td>{purposeLabel(t.purposeCode)}</td>
                 <td>{t.employeeName ?? "—"}</td>
                 <td>{t.territoryName ?? "—"}</td>

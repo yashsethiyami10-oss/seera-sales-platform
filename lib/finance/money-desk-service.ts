@@ -564,11 +564,26 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
   else if (expense?.employeeId) ledgerLink = { partyType: "EMPLOYEE", partyId: expense.employeeId, label: employee?.name ?? employee?.email ?? "Employee" };
   else if (employee) ledgerLink = { partyType: "EMPLOYEE", partyId: employee.id, label: employee.name ?? employee.email };
 
+  // Smart Finance provenance (spec §18/§19) — when a transaction was entered by typing/speaking a
+  // sentence, formData.__smartFinance carries the exact instruction + the structured interpretation
+  // that produced it. Read-only, purely for the audit/transparency card; never drives posting.
+  const sf = (formData.__smartFinance ?? null) as { originalText?: string; confidence?: string; parsed?: Record<string, unknown> } | null;
+  const smartFinance =
+    sf && typeof sf.originalText === "string"
+      ? {
+          originalInstruction: sf.originalText,
+          confidence: typeof sf.confidence === "string" ? sf.confidence : null,
+          parsed: sf.parsed && typeof sf.parsed === "object" ? (sf.parsed as Record<string, unknown>) : null,
+        }
+      : null;
+
   return {
     id: txn.id,
     transactionNumber: txn.transactionNumber,
     purposeLabel: def.label,
     purposeHindiLabel: def.hindiLabel,
+    source: smartFinance ? "SMART_FINANCE" : "GUIDED",
+    smartFinance,
     direction: txn.direction,
     status: txn.status,
     amount: txn.amount,
@@ -666,7 +681,8 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
     const fd = (t.formData ?? {}) as Record<string, unknown>;
     const empId = typeof fd.employeeId === "string" ? fd.employeeId : undefined;
     const terrId = typeof fd.territoryId === "string" ? fd.territoryId : undefined;
-    return { ...t, amount: Number(t.amount), employeeName: empId ? (employeeNameById.get(empId) ?? null) : null, territoryName: terrId ? (territoryNameById.get(terrId) ?? null) : null, treasuryName: t.treasuryAccountId ? (treasuryNameById.get(t.treasuryAccountId) ?? null) : null };
+    const isSmart = Boolean((fd.__smartFinance as { originalText?: string } | undefined)?.originalText);
+    return { ...t, amount: Number(t.amount), source: isSmart ? "SMART_FINANCE" : "GUIDED", employeeName: empId ? (employeeNameById.get(empId) ?? null) : null, territoryName: terrId ? (territoryNameById.get(terrId) ?? null) : null, treasuryName: t.treasuryAccountId ? (treasuryNameById.get(t.treasuryAccountId) ?? null) : null };
   };
 
   return {

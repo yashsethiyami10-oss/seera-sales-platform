@@ -115,6 +115,18 @@ export async function OperationalDetail({
             ]}
           />
         </section>
+        {detail.smartFinance && (
+          <section className={styles.card}>
+            <h3>{hi ? "स्मार्ट फाइनेंस" : "Smart Finance"}</h3>
+            <Fields
+              items={[
+                { label: hi ? "स्रोत" : "Source", value: hi ? "स्मार्ट फाइनेंस प्रविष्टि (टाइप / बोला गया)" : "Smart Finance Entry (typed / spoken)" },
+                { label: hi ? "मूल निर्देश" : "Original instruction", value: `“${detail.smartFinance.originalInstruction}”` },
+                ...(detail.smartFinance.confidence ? [{ label: hi ? "विश्वास" : "Confidence", value: detail.smartFinance.confidence }] : []),
+              ]}
+            />
+          </section>
+        )}
         {(detail.counterpartyName || detail.employee) && (
           <section className={styles.card}>
             <h3>{hi ? "पार्टी / कर्मचारी" : "Party / Employee"}</h3>

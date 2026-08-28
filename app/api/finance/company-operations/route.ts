@@ -21,6 +21,7 @@ import { createPayrollEntry, accruePayrollEntry, paySalary } from "@/lib/finance
 import { updateFinanceApprovalPolicy, seedDefaultFinanceApprovalPolicies, decideApproval } from "@/lib/finance/approval-policy-service";
 import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
 import { MONEY_DESK_PURPOSE_CODES } from "@/lib/finance/money-desk-registry";
+import { interpretSmartFinance } from "@/lib/finance/smart-finance/service";
 import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
@@ -42,7 +43,7 @@ const ACTIONS = [
   "lock-period", "reopen-period",
   "create-payroll-entry", "accrue-payroll-entry", "pay-salary",
   "update-finance-approval-policy", "decide-finance-approval",
-  "money-desk-create", "money-desk-decide-approval", "money-desk-void",
+  "money-desk-create", "money-desk-decide-approval", "money-desk-void", "money-desk-smart-interpret",
   "guided-receipt",
 ] as const;
 
@@ -288,6 +289,13 @@ export async function POST(request: Request) {
       case "money-desk-void": {
         const v = z.object({ transactionId: z.string(), reason: z.string() }).parse(payload);
         result = await voidMoneyDeskTransaction(prisma, user.id, v.transactionId, v);
+        break;
+      }
+      case "money-desk-smart-interpret": {
+        // Interpretation only — never posts. The client posts the returned payload through
+        // `money-desk-create` / `guided-receipt` above, after the user confirms the review card.
+        const v = z.object({ text: z.string().min(2).max(500) }).parse(payload);
+        result = await interpretSmartFinance(prisma, user.id, { text: v.text });
         break;
       }
       case "guided-receipt":
