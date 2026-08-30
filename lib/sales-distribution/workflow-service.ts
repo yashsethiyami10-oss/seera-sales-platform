@@ -1002,7 +1002,7 @@ export async function placeRetailerOrder(
   return order;
 }
 
-function validateInitialFulfilmentDecision(
+export function validateInitialFulfilmentDecision(
   action: "ACCEPT" | "PARTIAL_ACCEPT" | "REJECT" | "HOLD",
   lines: Array<{ id: string; orderedQuantity: number | Prisma.Decimal }>,
   accepted: { lineId: string; quantity: number }[],
