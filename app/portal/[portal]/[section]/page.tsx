@@ -35,7 +35,7 @@ export default async function WorkspacePage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { portal, section } = await params;
-  const { user } = await resolveRequestIdentity(),
+  const { user, session } = await resolveRequestIdentity(),
     permissions = await effectivePermissions(prisma, user.id),
     language = user.preferredLanguage,
     t = phase1Copy(language),
@@ -589,6 +589,7 @@ export default async function WorkspacePage({
       <OperationalWorkspace
         db={prisma}
         userId={user.id}
+        sessionId={session.id}
         portal={portal}
         item={product}
         language={language}
