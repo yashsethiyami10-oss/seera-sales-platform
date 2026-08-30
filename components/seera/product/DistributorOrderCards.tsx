@@ -5,10 +5,11 @@ import { queueOfflineOperation } from "@/lib/phase-11/offline-client";
 import styles from "./WorkflowActions.module.css";
 
 const key = () => crypto.randomUUID();
-const OFFLINE_ACTION: Record<string, "DISTRIBUTOR_DECISION_DRAFT" | "DISTRIBUTOR_DELIVERY_DRAFT" | "DISTRIBUTOR_REMAINING_DRAFT"> = {
+const OFFLINE_ACTION: Record<string, "DISTRIBUTOR_DECISION_DRAFT" | "DISTRIBUTOR_DELIVERY_DRAFT" | "DISTRIBUTOR_REMAINING_DRAFT" | "DISTRIBUTOR_CLOSE_REMAINING_DRAFT"> = {
   "easy-decide": "DISTRIBUTOR_DECISION_DRAFT",
   "easy-delivery-outcome": "DISTRIBUTOR_DELIVERY_DRAFT",
   "easy-deliver-remaining": "DISTRIBUTOR_REMAINING_DRAFT",
+  "close-remaining": "DISTRIBUTOR_CLOSE_REMAINING_DRAFT",
 };
 function deviceId() {
   const existing = window.localStorage.getItem("seera.offline.deviceId");
@@ -326,8 +327,8 @@ function RemainingCard({ order, language, sessionId }: { order: RemainingOrder; 
     setBusy(true);
     setError("");
     try {
-      await post("close-remaining", { partyType: "DISTRIBUTOR", partyId: order.distributorId, orderId: order.id, reason: closeReason.trim() }, sessionId);
-      router.refresh();
+      const result = await post("close-remaining", { partyType: "DISTRIBUTOR", partyId: order.distributorId, orderId: order.id, reason: closeReason.trim() }, sessionId);
+      if (!result.queuedOffline) router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
       // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
