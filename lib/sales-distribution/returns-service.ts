@@ -183,6 +183,7 @@ export async function decideReturnRequest(
         403,
       );
     let movementId: string | undefined;
+    let inventoryReturnQuantity = Number(request.quantity);
     if (input.decision === "APPROVED") {
       // An approved return — usable or damaged — means the original sale no longer stands, so the
       // sales-performance credit for it must be pulled back the same way a delivery refusal already
@@ -211,6 +212,8 @@ export async function decideReturnRequest(
           where: { id: line.id },
           data: { returnedQuantity: { increment: request.quantity } },
         });
+        if (line.order.type !== "RETAILER_ORDER")
+          inventoryReturnQuantity = orderLineAwareCanonicalPieces(line, Number(request.quantity));
       }
       if (request.condition === "USABLE") {
         const movement = await tx.seeraInventoryMovement.create({
@@ -220,10 +223,7 @@ export async function decideReturnRequest(
             skuId: request.skuId,
             type: "RETURN",
             direction: "IN",
-            quantity:
-              line && line.order.type !== "RETAILER_ORDER"
-                ? orderLineAwareCanonicalPieces(line, Number(request.quantity))
-                : Number(request.quantity),
+            quantity: inventoryReturnQuantity,
             sourceType: "SeeraReturnRequest",
             sourceId: request.id,
             actorId,
