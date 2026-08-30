@@ -4,6 +4,74 @@ import { effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
+
+
+type DeliveryLineBalance = {
+  orderedQuantity: number;
+  cancelledQuantity: number;
+  deliveredQuantity: number;
+  refusedQuantity: number;
+  returnedQuantity: number;
+};
+
+export function derivePostDeliveryOrderStatus(
+  lines: DeliveryLineBalance[],
+  previousStatus: string,
+): "DELIVERED" | "PARTIAL_DELIVERED" | string {
+  // "DELIVERED" means the full non-cancelled commercial quantity was actually
+  // delivered. Refused/returned quantity is not interchangeable with delivery.
+  const fullyDelivered = lines.length > 0 && lines.every(
+    (line) =>
+      line.deliveredQuantity >=
+      line.orderedQuantity - line.cancelledQuantity,
+  );
+  if (fullyDelivered) return "DELIVERED";
+  if (lines.some((line) => line.deliveredQuantity > 0)) return "PARTIAL_DELIVERED";
+  return previousStatus;
+}
+
+export function assertDeliveryOutcomeQuantities(
+  status: DeliveryStatus,
+  lines: DeliveryLineBalance[],
+  quantities: Map<string, number>,
+) {
+  const outcomeRequiresPositiveQuantity = new Set<DeliveryStatus>([
+    "DELIVERED",
+    "PARTIAL_DELIVERED",
+    "REFUSED",
+    "DAMAGED",
+  ]);
+  const total = [...quantities.values()].reduce((sum, quantity) => sum + quantity, 0);
+  if (outcomeRequiresPositiveQuantity.has(status) && total <= 0)
+    throw new FoundationError(
+      "DELIVERY_QUANTITY_REQUIRED",
+      "A delivery outcome requires at least one positive quantity",
+      400,
+    );
+
+  if (status === "DELIVERED") {
+    const projected = lines.map((line) => {
+      const delivered = quantities.get((line as DeliveryLineBalance & { id?: string }).id ?? "") ?? 0;
+      return {
+        ...line,
+        deliveredQuantity: line.deliveredQuantity + delivered,
+      };
+    });
+    if (
+      projected.some(
+        (line) =>
+          line.deliveredQuantity <
+          line.orderedQuantity - line.cancelledQuantity,
+      )
+    )
+      throw new FoundationError(
+        "FULL_DELIVERY_REQUIRED",
+        "A DELIVERED outcome requires the full remaining order quantity; use PARTIAL_DELIVERED for a partial receipt",
+        409,
+      );
+  }
+}
+
 function numberFor(prefix: string, key: string) {
   return `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
 }
@@ -97,10 +165,10 @@ export async function completeDelivery(
       );
       for (const [lineId, quantity] of quantities) {
         const line = delivery.order.lines.find((x) => x.id === lineId);
-        if (!line || quantity < 0)
+        if (!line || !Number.isFinite(quantity) || quantity <= 0)
           throw new FoundationError(
             "INVALID_DELIVERY_QUANTITY",
-            "Invalid delivery line",
+            "Delivery quantity must be a positive finite number for every submitted line",
             400,
           );
         const remaining =
@@ -112,6 +180,40 @@ export async function completeDelivery(
           throw new FoundationError(
             "OVER_DELIVERY_DENIED",
             "Delivery exceeds dispatched balance",
+            409,
+          );
+      }
+
+      const outcomeQuantity = [...quantities.values()].reduce((sum, quantity) => sum + quantity, 0);
+      if (
+        ["DELIVERED", "PARTIAL_DELIVERED", "REFUSED", "DAMAGED"].includes(input.status) &&
+        outcomeQuantity <= 0
+      )
+        throw new FoundationError(
+          "DELIVERY_QUANTITY_REQUIRED",
+          "A delivery outcome requires at least one positive quantity",
+          400,
+        );
+
+      // A DELIVERED outcome is a full-delivery assertion, not merely "some quantity arrived".
+      // Validate it against the authoritative line balances before any quantity is mutated.
+      if (input.status === "DELIVERED") {
+        const projected = delivery.order.lines.map((line) => {
+          const delivered = quantities.get(line.id) ?? 0;
+          return {
+            ordered: Number(line.orderedQuantity),
+            cancelled: Number(line.cancelledQuantity),
+            delivered: Number(line.deliveredQuantity) + delivered,
+          };
+        });
+        if (
+          projected.some(
+            (line) => line.delivered < line.ordered - line.cancelled,
+          )
+        )
+          throw new FoundationError(
+            "FULL_DELIVERY_REQUIRED",
+            "A DELIVERED outcome requires the full remaining order quantity; use PARTIAL_DELIVERED for a partial delivery",
             409,
           );
       }
@@ -210,26 +312,26 @@ export async function completeDelivery(
         },
       });
       const lines = await tx.seeraOrderLine.findMany({
-          where: { orderId: delivery.orderId },
-        }),
-        allDelivered = lines.every(
-          (x) =>
-            Number(x.deliveredQuantity) >=
-            Number(x.orderedQuantity) -
-              Number(x.cancelledQuantity) -
-              Number(x.refusedQuantity) -
-              Number(x.returnedQuantity),
-        ),
-        someDelivered = lines.some((x) => Number(x.deliveredQuantity) > 0);
+        where: { orderId: delivery.orderId },
+      });
+      // Refusal/return/damage can exhaust the remaining balance without making the
+      // commercial order "DELIVERED". Delivery status is based only on deliveredQuantity
+      // versus the non-cancelled ordered quantity.
+      const fullyDelivered = lines.length > 0 && lines.every(
+        (x) =>
+          Number(x.deliveredQuantity) >=
+          Number(x.orderedQuantity) - Number(x.cancelledQuantity),
+      );
+      const someDelivered = lines.some((x) => Number(x.deliveredQuantity) > 0);
       await tx.seeraSalesOrder.update({
         where: { id: delivery.orderId },
         data: {
-          status: allDelivered
+          status: fullyDelivered
             ? "DELIVERED"
             : someDelivered
               ? "PARTIAL_DELIVERED"
               : delivery.order.status,
-          ...(allDelivered ? { deliveredAt: new Date() } : {}),
+          ...(fullyDelivered ? { deliveredAt: new Date() } : {}),
         },
       });
       await recordAudit(tx, {
