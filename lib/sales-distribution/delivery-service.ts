@@ -4,6 +4,7 @@ import { effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { queueRetailerCommunicationSafe } from "./retailer-communication-service";
+import { orderLineAwareCanonicalPieces } from "./company-order-catalog";
 
 
 function numberFor(prefix: string, key: string) {
@@ -192,7 +193,10 @@ export async function completeDelivery(
                 skuId: line.skuId,
                 type: "RETURN",
                 direction: "IN",
-                quantity,
+                quantity:
+                  delivery.order.type === "RETAILER_ORDER"
+                    ? quantity
+                    : orderLineAwareCanonicalPieces(line, quantity),
                 sourceType: "SeeraDelivery",
                 sourceId: delivery.id,
                 actorId,
