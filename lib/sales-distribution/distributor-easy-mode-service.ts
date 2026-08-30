@@ -92,6 +92,13 @@ export async function acceptAndPrepareRetailerOrder(
   if (input.decision === "REJECT") {
     if (!input.reason?.trim())
       throw new FoundationError("REJECT_REASON_REQUIRED", "A reason is required to reject an order", 400);
+    const current = await prisma.seeraSalesOrder.findFirst({
+      where: { id: input.orderId, sellerPartnerId: distributorId, type: "RETAILER_ORDER" },
+      include: { lines: true },
+    });
+    if (!current) throw new FoundationError("ORDER_SCOPE_OR_STATE_DENIED", "Order unavailable", 403);
+    // A lost response after a successful offline replay must be safe to retry.
+    if (current.status === "REJECTED") return { order: current, delivery: null };
     const order = await fulfilRetailerOrder(prisma, actorId, distributorId, {
       orderId: input.orderId,
       accepted: [],
