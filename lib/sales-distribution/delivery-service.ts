@@ -76,8 +76,22 @@ export async function completeDelivery(
       // `alreadyFinal: true` tells the post-commit block below to skip it entirely, matching the
       // real hard-idempotency path a few lines down (DELIVERY_ALREADY_FINAL) which already never
       // reaches the post-commit block at all since it throws before returning.
-      if (delivery.status === input.status && delivery.actorId === actorId)
+      if (delivery.status === input.status && delivery.actorId === actorId) {
+        const incomingQuantities = Object.fromEntries(
+          input.lines.map((line) => [line.lineId, line.quantity]),
+        );
+        const sameQuantities =
+          JSON.stringify(delivery.quantities ?? {}) === JSON.stringify(incomingQuantities);
+        const sameReason = (delivery.reason ?? null) === (input.reason?.trim() || null);
+        const sameReceiver = (delivery.receiverName ?? null) === (input.receiverName?.trim() || null);
+        if (!sameQuantities || !sameReason || !sameReceiver)
+          throw new FoundationError(
+            "DELIVERY_IDEMPOTENCY_CONFLICT",
+            "This delivery was already finalized with different completion data",
+            409,
+          );
         return { delivery, orderType: delivery.order.type, retailerId: delivery.order.retailerId, orderId: delivery.orderId, alreadyFinal: true as const };
+      }
       const claimed = await tx.seeraDelivery.updateMany({
         where: { id: delivery.id, status: { in: ["PENDING", "RESCHEDULED"] } },
         data: {
