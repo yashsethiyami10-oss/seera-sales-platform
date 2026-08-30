@@ -274,7 +274,7 @@ export default async function PortalShell({
           )}
         </section>
         <div className={styles.content}>
-          {portal === "sales-executive" && (
+          {["sales-executive", "distributor", "super-stockist"].includes(portal) && (
             <OfflineStatus language={language} />
           )}
           {managerSummary && (
