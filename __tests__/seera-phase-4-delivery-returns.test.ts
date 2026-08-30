@@ -53,6 +53,36 @@ describe("Part 4 delivery/return regression guards", () => {
     ).toBe("PARTIAL_DELIVERED");
   });
 
+  it("requires full quantity for ACCEPT", () => {
+    expect(() =>
+      validateInitialFulfilmentDecision(
+        "ACCEPT",
+        [{ id: "l1", orderedQuantity: 10 }],
+        [{ lineId: "l1", quantity: 9 }],
+      ),
+    ).toThrowError("FULL_ACCEPTANCE_REQUIRED");
+  });
+
+  it("requires an incomplete positive quantity for PARTIAL_ACCEPT", () => {
+    expect(() =>
+      validateInitialFulfilmentDecision(
+        "PARTIAL_ACCEPT",
+        [{ id: "l1", orderedQuantity: 10 }],
+        [{ lineId: "l1", quantity: 10 }],
+      ),
+    ).toThrowError("PARTIAL_ACCEPTANCE_REQUIRED");
+  });
+
+  it("requires a reason for REJECT/HOLD", () => {
+    expect(() =>
+      validateInitialFulfilmentDecision(
+        "REJECT",
+        [{ id: "l1", orderedQuantity: 10 }],
+        [],
+      ),
+    ).toThrowError("DECISION_REASON_REQUIRED");
+  });
+
   it("rejects returns above the delivered-but-not-already-returned balance", () => {
     expect(() =>
       assertReturnDoesNotExceedDelivered(10, 3, 8),
