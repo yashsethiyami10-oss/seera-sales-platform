@@ -2380,6 +2380,7 @@ async function rowsFor(
 export async function OperationalWorkspace({
   db,
   userId,
+  sessionId,
   portal,
   item,
   language,
@@ -2388,6 +2389,7 @@ export async function OperationalWorkspace({
 }: {
   db: PrismaClient;
   userId: string;
+  sessionId: string;
   portal: string;
   item: SurfaceItem;
   language: UiLanguage;
@@ -4448,7 +4450,7 @@ export async function OperationalWorkspace({
             .filter((line) => line.remaining > 0),
         }))
         .filter((order) => order.lines.length > 0);
-      workflow = <DistributorOrderCards language={language} pending={pending} awaitingDelivery={awaitingDelivery} remaining={remaining} />;
+      workflow = <DistributorOrderCards language={language} sessionId={sessionId} pending={pending} awaitingDelivery={awaitingDelivery} remaining={remaining} />;
     } else if (portal === "super-stockist" && ["allocation","dispatch"].includes(item.slug) && permissions.has("super_stockist_orders:fulfil")) {
       const status=item.slug==="allocation"?["ACCEPTED","PARTIAL_ACCEPTED"]:["ALLOCATED","DISPATCH_READY"];
       const orders=await db.seeraSalesOrder.findMany({where:{sellerPartnerId:{in:parties.map((x)=>x.value)},type:"DISTRIBUTOR_REPLENISHMENT",status:{in:status as ("ACCEPTED"|"PARTIAL_ACCEPTED"|"ALLOCATED"|"DISPATCH_READY")[]}},include:{lines:true,buyerPartner:{select:{legalName:true,tradeName:true}}},orderBy:{createdAt:"asc"},take:50});
