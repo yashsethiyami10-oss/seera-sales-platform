@@ -1002,6 +1002,34 @@ export async function placeRetailerOrder(
   return order;
 }
 
+function validateInitialFulfilmentDecision(
+  action: "ACCEPT" | "PARTIAL_ACCEPT" | "REJECT" | "HOLD",
+  lines: Array<{ id: string; orderedQuantity: number | Prisma.Decimal }>,
+  accepted: { lineId: string; quantity: number }[],
+  reason?: string,
+) {
+  if ((action === "REJECT" || action === "HOLD") && !reason?.trim())
+    throw new FoundationError("DECISION_REASON_REQUIRED", "A reason is required for this decision", 400);
+  const byLine = new Map(accepted.map((item) => [item.lineId, item.quantity]));
+  for (const item of accepted) {
+    const line = lines.find((candidate) => candidate.id === item.lineId);
+    if (!line || !Number.isFinite(item.quantity) || item.quantity < 0)
+      throw new FoundationError("INVALID_ACCEPTED_QUANTITY", "Invalid line acceptance", 400);
+  }
+  if (action === "REJECT" || action === "HOLD") {
+    if (accepted.some((item) => item.quantity > 0))
+      throw new FoundationError("DECISION_QUANTITY_CONFLICT", "This decision cannot also accept quantity", 400);
+    return;
+  }
+  const quantities = lines.map((line) => byLine.get(line.id) ?? 0);
+  const positive = quantities.some((quantity) => quantity > 0);
+  const full = lines.every((line, index) => quantities[index] === Number(line.orderedQuantity));
+  if (action === "ACCEPT" && !full)
+    throw new FoundationError("FULL_ACCEPTANCE_REQUIRED", "ACCEPT requires the full ordered quantity", 409);
+  if (action === "PARTIAL_ACCEPT" && (!positive || full))
+    throw new FoundationError("PARTIAL_ACCEPTANCE_REQUIRED", "PARTIAL_ACCEPT requires a positive but incomplete acceptance", 409);
+}
+
 export async function fulfilRetailerOrder(
   prisma: PrismaClient,
   actorId: string,
@@ -1015,6 +1043,12 @@ export async function fulfilRetailerOrder(
 ) {
   await authorize(prisma, { actorId, permission: "distributor_orders:fulfil" });
   await requirePartyMembership(prisma, actorId, distributorId, "DISTRIBUTOR");
+  validateInitialFulfilmentDecision(
+    input.action,
+    await prisma.seeraOrderLine.findMany({ where: { orderId: input.orderId }, select: { id: true, orderedQuantity: true } }),
+    input.accepted,
+    input.reason,
+  );
   const updated = await prisma.$transaction(async (tx) => {
     const order = await tx.seeraSalesOrder.findFirst({
       where: {
@@ -1292,6 +1326,12 @@ export async function fulfilDistributorReplenishment(
     permission: "super_stockist_orders:fulfil",
   });
   await requirePartyMembership(prisma, actorId, stockistId, "SUPER_STOCKIST");
+  validateInitialFulfilmentDecision(
+    input.action,
+    await prisma.seeraOrderLine.findMany({ where: { orderId: input.orderId }, select: { id: true, orderedQuantity: true } }),
+    input.accepted,
+    input.reason,
+  );
   // createDistributorReplenishment already put this order into HELD because credit evaluation
   // returned BLOCK/HOLD/OVERRIDE_REQUIRED — accepting or partially accepting a HELD order must
   // re-check the CURRENT credit position (it may have changed since submission) rather than
