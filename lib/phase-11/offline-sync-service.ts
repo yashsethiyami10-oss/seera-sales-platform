@@ -9,6 +9,33 @@ async function dispatch(db:PrismaClient,userId:string,input:OfflineOperationInpu
  if(input.actionType==="VISIT_CHECK_OUT"||input.actionType==="NO_ORDER_DRAFT")return executiveCheckOut(db,userId,p<string>(data.visitId),p<Parameters<typeof executiveCheckOut>[3]>(data));
  if(input.actionType==="FOLLOW_UP_DRAFT")return createFollowUp(db,userId,{...p<Parameters<typeof createFollowUp>[2]>(data),idempotencyKey:input.clientOperationId});
  if(input.actionType==="DISTRIBUTOR_PROSPECT_DRAFT")return createDistributorProspect(db,userId,p<Parameters<typeof createDistributorProspect>[2]>(data));
+ if(input.actionType==="DISTRIBUTOR_DECISION_DRAFT"){
+   const distributorId=p<string>(data.distributorId);
+   const orderId=p<string>(data.orderId);
+   const existing=await db.seeraSalesOrder.findFirst({where:{id:orderId,sellerPartnerId:distributorId,type:"RETAILER_ORDER"},select:{status:true}});
+   if(!existing)throw new FoundationError("ORDER_SCOPE_OR_STATE_DENIED","Offline distributor order is unavailable",403);
+   if(existing.status==="REJECTED")return db.seeraSalesOrder.findUniqueOrThrow({where:{id:orderId}});
+   return (await import("@/lib/sales-distribution/distributor-easy-mode-service")).acceptAndPrepareRetailerOrder(db,userId,distributorId,{
+     orderId,
+     decision:p<"ACCEPT"|"PARTIAL_ACCEPT"|"REJECT">(data.decision),
+     lines:p<{lineId:string;quantity:number}[]>(data.lines),
+     reason:p<string|undefined>(data.reason),
+     idempotencyKey:input.clientOperationId,
+   });
+ }
+ if(input.actionType==="DISTRIBUTOR_DELIVERY_DRAFT"){
+   const {recordEasyDeliveryOutcome}=await import("@/lib/sales-distribution/distributor-easy-mode-service");
+   return recordEasyDeliveryOutcome(db,userId,p<Parameters<typeof recordEasyDeliveryOutcome>[2]>(data));
+ }
+ if(input.actionType==="DISTRIBUTOR_REMAINING_DRAFT"){
+   const {deliverRemainingRetailerOrder}=await import("@/lib/sales-distribution/distributor-easy-mode-service");
+   return deliverRemainingRetailerOrder(db,userId,p<string>(data.distributorId),{
+     orderId:p<string>(data.orderId),
+     lines:p<{lineId:string;quantity:number}[]>(data.lines),
+     reason:p<string|undefined>(data.reason),
+     idempotencyKey:input.clientOperationId,
+   });
+ }
  throw new FoundationError("OFFLINE_ACTION_REVIEW_REQUIRED","This offline draft requires user review before authoritative submission",409);
 }
 export async function syncOfflineOperation(db:PrismaClient,userId:string,raw:unknown){const input=offlineOperationSchema.parse(raw),existing=await db.seeraOfflineOperation.findUnique({where:{userId_clientOperationId:{userId,clientOperationId:input.clientOperationId}}});if(existing?.status==="SYNCED")return existing;const operation=existing??await db.seeraOfflineOperation.create({data:{clientOperationId:input.clientOperationId,userId,deviceId:input.deviceId,sessionContext:input.sessionContext,entityType:input.entityType,actionType:input.actionType,localCreatedAt:input.localCreatedAt,payloadVersion:input.payloadVersion,originalPayload:input.payload as Prisma.InputJsonValue}}),user=await db.user.findUnique({where:{id:userId},select:{status:true}});if(user?.status!=="ACTIVE"){const conflict={classification:"SERVER_REJECTED" as const,code:"IDENTITY_OR_SESSION_REVOKED"};await db.seeraOfflineOperation.update({where:{id:operation.id},data:{status:"CONFLICT",conflictClass:conflict.classification,conflictDetails:conflict,lastErrorCode:conflict.code}});throw Object.assign(new FoundationError("OFFLINE_IDENTITY_REVOKED","Offline sync identity is unavailable",403),{conflict});}await db.seeraOfflineOperation.update({where:{id:operation.id},data:{status:"SYNCING",retryCount:{increment:existing?1:0}}});try{const result=await dispatch(db,userId,input);const acknowledgment={entityId:"id" in result?String(result.id):operation.id,actionType:input.actionType};const synced=await db.seeraOfflineOperation.update({where:{id:operation.id},data:{status:"SYNCED",serverAcknowledgment:acknowledgment,syncedAt:new Date(),lastErrorCode:null}});await recordAudit(db,{actorId:userId,action:"offline.operation.synced",entityType:"SeeraOfflineOperation",entityId:operation.id,details:acknowledgment});return synced;}catch(error){const conflict=typeof error==="object"&&error&&"conflict" in error?p<{classification:"AUTO_RESOLVABLE"|"USER_REVIEW_REQUIRED"|"SERVER_REJECTED";code:string}>((error as {conflict:unknown}).conflict):null;await db.seeraOfflineOperation.update({where:{id:operation.id},data:{status:conflict?"CONFLICT":"FAILED",conflictClass:conflict?.classification,conflictDetails:conflict as Prisma.InputJsonValue|undefined,lastErrorCode:conflict?.code??(typeof error==="object"&&error&&"code" in error?String(error.code):"SYNC_FAILED")}});throw error;}}
