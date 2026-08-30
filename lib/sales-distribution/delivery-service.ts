@@ -44,6 +44,14 @@ export async function completeDelivery(
         );
       if (["REFUSED","SHOP_CLOSED","PAYMENT_ISSUE","STOCK_UNAVAILABLE","WRONG_ORDER","RESCHEDULED","DAMAGED","OTHER"].includes(input.status) && !input.reason?.trim())
         throw new FoundationError("DELIVERY_REASON_REQUIRED","A reason is required for this delivery outcome",400);
+      if (input.proof) {
+        const proofOrderId = typeof input.proof.orderId === "string" ? input.proof.orderId : undefined;
+        const proofDeliveryId = typeof input.proof.deliveryId === "string" ? input.proof.deliveryId : undefined;
+        if (proofOrderId && proofOrderId !== delivery.orderId)
+          throw new FoundationError("DELIVERY_PROOF_SCOPE_DENIED", "Proof is linked to a different order", 409);
+        if (proofDeliveryId && proofDeliveryId !== delivery.id)
+          throw new FoundationError("DELIVERY_PROOF_SCOPE_DENIED", "Proof is linked to a different delivery", 409);
+      }
       const assigned =
         permissions.has("distributor_delivery:execute") &&
         delivery.deliveryUserId === actorId;
