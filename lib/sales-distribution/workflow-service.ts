@@ -1605,12 +1605,11 @@ export async function closeRemainingOrderQuantity(
       });
       anyClosed = true;
     }
-    if (!anyClosed)
-      throw new FoundationError(
-        "NOTHING_REMAINING_TO_CLOSE",
-        "There is no remaining balance to close",
-        400,
-      );
+    if (!anyClosed) {
+      // Idempotent retry: the first close may have committed while the response was lost.
+      // There is no remaining commercial balance, so repeating the same close is a safe no-op.
+      return order;
+    }
     const refreshedLines = await tx.seeraOrderLine.findMany({
       where: { orderId: order.id },
     });
