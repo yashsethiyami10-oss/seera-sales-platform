@@ -9,6 +9,27 @@ function requestNumber(key: string) {
   return `RD-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
 }
 
+
+export function assertReturnDoesNotExceedDelivered(
+  deliveredQuantity: number,
+  alreadyReturnedQuantity: number,
+  requestedQuantity: number,
+) {
+  if (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0)
+    throw new FoundationError(
+      "INVALID_RETURN_QUANTITY",
+      "Return quantity must be a positive finite number",
+      400,
+    );
+  const available = deliveredQuantity - alreadyReturnedQuantity;
+  if (requestedQuantity > available)
+    throw new FoundationError(
+      "RETURN_EXCEEDS_DELIVERED",
+      "Return quantity exceeds the quantity actually delivered and still returnable",
+      409,
+    );
+}
+
 export async function createReturnRequest(
   prisma: PrismaClient,
   actorId: string,
@@ -32,14 +53,74 @@ export async function createReturnRequest(
       : "super_stockist_inventory:adjust";
   await authorize(prisma, { actorId, permission });
   await requirePartyMembership(prisma, actorId, input.partyId, input.partyType);
-  if (input.quantity <= 0)
-    throw new FoundationError("INVALID_RETURN_QUANTITY", "Return quantity must be positive", 400);
+  if (!input.idempotencyKey.trim())
+    throw new FoundationError("IDEMPOTENCY_KEY_REQUIRED", "A return request idempotency key is required", 400);
+  assertReturnDoesNotExceedDelivered(input.quantity, 0, input.quantity);
   if (!input.reason.trim())
     throw new FoundationError("RETURN_REASON_REQUIRED", "A reason is required", 400);
-  const request = await prisma.seeraReturnRequest.upsert({
+
+  // Retailer returns must always identify the originating commercial order. Without this
+  // binding, an arbitrary SKU/quantity could be submitted as a "return" and later approved
+  // into stock without any proof that it was ever delivered.
+  if (input.retailerId && !input.sourceOrderId)
+    throw new FoundationError(
+      "RETURN_SOURCE_ORDER_REQUIRED",
+      "A retailer return must reference the originating order",
+      400,
+    );
+
+  if (input.sourceOrderId) {
+    const sourceOrder = await prisma.seeraSalesOrder.findFirst({
+      where: {
+        id: input.sourceOrderId,
+        sellerPartnerId: input.partyId,
+        ...(input.retailerId ? { retailerId: input.retailerId } : {}),
+        status: { in: ["DELIVERED", "PARTIAL_DELIVERED"] },
+      },
+      include: { lines: true },
+    });
+    if (!sourceOrder)
+      throw new FoundationError(
+        "RETURN_SOURCE_ORDER_SCOPE_DENIED",
+        "The originating order is not delivered or outside the returner's scope",
+        403,
+      );
+    const line = sourceOrder.lines.find((candidate) => candidate.skuId === input.skuId);
+    if (!line)
+      throw new FoundationError("RETURN_SOURCE_LINE_NOT_FOUND", "The returned SKU is not on the originating order", 404);
+    assertReturnDoesNotExceedDelivered(
+      Number(line.deliveredQuantity),
+      Number(line.returnedQuantity) + Number(line.refusedQuantity),
+      input.quantity,
+    );
+  }
+
+  const existing = await prisma.seeraReturnRequest.findUnique({
     where: { idempotencyKey: input.idempotencyKey },
-    update: {},
-    create: {
+  });
+  if (existing) {
+    const sameRequest =
+      existing.partyType === input.partyType &&
+      existing.partyId === input.partyId &&
+      existing.retailerId === (input.retailerId ?? null) &&
+      existing.sourceOrderId === (input.sourceOrderId ?? null) &&
+      existing.skuId === input.skuId &&
+      Number(existing.quantity) === input.quantity &&
+      existing.condition === input.condition &&
+      existing.reason === input.reason &&
+      existing.creditNoteRequested === (input.creditNoteRequested ?? false) &&
+      existing.sourcePortal === input.sourcePortal;
+    if (!sameRequest)
+      throw new FoundationError(
+        "IDEMPOTENCY_KEY_REUSE_CONFLICT",
+        "This idempotency key was already used for a different return request",
+        409,
+      );
+    return existing;
+  }
+
+  const request = await prisma.seeraReturnRequest.create({
+    data: {
       requestNumber: requestNumber(input.idempotencyKey),
       partyType: input.partyType,
       partyId: input.partyId,
@@ -111,21 +192,23 @@ export async function decideReturnRequest(
         const line = await tx.seeraOrderLine.findFirst({
           where: { orderId: request.sourceOrderId, skuId: request.skuId },
         });
-        if (line) {
-          const alreadyAccounted =
-            Number(line.returnedQuantity) + Number(line.refusedQuantity);
-          const availableToReturn = Number(line.deliveredQuantity) - alreadyAccounted;
-          if (Number(request.quantity) > availableToReturn)
-            throw new FoundationError(
-              "RETURN_EXCEEDS_DELIVERED",
-              "Approved return quantity exceeds what was actually delivered for this order line",
-              409,
-            );
-          await tx.seeraOrderLine.update({
-            where: { id: line.id },
-            data: { returnedQuantity: { increment: request.quantity } },
-          });
-        }
+        if (!line)
+          throw new FoundationError(
+            "RETURN_SOURCE_LINE_NOT_FOUND",
+            "The returned SKU is not on the originating order",
+            404,
+          );
+        const alreadyAccounted =
+          Number(line.returnedQuantity) + Number(line.refusedQuantity);
+        assertReturnDoesNotExceedDelivered(
+          Number(line.deliveredQuantity),
+          alreadyAccounted,
+          Number(request.quantity),
+        );
+        await tx.seeraOrderLine.update({
+          where: { id: line.id },
+          data: { returnedQuantity: { increment: request.quantity } },
+        });
       }
       if (request.condition === "USABLE") {
         const movement = await tx.seeraInventoryMovement.create({
