@@ -1,10 +1,38 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { queueOfflineOperation } from "@/lib/phase-11/offline-client";
 import styles from "./WorkflowActions.module.css";
 
 const key = () => crypto.randomUUID();
-async function post(action: string, payload: unknown) {
+const OFFLINE_ACTION: Record<string, "DISTRIBUTOR_DECISION_DRAFT" | "DISTRIBUTOR_DELIVERY_DRAFT" | "DISTRIBUTOR_REMAINING_DRAFT"> = {
+  "easy-decide": "DISTRIBUTOR_DECISION_DRAFT",
+  "easy-delivery-outcome": "DISTRIBUTOR_DELIVERY_DRAFT",
+  "easy-deliver-remaining": "DISTRIBUTOR_REMAINING_DRAFT",
+};
+function deviceId() {
+  const existing = window.localStorage.getItem("seera.offline.deviceId");
+  if (existing) return existing;
+  const value = crypto.randomUUID();
+  window.localStorage.setItem("seera.offline.deviceId", value);
+  return value;
+}
+async function post(action: string, payload: unknown, sessionId: string) {
+  if (!navigator.onLine) {
+    const offlineAction = OFFLINE_ACTION[action];
+    if (!offlineAction) throw new Error("This action cannot be saved offline");
+    await queueOfflineOperation({
+      clientOperationId: key(),
+      deviceId: deviceId(),
+      sessionContext: { sessionId, appVersion: "web", platform: navigator.userAgent.slice(0, 80) },
+      entityType: action,
+      actionType: offlineAction,
+      localCreatedAt: new Date().toISOString(),
+      payloadVersion: 1,
+      payload: payload as Record<string, unknown>,
+    });
+    return { queuedOffline: true as const };
+  }
   const r = await fetch("/api/distribution/operations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -31,7 +59,7 @@ const OUTCOMES: { value: string; en: string; hi: string }[] = [
   { value: "UNABLE_TO_DELIVER", en: "Unable to deliver", hi: "वितरण संभव नहीं" },
 ];
 
-function DecisionCard({ order, language }: { order: PendingOrder; language: "EN" | "HI" }) {
+function DecisionCard({ order, language, sessionId }: { order: PendingOrder; language: "EN" | "HI"; sessionId: string }) {
   const hi = language === "HI",
     router = useRouter(),
     [qty, setQty] = useState<Record<string, number>>(() =>
@@ -56,7 +84,7 @@ function DecisionCard({ order, language }: { order: PendingOrder; language: "EN"
     setBusy(true);
     setError("");
     try {
-      await post("easy-decide", {
+      const result = await post("easy-decide", {
         distributorId: order.distributorId,
         orderId: order.id,
         decision,
@@ -66,8 +94,8 @@ function DecisionCard({ order, language }: { order: PendingOrder; language: "EN"
             : order.lines.map((l) => ({ lineId: l.id, quantity: decision === "ACCEPT" ? l.ordered : (qty[l.id] ?? 0) })),
         reason: reason.trim() || undefined,
         idempotencyKey: key(),
-      });
-      router.refresh();
+      }, sessionId);
+      if (!result.queuedOffline) router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
       // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
@@ -161,7 +189,7 @@ function DecisionCard({ order, language }: { order: PendingOrder; language: "EN"
   );
 }
 
-function DeliveryCard({ order, language }: { order: DeliverableOrder; language: "EN" | "HI" }) {
+function DeliveryCard({ order, language, sessionId }: { order: DeliverableOrder; language: "EN" | "HI"; sessionId: string }) {
   const hi = language === "HI",
     router = useRouter(),
     [qty, setQty] = useState<Record<string, number>>(() => Object.fromEntries(order.lines.map((l) => [l.id, l.remaining]))),
@@ -175,7 +203,7 @@ function DeliveryCard({ order, language }: { order: DeliverableOrder; language: 
     setBusy(true);
     setError("");
     try {
-      await post("easy-delivery-outcome", {
+      const result = await post("easy-delivery-outcome", {
         deliveryId: order.deliveryId,
         outcome: value,
         lines: order.lines.map((l) => ({
@@ -189,8 +217,8 @@ function DeliveryCard({ order, language }: { order: DeliverableOrder; language: 
         })),
         reason: reason.trim() || undefined,
         receiverName: receiverName.trim() || undefined,
-      });
-      router.refresh();
+      }, sessionId);
+      if (!result.queuedOffline) router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
       // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
@@ -262,7 +290,7 @@ function DeliveryCard({ order, language }: { order: DeliverableOrder; language: 
   );
 }
 
-function RemainingCard({ order, language }: { order: RemainingOrder; language: "EN" | "HI" }) {
+function RemainingCard({ order, language, sessionId }: { order: RemainingOrder; language: "EN" | "HI"; sessionId: string }) {
   const hi = language === "HI",
     router = useRouter(),
     [busy, setBusy] = useState(false),
@@ -273,13 +301,13 @@ function RemainingCard({ order, language }: { order: RemainingOrder; language: "
     setBusy(true);
     setError("");
     try {
-      await post("easy-deliver-remaining", {
+      const result = await post("easy-deliver-remaining", {
         distributorId: order.distributorId,
         orderId: order.id,
         lines: order.lines.map((l) => ({ lineId: l.id, quantity: l.remaining })),
         idempotencyKey: key(),
-      });
-      router.refresh();
+      }, sessionId);
+      if (!result.queuedOffline) router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
       // A failure here can still have partially committed (see acceptAndPrepareRetailerOrder's
@@ -350,11 +378,13 @@ function RemainingCard({ order, language }: { order: RemainingOrder; language: "
 
 export function DistributorOrderCards({
   language,
+  sessionId,
   pending,
   awaitingDelivery,
   remaining,
 }: {
   language: "EN" | "HI";
+  sessionId: string;
   pending: PendingOrder[];
   awaitingDelivery: DeliverableOrder[];
   remaining: RemainingOrder[];
@@ -365,7 +395,7 @@ export function DistributorOrderCards({
       <section>
         <h2>{hi ? "नए ऑर्डर" : "New orders"}</h2>
         {pending.length ? (
-          pending.map((order) => <DecisionCard key={order.id} order={order} language={language} />)
+          pending.map((order) => <DecisionCard key={order.id} order={order} language={language} sessionId={sessionId} />)
         ) : (
           <p className={styles.emptyHint}>{hi ? "कोई नया ऑर्डर लंबित नहीं है।" : "No new orders are waiting."}</p>
         )}
@@ -374,7 +404,7 @@ export function DistributorOrderCards({
         <section>
           <h2>{hi ? "डिलीवरी हेतु तैयार" : "Ready to deliver"}</h2>
           {awaitingDelivery.map((order) => (
-            <DeliveryCard key={order.deliveryId} order={order} language={language} />
+            <DeliveryCard key={order.deliveryId} order={order} language={language} sessionId={sessionId} />
           ))}
         </section>
       )}
