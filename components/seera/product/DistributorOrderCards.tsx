@@ -412,7 +412,7 @@ export function DistributorOrderCards({
         <section>
           <h2>{hi ? "शेष मात्रा" : "Remaining balance"}</h2>
           {remaining.map((order) => (
-            <RemainingCard key={order.id} order={order} language={language} />
+            <RemainingCard key={order.id} order={order} language={language} sessionId={sessionId} />
           ))}
         </section>
       )}
