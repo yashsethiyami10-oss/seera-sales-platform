@@ -180,7 +180,12 @@ function DeliveryCard({ order, language }: { order: DeliverableOrder; language: 
         outcome: value,
         lines: order.lines.map((l) => ({
           lineId: l.id,
-          quantity: value === "DELIVERED" ? l.remaining : value === "PARTIALLY_DELIVERED" ? (qty[l.id] ?? 0) : 0,
+          quantity:
+            value === "DELIVERED"
+              ? l.remaining
+              : value === "PARTIALLY_DELIVERED" || value === "REFUSED"
+                ? (qty[l.id] ?? 0)
+                : 0,
         })),
         reason: reason.trim() || undefined,
         receiverName: receiverName.trim() || undefined,
