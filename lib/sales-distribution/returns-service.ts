@@ -4,6 +4,7 @@ import { authorize, effectivePermissions } from "@/lib/foundation/authorization-
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { requirePartyMembership } from "./scope";
+import { orderLineAwareCanonicalPieces } from "./company-order-catalog";
 
 function requestNumber(key: string) {
   return `RD-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
@@ -191,6 +192,7 @@ export async function decideReturnRequest(
       if (request.sourceOrderId) {
         const line = await tx.seeraOrderLine.findFirst({
           where: { orderId: request.sourceOrderId, skuId: request.skuId },
+          include: { order: { select: { type: true } } },
         });
         if (!line)
           throw new FoundationError(
@@ -218,7 +220,10 @@ export async function decideReturnRequest(
             skuId: request.skuId,
             type: "RETURN",
             direction: "IN",
-            quantity: request.quantity,
+            quantity:
+              line && line.order.type !== "RETAILER_ORDER"
+                ? orderLineAwareCanonicalPieces(line, Number(request.quantity))
+                : Number(request.quantity),
             sourceType: "SeeraReturnRequest",
             sourceId: request.id,
             actorId,
