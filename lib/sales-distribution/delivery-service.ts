@@ -84,7 +84,9 @@ export async function completeDelivery(
           JSON.stringify(delivery.quantities ?? {}) === JSON.stringify(incomingQuantities);
         const sameReason = (delivery.reason ?? null) === (input.reason?.trim() || null);
         const sameReceiver = (delivery.receiverName ?? null) === (input.receiverName?.trim() || null);
-        if (!sameQuantities || !sameReason || !sameReceiver)
+        const sameProof =
+          JSON.stringify(delivery.proof ?? null) === JSON.stringify(input.proof ?? null);
+        if (!sameQuantities || !sameReason || !sameReceiver || !sameProof)
           throw new FoundationError(
             "DELIVERY_IDEMPOTENCY_CONFLICT",
             "This delivery was already finalized with different completion data",
