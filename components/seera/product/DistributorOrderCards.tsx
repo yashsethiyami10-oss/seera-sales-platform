@@ -326,7 +326,7 @@ function RemainingCard({ order, language, sessionId }: { order: RemainingOrder; 
     setBusy(true);
     setError("");
     try {
-      await post("close-remaining", { partyType: "DISTRIBUTOR", partyId: order.distributorId, orderId: order.id, reason: closeReason.trim() });
+      await post("close-remaining", { partyType: "DISTRIBUTOR", partyId: order.distributorId, orderId: order.id, reason: closeReason.trim() }, sessionId);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
