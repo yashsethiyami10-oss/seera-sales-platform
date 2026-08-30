@@ -5,6 +5,7 @@ import {
 import {
   assertReturnDoesNotExceedDelivered,
 } from "@/lib/sales-distribution/returns-service";
+import { validateInitialFulfilmentDecision } from "@/lib/sales-distribution/workflow-service";
 
 describe("Part 4 delivery/return regression guards", () => {
   it("never treats a fully refused order as DELIVERED", () => {
