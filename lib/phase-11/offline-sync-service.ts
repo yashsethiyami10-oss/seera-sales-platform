@@ -1,4 +1,5 @@
 import type {Prisma,PrismaClient} from "@prisma/client";import {FoundationError} from "@/lib/foundation/errors";import {recordAudit} from "@/lib/foundation/audit-service";import {offlineOperationSchema,type OfflineOperationInput} from "./offline-contract";import {classifyOfflineConflict} from "./conflict-engine";import {placeRetailerOrder,endFieldDay} from "@/lib/sales-distribution/workflow-service";import {recordCollection,captureMarketIntelligence} from "@/lib/sales-distribution/operational-service";import {executiveCheckOut,createFollowUp} from "@/lib/sales-distribution/field-portal-service";import {createDistributorProspect} from "@/lib/sales-distribution/manager-service";
+import {acceptAndPrepareRetailerOrder,recordEasyDeliveryOutcome,deliverRemainingRetailerOrder} from "@/lib/sales-distribution/distributor-easy-mode-service";
 const p=<T>(value:unknown)=>value as T;
 async function dispatch(db:PrismaClient,userId:string,input:OfflineOperationInput){const data=input.payload;
  if(input.actionType==="ORDER_DRAFT"){const retailer=await db.seeraRetailer.findUnique({where:{id:p<string>(data.retailerId)}}),lines=p<Array<{skuId:string;quantity:number;rate?:number;priceSnapshot?:number}>>(data.lines),skus=await db.seeraSku.findMany({where:{id:{in:lines.map(x=>x.skuId)}},include:{prices:{where:{tier:"DISTRIBUTOR_TO_RETAILER",status:"ACTIVE",effectiveFrom:{lte:new Date()},OR:[{effectiveTo:null},{effectiveTo:{gt:new Date()}}]},orderBy:{effectiveFrom:"desc"},take:1}}});const priceChanged=lines.some(line=>line.priceSnapshot!==undefined&&Number(skus.find(s=>s.id===line.skuId)?.prices[0]?.amount)!==line.priceSnapshot),conflict=classifyOfflineConflict({userActive:true,sessionActive:true,retailerActive:retailer?.lifecycle==="ACTIVE",skuActive:skus.length===lines.length&&skus.every(s=>s.status==="ACTIVE"),assignmentChanged:retailer?.distributorId!==p<string>(data.commercialPartyId),priceChanged});if(conflict)throw Object.assign(new FoundationError(conflict.code,"Offline order requires conflict resolution",409),{conflict});return placeRetailerOrder(db,{actorId:userId,sourcePortal:"sales-executive",commercialPartyType:"DISTRIBUTOR",commercialPartyId:p<string>(data.commercialPartyId)},{retailerId:p<string>(data.retailerId),idempotencyKey:input.clientOperationId,notes:p<string|undefined>(data.notes),lines});}
@@ -15,7 +16,7 @@ async function dispatch(db:PrismaClient,userId:string,input:OfflineOperationInpu
    const existing=await db.seeraSalesOrder.findFirst({where:{id:orderId,sellerPartnerId:distributorId,type:"RETAILER_ORDER"},select:{status:true}});
    if(!existing)throw new FoundationError("ORDER_SCOPE_OR_STATE_DENIED","Offline distributor order is unavailable",403);
    if(existing.status==="REJECTED")return db.seeraSalesOrder.findUniqueOrThrow({where:{id:orderId}});
-   return (await import("@/lib/sales-distribution/distributor-easy-mode-service")).acceptAndPrepareRetailerOrder(db,userId,distributorId,{
+   return acceptAndPrepareRetailerOrder(db,userId,distributorId,{
      orderId,
      decision:p<"ACCEPT"|"PARTIAL_ACCEPT"|"REJECT">(data.decision),
      lines:p<{lineId:string;quantity:number}[]>(data.lines),
@@ -24,11 +25,9 @@ async function dispatch(db:PrismaClient,userId:string,input:OfflineOperationInpu
    });
  }
  if(input.actionType==="DISTRIBUTOR_DELIVERY_DRAFT"){
-   const {recordEasyDeliveryOutcome}=await import("@/lib/sales-distribution/distributor-easy-mode-service");
    return recordEasyDeliveryOutcome(db,userId,p<Parameters<typeof recordEasyDeliveryOutcome>[2]>(data));
  }
  if(input.actionType==="DISTRIBUTOR_REMAINING_DRAFT"){
-   const {deliverRemainingRetailerOrder}=await import("@/lib/sales-distribution/distributor-easy-mode-service");
    return deliverRemainingRetailerOrder(db,userId,p<string>(data.distributorId),{
      orderId:p<string>(data.orderId),
      lines:p<{lineId:string;quantity:number}[]>(data.lines),
