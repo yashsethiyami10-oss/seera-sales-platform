@@ -901,6 +901,7 @@ export function FieldJourney({
     // native form resubmit fires. This is the actual non-reentrancy guard; `busy` still drives the
     // visible disabled state for the normal single-tap case.
     checkoutSubmittingRef = useRef(false),
+    dayActionSubmittingRef = useRef(false),
     [busy, setBusy] = useState(false),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
@@ -1267,6 +1268,10 @@ export function FieldJourney({
                 (distributorOptions.length === 0 || !startWorkingDistributorId))
             }
             onClick={async () => {
+              // Synchronous ref guard: React's disabled={busy} lands on the next render, so two
+              // fast taps can otherwise both pass before the first GPS lookup paints.
+              if (dayActionSubmittingRef.current) return;
+              dayActionSubmittingRef.current = true;
               // Set busy synchronously, before the GPS await, so a second tap while the (often
               // slow, permission-prompting) location lookup is in flight can't fire a second,
               // concurrent submission — that race was the actual cause of "Active workday not
@@ -1286,6 +1291,7 @@ export function FieldJourney({
                       : "GPS is not available. Enter a reason to start the day anyway.",
                   ) ?? undefined;
                 if (!startExceptionReason) {
+                  dayActionSubmittingRef.current = false;
                   setBusy(false);
                   return;
                 }
@@ -1304,7 +1310,9 @@ export function FieldJourney({
                 null,
                 hi ? "दिन शुरू हुआ।" : "Day started.",
                 hi ? "दिन शुरू हो रहा है…" : "Starting day…",
-              );
+              ).then((result) => {
+                if (!("queued" in result) && !result.success) dayActionSubmittingRef.current = false;
+              });
             }}
           >
             {busy ? (busyLabel ?? (hi ? "दिन शुरू हो रहा है…" : "Starting day…")) : hi ? "दिन शुरू करें" : "Start day"}
