@@ -7,7 +7,7 @@ const gradle = readFileSync("android/app/build.gradle", "utf8");
 describe("Android field-workflow resume", () => {
   it("persists and restores the last governed portal route", () => {
     expect(activity).toContain("last_portal_url");
-    expect(activity).toContain("path.startsWith("/portal")");
+    expect(activity).toContain('path.startsWith("/portal")');
     expect(activity).toContain("webView.loadUrl(");
     expect(activity).toContain("onPause()");
     expect(activity).toContain('"https://" + PROD_HOST + savedPath');
