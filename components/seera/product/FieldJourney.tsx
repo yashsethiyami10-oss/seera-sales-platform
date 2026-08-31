@@ -1,5 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
+import { Capacitor } from "@capacitor/core";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import styles from "./FieldJourney.module.css";
@@ -1121,6 +1122,139 @@ export function FieldJourney({
     }
   };
 
+  // Android camera hardening:
+  // The old <input type="file" capture="environment"> path hands camera capture back through the
+  // WebView's WebChromeClient. On real Android devices that can terminate/recreate the WebView while
+  // returning from the camera, which is exactly the "photo -> dashboard" symptom seen in field UAT.
+  // Native Capacitor Camera owns the camera Activity and returns a bounded JPEG URI instead, so the
+  // web renderer never has to receive the raw camera file through an HTML file input.
+  const uploadNativeCameraResult = async (result: {
+    uri?: string;
+    webPath?: string;
+    thumbnail?: string;
+    metadata?: { format?: string; size?: number };
+  }) => {
+    if (!visit) return;
+    const inflightKey = `seera:photo-inflight:${visit.id}`;
+    if (typeof sessionStorage !== "undefined") sessionStorage.setItem(inflightKey, "1");
+    setBusy(true);
+    setBusyLabel(hi ? "फ़ोटो सहेजी जा रही है…" : "Saving photo…");
+    setMessage(null);
+
+    try {
+      let blob: Blob | null = null;
+      const candidateUrls = [result.webPath, result.uri ? Capacitor.convertFileSrc(result.uri) : undefined].filter(
+        (value): value is string => Boolean(value),
+      );
+
+      for (const url of candidateUrls) {
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            const candidate = await response.blob();
+            if (candidate.size > 0) {
+              blob = candidate;
+              break;
+            }
+          }
+        } catch {
+          // Try the next native URL representation.
+        }
+      }
+
+      // Last-resort restored-result path: the Camera plugin supplies a lower-resolution thumbnail
+      // specifically so an app can recover a photo after Android killed the Activity/WebView.
+      if (!blob && result.thumbnail) {
+        const binary = atob(result.thumbnail);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        blob = new Blob([bytes], { type: `image/${result.metadata?.format === "jpg" ? "jpeg" : result.metadata?.format ?? "jpeg"}` });
+      }
+
+      if (!blob || blob.size === 0) throw new Error(hi ? "फ़ोटो वापस नहीं मिल सकी। कृपया फिर से लें।" : "The captured photo could not be recovered. Please retake.");
+      if (blob.size > MAX_FINAL_UPLOAD_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+
+      const previewUrl = URL.createObjectURL(blob);
+      photoPreviewUrlRef.current = previewUrl;
+      setPhotoPreview(previewUrl);
+      await yieldToPaint();
+
+      const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, blob);
+      setLocalAddedPhotos((current) => [...current, data]);
+      revokePhotoPreview();
+      setPhotoPreview(null);
+      setMessage({ ok: true, text: hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓" });
+      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
+    } catch (error) {
+      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
+      setMessage({
+        ok: false,
+        text: error instanceof Error ? error.message : hi ? "फ़ोटो अपलोड नहीं हो सकी। कृपया फिर से लें।" : "Photo upload failed. Please retake.",
+      });
+    } finally {
+      setBusy(false);
+      setBusyLabel(null);
+    }
+  };
+
+  const openNativeCamera = async () => {
+    if (!visit || busy || !Capacitor.isNativePlatform()) return;
+    setMessage(null);
+    setBusy(true);
+    setBusyLabel(hi ? "कैमरा खुल रहा है…" : "Opening camera…");
+    await yieldToPaint();
+
+    try {
+      const { Camera } = await import("@capacitor/camera");
+      if (typeof sessionStorage !== "undefined") sessionStorage.setItem(`seera:camera-pending:${visit.id}`, "1");
+      const result = await Camera.takePhoto({
+        quality: 74,
+        targetWidth: UPLOAD_MAX_DIMENSION,
+        targetHeight: UPLOAD_MAX_DIMENSION,
+        correctOrientation: true,
+      });
+      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
+      await uploadNativeCameraResult(result);
+    } catch (error) {
+      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
+      setMessage({
+        ok: false,
+        text: error instanceof Error ? error.message : hi ? "कैमरा नहीं खुल सका। कृपया फिर से प्रयास करें।" : "Camera could not be opened. Please try again.",
+      });
+      setBusy(false);
+      setBusyLabel(null);
+    }
+  };
+
+  // Capacitor explicitly recommends appRestoredResult for camera activities because Android can kill
+  // the app while the native camera Activity is in the foreground. Re-hydrate the returned native
+  // result instead of dropping the rep at the portal dashboard after process recreation.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !visit) return;
+    let cancelled = false;
+    let handle: { remove: () => Promise<void> } | null = null;
+    void import("@capacitor/app").then(({ App }) =>
+      App.addListener("appRestoredResult", async (restored) => {
+        if (cancelled || restored.pluginId !== "Camera" || restored.methodName !== "takePhoto") return;
+        const pendingKey = `seera:camera-pending:${visit.id}`;
+        if (typeof sessionStorage !== "undefined" && !sessionStorage.getItem(pendingKey)) return;
+        if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(pendingKey);
+        const data = (restored.data ?? {}) as {
+          uri?: string;
+          webPath?: string;
+          thumbnail?: string;
+          metadata?: { format?: string; size?: number };
+        };
+        await uploadNativeCameraResult(data);
+      }).then((listener) => {
+        handle = listener;
+      }).catch(() => {});
+    return () => {
+      cancelled = true;
+      if (handle) void handle.remove();
+    };
+  }, [visit?.id, capturePhotoType, hi]);
+
   // Shared by both the primary "Start visit" button (retailer not yet visited today) and the
   // secondary "Check In Again" button (retailer already has a completed visit today) — same
   // governed check-in action/API either way, so every backend rule (authorization, retailer
@@ -2178,7 +2312,14 @@ export function FieldJourney({
                 })();
               }}
             />
-            <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (Capacitor.isNativePlatform()) void openNativeCamera();
+                else fileRef.current?.click();
+              }}
+            >
               {hi ? "कैमरा खोलें" : "Open camera"}
             </button>
             {photoPreview && (
