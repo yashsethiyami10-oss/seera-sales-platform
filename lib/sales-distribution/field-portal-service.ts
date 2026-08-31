@@ -207,43 +207,27 @@ export async function executiveCheckOut(
       : input.outcome === "FOLLOW_UP"
         ? "FOLLOW_UP"
         : "PRODUCTIVE";
-  // The visit update and the GPS sample write are independent (recordGpsSample only needs
-  // visit.workSessionId, already known) — one round trip instead of two, and both are the
-  // actual durable-success boundary for this checkout.
+  // Checkout is the business-critical durable mutation. GPS sampling is secondary telemetry
+  // and MUST NOT be coupled to the checkout response. Previously Promise.all() made an
+  // intermittent recordGpsSample failure surface as a 500 even when the visit update had already
+  // committed, which produced the live "sometimes works, sometimes unexpected system error"
+  // symptom and forced the user back into an ambiguous state.
   //
-  // `updateMany` with `checkedOutAt: null` repeated in the WHERE clause (not a plain `update`) is
-  // the actual compare-and-swap here — this is NOT redundant with the SELECT above. Two concurrent
-  // requests carrying the SAME idempotencyKey can both pass that SELECT before either commits (a
-  // real, reproducible TOCTOU race, caught live by this fix's own concurrent-checkout test): a
-  // plain `update()` has no WHERE guard tied to the row's read state, so both would silently
-  // succeed, each overwriting the other's checkedOutAt with its own timestamp — no error, no
-  // constraint violation (the unique index on checkoutIdempotencyKey only rejects two DIFFERENT
-  // rows sharing a key, not the same row being written twice). Postgres serializes two concurrent
-  // `UPDATE ... WHERE id = ? AND checkedOutAt IS NULL` statements against the same row via normal
-  // row-level locking, so the loser's `count` is reliably 0.
-  const [closeResult] = await Promise.all([
-    db.seeraVisit.updateMany({
-      where: { id: visit.id, checkedOutAt: null },
-      data: {
-        outcome,
-        noOrderReason: input.noOrderReason,
-        followUpAt: input.followUpAt,
-        notes: input.notes,
-        photoExceptionReason: input.photoExceptionReason ?? visit.photoExceptionReason,
-        checkedOutAt: new Date(),
-        checkoutIdempotencyKey: input.idempotencyKey,
-      },
-    }),
-    recordGpsSample(db, {
-      employeeId: actorId,
-      workSessionId: visit.workSessionId,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      accuracy: input.accuracy,
-      source: "CHECK_OUT",
-      trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
-    }),
-  ]);
+  // updateMany(... checkedOutAt: null) remains the compare-and-swap guard. Concurrent requests
+  // with the same idempotency key still resolve to the same committed checkout; a different
+  // concurrent intent is denied below.
+  const closeResult = await db.seeraVisit.updateMany({
+    where: { id: visit.id, checkedOutAt: null },
+    data: {
+      outcome,
+      noOrderReason: input.noOrderReason,
+      followUpAt: input.followUpAt,
+      notes: input.notes,
+      photoExceptionReason: input.photoExceptionReason ?? visit.photoExceptionReason,
+      checkedOutAt: new Date(),
+      checkoutIdempotencyKey: input.idempotencyKey,
+    },
+  });
   if (closeResult.count === 0) {
     // Lost the race: a concurrent request for THIS visit closed it first. If it closed with the
     // SAME idempotencyKey, this is a safe idempotent replay of the same intent — return that
@@ -257,7 +241,17 @@ export async function executiveCheckOut(
     throw new FoundationError("VISIT_SCOPE_DENIED", "Active visit unavailable", 403);
   }
   const updated = await db.seeraVisit.findUniqueOrThrow({ where: { id: visit.id } });
-  timing.stage("visit_update_and_gps");
+  timing.stage("visit_update");
+  // Best-effort telemetry: a GPS-sample outage must never undo or mask a successful checkout.
+  void recordGpsSample(db, {
+    employeeId: actorId,
+    workSessionId: visit.workSessionId,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    accuracy: input.accuracy,
+    source: "CHECK_OUT",
+    trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
+  }).catch((error) => console.error("record_gps_sample.checkout_failed", error));
   await recordAudit(db, {
     actorId,
     action: "field_visit.checkout_succeeded",
