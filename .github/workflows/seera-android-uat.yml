@@ -1,0 +1,39 @@
+name: SEERA Android UAT APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Sync Capacitor Android plugins
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload UAT APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: seera-android-uat-v1.0.2
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
