@@ -29,7 +29,7 @@ jobs:
         run: npm ci
 
       - name: Run non-destructive regression suite
-        run: npm test -- --run
+        run: npm run verify:seera:block1:static
 
       - name: Sync Capacitor Android plugins
         run: npx cap sync android
