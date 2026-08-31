@@ -1233,22 +1233,32 @@ export function FieldJourney({
     if (!Capacitor.isNativePlatform() || !visit) return;
     let cancelled = false;
     let handle: { remove: () => Promise<void> } | null = null;
-    void import("@capacitor/app").then(({ App }) =>
-      App.addListener("appRestoredResult", async (restored) => {
-        if (cancelled || restored.pluginId !== "Camera" || restored.methodName !== "takePhoto") return;
-        const pendingKey = `seera:camera-pending:${visit.id}`;
-        if (typeof sessionStorage !== "undefined" && !sessionStorage.getItem(pendingKey)) return;
-        if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(pendingKey);
-        const data = (restored.data ?? {}) as {
-          uri?: string;
-          webPath?: string;
-          thumbnail?: string;
-          metadata?: { format?: string; size?: number };
-        };
-        await uploadNativeCameraResult(data);
-      }).then((listener) => {
-        handle = listener;
-      }).catch(() => {});
+    void (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        const listener = await App.addListener("appRestoredResult", async (restored) => {
+          if (cancelled || restored.pluginId !== "Camera" || restored.methodName !== "takePhoto") return;
+          const pendingKey = `seera:camera-pending:${visit.id}`;
+          if (typeof sessionStorage !== "undefined" && !sessionStorage.getItem(pendingKey)) return;
+          if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(pendingKey);
+          const data = (restored.data ?? {}) as {
+            uri?: string;
+            webPath?: string;
+            thumbnail?: string;
+            metadata?: { format?: string; size?: number };
+          };
+          await uploadNativeCameraResult(data);
+        });
+        if (cancelled) {
+          await listener.remove();
+        } else {
+          handle = listener;
+        }
+      } catch {
+        // Native app plugin is optional at compile/runtime; camera failures are handled by
+        // openNativeCamera and the governed error banner.
+      }
+    })();
     return () => {
       cancelled = true;
       if (handle) void handle.remove();
