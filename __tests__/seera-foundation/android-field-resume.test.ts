@@ -10,7 +10,7 @@ describe("Android field-workflow resume", () => {
     expect(activity).toContain("path.startsWith("/portal")");
     expect(activity).toContain("webView.loadUrl(");
     expect(activity).toContain("onPause()");
-    expect(activity).toContain("https://" + " + PROD_HOST + savedPath");
+    expect(activity).toContain('"https://" + PROD_HOST + savedPath');
   });
 
   it("does not persist arbitrary external URLs", () => {
