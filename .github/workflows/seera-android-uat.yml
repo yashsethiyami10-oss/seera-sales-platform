@@ -28,6 +28,9 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
+      - name: Run non-destructive regression suite
+        run: npm test -- --run
+
       - name: Sync Capacitor Android plugins
         run: npx cap sync android
 
