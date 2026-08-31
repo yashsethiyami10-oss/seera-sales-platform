@@ -1074,33 +1074,50 @@ export function FieldJourney({
     setBusy(true);
     setBusyLabel(busyText ?? null);
     setMessage(null);
-    const result = await runOrQueue(action, payload, offline);
-    setBusy(false);
-    setBusyLabel(null);
-    if ("queued" in result) {
-      setMessage({
-        ok: true,
-        text: hi
-          ? "कोई नेटवर्क नहीं — कार्रवाई सुरक्षित रूप से सिंक के लिए कतार में है।"
-          : "No network — action is safely queued to sync.",
-      });
-    } else if (result.success) {
-      setMessage({
-        ok: true,
-        text: successText ?? (hi ? "कार्रवाई सुरक्षित रूप से सहेजी गई।" : "Action saved securely."),
-      });
-      router.refresh();
-    } else {
+    try {
+      const result = await runOrQueue(action, payload, offline);
+      if ("queued" in result) {
+        setMessage({
+          ok: true,
+          text: hi
+            ? "कोई नेटवर्क नहीं — कार्रवाई सुरक्षित रूप से सिंक के लिए कतार में है।"
+            : "No network — action is safely queued to sync.",
+        });
+      } else if (result.success) {
+        setMessage({
+          ok: true,
+          text: successText ?? (hi ? "कार्रवाई सुरक्षित रूप से सहेजी गई।" : "Action saved securely."),
+        });
+        router.refresh();
+      } else {
+        setMessage({
+          ok: false,
+          text: result.userMessage ?? result.message,
+          nextAction: result.nextAction,
+          requestId: result.requestId,
+          retryable: result.retryable,
+          supportRequired: result.supportRequired,
+        });
+      }
+      return result;
+    } catch (error) {
+      // The governed API path normally returns ActionOutcome rather than throwing. This final
+      // boundary protects the field UI from an unexpected client/IndexedDB/queue exception becoming
+      // an unhandled promise rejection and ejecting the rep from the visit flow.
+      const requestId = error && typeof error === "object" && "requestId" in error ? String((error as { requestId?: unknown }).requestId ?? "") : undefined;
+      const text = error instanceof Error ? error.message : hi ? "कार्रवाई पूरी नहीं हो सकी। कृपया फिर से प्रयास करें।" : "The action could not be completed. Please try again.";
       setMessage({
         ok: false,
-        text: result.userMessage ?? result.message,
-        nextAction: result.nextAction,
-        requestId: result.requestId,
-        retryable: result.retryable,
-        supportRequired: result.supportRequired,
+        text,
+        requestId: requestId || undefined,
+        retryable: true,
+        supportRequired: false,
       });
+      return { success: false, code: "CLIENT_ACTION_ERROR", message: text, requestId, retryable: true };
+    } finally {
+      setBusy(false);
+      setBusyLabel(null);
     }
-    return result;
   };
 
   // Shared by both the primary "Start visit" button (retailer not yet visited today) and the
