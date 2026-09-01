@@ -46,9 +46,22 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Rename APK with commit identity
+        # The artifact name (and the APK's own filename) must change on every build. A fixed name
+        # across every run is exactly how a Founder ends up reinstalling a stale download from
+        # their Downloads folder while believing they have the latest fixes — "fixes appearing in
+        # one build but not another" is the direct symptom. Embedding the short SHA in both the
+        # artifact name AND the .apk filename itself means a stale local file is visibly different
+        # from a fresh one, even after unzipping, with no change to what actually gets built.
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          mv android/app/build/outputs/apk/debug/app-debug.apk "android/app/build/outputs/apk/debug/seera-uat-v1.0.2-${SHORT_SHA}.apk"
+          echo "APK_NAME=seera-uat-v1.0.2-${SHORT_SHA}.apk" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
+
       - name: Upload UAT APK
         uses: actions/upload-artifact@v4
         with:
-          name: seera-android-uat-v1.0.2
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: seera-android-uat-v1.0.2-${{ env.SHORT_SHA }}
+          path: android/app/build/outputs/apk/debug/${{ env.APK_NAME }}
           if-no-files-found: error
