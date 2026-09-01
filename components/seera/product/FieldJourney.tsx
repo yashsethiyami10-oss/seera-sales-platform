@@ -433,8 +433,10 @@ async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: 
   }
   sendPhotoTelemetry("UPLOAD_SUCCESS", { visitId, elapsedMs: Math.round(performance.now() - uploadStart) });
 
+  // Finalize is the authoritative save, but do not block the UI on a telemetry POST.
+  // The old implementation emitted telemetry immediately before finalize; keep telemetry
+  // observational and completely outside the critical save path.
   const finalizeStart = performance.now();
-  sendPhotoTelemetry("FINALIZE_START", { visitId });
   try {
     const result = await postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", {
       visitId,
