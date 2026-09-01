@@ -2473,6 +2473,7 @@ export async function OperationalWorkspace({
       label: b.parentId && beatTerritoryName.has(b.parentId) ? `${b.name} (${beatTerritoryName.get(b.parentId)})` : b.name,
       territoryId: b.parentId ?? "",
     }));
+    const activeVisitId = (query.activeVisitId ?? "").trim() || undefined;
     const [workingDistributor, visit] = await Promise.all([
       sessionForContext?.workingDistributorId
         ? db.seeraPartner.findUnique({
@@ -2482,7 +2483,13 @@ export async function OperationalWorkspace({
         : Promise.resolve(null),
       sessionForContext
         ? db.seeraVisit.findFirst({
-            where: { workSessionId: sessionForContext.id, checkedOutAt: null },
+            // activeVisitId is only a resume hint. Employee work-session ownership and open-visit
+            // state remain authoritative, so this cannot become an IDOR path.
+            where: {
+              workSessionId: sessionForContext.id,
+              checkedOutAt: null,
+              ...(activeVisitId ? { id: activeVisitId } : {}),
+            },
             include: {
               retailer: { select: { businessName: true, mobile: true, distributorId: true, address: true } },
               photos: { where: { deletedAt: null }, orderBy: { capturedAt: "desc" } },
