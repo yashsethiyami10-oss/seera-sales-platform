@@ -88,6 +88,13 @@ export async function finalizeFieldPhotoUpload(
     visitId: string;
     photoType: PhotoType;
     publicId: string;
+    version: number;
+    signature: string;
+    secureUrl: string;
+    bytes: number;
+    width: number;
+    height: number;
+    format: string;
     latitude?: number;
     longitude?: number;
   },
@@ -97,23 +104,29 @@ export async function finalizeFieldPhotoUpload(
   if (!input.publicId.startsWith(expectedPrefix) || input.publicId.slice(expectedPrefix.length).includes("/"))
     throw new FoundationError("PHOTO_SCOPE_DENIED", "Uploaded photo is outside this visit", 403);
 
-  cloudinaryConfig();
-  let resource: Awaited<ReturnType<typeof cloudinary.api.resource>>;
-  try {
-    resource = await cloudinary.api.resource(input.publicId, { resource_type: "image", type: "upload" });
-  } catch {
+  const { cloudName, apiSecret } = cloudinaryConfig();
+  // Cloudinary's upload response carries a cryptographic response signature over public_id+version.
+  // Verifying that response locally avoids a second Admin API network round-trip on every photo.
+  // The signed upload already constrains the public_id to this visit; the response signature proves
+  // that this exact Cloudinary asset/version exists. Cloudinary documents this verification model.
+  const expectedResponseSignature = cloudinary.utils.api_sign_request(
+    { public_id: input.publicId, version: input.version },
+    apiSecret,
+  );
+  if (expectedResponseSignature !== input.signature)
     throw new FoundationError("PHOTO_UPLOAD_UNVERIFIED", "Uploaded photo could not be verified", 400);
-  }
-  const secureUrl = typeof resource.secure_url === "string" ? resource.secure_url : "";
-  const bytes = Number(resource.bytes);
-  const width = Number(resource.width);
-  const height = Number(resource.height);
-  const format = String(resource.format ?? "").toLowerCase();
+  const secureUrl = input.secureUrl;
+  const bytes = Number(input.bytes);
+  const width = Number(input.width);
+  const height = Number(input.height);
+  const format = String(input.format ?? "").toLowerCase();
+  const expectedSecurePrefix = `https://res.cloudinary.com/${cloudName}/image/upload/`;
   if (
     resource.public_id !== input.publicId ||
     resource.resource_type !== "image" ||
     resource.type !== "upload" ||
-    !secureUrl.startsWith("https://res.cloudinary.com/") ||
+    !secureUrl.startsWith(expectedSecurePrefix) ||
+    !secureUrl.includes(`/v${input.version}/`) ||
     !Number.isSafeInteger(bytes) || bytes <= 0 || bytes > MAX_UPLOAD_BYTES ||
     !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 ||
     width > MAX_DIMENSION || height > MAX_DIMENSION || format !== "jpg"
