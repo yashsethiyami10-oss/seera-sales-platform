@@ -22,7 +22,7 @@ describe("Field visit scope regression", () => {
       expect(openVisit).toBeGreaterThanOrEqual(0);
       const queryStart = fn.lastIndexOf("db.seeraVisit.findFirst({", openVisit);
       const query = fn.slice(queryStart, openVisit + 80);
-      expect(query).toContain("status: "ACTIVE"");
+      expect(query).toContain(`status: "ACTIVE"`);
       expect(query).toContain("employeeId: actorId");
     }
   });
