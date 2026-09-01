@@ -5,7 +5,7 @@ import { FoundationError } from "@/lib/foundation/errors";
 import { financeNumberFor } from "./numbering";
 import { purposeDefinition, type MoneyDeskDirection } from "./money-desk-registry";
 import { recordMoneyIn, recordMoneyOut } from "./treasury-service";
-import { createVendorBill, recordVendorPayment } from "./vendor-service";
+import { createVendor, createVendorBill, recordVendorPayment } from "./vendor-service";
 import { createFixedAsset } from "./loan-asset-service";
 import { postJournal } from "./journal-service";
 import { createGrn, postGrn } from "@/lib/manufacturing/grn-service";
@@ -90,7 +90,46 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
   // counterpartyId/counterpartyName are top-level MoneyDeskCreateInput fields (not part of the
   // purpose-specific formData blob) — the registry's requiredFields list treats them as ordinary
   // field keys, so check both places rather than only formData.
-  const topLevelByField: Record<string, unknown> = { counterpartyId: input.counterpartyId, counterpartyName: input.counterpartyName };
+  // Procurement-party convenience: Money Desk should not force the Founder to leave the
+  // transaction to create master data first. If a vendor ID is supplied, it remains authoritative.
+  // If only a vendor name is supplied, reuse an exact existing legal/trade name; otherwise create
+  // one through the real Vendor service (and therefore its normal vendor:manage authorization).
+  // This is intentionally limited to vendor counterparties; it never fabricates customer/retailer
+  // identities and never changes the accounting engine.
+  let resolvedCounterpartyId = input.counterpartyId;
+  if (def.counterpartyType === "VENDOR" && !resolvedCounterpartyId && input.counterpartyName?.trim()) {
+    const existingVendor = await db.seeraVendor.findFirst({
+      where: {
+        OR: [
+          { legalName: { equals: input.counterpartyName.trim(), mode: "insensitive" } },
+          { tradeName: { equals: input.counterpartyName.trim(), mode: "insensitive" } },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (existingVendor) {
+      resolvedCounterpartyId = existingVendor.id;
+    } else {
+      const vendorPermissions = await effectivePermissions(db, actorId);
+      if (!vendorPermissions.has("vendor:manage") && !vendorPermissions.has("system:super_admin"))
+        throw new FoundationError("VENDOR_MASTER_ACCESS_REQUIRED", "Select an existing Vendor or use an account with Vendor master access to create a new procurement party", 403);
+      const code = `MD-${input.counterpartyName.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24)}`;
+      const vendor = await createVendor(db, actorId, {
+        code: code || `MD-${input.idempotencyKey.slice(0, 12).toUpperCase()}`,
+        legalName: input.counterpartyName.trim(),
+        tradeName: input.counterpartyName.trim(),
+      });
+      resolvedCounterpartyId = vendor.id;
+    }
+    await recordAudit(db, {
+      actorId,
+      action: "money_desk.counterparty.resolved",
+      entityType: "SeeraVendor",
+      entityId: resolvedCounterpartyId,
+      afterState: { sourceName: input.counterpartyName.trim(), reused: Boolean(existingVendor) },
+    });
+  }
+  const topLevelByField: Record<string, unknown> = { counterpartyId: resolvedCounterpartyId, counterpartyName: input.counterpartyName };
   for (const field of def.requiredFields) {
     const value = field in topLevelByField ? topLevelByField[field] : input.formData[field];
     if (value == null || value === "")
@@ -123,7 +162,7 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
       date: input.date,
       treasuryAccountId: input.treasuryAccountId,
       counterpartyType: input.counterpartyType,
-      counterpartyId: input.counterpartyId,
+      counterpartyId: resolvedCounterpartyId,
       counterpartyName: input.counterpartyName,
       description: input.description,
       documentFileId: input.documentFileId,
@@ -247,6 +286,7 @@ const HANDLERS: Record<string, Handler> = {
       remark: txn.description ?? undefined,
       documentFileId: txn.documentFileId ?? undefined,
       idempotencyKey: txn.idempotencyKey,
+      finalizeForFounder: Boolean((await effectivePermissions(db, actorId)).has("system:super_admin")),
     });
     // quickEntryCreate has its OWN internal governance (submitExpense's approval-policy check,
     // postExpense requiring expense:post) — if the actor's authority stops short of full posting,
