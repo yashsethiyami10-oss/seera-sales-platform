@@ -953,7 +953,7 @@ export async function OperationalDetail({
           ["PENDING", "RESCHEDULED"].includes(x.status) && (
             <DeliveryActions
               language={language}
-              deliveries={[{id:x.id,label:x.order.orderNumber,lines:x.order.lines.map((line) => ({
+              deliveries={[{id:x.id,orderId:x.orderId,label:x.order.orderNumber,lines:x.order.lines.map((line) => ({
                 id: line.id,
                 label: `${line.skuCodeSnapshot} · ${line.productNameSnapshot}`,
                 remaining: Math.max(
