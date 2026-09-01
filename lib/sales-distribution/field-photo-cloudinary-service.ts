@@ -160,6 +160,14 @@ export async function finalizeFieldPhotoUpload(
       afterState: { visitId: visit.id, publicId: input.publicId, bytes, width, height, format },
     });
     return photo;
+  }, {
+    // Same fix as placeRetailerOrder/fulfilRetailerOrder/createRetailerAndCheckIn (see their own
+    // comments) — this transaction only runs after the Cloudinary upload has already completed
+    // (see the module comment: zero external network calls happen inside it, verification is a
+    // local HMAC recompute), but it was still exposed to Prisma's bare 5000ms default for what is
+    // otherwise a 2-3 round-trip transaction — the exact shape reproduced failing live this session.
+    timeout: 10_000,
+    maxWait: 5_000,
   });
 }
 

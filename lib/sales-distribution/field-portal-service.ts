@@ -577,6 +577,11 @@ export async function createRetailer(
       afterState: { businessName: created.businessName, distributorId, territoryId: input.territoryId, beatId: input.beatId, marketId: input.marketId, source: "UNPLANNED_FIELD_ADDED" },
     });
     return created;
+  }, {
+    // Same fix as createRetailerAndCheckIn below (its own comment has the full rationale) —
+    // identical transaction shape, same missing timeout override.
+    timeout: 10_000,
+    maxWait: 5_000,
   });
   timing.stage("transaction");
   timing.finish({ actorId });
@@ -751,6 +756,15 @@ export async function createRetailerAndCheckIn(
     });
     timing.stage("tx_visit_upsert");
     return { retailer, visit };
+  }, {
+    // Same class of fix as placeRetailerOrder/fulfilRetailerOrder (see their own comments): this
+    // is "Add Customer", the Founder's #1 reported slow/error-prone action, running on Prisma's
+    // bare 5000ms/2000ms interactive-transaction defaults. Live TEST-DB execution this session
+    // reproduced comparable-shape (2-3 round trip) transactions failing/timing out under real DB
+    // latency variance — a realistic field-network failure mode, not a hypothetical one, and
+    // consistent with "sometimes errors, sometimes just slow" rather than a deterministic bug.
+    timeout: 10_000,
+    maxWait: 5_000,
   });
   timing.stage("transaction");
   // PERFORMANCE PHASE 2 (P0 Add Customer SLO): the GPS sample is a secondary tracking record —
