@@ -26,6 +26,7 @@ import { treasuryContext } from "@/lib/finance/smart-finance/context";
 import { confirmOtherParty, updateOtherParty, setOtherPartyActive } from "@/lib/finance/smart-finance/other-party";
 import { settleAdvance } from "@/lib/finance/smart-finance/advance-lifecycle";
 import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
+import { createFactoryCashSale } from "@/lib/finance/factory-cash-sale-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
 
@@ -50,6 +51,7 @@ const ACTIONS = [
   "money-desk-treasury-context", "money-desk-confirm-other-party", "money-desk-update-other-party",
   "money-desk-set-other-party-active", "money-desk-settle-advance",
   "guided-receipt",
+  "record-factory-cash-sale",
 ] as const;
 
 const body = z.object({ action: z.enum(ACTIONS), payload: z.record(z.unknown()) });
@@ -353,6 +355,20 @@ export async function POST(request: Request) {
               allocateToDocumentId: z.string().optional(),
               reason: z.string(),
               idempotencyKey: z.string(),
+            })
+            .parse(payload),
+        );
+        break;
+      case "record-factory-cash-sale":
+        result = await createFactoryCashSale(
+          prisma,
+          user.id,
+          z
+            .object({
+              saleDate: z.coerce.date(),
+              partyName: z.string().optional(),
+              amount: z.number(),
+              notes: z.string().optional(),
             })
             .parse(payload),
         );

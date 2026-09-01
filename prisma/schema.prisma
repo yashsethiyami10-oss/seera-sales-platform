@@ -1450,6 +1450,28 @@ model SeeraSalesOrder {
   @@map("seera_sales_orders")
 }
 
+// Section-14 (production closure pass): Retail/Factory Cash Sale is deliberately a distinct,
+// minimal governed sales-event type - not a SeeraSalesOrder, because that model's shape assumes
+// SKU/line-item granularity (subtotal/taxTotal/lines/deliveries/paymentPromises...) a cash sale
+// explicitly doesn't need, and forcing it in there would be exactly the "corrupting existing
+// accounting semantics" the Founder's own rule warns against. Not a ledger/Money Desk transaction
+// either (no unnecessary ledger requirement, per the same rule) - it must still appear in sales
+// totals/analytics/Founder Sales Overview reporting, which read this table alongside
+// SeeraSalesOrder rather than this table pretending to be one.
+model SeeraFactoryCashSale {
+  id          String   @id @default(cuid())
+  saleDate    DateTime
+  partyName   String?
+  amount      Decimal  @db.Decimal(14, 2)
+  notes       String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([saleDate])
+  @@index([createdById, createdAt])
+  @@map("seera_factory_cash_sales")
+}
+
 model SeeraOrderLine {
   id                  String          @id @default(cuid())
   orderId             String
