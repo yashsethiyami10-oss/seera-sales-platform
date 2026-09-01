@@ -13,12 +13,11 @@ describe("Android native camera regression", () => {
     expect(journey).toContain('Camera.takePhoto(');
     expect(journey).toContain('appRestoredResult');
     expect(journey).toContain('seera:camera-pending:');
-    expect(journey).toContain('quality: 90');
+    expect(journey).toContain('quality: 85');
     expect(journey).toContain('const MAX_FINAL_UPLOAD_BYTES = 10_000_000;');
     expect(journey).toContain('const uploadBlob = blob;');
-    expect(journey).toContain('const uploadBlob = blob;');
     expect(journey).toContain('Do not render the full-resolution camera blob before upload.');
-    expect(journey).toContain('uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob)');
+    expect(journey).toContain('uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob, signedOverride)');
   });
 
   it("registers the Capacitor camera plugin in the Android project", () => {
@@ -32,3 +31,4 @@ describe("Android native camera regression", () => {
     expect(gradle).toContain('versionName "1.0.2"');
   });
 });
+
