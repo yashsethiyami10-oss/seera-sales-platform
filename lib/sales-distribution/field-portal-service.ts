@@ -1566,6 +1566,88 @@ export async function executiveDsr(db: PrismaClient, actorId: string, workSessio
   };
 }
 
+// Section-3 fix (production closure pass): the DSR page's "top" summary was previously computed by
+// calling executiveDsr() for a SINGLE, arbitrarily-picked session — whichever was currently active,
+// or otherwise the most-recently-STARTED session within the selected range (history[0], since
+// executiveDsrHistory orders desc by startedAt). An Executive can have more than one work session on
+// the same calendar date (a real, allowed scenario, not a data error) — if the most-recent one
+// happened to have little/no activity while an EARLIER session that same day did, the top summary
+// showed near-zero numbers while the session list right below it showed real activity. Same shape as
+// executiveDsr's return value, but scoped to every session whose startedAt falls in [from, to) for
+// this actor, not to one session id — this is what the "Today"/"This week"/etc. top summary should
+// actually render; executiveDsr (single-session) remains available for the Day -> Session -> Retailer
+// drill-down the history list below still supports.
+export async function executiveDsrAggregate(db: PrismaClient, actorId: string, from: Date, to: Date) {
+  await authorize(db, { actorId, permission: "field_reports:view_self" });
+  const sessions = await db.seeraWorkSession.findMany({
+    where: { employeeId: actorId, employeeRole: "SALES_EXECUTIVE", startedAt: { gte: from, lt: to } },
+    select: { id: true, startInsideGeofence: true, returnedToHq: true },
+  });
+  const sessionIds = sessions.map((s) => s.id);
+  if (sessionIds.length === 0) {
+    return {
+      planned: 0, visited: 0, productive: 0, skipped: 0, unplannedAdded: 0, distributorProspects: 0,
+      orders: 0, bookedValue: 0, linkedEligibleValue: 0, followUps: 0, photos: 0, distanceTravelledKm: null as number | null,
+      gps: { startInsideGeofence: null as boolean | null, returnedToHq: null as boolean | null, visitExceptions: 0 },
+      sessionCount: 0,
+    };
+  }
+  const [visits, followUps, photos, unplannedAdded, distributorProspects, travelEstimates] = await Promise.all([
+    db.seeraVisit.findMany({ where: { workSessionId: { in: sessionIds } } }),
+    db.seeraFollowUp.findMany({ where: { ownerId: actorId, createdAt: { gte: from, lt: to } } }),
+    db.seeraVisitPhoto.count({ where: { actorId, capturedAt: { gte: from, lt: to }, deletedAt: null } }),
+    db.seeraRetailer.count({ where: { salespersonId: actorId, source: "UNPLANNED_FIELD_ADDED", createdAt: { gte: from, lt: to } } }),
+    db.seeraProspect.count({ where: { ownerEmployeeId: actorId, prospectType: "DISTRIBUTOR", createdAt: { gte: from, lt: to } } }),
+    db.seeraTravelEstimate.findMany({ where: { employeeId: actorId, workSessionId: { in: sessionIds } } }),
+  ]);
+  const retailerIds = [...new Set(visits.map((v) => v.retailerId).filter((x): x is string => Boolean(x)))];
+  const orders = retailerIds.length
+    ? await db.seeraSalesOrder.findMany({
+        where: { retailerId: { in: retailerIds }, salespersonId: actorId, createdAt: { gte: from, lt: to } },
+        include: { lines: true },
+      })
+    : [];
+  const linkedEligibleValue = orders.reduce(
+    (sum, order) =>
+      sum +
+      order.lines.reduce(
+        (s, line) =>
+          s +
+          eligibleDelivered({
+            ordered: Number(line.orderedQuantity),
+            cancelled: Number(line.cancelledQuantity),
+            delivered: Number(line.deliveredQuantity),
+            refused: Number(line.refusedQuantity),
+            approvedReturn: Number(line.returnedQuantity),
+            unitValue: Number(line.priceSnapshot),
+          }).value,
+        0,
+      ),
+    0,
+  );
+  const totalDistance = travelEstimates.reduce((sum, t) => sum + Number(t.distanceKm), 0);
+  return {
+    planned: visits.length,
+    visited: visits.filter((v) => v.outcome !== "SKIPPED").length,
+    productive: visits.filter((v) => v.outcome === "PRODUCTIVE").length,
+    skipped: visits.filter((v) => v.outcome === "SKIPPED").length,
+    unplannedAdded,
+    distributorProspects,
+    orders: orders.length,
+    bookedValue: orders.reduce((s, o) => s + Number(o.total), 0),
+    linkedEligibleValue,
+    followUps: followUps.length,
+    photos,
+    distanceTravelledKm: travelEstimates.length ? totalDistance : null,
+    gps: {
+      startInsideGeofence: sessions.every((s) => s.startInsideGeofence !== false) ? true : false,
+      returnedToHq: sessions.every((s) => s.returnedToHq !== false) ? true : false,
+      visitExceptions: visits.filter((v) => v.gpsExceptionReason).length,
+    },
+    sessionCount: sessions.length,
+  };
+}
+
 // Date-wise work history (Founder-UAT requirement: Today/Yesterday/This week/This month/custom
 // date range, with a per-day summary an Executive can open into full retailer-level detail via
 // executiveDsr). Bounded to `take` (default 31, one month of calendar days) so the per-session

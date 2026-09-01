@@ -80,6 +80,7 @@ import {
   executiveTargetProgress,
   executiveDeliveredSales,
   executiveDsr,
+  executiveDsrAggregate,
   executiveDsrHistory,
   executiveDistributorFollowUp,
 } from "@/lib/sales-distribution/field-portal-service";
@@ -1151,6 +1152,7 @@ function DsrPanel({
   base,
   query,
   range,
+  aggregate,
   dsr,
   history,
   selectedSessionId,
@@ -1159,6 +1161,7 @@ function DsrPanel({
   base: string;
   query: Record<string, string | undefined>;
   range: string;
+  aggregate: Awaited<ReturnType<typeof executiveDsrAggregate>>;
   dsr: Awaited<ReturnType<typeof executiveDsr>> | null;
   history: Awaited<ReturnType<typeof executiveDsrHistory>>;
   selectedSessionId: string | undefined;
@@ -1196,70 +1199,81 @@ function DsrPanel({
         </label>
         <button type="submit">{hi ? "कस्टम सीमा लागू करें" : "Apply custom range"}</button>
       </form>
-      {!dsr ? (
+      {aggregate.sessionCount === 0 ? (
         <p className={styles.readOnly}>
-          {hi ? "आज कोई कार्य सत्र दर्ज नहीं हुआ।" : "No work session recorded today."}
+          {hi ? "इस अवधि में कोई कार्य सत्र दर्ज नहीं हुआ।" : "No work session recorded in this range."}
         </p>
       ) : (
+        <dl className={styles.statGrid}>
+          <div>
+            <dt>{hi ? "योजनाबद्ध" : "Planned"}</dt>
+            <dd>{aggregate.planned}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "देखे गए" : "Visited"}</dt>
+            <dd>{aggregate.visited}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "उत्पादक" : "Productive"}</dt>
+            <dd>{aggregate.productive}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "छोड़े गए" : "Skipped"}</dt>
+            <dd>{aggregate.skipped}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "अनियोजित जोड़े गए" : "Unplanned added"}</dt>
+            <dd>{aggregate.unplannedAdded}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "वितरक संभावना" : "Distributor prospects"}</dt>
+            <dd>{aggregate.distributorProspects}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
+            <dd>{aggregate.orders}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "बुक मूल्य" : "Booked value"}</dt>
+            <dd>₹{aggregate.bookedValue.toLocaleString("en-IN")}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "योग्य वितरित मूल्य" : "Eligible delivered value"}</dt>
+            <dd>₹{aggregate.linkedEligibleValue.toLocaleString("en-IN")}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "फ़ोटो" : "Photos"}</dt>
+            <dd>{aggregate.photos}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "दूरी तय की गई" : "Distance travelled"}</dt>
+            <dd>{aggregate.distanceTravelledKm != null ? `${aggregate.distanceTravelledKm.toFixed(1)} km` : hi ? "अभी उपलब्ध नहीं" : "Not yet available"}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "GPS स्थिति" : "GPS status"}</dt>
+            <dd>
+              {aggregate.gps.startInsideGeofence === false || aggregate.gps.returnedToHq === false || aggregate.gps.visitExceptions > 0
+                ? hi
+                  ? `अपवाद (${aggregate.gps.visitExceptions})`
+                  : `Exceptions (${aggregate.gps.visitExceptions})`
+                : hi
+                  ? "सामान्य"
+                  : "Normal"}
+            </dd>
+          </div>
+          <div>
+            <dt>{hi ? "कार्य सत्र" : "Work sessions"}</dt>
+            <dd>{aggregate.sessionCount}</dd>
+          </div>
+        </dl>
+      )}
+      {dsr && (
         <>
-          <dl className={styles.statGrid}>
-            <div>
-              <dt>{hi ? "योजनाबद्ध" : "Planned"}</dt>
-              <dd>{dsr.planned}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "देखे गए" : "Visited"}</dt>
-              <dd>{dsr.visited}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "उत्पादक" : "Productive"}</dt>
-              <dd>{dsr.productive}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "छोड़े गए" : "Skipped"}</dt>
-              <dd>{dsr.skipped}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "अनियोजित जोड़े गए" : "Unplanned added"}</dt>
-              <dd>{dsr.unplannedAdded}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "वितरक संभावना" : "Distributor prospects"}</dt>
-              <dd>{dsr.distributorProspects}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
-              <dd>{dsr.orders}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "बुक मूल्य" : "Booked value"}</dt>
-              <dd>₹{dsr.bookedValue.toLocaleString("en-IN")}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "योग्य वितरित मूल्य" : "Eligible delivered value"}</dt>
-              <dd>₹{dsr.linkedEligibleValue.toLocaleString("en-IN")}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "फ़ोटो" : "Photos"}</dt>
-              <dd>{dsr.photos}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "दूरी तय की गई" : "Distance travelled"}</dt>
-              <dd>{dsr.distanceTravelledKm != null ? `${dsr.distanceTravelledKm.toFixed(1)} km` : hi ? "अभी उपलब्ध नहीं" : "Not yet available"}</dd>
-            </div>
-            <div>
-              <dt>{hi ? "GPS स्थिति" : "GPS status"}</dt>
-              <dd>
-                {dsr.gps.startInsideGeofence === false || dsr.gps.returnedToHq === false || dsr.gps.visitExceptions > 0
-                  ? hi
-                    ? `अपवाद (${dsr.gps.visitExceptions})`
-                    : `Exceptions (${dsr.gps.visitExceptions})`
-                  : hi
-                    ? "सामान्य"
-                    : "Normal"}
-              </dd>
-            </div>
-          </dl>
+          <h3>
+            {hi ? "सत्र विवरण" : "Session detail"} —{" "}
+            {dsr.session.startedAt.toLocaleDateString(hi ? "hi-IN" : "en-IN")}{" "}
+            {dsr.session.startedAt.toLocaleTimeString(hi ? "hi-IN" : "en-IN", { hour: "2-digit", minute: "2-digit" })}
+          </h3>
           <div className={`${styles.tableWrap} ${styles.desktopOnly}`}>
             <table>
               <thead>
@@ -2670,14 +2684,17 @@ export async function OperationalWorkspace({
       range === "custom" && query.from
         ? [new Date(query.from), query.to ? new Date(new Date(query.to).getTime() + 86_400_000) : new Date()]
         : (rangeBounds[range] ?? rangeBounds.month!);
-    const [activeSession, history] = await Promise.all([
-      db.seeraWorkSession.findFirst({
-        where: { employeeId: userId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
-        orderBy: { startedAt: "desc" },
-      }),
+    // Section-3 fix: the top summary used to come from a single, arbitrarily-picked session
+    // (whichever was active, or the most-recently-started one in range) and could show near-zero
+    // numbers while other same-day sessions had real activity. aggregate covers every session in
+    // [from, to) for this actor - that's the correct "day/range total". The single-session drill-
+    // down (dsr) now only loads when the user has explicitly picked a session from the history
+    // list below (query.session) - it's an optional detail view, not a stand-in for the total.
+    const [aggregate, history] = await Promise.all([
+      executiveDsrAggregate(db, userId, from, to),
       executiveDsrHistory(db, userId, { from, to }),
     ]);
-    const selectedSessionId = query.session || activeSession?.id || history[0]?.session.id;
+    const selectedSessionId = query.session;
     const dsr = selectedSessionId
       ? await executiveDsr(db, userId, selectedSessionId).catch((e) => ifExpectedNotFound<Awaited<ReturnType<typeof executiveDsr>>>(e))
       : null;
@@ -2687,6 +2704,7 @@ export async function OperationalWorkspace({
         base={base}
         query={query}
         range={range}
+        aggregate={aggregate}
         dsr={dsr}
         history={history}
         selectedSessionId={selectedSessionId}
