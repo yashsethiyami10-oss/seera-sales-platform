@@ -942,6 +942,24 @@ export function FieldJourney({
     [capturePhotoType, setCapturePhotoType] = useState("SHOPFRONT"),
     [showEndDayPreview, setShowEndDayPreview] = useState(false),
     [showAddCustomer, setShowAddCustomer] = useState(false),
+    // Section-1 fix: idempotencyKey/checkInIdempotencyKey were previously generated fresh via
+    // key() (crypto.randomUUID()) on EVERY call to submitAddCustomer — including a manual retry
+    // after the user sees an error. If the first attempt's mutation had actually already
+    // committed server-side (a network drop after the request reached the server, before the
+    // response came back — a real, common mobile-network failure mode, not hypothetical), a
+    // retry with a brand-new key defeats server-side idempotency entirely and creates a genuine
+    // duplicate retailer+visit. Caching the keys for the CURRENT open Add Customer attempt here
+    // means a retry (including the "Save anyway" duplicate-confirm path, which is a continuation
+    // of the same attempt) reuses the same keys, so the server's own idempotencyKey lookup in
+    // createRetailerAndCheckIn correctly recognizes it as the same intent and returns the
+    // already-created record instead of creating a second one. Reset only on genuine success or
+    // explicit cancel — never on a mere failed/retried attempt.
+    addCustomerKeysRef = useRef<{ idempotencyKey: string; checkInIdempotencyKey: string } | null>(null),
+    // Same bug, same fix, for Save Order (visit.id-scoped since a visit can legitimately have
+    // multiple distinct orders — resets on genuine success so the NEXT order for this same visit
+    // gets its own key, and naturally resets on visit change since the whole visit subtree remounts
+    // via key={visit.id} below).
+    orderKeyRef = useRef<string | null>(null),
     [duplicateWarning, setDuplicateWarning] = useState<{ similar: { id: string; businessName: string; mobile: string | null }[] } | null>(null),
     [gpsStatus, setGpsStatus] = useState<GpsStatus>("IDLE"),
     [startWorkingType, setStartWorkingType] = useState<WorkingType>("RETAILING"),
@@ -1646,7 +1664,14 @@ export function FieldJourney({
           <button className={styles.primary} disabled={busy}>
             {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "सहेजें और चेक-इन करें" : "Save & check in"}
           </button>
-          <button type="button" disabled={busy} onClick={() => setShowAddCustomer(false)}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              addCustomerKeysRef.current = null;
+              setShowAddCustomer(false);
+            }}
+          >
             {hi ? "रद्द करें" : "Cancel"}
           </button>
         </form>
@@ -1668,6 +1693,8 @@ export function FieldJourney({
     await yieldToPaint();
     const { status, point } = await captureGps();
     setGpsStatus(status);
+    if (!addCustomerKeysRef.current) addCustomerKeysRef.current = { idempotencyKey: key(), checkInIdempotencyKey: key() };
+    const { idempotencyKey, checkInIdempotencyKey } = addCustomerKeysRef.current;
     const result = await send("create-retailer-and-check-in", {
       businessName: String(f.get("businessName")),
       address: { area: String(f.get("area")) },
@@ -1684,9 +1711,9 @@ export function FieldJourney({
       longitude: point.longitude,
       accuracy: point.accuracy,
       confirmDuplicate,
-      idempotencyKey: key(),
+      idempotencyKey,
       workSessionId: session!.id,
-      checkInIdempotencyKey: key(),
+      checkInIdempotencyKey,
     });
     setBusy(false);
     setBusyLabel(null);
@@ -1705,6 +1732,7 @@ export function FieldJourney({
         });
       return;
     }
+    addCustomerKeysRef.current = null;
     setDuplicateWarning(null);
     setShowAddCustomer(false);
     setMessage({ ok: true, text: hi ? "ग्राहक जोड़ा गया — विज़िट शुरू।" : "Customer added successfully — visit started." });
@@ -2227,12 +2255,13 @@ export function FieldJourney({
                 return;
               }
               void (async () => {
+                if (!orderKeyRef.current) orderKeyRef.current = key();
                 const outcome = await run(
                   "place-order",
                   {
                     retailerId: visit.retailerId,
                     commercialPartyId: currentDistributorId,
-                    idempotencyKey: key(),
+                    idempotencyKey: orderKeyRef.current,
                     notes: String(f.get("notes") ?? ""),
                     commercialPaymentType: paymentType,
                     lines,
@@ -2248,8 +2277,13 @@ export function FieldJourney({
                 );
                 // Save Order should flow straight into Photo, not leave the Executive on the
                 // same tab (final UI reachability audit fix) — advance on both a live success and
-                // an offline-queued outcome, since either means the order step is done.
-                if ("queued" in outcome || outcome.success) setMode("PHOTO");
+                // an offline-queued outcome, since either means the order step is done. A genuine
+                // success also means this key's job is done — reset so a second, distinct order
+                // for this same visit gets its own key instead of resolving to this one's result.
+                if ("queued" in outcome || outcome.success) {
+                  orderKeyRef.current = null;
+                  setMode("PHOTO");
+                }
               })();
             }}
           >
