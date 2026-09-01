@@ -157,6 +157,9 @@ function yieldToPaint(): Promise<void> {
 // already-proven 2-decode path — never a guess, never a silently-wrong dimension.
 const PREVIEW_MAX_DIMENSION = 800;
 const PREVIEW_QUALITY = 0.7;
+// JPEG camera files are uploaded unchanged. These bounds remain only for non-JPEG fallback conversion.
+const UPLOAD_MAX_DIMENSION = 4096;
+const UPLOAD_QUALITY = 0.9;
 const MAX_FINAL_UPLOAD_BYTES = 8_000_000;
 // Vercel Functions cap the whole JSON request at 4.5 MB. Base64 adds roughly one third, and the
 // request also carries JSON metadata, so 3 MB is the hard final-blob ceiling. Only originals at or
