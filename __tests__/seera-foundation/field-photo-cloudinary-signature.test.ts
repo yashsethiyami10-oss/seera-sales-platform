@@ -22,10 +22,7 @@ describe("Cloudinary field-photo signed upload — real signature math (P0 21-Au
       expect(paramsBlock).toContain(key);
     }
     // Must NOT be present in the SIGNED object — resource_type is routing metadata Cloudinary's
-    // own upload API never treats as a signable body parameter (confirmed against the Cloudinary
-    // Node SDK's own build_upload_params(), which never includes it); transformation/
-    // allowed_formats are dropped as redundant since the client already resizes/compresses to a
-    // bounded JPEG before upload.
+    // upload API excludes from the authentication signature.
     expect(paramsBlock).not.toContain("resource_type");
     expect(paramsBlock).not.toContain("transformation");
     expect(paramsBlock).not.toContain("allowed_formats");
