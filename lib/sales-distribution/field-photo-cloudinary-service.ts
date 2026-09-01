@@ -120,13 +120,12 @@ export async function finalizeFieldPhotoUpload(
   const width = Number(input.width);
   const height = Number(input.height);
   const format = String(input.format ?? "").toLowerCase();
-  const expectedSecurePrefix = `https://res.cloudinary.com/${cloudName}/image/upload/`;
+  const expectedSecureUrl = `https://res.cloudinary.com/${cloudName}/image/upload/v${input.version}/${input.publicId}.jpg`;
   if (
     resource.public_id !== input.publicId ||
     resource.resource_type !== "image" ||
     resource.type !== "upload" ||
-    !secureUrl.startsWith(expectedSecurePrefix) ||
-    !secureUrl.includes(`/v${input.version}/`) ||
+    secureUrl !== expectedSecureUrl ||
     !Number.isSafeInteger(bytes) || bytes <= 0 || bytes > MAX_UPLOAD_BYTES ||
     !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 ||
     width > MAX_DIMENSION || height > MAX_DIMENSION || format !== "jpg"
