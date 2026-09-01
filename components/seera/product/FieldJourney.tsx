@@ -409,10 +409,10 @@ function sendPhotoTelemetry(event: string, fields: Record<string, unknown> = {})
   }).catch(() => {});
 }
 
-async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: Blob) {
+async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: Blob, signedOverride?: SignedPhotoUpload) {
   const uploadStart = performance.now();
   sendPhotoTelemetry("UPLOAD_START", { visitId, outputBytes: blob.size });
-  const signed = await postPhotoJson<SignedPhotoUpload>("/api/field/photos/upload-signature", { visitId });
+  const signed = signedOverride ?? await getPhotoUploadSignature(visitId);
   if (signed.expiresAt <= Math.floor(Date.now() / 1000)) throw new Error("Photo upload authorization expired. Please retry.");
   const form = new FormData();
   form.set("file", blob, "field-visit.jpg");
@@ -1155,6 +1155,16 @@ export function FieldJourney({
     window.history.replaceState(window.history.state, "", url.toString());
   }
 
+  const photoSignatureRef = useRef<{ visitId: string; promise: Promise<SignedPhotoUpload> } | null>(null);
+
+  function getPhotoUploadSignature(visitId: string) {
+    const cached = photoSignatureRef.current;
+    if (cached?.visitId === visitId) return cached.promise;
+    const promise = postPhotoJson<SignedPhotoUpload>("/api/field/photos/upload-signature", { visitId });
+    photoSignatureRef.current = { visitId, promise };
+    return promise;
+  }
+
   // Android camera hardening:
   // The old <input type="file" capture="environment"> path hands camera capture back through the
   // WebView's WebChromeClient. On real Android devices that can terminate/recreate the WebView while
@@ -1170,7 +1180,7 @@ export function FieldJourney({
     webPath?: string;
     thumbnail?: string;
     metadata?: { format?: string; size?: number };
-  }) => {
+  }, signedOverride?: SignedPhotoUpload) => {
     if (!visit) return;
     const inflightKey = `seera:photo-inflight:${visit.id}`;
     if (typeof sessionStorage !== "undefined") sessionStorage.setItem(inflightKey, "1");
@@ -1227,7 +1237,7 @@ export function FieldJourney({
       // exact low-memory renderer failure seen in field UAT. The upload itself is a Blob/FormData
       // operation and does not require decoding the image.
       const uploadBlob = blob;
-      const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob);
+      const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob, signedOverride);
       setLocalAddedPhotos((current) => [...current, data]);
       revokePhotoPreview();
       setPhotoPreview(null);
@@ -1251,6 +1261,9 @@ export function FieldJourney({
     setBusy(true);
     setBusyLabel(hi ? "कैमरा खुल रहा है…" : "Opening camera…");
     checkpointActiveVisitInUrl(visit.id);
+    // Request the signed Cloudinary upload authorization while the camera Activity is open.
+    // This removes the post-capture auth/audit round-trip from the user's "Uploading…" wait.
+    const signaturePromise = getPhotoUploadSignature(visit.id);
     await yieldToPaint();
 
     try {
@@ -1261,7 +1274,7 @@ export function FieldJourney({
         correctOrientation: true,
       });
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
-      await uploadNativeCameraResult(result);
+      await uploadNativeCameraResult(result, await signaturePromise);
     } catch (error) {
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
       setMessage({
