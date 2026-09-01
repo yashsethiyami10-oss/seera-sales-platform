@@ -13,6 +13,9 @@ describe("Android native camera regression", () => {
     expect(journey).toContain('Camera.takePhoto(');
     expect(journey).toContain('appRestoredResult');
     expect(journey).toContain('seera:camera-pending:');
+    expect(journey).toContain('preparePhotoDerivatives(');
+    expect(journey).toContain('uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob)');
+    expect(journey).not.toContain('uploadFieldPhotoDirect(visit.id, capturePhotoType, blob)');
   });
 
   it("registers the Capacitor camera plugin in the Android project", () => {
