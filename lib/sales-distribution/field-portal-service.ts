@@ -49,7 +49,15 @@ export async function executiveCheckIn(
       },
     }),
     db.seeraVisit.findFirst({
-      where: { workSession: { employeeId: actorId }, checkedOutAt: null },
+      // An open visit belongs to a WORK SESSION, not merely to the employee forever.
+      // Looking only at employeeId allowed a visit from a previous ENDED day to block
+      // Add Customer / Check-in on the next day, producing the exact live error:
+      // "You already have an open visit" after the Founder had already ended the day.
+      // The current ACTIVE session is the authoritative scope boundary.
+      where: {
+        workSession: { id: input.workSessionId, employeeId: actorId, status: "ACTIVE" },
+        checkedOutAt: null,
+      },
     }),
   ]);
   if (!session)
@@ -621,7 +629,15 @@ export async function createRetailerAndCheckIn(
       where: { id: input.workSessionId, employeeId: actorId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
     }),
     db.seeraVisit.findFirst({
-      where: { workSession: { employeeId: actorId }, checkedOutAt: null },
+      // An open visit belongs to a WORK SESSION, not merely to the employee forever.
+      // Looking only at employeeId allowed a visit from a previous ENDED day to block
+      // Add Customer / Check-in on the next day, producing the exact live error:
+      // "You already have an open visit" after the Founder had already ended the day.
+      // The current ACTIVE session is the authoritative scope boundary.
+      where: {
+        workSession: { id: input.workSessionId, employeeId: actorId, status: "ACTIVE" },
+        checkedOutAt: null,
+      },
     }),
     db.seeraRetailer.findUnique({ where: { idempotencyKey: input.idempotencyKey } }),
     // Company Direct governance (GAP-004 addendum) — same explicit-input-only scoping as
