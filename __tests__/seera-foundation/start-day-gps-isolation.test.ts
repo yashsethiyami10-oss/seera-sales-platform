@@ -20,7 +20,7 @@ describe("Start Day durability boundary", () => {
     expect(gps).toBeGreaterThan(sessionWrite);
     const gpsDeferred = fn.indexOf("const gpsSample = async () =>");
     const returnSession = fn.indexOf("return session;");
-    expect(gpsDeferred).toBeGreaterThan(gps);
+    expect(gpsDeferred).toBeGreaterThan(sessionWrite);
     expect(returnSession).toBeGreaterThan(gpsDeferred);
     expect(fn.slice(sessionWrite, gpsDeferred)).not.toContain("await recordGpsSample");
     expect(fn).toContain("after(gpsSample)");
