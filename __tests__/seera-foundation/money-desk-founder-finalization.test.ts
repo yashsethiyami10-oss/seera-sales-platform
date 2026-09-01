@@ -8,7 +8,7 @@ describe("Money Desk Founder finalization boundary", () => {
     const moneyDesk = readFileSync(path.join(process.cwd(), "lib/finance/money-desk-service.ts"), "utf8");
     expect(quickEntry).toContain("finalizeForFounder?: boolean");
     expect(quickEntry).toContain('input.finalizeForFounder && permissions.has("system:super_admin")');
-    expect(moneyDesk).toContain("finalizeForFounder: Boolean((await effectivePermissions(db, actorId)).has("system:super_admin"))");
+    expect(moneyDesk).toContain(`finalizeForFounder: Boolean((await effectivePermissions(db, actorId)).has("system:super_admin"))`);
     expect(moneyDesk).toContain('counterpartyType: def.counterpartyType === "NONE" ? input.counterpartyType : def.counterpartyType');
   });
 
