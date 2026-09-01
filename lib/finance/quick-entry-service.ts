@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { FoundationError } from "@/lib/foundation/errors";
+import { recordAudit } from "@/lib/foundation/audit-service";
 import { createExpense, submitExpense, postExpense } from "./expense-service";
 import { resolveExecutiveOperationalScope } from "@/lib/sales-distribution/scope";
 import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
