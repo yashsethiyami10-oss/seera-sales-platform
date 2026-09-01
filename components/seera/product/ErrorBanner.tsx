@@ -21,6 +21,17 @@ function localizeFieldError(text: string, language: "EN" | "HI") {
     "Photo upload failed. Please retry.": "फ़ोटो अपलोड नहीं हो सकी। कृपया फिर से प्रयास करें।",
     "Photo upload failed. Please retake.": "फ़ोटो अपलोड नहीं हो सकी। कृपया फिर से फ़ोटो लें।",
     "The action could not be completed. Please try again.": "कार्रवाई पूरी नहीं हो सकी। कृपया फिर से प्रयास करें।",
+    // Phase 6 bilingual gap fix: these are the actual, deterministic FoundationError messages
+    // thrown by the field flow's most common failures (checkout's own outcome/photo requirements,
+    // Start Day's distributor scope) — previously fell through to raw English text for Hindi
+    // users because this dictionary only had the 8 entries above.
+    "No-order reason required": "ऑर्डर न होने का कारण आवश्यक है।",
+    "Add a shop photo or choose a valid no-photo reason.": "दुकान की फ़ोटो जोड़ें या फ़ोटो न होने का सही कारण चुनें।",
+    "Only one active workday is allowed": "एक समय में केवल एक सक्रिय कार्य दिवस की अनुमति है।",
+    "Choose a working Distributor before starting the day for this work type": "दिन शुरू करने से पहले कार्यरत Distributor चुनें।",
+    "That Distributor is not in your authorized working scope": "वह Distributor आपके अधिकृत कार्य क्षेत्र में नहीं है।",
+    "This visit is already checked out and can no longer accept a new order": "यह विज़िट पहले ही चेक-आउट हो चुकी है, अब नया ऑर्डर स्वीकार नहीं किया जा सकता।",
+    "Visit unavailable": "विज़िट उपलब्ध नहीं है।",
   };
   return exact[text] ?? text;
 }
