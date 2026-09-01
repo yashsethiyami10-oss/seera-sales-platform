@@ -131,7 +131,6 @@ export function DeliveryActions({
           {hi ? "प्रमाण संदर्भ" : "Proof reference"}
           <input
             name="proofReference"
-            required
             placeholder={hi ? "ओटीपी / हस्ताक्षर / फोटो संदर्भ" : "OTP / signature / photo reference"}
           />
         </label>
