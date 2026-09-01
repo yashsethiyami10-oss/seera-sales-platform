@@ -1125,12 +1125,35 @@ export function FieldJourney({
     }
   };
 
+  // Native-camera resume checkpoint. Android may recreate the WebView while the camera Activity
+  // is foregrounded. The URL checkpoint lets the server reconstruct this exact open visit after
+  // recreation; server-side work-session ownership remains authoritative.
+  function checkpointActiveVisitInUrl(visitId: string | undefined) {
+    if (typeof window === "undefined" || !visitId) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("activeVisitId") === visitId) return;
+    url.searchParams.set("activeVisitId", visitId);
+    window.history.replaceState(window.history.state, "", url.toString());
+  }
+
+  function clearActiveVisitUrl() {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("activeVisitId")) return;
+    url.searchParams.delete("activeVisitId");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }
+
   // Android camera hardening:
   // The old <input type="file" capture="environment"> path hands camera capture back through the
   // WebView's WebChromeClient. On real Android devices that can terminate/recreate the WebView while
   // returning from the camera, which is exactly the "photo -> dashboard" symptom seen in field UAT.
   // Native Capacitor Camera owns the camera Activity and returns a bounded JPEG URI instead, so the
   // web renderer never has to receive the raw camera file through an HTML file input.
+  useEffect(() => {
+    checkpointActiveVisitInUrl(visit?.id);
+  }, [visit?.id]);
+
   const uploadNativeCameraResult = async (result: {
     uri?: string;
     webPath?: string;
@@ -1216,13 +1239,14 @@ export function FieldJourney({
     setMessage(null);
     setBusy(true);
     setBusyLabel(hi ? "कैमरा खुल रहा है…" : "Opening camera…");
+    checkpointActiveVisitInUrl(visit.id);
     await yieldToPaint();
 
     try {
       const { Camera } = await import("@capacitor/camera");
       if (typeof sessionStorage !== "undefined") sessionStorage.setItem(`seera:camera-pending:${visit.id}`, "1");
       const result = await Camera.takePhoto({
-        quality: 90,
+        quality: 85,
         correctOrientation: true,
       });
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
@@ -2486,6 +2510,7 @@ export function FieldJourney({
               // kicked off. That refresh still lands moments later in the background to reconcile
               // dashboard/beat counters; the rawVisit?.id effect resets this flag once it does.
               if ("queued" in result || result.success) {
+                clearActiveVisitUrl();
                 // P0 21-Aug stale-visit fix (Part K): clear the local optimistic visit + this
                 // visit's own sessionStorage mode marker immediately, synchronously with success —
                 // do not leave the just-closed visit's screen/state actionable while
