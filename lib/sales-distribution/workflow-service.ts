@@ -1138,6 +1138,15 @@ export async function fulfilRetailerOrder(
       afterState: { status, decision: input.action, reason: input.reason ?? null },
     });
     return result;
+  }, {
+    // Same fix already applied to placeRetailerOrder's transaction above (see its own comment):
+    // this transaction was running on Prisma's bare 5000ms/2000ms defaults and was measured live
+    // against TEST Neon failing with P2028 "Transaction already closed" at ~8.4s — a genuine
+    // Distributor-portal accept/reject reliability bug, not a hypothetical one. The per-line
+    // seraOrderLine.update loop above means this widens further than placeRetailerOrder's tx as
+    // order line count grows; the work itself is unchanged here, only the budget.
+    timeout: 10_000,
+    maxWait: 5_000,
   });
   // Stage 7 fix: ORDER_ACCEPTED/ORDER_PARTIAL were defined in the retailer-communication event
   // matrix (retailer-communication-service.ts) but never actually triggered anywhere — queued
