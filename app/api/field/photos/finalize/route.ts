@@ -10,6 +10,13 @@ const requestSchema = z.object({
   visitId: z.string().min(1),
   photoType: z.enum(["SHOPFRONT", "COUNTER", "PRODUCT_DISPLAY", "BANNER_BRANDING", "MERCHANDISING", "OTHER"]),
   publicId: z.string().min(1).max(300),
+  version: z.number().int().positive(),
+  signature: z.string().regex(/^[a-f0-9]{40,64}$/),
+  secureUrl: z.string().url().max(1000),
+  bytes: z.number().int().positive(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  format: z.string().min(1).max(20),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
 }).strict();
