@@ -160,10 +160,10 @@ const PREVIEW_QUALITY = 0.7;
 // JPEG camera files are uploaded unchanged; non-JPEG fallback conversion is bounded.
 const UPLOAD_MAX_DIMENSION = 4096;
 const UPLOAD_QUALITY = 0.9;
-const MAX_FINAL_UPLOAD_BYTES = 8_000_000;
+const MAX_FINAL_UPLOAD_BYTES = 10_000_000;
 // JPEG uploads use direct multipart Cloudinary upload, so they are not base64-encoded through a
 // Vercel JSON request. The size ceiling is enforced before upload and again authoritatively at finalize.
-const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 8_000_000;
+const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 10_000_000;
 const PHOTO_TOO_LARGE_MESSAGE = "Photo is larger than 10 MB. Please retake at a lower camera resolution.";
 const PHOTO_PREP_FAILED_MESSAGE = "Photo could not be prepared. Please retake.";
 // Real camera JPEGs put their SOF (dimensions) and APP1/EXIF (orientation) markers within the
@@ -2239,7 +2239,7 @@ export function FieldJourney({
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg"
               capture="environment"
               style={{ display: "none" }}
               onChange={(event) => {
