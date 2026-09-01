@@ -157,14 +157,12 @@ function yieldToPaint(): Promise<void> {
 // already-proven 2-decode path — never a guess, never a silently-wrong dimension.
 const PREVIEW_MAX_DIMENSION = 800;
 const PREVIEW_QUALITY = 0.7;
-// JPEG camera files are uploaded unchanged. These bounds remain only for non-JPEG fallback conversion.
+// JPEG camera files are uploaded unchanged; non-JPEG fallback conversion is bounded.
 const UPLOAD_MAX_DIMENSION = 4096;
 const UPLOAD_QUALITY = 0.9;
 const MAX_FINAL_UPLOAD_BYTES = 8_000_000;
-// Vercel Functions cap the whole JSON request at 4.5 MB. Base64 adds roughly one third, and the
-// request also carries JSON metadata, so 3 MB is the hard final-blob ceiling. Only originals at or
-// below 1 MB are safe fallback candidates when a browser cannot resize; a multi-megabyte camera
-// file must fail closed instead of recreating the memory spike this path exists to prevent.
+// JPEG uploads use direct multipart Cloudinary upload, so they are not base64-encoded through a
+// Vercel JSON request. The size ceiling is enforced before upload and again authoritatively at finalize.
 const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 8_000_000;
 const PHOTO_TOO_LARGE_MESSAGE = "Photo is larger than 10 MB. Please retake at a lower camera resolution.";
 const PHOTO_PREP_FAILED_MESSAGE = "Photo could not be prepared. Please retake.";
@@ -1190,13 +1188,11 @@ export function FieldJourney({
         throw new Error(hi ? "कैमरा JPEG फ़ोटो उपलब्ध नहीं है। कृपया फिर से लें।" : "Camera did not return a JPEG photo. Please retake.");
       }
 
+      // Do not render the full-resolution camera blob before upload. An <img> preview
+      // forces Android Chrome/WebView to decode the entire original JPEG and can reproduce the
+      // exact low-memory renderer failure seen in field UAT. The upload itself is a Blob/FormData
+      // operation and does not require decoding the image.
       const uploadBlob = blob;
-      const previewBlob = blob;
-      const previewUrl = URL.createObjectURL(previewBlob);
-      photoPreviewUrlRef.current = previewUrl;
-      setPhotoPreview(previewUrl);
-      await yieldToPaint();
-
       const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob);
       setLocalAddedPhotos((current) => [...current, data]);
       revokePhotoPreview();
@@ -2301,11 +2297,8 @@ export function FieldJourney({
                     sourceHeight: derivatives.sourceHeight,
                     outputBytes: derivatives.uploadBlob.size,
                   });
-                  if (fileRef.current?.files?.[0] === file) {
-                    const previewUrl = URL.createObjectURL(derivatives.previewBlob);
-                    photoPreviewUrlRef.current = previewUrl;
-                    setPhotoPreview(previewUrl);
-                  }
+                  // Do not decode/render the full-resolution original before upload.
+                  // The saved Cloudinary URL becomes the authoritative preview after finalize.
                   setBusyLabel(hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…");
                   // Let the browser paint the preview and reclaim the decode/canvas memory from the
                   // pass above before the network upload starts — the exact breathing room the
