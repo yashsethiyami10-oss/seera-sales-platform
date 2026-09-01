@@ -158,8 +158,12 @@ function yieldToPaint(): Promise<void> {
 const PREVIEW_MAX_DIMENSION = 800;
 const PREVIEW_QUALITY = 0.7;
 // JPEG camera files are uploaded unchanged; non-JPEG fallback conversion is bounded.
-const UPLOAD_MAX_DIMENSION = 4096;
-const UPLOAD_QUALITY = 0.9;
+// Field evidence is detail-sensitive, but uploading modern 4K/50MP camera files directly can
+// turn a normal mobile-network save into a 15–30s transfer. 2048px preserves readable storefront
+// / counter / product evidence while keeping the network payload small enough for a fast save.
+const UPLOAD_MAX_DIMENSION = 2048;
+const UPLOAD_QUALITY = 0.86;
+const JPEG_DIRECT_UPLOAD_MAX_BYTES = 2_500_000;
 const MAX_FINAL_UPLOAD_BYTES = 10_000_000;
 // JPEG uploads use direct multipart Cloudinary upload, so they are not base64-encoded through a
 // Vercel JSON request. The size ceiling is enforced before upload and again authoritatively at finalize.
@@ -353,8 +357,7 @@ async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blo
 
 // Single entry point for the whole camera-return pipeline.
 async function preparePhotoDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number }> {
-  if (/^image\/jpeg$/i.test(file.type)) {
-    if (file.size > MAX_FINAL_UPLOAD_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+  if (/^image\/jpeg$/i.test(file.type) && file.size <= JPEG_DIRECT_UPLOAD_MAX_BYTES) {
     return { uploadBlob: file, previewBlob: file };
   }
   let derivatives: { uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number };
@@ -1272,8 +1275,11 @@ export function FieldJourney({
       const { Camera } = await import("@capacitor/camera");
       if (typeof sessionStorage !== "undefined") sessionStorage.setItem(`seera:camera-pending:${visit.id}`, "1");
       const result = await Camera.takePhoto({
-        quality: 85,
+        quality: 88,
+        targetWidth: 2048,
+        targetHeight: 2048,
         correctOrientation: true,
+        includeMetadata: true,
       });
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
       await uploadNativeCameraResult(result, await signaturePromise);
@@ -1307,7 +1313,7 @@ export function FieldJourney({
             uri?: string;
             webPath?: string;
             thumbnail?: string;
-            metadata?: { format?: string; size?: number };
+            metadata?: { format?: string; size?: number; resolution?: string };
           };
           await uploadNativeCameraResult(data);
         });
