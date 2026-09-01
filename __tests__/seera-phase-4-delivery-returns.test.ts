@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   derivePostDeliveryOrderStatus,
+  assertDeliveryProof,
 } from "@/lib/sales-distribution/delivery-service";
 import {
   assertReturnDoesNotExceedDelivered,
@@ -94,4 +95,11 @@ describe("Part 4 delivery/return regression guards", () => {
       assertReturnDoesNotExceedDelivered(10, 3, 7),
     ).not.toThrow();
   });
+  it("requires structured proof for actual delivered outcomes and binds it to the exact delivery", () => {
+    expect(() => assertDeliveryProof("DELIVERED", undefined, "order-1", "delivery-1")).toThrowError("DELIVERY_PROOF_REQUIRED");
+    expect(() => assertDeliveryProof("DELIVERED", { mode: "PHOTO", reference: "photo-1", orderId: "order-2", deliveryId: "delivery-1" }, "order-1", "delivery-1")).toThrowError("DELIVERY_PROOF_SCOPE_DENIED");
+    expect(() => assertDeliveryProof("DELIVERED", { mode: "PHOTO", reference: "photo-1", orderId: "order-1", deliveryId: "delivery-1" }, "order-1", "delivery-1")).not.toThrow();
+    expect(() => assertDeliveryProof("REFUSED", undefined, "order-1", "delivery-1")).not.toThrow();
+  });
+
 });
