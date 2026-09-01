@@ -1599,7 +1599,7 @@ export async function managerTeamScorecard(db: PrismaClient, managerId: string, 
     }),
     db.seeraVisitPhoto.findMany({
       where: { actorId: { in: employeeIds }, capturedAt: { gte: periodStart }, deletedAt: null },
-      select: { actorId: true },
+      select: { actorId: true, id: true, secureUrl: true, photoType: true, capturedAt: true },
     }),
     db.seeraTaClaim.findMany({
       where: { employeeId: { in: employeeIds }, status: "SUBMITTED" },
@@ -1658,8 +1658,16 @@ export async function managerTeamScorecard(db: PrismaClient, managerId: string, 
     followUpBacklog.set(f.ownerId, (followUpBacklog.get(f.ownerId) ?? 0) + 1);
     if (f.dueDate < now) overdueFollowUps.set(f.ownerId, (overdueFollowUps.get(f.ownerId) ?? 0) + 1);
   }
+  const photoEvidence = new Map<string, { id: string; secureUrl: string; photoType: string; capturedAt: Date }[]>();
   const photoCount = new Map<string, number>();
-  for (const p of photos) photoCount.set(p.actorId, (photoCount.get(p.actorId) ?? 0) + 1);
+  for (const p of photos) {
+    photoCount.set(p.actorId, (photoCount.get(p.actorId) ?? 0) + 1);
+    if (p.secureUrl) {
+      const list = photoEvidence.get(p.actorId) ?? [];
+      if (list.length < 6) list.push({ id: p.id, secureUrl: p.secureUrl, photoType: p.photoType, capturedAt: p.capturedAt });
+      photoEvidence.set(p.actorId, list);
+    }
+  }
   const taPendingCount = new Map<string, number>();
   const taPendingAmount = new Map<string, number>();
   for (const t of taPending) {
@@ -1725,6 +1733,7 @@ export async function managerTeamScorecard(db: PrismaClient, managerId: string, 
       followUpBacklog: followUpBacklog.get(e.id) ?? 0,
       overdueFollowUps: overdueFollowUps.get(e.id) ?? 0,
       photos30: photoCount.get(e.id) ?? 0,
+      photoEvidence: photoEvidence.get(e.id) ?? [],
       photoCompliancePct: visited > 0 ? Math.round(((photoCompliant.get(e.id) ?? 0) / visited) * 1000) / 10 : null,
       beatCompliancePct: planned > 0 ? Math.round((visited / planned) * 1000) / 10 : null,
       startDayCompliancePct: Math.round((daysCount / elapsedDays) * 1000) / 10,
