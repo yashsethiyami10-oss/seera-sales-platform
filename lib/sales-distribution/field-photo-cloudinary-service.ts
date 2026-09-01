@@ -7,7 +7,7 @@ import { FoundationError } from "@/lib/foundation/errors";
 
 const PHOTO_FOLDER_ROOT = "seera/field-visits";
 const MAX_UPLOAD_BYTES = 3_000_000;
-const MAX_DIMENSION = 1280;
+const MAX_DIMENSION = 1920;
 const SIGNATURE_MAX_AGE_SECONDS = 10 * 60;
 const PHOTO_TYPES = ["SHOPFRONT", "COUNTER", "PRODUCT_DISPLAY", "BANNER_BRANDING", "MERCHANDISING", "OTHER"] as const;
 
