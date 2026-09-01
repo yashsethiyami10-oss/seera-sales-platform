@@ -36,18 +36,23 @@ export function DeliveryActions({
           setMessage("");
           try {
             const form = new FormData(event.currentTarget);
+            const status = String(form.get("status"));
+            const proofReference = String(form.get("proofReference") ?? "").trim();
+            const selectedDelivery = deliveries.find((delivery) => delivery.id === deliveryId);
             const payload = {
               deliveryId,
-              status: String(form.get("status")),
+              status,
               receiverName: String(form.get("receiverName") ?? "") || undefined,
               reason: String(form.get("reason") ?? "") || undefined,
-              proof: {
-                mode: String(form.get("proofMode") ?? "OTHER"),
-                reference: String(form.get("proofReference") ?? "").trim(),
-                orderId: deliveries.find((delivery) => delivery.id === deliveryId)?.orderId ?? "",
-                deliveryId,
-                capturedFrom: "PORTAL",
-              },
+              proof: proofReference
+                ? {
+                    mode: String(form.get("proofMode") ?? "OTHER"),
+                    reference: proofReference,
+                    orderId: selectedDelivery?.orderId ?? "",
+                    deliveryId,
+                    capturedFrom: "PORTAL",
+                  }
+                : undefined,
               lines: lines.map((line) => ({
                 lineId: line.id,
                 quantity: Number(form.get(`line-${line.id}`) ?? 0),
