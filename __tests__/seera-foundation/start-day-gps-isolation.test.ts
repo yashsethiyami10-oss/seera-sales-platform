@@ -18,12 +18,11 @@ describe("Start Day durability boundary", () => {
     const gps = fn.indexOf('source: "START_DAY"');
     expect(sessionWrite).toBeGreaterThanOrEqual(0);
     expect(gps).toBeGreaterThan(sessionWrite);
-    const postCommit = fn.slice(gps);
-    const gpsDeferred = postCommit.indexOf("const gpsSample = async () =>");
-    const returnSession = postCommit.indexOf("return session;");
-    expect(gpsDeferred).toBeGreaterThanOrEqual(0);
+    const gpsDeferred = fn.indexOf("const gpsSample = async () =>");
+    const returnSession = fn.indexOf("return session;");
+    expect(gpsDeferred).toBeGreaterThan(gps);
     expect(returnSession).toBeGreaterThan(gpsDeferred);
-    expect(postCommit.slice(0, gpsDeferred)).not.toContain("await recordGpsSample");
+    expect(fn.slice(sessionWrite, gpsDeferred)).not.toContain("await recordGpsSample");
     expect(fn).toContain("after(gpsSample)");
     expect(fn).toContain("workflow.startFieldDay.gps_sample_failed");
   });
