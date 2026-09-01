@@ -412,7 +412,7 @@ function sendPhotoTelemetry(event: string, fields: Record<string, unknown> = {})
 async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: Blob, signedOverride?: SignedPhotoUpload) {
   const uploadStart = performance.now();
   sendPhotoTelemetry("UPLOAD_START", { visitId, outputBytes: blob.size });
-  const signed = signedOverride ?? await getPhotoUploadSignature(visitId);
+  const signed = signedOverride ?? await postPhotoJson<SignedPhotoUpload>("/api/field/photos/upload-signature", { visitId });
   if (signed.expiresAt <= Math.floor(Date.now() / 1000)) throw new Error("Photo upload authorization expired. Please retry.");
   const form = new FormData();
   form.set("file", blob, "field-visit.jpg");
