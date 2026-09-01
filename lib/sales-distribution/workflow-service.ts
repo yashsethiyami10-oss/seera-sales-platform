@@ -319,15 +319,40 @@ export async function startFieldDay(
         startedAt: new Date(),
       },
     });
-    await recordGpsSample(prisma, {
-      employeeId: actorId,
-      workSessionId: session.id,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      accuracy: input.accuracy,
-      source: "START_DAY",
-      trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
-    });
+    // The work-session row above is the authoritative Start Day mutation. GPS is secondary
+    // telemetry and must never turn a successfully-created ACTIVE session into a user-visible
+    // failure. A GPS/telemetry outage after the commit previously caused exactly the dangerous
+    // "Start Day failed" state: the session was already ACTIVE in DB while the UI showed an error,
+    // leaving the next retry to hit ACTIVE_WORKDAY_EXISTS. Keep the durable write and its response
+    // independent; telemetry is best-effort after commit.
+    const gpsSample = async () => {
+      try {
+        await recordGpsSample(prisma, {
+          employeeId: actorId,
+          workSessionId: session.id,
+          latitude: input.latitude,
+          longitude: input.longitude,
+          accuracy: input.accuracy,
+          source: "START_DAY",
+          trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
+        });
+      } catch (error) {
+        operationalLog("error", "workflow.startFieldDay.gps_sample_failed", {
+          actorId,
+          workSessionId: session.id,
+          errorName: error instanceof Error ? error.name : "unknown",
+          errorCode:
+            error && typeof error === "object" && "code" in error
+              ? (error as { code?: string }).code
+              : undefined,
+        });
+      }
+    };
+    try {
+      after(gpsSample);
+    } catch {
+      void gpsSample();
+    }
     return session;
   } catch (error) {
     if (
