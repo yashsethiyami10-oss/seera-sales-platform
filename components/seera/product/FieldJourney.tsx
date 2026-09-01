@@ -166,7 +166,7 @@ const MAX_FINAL_UPLOAD_BYTES = 8_000_000;
 // below 1 MB are safe fallback candidates when a browser cannot resize; a multi-megabyte camera
 // file must fail closed instead of recreating the memory spike this path exists to prevent.
 const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 8_000_000;
-const PHOTO_TOO_LARGE_MESSAGE = "Photo is too large for this device. Please retake the photo.";
+const PHOTO_TOO_LARGE_MESSAGE = "Photo is larger than 10 MB. Please retake at a lower camera resolution.";
 const PHOTO_PREP_FAILED_MESSAGE = "Photo could not be prepared. Please retake.";
 // Real camera JPEGs put their SOF (dimensions) and APP1/EXIF (orientation) markers within the
 // first few KB; this generously covers even an unusually large EXIF/thumbnail block without ever
