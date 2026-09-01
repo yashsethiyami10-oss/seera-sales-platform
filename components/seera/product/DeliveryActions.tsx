@@ -42,8 +42,10 @@ export function DeliveryActions({
               receiverName: String(form.get("receiverName") ?? "") || undefined,
               reason: String(form.get("reason") ?? "") || undefined,
               proof: {
-                reference:
-                  String(form.get("proofReference") ?? "") || undefined,
+                mode: String(form.get("proofMode") ?? "OTHER"),
+                reference: String(form.get("proofReference") ?? "").trim(),
+                orderId: deliveries.find((delivery) => delivery.id === deliveryId)?.id ?? "",
+                deliveryId,
                 capturedFrom: "PORTAL",
               },
               lines: lines.map((line) => ({
@@ -112,14 +114,20 @@ export function DeliveryActions({
           </label>
         ))}
         <label>
+          {hi ? "प्रमाण प्रकार" : "Proof mode"}
+          <select name="proofMode">
+            <option value="OTP">OTP</option>
+            <option value="SIGNATURE">{hi ? "हस्ताक्षर" : "Signature"}</option>
+            <option value="PHOTO">{hi ? "फोटो" : "Photo"}</option>
+            <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+          </select>
+        </label>
+        <label>
           {hi ? "प्रमाण संदर्भ" : "Proof reference"}
           <input
             name="proofReference"
-            placeholder={
-              hi
-                ? "ओटीपी / हस्ताक्षर / फोटो संदर्भ"
-                : "OTP / signature / photo reference"
-            }
+            required
+            placeholder={hi ? "ओटीपी / हस्ताक्षर / फोटो संदर्भ" : "OTP / signature / photo reference"}
           />
         </label>
         <label>
