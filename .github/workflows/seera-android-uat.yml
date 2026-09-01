@@ -29,7 +29,13 @@ jobs:
         run: npm ci
 
       - name: Run non-destructive regression suite
-        run: npx vitest run --config vitest.static.config.ts __tests__/seera-foundation/android-native-camera-regression.test.ts __tests__/seera-foundation/field-bilingual-errors.test.ts __tests__/seera-foundation/start-day-gps-isolation.test.ts
+        run: npx vitest run --config vitest.static.config.ts __tests__/seera-foundation/android-native-camera-regression.test.ts __tests__/seera-foundation/field-bilingual-errors.test.ts __tests__/seera-foundation/start-day-gps-isolation.test.ts __tests__/seera-foundation/field-workday-visit-scope-regression.test.ts __tests__/seera-foundation/money-desk-founder-finalization.test.ts __tests__/seera-phase-4-delivery-returns.test.ts
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Production web build
+        run: npm run build
 
       - name: Sync Capacitor Android plugins
         run: npx cap sync android
