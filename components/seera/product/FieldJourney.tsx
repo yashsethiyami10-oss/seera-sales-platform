@@ -2311,6 +2311,9 @@ export function FieldJourney({
                 void (async () => {
                   setBusy(true);
                   setBusyLabel(hi ? "फ़ोटो तैयार हो रही है…" : "Preparing photo…");
+                  // Start authorization immediately while the browser prepares the JPEG, so the
+                  // upload path does not pay the signature/audit round-trip after preparation.
+                  const signaturePromise = getPhotoUploadSignature(visit.id);
                   await yieldToPaint();
                   const prepStart = performance.now();
                   const inflightKey = `seera:photo-inflight:${visit.id}`;
@@ -2354,7 +2357,7 @@ export function FieldJourney({
                   // second user gesture to create it.
                   await yieldToPaint();
                   try {
-                    const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, derivatives.uploadBlob);
+                    const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, derivatives.uploadBlob, await signaturePromise);
                     if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
                     setLocalAddedPhotos((current) => [...current, data]);
                     revokePhotoPreview();
