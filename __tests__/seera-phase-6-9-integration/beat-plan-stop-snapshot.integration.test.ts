@@ -102,22 +102,22 @@ describe("guarded Phase 6-9 Beat Plan stop snapshot immutability", () => {
     await prisma.seeraRetailer.updateMany({ where: { id: { in: retailerIds } }, data: { beatId } });
   });
 
-  it("blocks publish atomically — a rejected publish creates no stops at all", async () => {
+  it("publishes atomically with zero mapped retailers — PUBLISHED status and zero stops, no partial/orphan state", async () => {
     await prisma.seeraRetailer.updateMany({ where: { id: { in: retailerIds } }, data: { lifecycle: "INACTIVE" } });
-    await expect(
-      createBeatPlan(prisma, manager, {
-        employeeId: executive,
-        territoryName: `Stop Territory ${suffix}`,
-        beatName: `Stop Beat ${suffix}`,
-        geographyType: "TOWN",
-        geographyName: "Stop Town 4",
-        dayOfWeek: (new Date().getDay() + 3) % 7,
-        effectiveFrom: new Date(),
-        publish: true,
-      }),
-    ).rejects.toMatchObject({ code: "BEAT_HAS_NO_RETAILERS" });
-    const orphanStops = await prisma.seeraJourneyPlanStop.count({ where: { plan: { geographyId: { in: (await prisma.seeraGeographyNode.findMany({ where: { name: "Stop Town 4" }, select: { id: true } })).map((g) => g.id) } } } });
-    expect(orphanStops).toBe(0);
+    const plan = await createBeatPlan(prisma, manager, {
+      employeeId: executive,
+      territoryName: `Stop Territory ${suffix}`,
+      beatName: `Stop Beat ${suffix}`,
+      geographyType: "TOWN",
+      geographyName: "Stop Town 4",
+      dayOfWeek: (new Date().getDay() + 3) % 7,
+      effectiveFrom: new Date(),
+      publish: true,
+    });
+    expect(plan.status).toBe("PUBLISHED");
+    expect(plan.retailerCount).toBe(0);
+    const stopCount = await prisma.seeraJourneyPlanStop.count({ where: { planId: plan.id } });
+    expect(stopCount).toBe(0);
     await prisma.seeraRetailer.updateMany({ where: { id: { in: retailerIds } }, data: { lifecycle: "ACTIVE" } });
   });
 });

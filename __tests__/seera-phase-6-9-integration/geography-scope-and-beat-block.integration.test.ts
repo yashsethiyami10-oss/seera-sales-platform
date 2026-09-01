@@ -90,7 +90,7 @@ describe("guarded Phase 6-9 authoritative geography scope + empty-Beat publish b
     ).rejects.toMatchObject({ code: "TERRITORY_OUT_OF_SCOPE" });
   });
 
-  it("EMPTY_BEAT_BLOCK: publishing a Beat with zero active retailers mapped is blocked, not a silent warning", async () => {
+  it("EMPTY_BEAT_ALLOWED: a Beat Plan publishes successfully with zero active retailers mapped — plan creation must not require the retailer master to already exist", async () => {
     const draft = await createBeatPlan(prisma, manager, {
       employeeId: executiveA,
       territoryName: `Territory A ${suffix}`,
@@ -103,19 +103,22 @@ describe("guarded Phase 6-9 authoritative geography scope + empty-Beat publish b
     });
     expect(draft.status).toBe("DRAFT");
     expect(draft.retailerCount).toBe(0);
-    await expect(publishBeatPlan(prisma, manager, draft.id)).rejects.toMatchObject({ code: "BEAT_HAS_NO_RETAILERS" });
-    await expect(
-      createBeatPlan(prisma, manager, {
-        employeeId: executiveA,
-        territoryName: `Territory A ${suffix}`,
-        beatName: `Beat A ${suffix}`,
-        geographyType: "TOWN",
-        geographyName: "Another Town",
-        dayOfWeek: 3,
-        effectiveFrom: new Date("2026-09-03"),
-        publish: true,
-      }),
-    ).rejects.toMatchObject({ code: "BEAT_HAS_NO_RETAILERS" });
+    const published = await publishBeatPlan(prisma, manager, draft.id);
+    expect(published.status).toBe("PUBLISHED");
+    expect(published.retailerCount).toBe(0);
+
+    const publishedDirect = await createBeatPlan(prisma, manager, {
+      employeeId: executiveA,
+      territoryName: `Territory A ${suffix}`,
+      beatName: `Beat A ${suffix}`,
+      geographyType: "TOWN",
+      geographyName: "Another Town",
+      dayOfWeek: 3,
+      effectiveFrom: new Date("2026-09-03"),
+      publish: true,
+    });
+    expect(publishedDirect.status).toBe("PUBLISHED");
+    expect(publishedDirect.retailerCount).toBe(0);
   });
 
   it("publish succeeds once at least one active retailer is actually mapped to the Beat", async () => {

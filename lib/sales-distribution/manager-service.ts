@@ -12,6 +12,14 @@ import { wholesaleOrderUnitToCanonicalPieces } from "./company-order-catalog";
 import { queuePartnerVisitCommunicationSafe } from "./partner-communication-service";
 import { isCompanyDirectEligible, distributorsForEmployeeIds } from "./scope";
 
+// Real production bug (Awdhesh Mishra / Neeraj Rawat, Jhansi Division, confirmed via read-only
+// production diagnostic): a subordinate later got a duplicate account created and the original was
+// disabled, but the original team-assignment row was never expired — SeeraAssignment has no direct
+// Prisma relation to User (subjectId/subjectType are plain polymorphic columns), so this query never
+// had a way to see the account was disabled. A DISABLED account must never appear in an active
+// manager's team roster/dashboard aggregation, regardless of how old or stale its assignment row is
+// — this is a status filter on the subordinate's actual account, not a data mutation, so it fixes
+// the visible symptom without touching (or needing to touch) the production assignment history.
 async function managerTeamEmployeeIds(db: PrismaClient, managerId: string) {
   const assignments = await db.seeraAssignment.findMany({
     where: {
@@ -21,7 +29,10 @@ async function managerTeamEmployeeIds(db: PrismaClient, managerId: string) {
     },
     select: { subjectId: true },
   });
-  return [managerId, ...assignments.map((a) => a.subjectId)];
+  const subjectIds = assignments.map((a) => a.subjectId);
+  if (subjectIds.length === 0) return [managerId];
+  const activeSubjects = await db.user.findMany({ where: { id: { in: subjectIds }, status: "ACTIVE" }, select: { id: true } });
+  return [managerId, ...activeSubjects.map((u) => u.id)];
 }
 
 export async function createManagerInstruction(

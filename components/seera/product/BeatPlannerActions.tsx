@@ -73,9 +73,9 @@ export function BeatPlannerActions({
     setBusy(true);
     setMessage("");
     try {
-      // Founder-final rule (23-Aug): publishing a Beat with zero active retailers mapped is now
-      // BLOCKED server-side (createBeatPlan/publishBeatPlan throw BEAT_HAS_NO_RETAILERS) rather
-      // than a soft warning after the fact — the catch block below surfaces that message directly.
+      // Publishing a Beat with zero active retailers mapped is allowed (production closure pass) —
+      // createBeatPlan/publishBeatPlan no longer block on this; the "Retailers in this plan: 0"
+      // hint below (retailerCount) is the informational state, not an error.
       await send(body);
       setMessage(successMessage ?? (hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully."));
       router.refresh();
@@ -220,7 +220,13 @@ export function BeatPlannerActions({
                   <>
                     {" · "}
                     <span className={p.retailerCount === 0 ? styles.shortHint : undefined}>
-                      {hi ? `इस योजना में रिटेलर्स: ${p.retailerCount}` : `Retailers in this plan: ${p.retailerCount}`}
+                      {p.retailerCount === 0 && p.status === "PUBLISHED"
+                        ? hi
+                          ? "प्रकाशित — अभी तक कोई रिटेलर मैप नहीं किया गया।"
+                          : "Published — no retailers mapped yet."
+                        : hi
+                          ? `इस योजना में रिटेलर्स: ${p.retailerCount}`
+                          : `Retailers in this plan: ${p.retailerCount}`}
                     </span>
                   </>
                 )}

@@ -2116,7 +2116,14 @@ export function FieldJourney({
                           return;
                         }
                       }
-                      void run(
+                      // Section-2 hard-state-correction fix: run()'s router.refresh() alone does
+                      // not clear this component's own local useState — without explicitly
+                      // resetting it here, showEndDayPreview stays true forever after a SUCCESSFUL
+                      // end-day, so this whole summary panel (including the "Confirm & end day"
+                      // button itself) kept rendering, letting the same session be ended again.
+                      // Only reset on genuine success — a failed/offline-queued end-day should
+                      // leave the preview open so the user can see what happened and retry.
+                      const outcome = await run(
                         "end-day",
                         {
                           sessionId: session.id,
@@ -2131,6 +2138,7 @@ export function FieldJourney({
                         hi ? "दिन समाप्त हुआ।" : "Day ended.",
                         hi ? "दिन समाप्त हो रहा है…" : "Ending day…",
                       );
+                      if (!("queued" in outcome) && outcome.success) setShowEndDayPreview(false);
                     }}
                   >
                     {busy ? (busyLabel ?? (hi ? "दिन समाप्त हो रहा है…" : "Ending day…")) : hi ? "पुष्टि करें और समाप्त करें" : "Confirm & end day"}

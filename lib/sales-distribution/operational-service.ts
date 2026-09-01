@@ -578,14 +578,13 @@ export async function createBeatPlan(
       const { distributorId, distributorNameSnapshot } = input.distributorName
         ? await resolveDistributorByName(tx, input.distributorName)
         : { distributorId: undefined, distributorNameSnapshot: undefined };
-      // Founder-final rule (23-Aug): publishing a plan with zero active retailers mapped to it is
-      // no longer a soft warning — it is BLOCKED outright. A Manager may still save it as a DRAFT
-      // (input.publish:false) while retailer/Beat mapping is still in progress.
+      // Founder-final rule REVERSED (production closure pass): a Beat Plan must be publishable even
+      // with zero retailers currently mapped — plan creation must not require the retailer master
+      // to already exist. retailerCount is still computed and recorded (audit, return value, and
+      // the "Retailers mapped: N" informational UI state) — it's just no longer a publish blocker.
       const retailerCount = await tx.seeraRetailer.count({
         where: { salespersonId: input.employeeId, lifecycle: "ACTIVE", OR: [{ beatId: beat.id }, { marketId: geography.id }, { territoryId: territory.id }] },
       });
-      if (input.publish && retailerCount === 0)
-        throw new FoundationError("BEAT_HAS_NO_RETAILERS", "This Beat has no active retailers mapped. Map at least one retailer before publishing.", 409);
       const plan = await tx.seeraJourneyPlan.create({
         data: {
           employeeId: input.employeeId,
@@ -687,20 +686,22 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
       ...(plan.territoryId ? [{ territoryId: plan.territoryId }] : []),
     ],
   };
-  // Founder-final rule (23-Aug): a normal publish of a Beat with zero active retailers mapped is
-  // BLOCKED outright. Publish (status change) + immutable stop snapshot creation now happen in ONE
-  // transaction — a plan can never end up PUBLISHED without its stops, or vice versa (Part 1).
+  // Rule REVERSED (production closure pass): publishing with zero active retailers mapped is no
+  // longer blocked — see createBeatPlan's own comment for the full rationale. Publish (status
+  // change) + immutable stop snapshot creation still happen in ONE transaction — a plan can never
+  // end up PUBLISHED without its stops (possibly zero of them) being created atomically with it.
   return prisma.$transaction(async (tx) => {
     const retailerCount = await tx.seeraRetailer.count({ where: { salespersonId: plan.employeeId, lifecycle: "ACTIVE", ...matchWhere } });
-    if (retailerCount === 0)
-      throw new FoundationError("BEAT_HAS_NO_RETAILERS", "This Beat has no active retailers mapped. Map at least one retailer before publishing.", 409);
     const updated = await tx.seeraJourneyPlan.update({ where: { id: plan.id }, data: { status: "PUBLISHED" } });
     await createPlanStops(tx, plan.id, plan.employeeId, matchWhere);
     await tx.notification.create({
       data: {
         recipientId: plan.employeeId,
         title: "Beat plan published",
-        body: `${beat?.name ?? geography?.name ?? "Your route"} has been assigned to your route plan.`,
+        body:
+          retailerCount === 0
+            ? `${beat?.name ?? geography?.name ?? "Your route"} has been published to your route plan — no retailers mapped yet.`
+            : `${beat?.name ?? geography?.name ?? "Your route"} has been assigned to your route plan.`,
         type: "FOUNDATION",
         entityType: "SeeraJourneyPlan",
         entityId: plan.id,
