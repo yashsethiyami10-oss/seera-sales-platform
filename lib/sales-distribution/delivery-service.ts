@@ -44,13 +44,20 @@ export async function completeDelivery(
         );
       if (["REFUSED","SHOP_CLOSED","PAYMENT_ISSUE","STOCK_UNAVAILABLE","WRONG_ORDER","RESCHEDULED","DAMAGED","OTHER"].includes(input.status) && !input.reason?.trim())
         throw new FoundationError("DELIVERY_REASON_REQUIRED","A reason is required for this delivery outcome",400);
+      const proofRequired = input.status === "DELIVERED" || input.status === "PARTIAL_DELIVERED";
+      if (proofRequired && !input.proof)
+        throw new FoundationError("DELIVERY_PROOF_REQUIRED", "Proof of delivery is required for a delivered outcome", 400);
       if (input.proof) {
         const proofOrderId = typeof input.proof.orderId === "string" ? input.proof.orderId : undefined;
         const proofDeliveryId = typeof input.proof.deliveryId === "string" ? input.proof.deliveryId : undefined;
-        if (proofOrderId && proofOrderId !== delivery.orderId)
-          throw new FoundationError("DELIVERY_PROOF_SCOPE_DENIED", "Proof is linked to a different order", 409);
-        if (proofDeliveryId && proofDeliveryId !== delivery.id)
-          throw new FoundationError("DELIVERY_PROOF_SCOPE_DENIED", "Proof is linked to a different delivery", 409);
+        const proofMode = typeof input.proof.mode === "string" ? input.proof.mode : undefined;
+        const proofReference = typeof input.proof.reference === "string" ? input.proof.reference.trim() : "";
+        if (proofOrderId !== delivery.orderId || proofDeliveryId !== delivery.id)
+          throw new FoundationError("DELIVERY_PROOF_SCOPE_DENIED", "Proof must be linked to this exact order and delivery", 409);
+        if (!["OTP", "SIGNATURE", "PHOTO", "OTHER"].includes(proofMode ?? ""))
+          throw new FoundationError("DELIVERY_PROOF_MODE_REQUIRED", "Select a valid proof mode", 400);
+        if (!proofReference)
+          throw new FoundationError("DELIVERY_PROOF_REFERENCE_REQUIRED", "Proof reference is required", 400);
       }
       const assigned =
         permissions.has("distributor_delivery:execute") &&
