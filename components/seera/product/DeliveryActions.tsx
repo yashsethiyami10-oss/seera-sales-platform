@@ -5,7 +5,7 @@ import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
 
 type Line = { id: string; label: string; remaining: number };
-type Delivery = { id: string; label: string; lines: Line[] };
+type Delivery = { id: string; orderId: string; label: string; lines: Line[] };
 
 export function DeliveryActions({
   language,
@@ -44,7 +44,7 @@ export function DeliveryActions({
               proof: {
                 mode: String(form.get("proofMode") ?? "OTHER"),
                 reference: String(form.get("proofReference") ?? "").trim(),
-                orderId: deliveries.find((delivery) => delivery.id === deliveryId)?.id ?? "",
+                orderId: deliveries.find((delivery) => delivery.id === deliveryId)?.orderId ?? "",
                 deliveryId,
                 capturedFrom: "PORTAL",
               },
