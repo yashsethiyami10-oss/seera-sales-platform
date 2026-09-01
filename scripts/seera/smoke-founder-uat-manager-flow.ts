@@ -62,7 +62,7 @@ async function main() {
 
   // Clean up any dangling ACTIVE session/open visit/open joint-work from a prior run.
   const openVisit = await db.seeraVisit.findFirst({ where: { workSession: { employeeId: manager.id, status: "ACTIVE" }, checkedOutAt: null } });
-  if (openVisit) await managerRetailerCheckOut(db, manager.id, openVisit.id, { outcome: "NO_ORDER", noOrderReason: "Smoke cleanup", photoExceptionReason: "OTHER" }).catch(() => {});
+  if (openVisit) await managerRetailerCheckOut(db, manager.id, openVisit.id, { outcome: "NO_ORDER", noOrderReason: "Smoke cleanup", photoExceptionReason: "OTHER", idempotencyKey: `smoke-cleanup-${openVisit.id}` }).catch(() => {});
   const openJoint = await db.seeraJointWork.findFirst({ where: { managerId: manager.id, endedAt: null } });
   if (openJoint) await closeJointWorking(db, manager.id, openJoint.id, { observations: "cleanup", coaching: "cleanup" });
   const dangling = await db.seeraWorkSession.findFirst({ where: { employeeId: manager.id, status: "ACTIVE" } });

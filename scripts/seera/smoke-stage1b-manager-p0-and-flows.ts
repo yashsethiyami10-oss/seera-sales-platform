@@ -87,6 +87,7 @@ async function main() {
   await managerRetailerCheckOut(db, manager.id, newRetailerVisit.id, {
     outcome: "ORDER_BOOKED",
     photoExceptionReason: "OTHER",
+    idempotencyKey: `smoke-checkout-${newRetailerVisit.id}`,
   });
   // managerRetailerCheckOut itself doesn't book an order (order booking happens via a separate
   // book-order call server-side in the real UI action handler) — book one directly here to test

@@ -238,8 +238,14 @@ export async function managerRetailerCheckIn(
       );
     retailer = found;
   }
+  // Section-5 fix: this previously matched ANY of the Manager's work sessions ever (just
+  // employeeId), the same stale-open-visit class of bug already found and fixed for the
+  // Executive's createRetailerAndCheckIn (see that function's own comment) — a visit left open
+  // under a PREVIOUS, already-ENDED session could block today's check-in. Scoped to the current
+  // session (already proven ACTIVE by activeManagerFieldSession above) so only a genuinely still-
+  // open visit under THIS active session can block.
   const open = await db.seeraVisit.findFirst({
-    where: { workSession: { employeeId: managerId }, checkedOutAt: null },
+    where: { workSessionId: session.id, checkedOutAt: null },
   });
   if (open && open.retailerId !== retailer.id)
     throw new FoundationError("OPEN_VISIT_EXISTS", "Checkout the current retailer first", 409);
@@ -287,12 +293,22 @@ export async function managerRetailerCheckOut(
     latitude?: number;
     longitude?: number;
     accuracy?: number;
+    idempotencyKey: string;
   },
 ) {
   await authorize(db, {
     actorId: managerId,
     permission: "manager_field:operate",
   });
+  if (!input.idempotencyKey) throw new FoundationError("IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required", 400);
+  // Section-5 fix: this previously had no idempotency-key mechanism and wrote via a plain
+  // db.seeraVisit.update() with no compare-and-swap - a genuine TOCTOU race (two concurrent
+  // checkout requests for the same visit could both pass the checkedOutAt:null read below before
+  // either commits its write) and no idempotent-replay handling for a legitimate retry. Same fix
+  // already proven correct for the Executive's executiveCheckOut (field-portal-service.ts) -
+  // ported directly rather than inventing a different mechanism.
+  const priorByKey = await db.seeraVisit.findFirst({ where: { id: visitId, checkoutIdempotencyKey: input.idempotencyKey } });
+  if (priorByKey) return priorByKey;
   const visit = await db.seeraVisit.findFirst({
     where: {
       id: visitId,
@@ -318,8 +334,8 @@ export async function managerRetailerCheckOut(
       : input.outcome === "FOLLOW_UP"
         ? "FOLLOW_UP"
         : "PRODUCTIVE";
-  const updated = await db.seeraVisit.update({
-    where: { id: visit.id },
+  const closeResult = await db.seeraVisit.updateMany({
+    where: { id: visit.id, checkedOutAt: null },
     data: {
       outcome,
       noOrderReason: input.noOrderReason,
@@ -328,9 +344,19 @@ export async function managerRetailerCheckOut(
       photoExceptionReason: input.photoExceptionReason ?? visit.photoExceptionReason,
       routeDeviationReason: input.routeDeviationReason,
       checkedOutAt: new Date(),
+      checkoutIdempotencyKey: input.idempotencyKey,
     },
   });
-  await recordGpsSample(db, {
+  if (closeResult.count === 0) {
+    // Lost the race to a concurrent request for this same visit - same replay-vs-conflict split
+    // as executiveCheckOut: the same key means this is a safe idempotent replay of the winner's
+    // own result; a different key is a genuinely conflicting concurrent intent.
+    const winner = await db.seeraVisit.findUniqueOrThrow({ where: { id: visit.id } });
+    if (winner.checkoutIdempotencyKey === input.idempotencyKey) return winner;
+    throw new FoundationError("VISIT_SCOPE_DENIED", "Active Manager visit unavailable", 403);
+  }
+  const updated = await db.seeraVisit.findUniqueOrThrow({ where: { id: visit.id } });
+  void recordGpsSample(db, {
     employeeId: managerId,
     workSessionId: visit.workSessionId,
     latitude: input.latitude,
@@ -338,7 +364,7 @@ export async function managerRetailerCheckOut(
     accuracy: input.accuracy,
     source: "CHECK_OUT",
     trackingStatus: input.latitude != null ? "OK" : "UNAVAILABLE",
-  });
+  }).catch((error) => console.error("record_gps_sample.manager_checkout_failed", error));
   return updated;
 }
 

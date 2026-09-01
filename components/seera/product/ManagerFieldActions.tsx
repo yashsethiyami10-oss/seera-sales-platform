@@ -88,7 +88,15 @@ export function ManagerFieldActions({
 }) {
   const hi = language === "HI",
     router = useRouter(),
-    fileRef = useRef<HTMLInputElement>(null);
+    fileRef = useRef<HTMLInputElement>(null),
+    // Section-5 fix: same bug/fix as the Executive's FieldJourney (see that file's own comment) —
+    // crypto.randomUUID() was called fresh on every submit including manual retries, defeating
+    // server-side idempotency. checkInKeyRef covers both check-in paths (new customer, existing
+    // retailer); orderKeyRef covers book-order — reset only on a genuine success (run() now
+    // returns a boolean for exactly this), never on a failed/retried attempt.
+    checkInKeyRef = useRef<string | null>(null),
+    orderKeyRef = useRef<string | null>(null),
+    checkoutKeyRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [outcome, setOutcome] = useState("ORDER_BOOKED"),
@@ -102,7 +110,7 @@ export function ManagerFieldActions({
     ]);
   const skuById = new Map(skus.map((s) => [s.value, s]));
 
-  const run = async (body: unknown) => {
+  const run = async (body: unknown): Promise<boolean> => {
     setBusy(true);
     setMessage("");
     try {
@@ -114,8 +122,10 @@ export function ManagerFieldActions({
       // current scroll position on a long form, reading as if nothing happened. Same fix pattern
       // as the Executive's scrollToJourneyTop().
       document.getElementById("manager-field-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Action failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -203,8 +213,8 @@ export function ManagerFieldActions({
               const form = new FormData(event.currentTarget);
               const withPoint = await withGps({});
               if (!withPoint) return;
-              const idempotencyKey = crypto.randomUUID();
-              await run({
+              if (!checkInKeyRef.current) checkInKeyRef.current = crypto.randomUUID();
+              const ok = await run({
                 action: "retailer-check-in",
                 payload: {
                   workSessionId: sessionId,
@@ -218,10 +228,13 @@ export function ManagerFieldActions({
                     notes: String(form.get("notes") ?? "") || undefined,
                   },
                   ...withPoint,
-                  idempotencyKey,
+                  idempotencyKey: checkInKeyRef.current,
                 },
               });
-              setShowAddCustomer(false);
+              if (ok) {
+                checkInKeyRef.current = null;
+                setShowAddCustomer(false);
+              }
             }}
           >
             <label>{hi ? "दुकान / फर्म का नाम *" : "Firm / Shop name *"}<input name="businessName" required /></label>
@@ -268,7 +281,10 @@ export function ManagerFieldActions({
                 const form = new FormData(event.currentTarget);
                 const withPoint = await withGps({});
                 if (!withPoint) return;
-                void run({ action: "retailer-check-in", payload: { workSessionId: sessionId, retailerId: String(form.get("retailerId")), idempotencyKey: crypto.randomUUID(), ...withPoint } });
+                if (!checkInKeyRef.current) checkInKeyRef.current = crypto.randomUUID();
+                void run({ action: "retailer-check-in", payload: { workSessionId: sessionId, retailerId: String(form.get("retailerId")), idempotencyKey: checkInKeyRef.current, ...withPoint } }).then(
+                  (ok) => { if (ok) checkInKeyRef.current = null; },
+                );
               }}
             >
               <label>
@@ -298,18 +314,20 @@ export function ManagerFieldActions({
                     setMessage(hi ? "हर उत्पाद के लिए दर (₹0 से अधिक) दर्ज करें।" : "Enter a rate greater than ₹0 for every product.");
                     return;
                   }
+                  if (!orderKeyRef.current) orderKeyRef.current = crypto.randomUUID();
                   const withPoint = await withGps({
                     visitId: activeVisit,
                     notes: String(form.get("notes") || "") || undefined,
                     commercialPaymentType: paymentType,
                     lines: validLines.map((l) => ({ skuId: l.skuId, quantity: l.quantity, rate: l.rate })),
-                    idempotencyKey: crypto.randomUUID(),
+                    idempotencyKey: orderKeyRef.current,
                     photoExceptionReason: String(form.get("photoExceptionReason") || "") || undefined,
                     routeDeviationReason: String(form.get("routeDeviationReason") || "") || undefined,
                   });
                   if (!withPoint) return;
                   const { gpsExceptionReason: _ignored, ...bookPayload } = withPoint;
-                  await run({ action: "book-order", payload: bookPayload });
+                  const ok = await run({ action: "book-order", payload: bookPayload });
+                  if (ok) orderKeyRef.current = null;
                   return;
                 }
                 const withPoint = await withGps({
@@ -321,7 +339,9 @@ export function ManagerFieldActions({
                   routeDeviationReason: String(form.get("routeDeviationReason") || "") || undefined,
                 });
                 if (!withPoint) return;
-                await run({ action: "retailer-check-out", payload: withPoint });
+                if (!checkoutKeyRef.current) checkoutKeyRef.current = crypto.randomUUID();
+                const ok = await run({ action: "retailer-check-out", payload: { ...withPoint, idempotencyKey: checkoutKeyRef.current } });
+                if (ok) checkoutKeyRef.current = null;
               })();
             }}
           >

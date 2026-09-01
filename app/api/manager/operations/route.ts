@@ -166,6 +166,7 @@ export async function POST(request: Request) {
           latitude: z.number().optional(),
           longitude: z.number().optional(),
           accuracy: z.number().optional(),
+          idempotencyKey: z.string().min(1),
         })
         .parse(payload);
       result = await managerRetailerCheckOut(prisma, user.id, v.visitId, v);
