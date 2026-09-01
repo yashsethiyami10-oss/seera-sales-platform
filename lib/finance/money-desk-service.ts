@@ -163,7 +163,7 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
       amount: input.amount,
       date: input.date,
       treasuryAccountId: input.treasuryAccountId,
-      counterpartyType: input.counterpartyType,
+      counterpartyType: def.counterpartyType === "NONE" ? input.counterpartyType : def.counterpartyType,
       counterpartyId: resolvedCounterpartyId,
       counterpartyName: input.counterpartyName,
       description: input.description,
