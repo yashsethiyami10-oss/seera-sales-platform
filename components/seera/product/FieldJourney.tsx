@@ -436,7 +436,18 @@ async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: 
   const finalizeStart = performance.now();
   sendPhotoTelemetry("FINALIZE_START", { visitId });
   try {
-    const result = await postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", { visitId, photoType, publicId: uploaded.public_id });
+    const result = await postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", {
+      visitId,
+      photoType,
+      publicId: uploaded.public_id,
+      version: Number(uploaded.version),
+      signature: String(uploaded.signature),
+      secureUrl: String(uploaded.secure_url),
+      bytes: Number(uploaded.bytes),
+      width: Number(uploaded.width),
+      height: Number(uploaded.height),
+      format: String(uploaded.format),
+    });
     sendPhotoTelemetry("FINALIZE_SUCCESS", { visitId, elapsedMs: Math.round(performance.now() - finalizeStart) });
     return result;
   } catch (error) {
