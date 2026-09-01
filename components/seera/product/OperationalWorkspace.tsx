@@ -4352,7 +4352,7 @@ export async function OperationalWorkspace({
       // on (final audit finding), so all three slugs now share the same actionable PENDING/
       // RESCHEDULED delivery list rather than leaving two of them unactionable.
       const deliveries=await db.seeraDelivery.findMany({where:{status:{in:["PENDING","RESCHEDULED"]},order:{sellerPartnerId:{in:parties.map((x)=>x.value)}}},include:{order:{include:{lines:true,retailer:{select:{businessName:true}},buyerPartner:{select:{legalName:true,tradeName:true}}}}},orderBy:{createdAt:"asc"},take:50});
-      workflow=<DeliveryActions language={language} deliveries={deliveries.map((delivery)=>({id:delivery.id,label:`${delivery.order.orderNumber} · ${delivery.order.retailer?.businessName ?? delivery.order.buyerPartner?.tradeName ?? delivery.order.buyerPartner?.legalName ?? "Recipient"}`,lines:delivery.order.lines.map((line)=>({id:line.id,label:`${line.skuCodeSnapshot} · ${line.productNameSnapshot}`,remaining:Math.max(0,Number(line.dispatchedQuantity)-Number(line.deliveredQuantity)-Number(line.refusedQuantity)-Number(line.returnedQuantity))}))}))}/>;
+      workflow=<DeliveryActions language={language} deliveries={deliveries.map((delivery)=>({id:delivery.id,orderId:delivery.orderId,label:`${delivery.order.orderNumber} · ${delivery.order.retailer?.businessName ?? delivery.order.buyerPartner?.tradeName ?? delivery.order.buyerPartner?.legalName ?? "Recipient"}`,lines:delivery.order.lines.map((line)=>({id:line.id,label:`${line.skuCodeSnapshot} · ${line.productNameSnapshot}`,remaining:Math.max(0,Number(line.dispatchedQuantity)-Number(line.deliveredQuantity)-Number(line.refusedQuantity)-Number(line.returnedQuantity))}))}))}/>;
     } else if (
       portal === "distributor" &&
       item.slug === "fulfilment" &&
