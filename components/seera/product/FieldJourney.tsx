@@ -1172,14 +1172,22 @@ export function FieldJourney({
       }
 
       if (!blob || blob.size === 0) throw new Error(hi ? "फ़ोटो वापस नहीं मिल सकी। कृपया फिर से लें।" : "The captured photo could not be recovered. Please retake.");
-      if (blob.size > MAX_FINAL_UPLOAD_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
 
-      const previewUrl = URL.createObjectURL(blob);
+      // Native Camera's targetWidth/targetHeight/quality are best-effort hints; on real devices the
+      // returned JPEG can still exceed the server's 3 MB / 1280px constraints. NEVER upload that
+      // native result directly. Run the same bounded derivative pipeline used by the browser path so
+      // the preview and the Cloudinary upload are both derived from the constrained JPEG, while the
+      // original high-resolution camera blob is released as soon as preparation completes.
+      const { uploadBlob, previewBlob } = await preparePhotoDerivatives(
+        new File([blob], "field-visit.jpg", { type: "image/jpeg" }),
+      );
+
+      const previewUrl = URL.createObjectURL(previewBlob);
       photoPreviewUrlRef.current = previewUrl;
       setPhotoPreview(previewUrl);
       await yieldToPaint();
 
-      const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, blob);
+      const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob);
       setLocalAddedPhotos((current) => [...current, data]);
       revokePhotoPreview();
       setPhotoPreview(null);
