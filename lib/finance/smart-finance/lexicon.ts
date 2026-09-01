@@ -74,6 +74,7 @@ export const CATEGORY_KEYWORDS: { keywords: string[]; purposeCode: string; label
   { purposeCode: "EXP-OFFICE", label: "Office Expense", keywords: ["office expense", "office kharcha", "stationery", "stationary", "printer", "cartridge", "कार्यालय", "office supplies", "tea coffee", "pantry"] },
   { purposeCode: "EXP-TRAVEL", label: "Travel (Other)", keywords: ["travel", "yatra", "यात्रा", "bus ticket", "train ticket", "flight", "hotel stay", "lodging", "auto fare", "taxi"] },
   { purposeCode: "EXP-UTILITY", label: "Utility", keywords: ["utility", "water bill", "internet bill", "wifi", "broadband", "phone bill", "mobile recharge", "telephone", "पानी बिल"] },
+  { purposeCode: "EXP-ADVANCE", label: "Advance to Person", keywords: ["advance", "advance diya", "advance de diya", "peshgi", "पेशगी", "अग्रिम", "cash advance", "temporary advance", "loan to staff", "udhaar diya", "udhar diya"] },
   { purposeCode: "EXP-REIMBURSEMENT", label: "Employee Expense Reimbursement", keywords: ["reimbursement", "reimburse", "प्रतिपूर्ति", "expense claim", "kharcha wapas", "staff claim"] },
   { purposeCode: "SAL-EMP", label: "Salary", keywords: ["salary", "salry", "tankhwah", "tankhah", "वेतन", "pagar", "pagaar", "wages", "mehntana", "मज़दूरी", "monthly salary"] },
 ];
@@ -116,4 +117,8 @@ export const STOPWORDS = new Set([
   "aaye", "mila", "received", "hua", "hui", "gaya", "gaye", "gayi", "kar", "karke", "wala", "wali",
   "amount", "total", "sum", "paisa", "paise", "money", "cash", "bank", "via", "through",
   "re", "note", "notes",
+  // advance-lifecycle verbs — stripped so the party name is isolated cleanly
+  "advance", "advanc", "peshgi", "wapas", "waapas", "wapis", "settle", "settled", "settlement",
+  "adjust", "adjusted", "recover", "recovered", "return", "returned", "vasool", "vasul", "kaat",
+  "kaata", "kata", "clear", "cleared", "hua", "hui",
 ]);

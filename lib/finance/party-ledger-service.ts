@@ -4,6 +4,8 @@ import { FoundationError } from "@/lib/foundation/errors";
 import { ledgerReadModel, partyOutstanding } from "@/lib/sales-distribution/financial-service";
 import { deriveCostCentre } from "./cost-centre";
 import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
+import { OTHER_PARTY_DIMENSION_KIND, OTHER_PARTY_ADVANCE_ACCOUNT } from "./smart-finance/context";
+import { getOtherPartyIdentity } from "./smart-finance/other-party";
 
 // SEERA PROFESSIONAL LEDGER — the one shared running-balance statement engine for every party
 // type (Distributor, Super Stockist, Vendor, Employee). Founder visual review (24-Aug §17):
@@ -13,7 +15,7 @@ import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog"
 // SeeraExpense, SeeraTaClaim) so PDF/CSV/UI can never disagree with each other or invent a
 // second accounting effect (spec §38 "exactly once").
 
-export type LedgerPartyType = "DISTRIBUTOR" | "SUPER_STOCKIST" | "VENDOR" | "EMPLOYEE";
+export type LedgerPartyType = "DISTRIBUTOR" | "SUPER_STOCKIST" | "VENDOR" | "EMPLOYEE" | "OTHER_PARTY";
 
 export type LedgerLine = { skuCode: string; product: string; pack: string; uom: string; quantity: number; rate: number; taxable: number; gst: number; lineTotal: number };
 
@@ -134,7 +136,70 @@ export async function partyLedgerStatement(db: PrismaClient, actorId: string, in
   const to = input.to ?? new Date();
   if (input.partyType === "DISTRIBUTOR" || input.partyType === "SUPER_STOCKIST") return distributorOrSsLedger(db, actorId, input.partyType, input.partyId, from, to);
   if (input.partyType === "VENDOR") return vendorLedger(db, actorId, input.partyId, from, to);
+  if (input.partyType === "OTHER_PARTY") return otherPartyLedger(db, actorId, input.partyId, from, to);
   return employeeLedger(db, actorId, input.partyId, from, to);
+}
+
+// OTHER PARTY (Smart Finance non-employee person) ledger — same Professional Ledger engine as every
+// other party type. Debit-normal (an advance given is a receivable). Rows come ONLY from posted
+// records: advances = SeeraExpense(payeeType OTHER_PARTY, entryType ADVANCE) [Dr the party];
+// settlements/recoveries = party-tagged SeeraJournalLine on account 1300 posted by settleAdvance
+// [Cr the party]. Never fabricates an outstanding balance.
+async function otherPartyLedger(db: PrismaClient, actorId: string, dimensionId: string, from: Date, to: Date): Promise<PartyLedgerStatement> {
+  await authorize(db, { actorId, permission: "expense:create" });
+  const dimension = await db.seeraFinancialDimension.findUniqueOrThrow({ where: { id: dimensionId } });
+  if (dimension.kind !== OTHER_PARTY_DIMENSION_KIND) throw new FoundationError("NOT_AN_OTHER_PARTY", "That record is not an Other Party", 400);
+
+  const [advances, settlements, identity] = await Promise.all([
+    db.seeraExpense.findMany({ where: { payeeType: OTHER_PARTY_DIMENSION_KIND, payeeId: dimensionId, status: "POSTED" }, select: { id: true, date: true, amount: true, description: true, expenseNumber: true, treasuryAccountId: true, createdAt: true } }),
+    db.seeraJournalLine.findMany({ where: { partyType: OTHER_PARTY_DIMENSION_KIND, partyId: dimensionId, accountId: OTHER_PARTY_ADVANCE_ACCOUNT, journal: { status: "POSTED" } }, select: { id: true, debit: true, credit: true, description: true, treasuryAccountId: true, journal: { select: { date: true, journalNumber: true, narration: true, reason: true, createdAt: true } } } }),
+    getOtherPartyIdentity(db, dimensionId),
+  ]);
+  const treasuryIds = [...new Set([...advances.map((a) => a.treasuryAccountId), ...settlements.map((s) => s.treasuryAccountId)].filter((v): v is string => !!v))];
+  const treasuryNameById = new Map((treasuryIds.length ? await db.seeraTreasuryAccount.findMany({ where: { id: { in: treasuryIds } }, select: { id: true, name: true } }) : []).map((t) => [t.id, t.name]));
+
+  const advanceRows: Omit<LedgerRow, "balance">[] = advances.map((e) => ({
+    id: e.id,
+    date: e.date.toISOString(),
+    particulars: "Advance",
+    voucher: e.expenseNumber,
+    debit: Number(e.amount),
+    credit: 0,
+    sourceType: "SeeraExpense",
+    sourceId: e.id,
+    reason: e.description,
+    treasury: e.treasuryAccountId ? (treasuryNameById.get(e.treasuryAccountId) ?? null) : null,
+    postedAt: e.createdAt.toISOString(),
+    lines: null,
+  }));
+  const settlementRows: Omit<LedgerRow, "balance">[] = settlements.map((l) => {
+    const net = Number(l.credit) - Number(l.debit);
+    const isRecovery = /recover|wapas|returned/i.test(`${l.journal.narration} ${l.journal.reason ?? ""} ${l.description ?? ""}`);
+    return {
+      id: l.id,
+      date: l.journal.date.toISOString(),
+      particulars: isRecovery ? "Advance recovered" : "Advance settled",
+      voucher: l.journal.journalNumber,
+      debit: net < 0 ? Math.abs(net) : 0,
+      credit: net > 0 ? net : 0,
+      sourceType: "SeeraJournalEntry",
+      sourceId: l.journal.journalNumber,
+      reason: l.description ?? l.journal.reason,
+      treasury: l.treasuryAccountId ? (treasuryNameById.get(l.treasuryAccountId) ?? null) : null,
+      postedAt: l.journal.createdAt.toISOString(),
+      lines: null,
+    };
+  });
+
+  const { openingBalance, rows, totals } = partitionAndRunningBalance([...advanceRows, ...settlementRows], from, to, "DEBIT");
+  return {
+    party: { id: dimension.id, name: dimension.name, type: "OTHER_PARTY", address: null, mobile: identity.mobile, gstin: null, territory: identity.partyType },
+    period: { from: from.toISOString(), to: to.toISOString() },
+    normalSide: "DEBIT",
+    openingBalance,
+    rows,
+    totals,
+  };
 }
 
 async function distributorOrSsLedger(db: PrismaClient, actorId: string, partyType: "DISTRIBUTOR" | "SUPER_STOCKIST", partyId: string, from: Date, to: Date): Promise<PartyLedgerStatement> {
@@ -375,6 +440,11 @@ export async function ledgerPartyOptions(db: PrismaClient, actorId: string, part
     const vendors = await db.seeraVendor.findMany({ orderBy: { legalName: "asc" }, select: { id: true, legalName: true, tradeName: true } });
     return vendors.map((v) => ({ id: v.id, name: v.tradeName ?? v.legalName }));
   }
+  if (partyType === "OTHER_PARTY") {
+    await authorize(db, { actorId, permission: "expense:create" });
+    const parties = await db.seeraFinancialDimension.findMany({ where: { kind: OTHER_PARTY_DIMENSION_KIND, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+    return parties.map((p) => ({ id: p.id, name: p.name }));
+  }
   await authorize(db, { actorId, permission: "expense:create" });
   // Real production bug found via Founder UAT (25-Aug): querying every ACTIVE user with no role
   // filter pulled in Retailer/Distributor/S.S. portal-login accounts too — a retailer's shop name
@@ -400,6 +470,6 @@ export async function partyOutstandingForGuidedReceipt(db: PrismaClient, actorId
 }
 
 export function assertKnownPartyType(value: string | null): LedgerPartyType {
-  if (value === "DISTRIBUTOR" || value === "SUPER_STOCKIST" || value === "VENDOR" || value === "EMPLOYEE") return value;
+  if (value === "DISTRIBUTOR" || value === "SUPER_STOCKIST" || value === "VENDOR" || value === "EMPLOYEE" || value === "OTHER_PARTY") return value;
   throw new FoundationError("UNKNOWN_PARTY_TYPE", "Unknown ledger party type", 400);
 }

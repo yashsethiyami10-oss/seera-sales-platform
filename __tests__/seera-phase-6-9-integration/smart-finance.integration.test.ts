@@ -48,14 +48,21 @@ describe("guarded Smart Finance — governed NL entry through the existing Money
     // Raise the EXPENSE approval floor for this suite so a routine 8k advertisement auto-clears to
     // POSTED (the maker-checker path is exercised separately below via the PAYMENT policy).
     await updateFinanceApprovalPolicy(prisma, founder, { category: "EXPENSE", thresholdAmount: 5_000_000, requiresApproval: true });
+    // The shared TEST database's seera_treasury_accounts table is not truncated between runs — clear
+    // the slate so name-based treasury resolution ("HDFC se") matches exactly this suite's account.
+    await prisma.seeraTreasuryAccount.updateMany({ where: { isActive: true }, data: { isActive: false } });
     const hdfc = await createTreasuryAccount(prisma, founder, { kind: "BANK", code: `SF-HDFC-${suffix}`, name: `HDFC Bank ${suffix}` });
     hdfcId = hdfc.id;
     await createTreasuryAccount(prisma, founder, { kind: "CASH", code: `SF-CASH-${suffix}`, name: `Cash Box ${suffix}` });
   }, 600000);
   afterAll(async () => { await prisma.$disconnect(); }, 600000);
 
+  // Per-run-unique sentence so global count() assertions are not polluted by the shared TEST
+  // database's non-truncated expense / money-desk tables.
+  const ADV = `Advertisement ke 8000 rupees HDFC bank se pay kiye run ${suffix}`;
+
   it("interprets a Hinglish expense sentence into a structured, master-resolved draft (no posting)", async () => {
-    const draft = await interpretSmartFinance(prisma, founder, { text: "Advertisement ke 8000 rupees HDFC bank se pay kiye" });
+    const draft = await interpretSmartFinance(prisma, founder, { text: ADV });
     expect(draft.direction).toBe("MONEY_OUT");
     expect(draft.purposeCode).toBe("EXP-ADVERTISEMENT");
     expect(draft.amount).toBe(8000);
@@ -64,12 +71,12 @@ describe("guarded Smart Finance — governed NL entry through the existing Money
     expect(draft.understood).toBe(true);
     expect(draft.confidence).toBe("HIGH");
     // No SeeraMoneyDeskTransaction created by interpretation alone.
-    expect(await prisma.seeraMoneyDeskTransaction.count({ where: { description: { contains: "Advertisement ke 8000" } } })).toBe(0);
+    expect(await prisma.seeraMoneyDeskTransaction.count({ where: { description: { contains: suffix } } })).toBe(0);
   });
 
   it("posts through createMoneyDeskTransaction exactly once and updates the real expense ledger", async () => {
     const key = `sf-adv-${suffix}`;
-    const { result } = await postDraftAsMoneyDesk(founder, "Advertisement ke 8000 rupees HDFC bank se pay kiye", key);
+    const { result } = await postDraftAsMoneyDesk(founder, ADV, key);
     expect(result.status).toBe("POSTED");
 
     const refs = (result.downstreamRefs ?? {}) as { expenseId?: string; journalId?: string };
@@ -82,11 +89,11 @@ describe("guarded Smart Finance — governed NL entry through the existing Money
     // IDEMPOTENT: same key ⇒ same transaction, no second expense / journal.
     const retry = await createMoneyDeskTransaction(prisma, founder, {
       purposeCode: "EXP-ADVERTISEMENT", direction: "BANK_OUT", amount: 8000, date: new Date(),
-      treasuryAccountId: hdfcId, description: "Advertisement ke 8000 rupees HDFC bank se pay kiye",
+      treasuryAccountId: hdfcId, description: ADV,
       formData: { paymentMode: "BANK", __smartFinance: { originalText: "x" } }, idempotencyKey: key,
     });
     expect(retry.id).toBe(result.id);
-    expect(await prisma.seeraExpense.count({ where: { description: { contains: "Advertisement" }, amount: 8000 } })).toBe(1);
+    expect(await prisma.seeraExpense.count({ where: { description: { contains: suffix } } })).toBe(1);
   });
 
   it("Transaction Detail exposes the Smart Finance source + the exact original instruction", async () => {

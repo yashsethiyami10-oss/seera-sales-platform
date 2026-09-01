@@ -173,6 +173,12 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
   // door onto that same category, never a second loan/EMI accounting path.
   "EXP-EMI": expenseDef("EXP-EMI", "EMI / Loan Repayment", "ईएमआई / ऋण चुकौती", "QE-LOAN-REPAYMENT", "FINANCE"),
   "EXP-REIMBURSEMENT": { ...expenseDef("EXP-REIMBURSEMENT", "Employee Expense Reimbursement", "कर्मचारी व्यय प्रतिपूर्ति", "QE-STAFF-REIMBURSEMENT", "EMPLOYEE"), quickEntryType: "REIMBURSEMENT", requiredFields: ["counterpartyName"], optionalFields: [] },
+  // Advance to a person (employee OR a governed "Other Party"). Reuses the EXISTING QE-STAFF-ADVANCE
+  // quick-entry category, which maps to account 1300 "Advances (Employee/Vendor)" — an ASSET, i.e.
+  // Dr Advances / Cr Cash-or-Bank, NOT an expense. No new accounting path; this is only a guided
+  // front door onto that category, and it is what lets Smart Finance answer "Ramesh ko 3000 advance
+  // diya" correctly instead of mis-booking it as an expense.
+  "EXP-ADVANCE": { ...expenseDef("EXP-ADVANCE", "Advance to Person", "व्यक्ति को अग्रिम", "QE-STAFF-ADVANCE", "EMPLOYEE"), quickEntryType: "ADVANCE", requiredFields: ["counterpartyName"], optionalFields: ["employeeId"] },
   "AST-MCH": {
     code: "AST-MCH",
     label: "Machinery / Fixed Asset",

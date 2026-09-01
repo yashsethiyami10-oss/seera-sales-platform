@@ -22,6 +22,9 @@ import { updateFinanceApprovalPolicy, seedDefaultFinanceApprovalPolicies, decide
 import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
 import { MONEY_DESK_PURPOSE_CODES } from "@/lib/finance/money-desk-registry";
 import { interpretSmartFinance } from "@/lib/finance/smart-finance/service";
+import { treasuryContext } from "@/lib/finance/smart-finance/context";
+import { confirmOtherParty, updateOtherParty, setOtherPartyActive } from "@/lib/finance/smart-finance/other-party";
+import { settleAdvance } from "@/lib/finance/smart-finance/advance-lifecycle";
 import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
@@ -44,6 +47,8 @@ const ACTIONS = [
   "create-payroll-entry", "accrue-payroll-entry", "pay-salary",
   "update-finance-approval-policy", "decide-finance-approval",
   "money-desk-create", "money-desk-decide-approval", "money-desk-void", "money-desk-smart-interpret",
+  "money-desk-treasury-context", "money-desk-confirm-other-party", "money-desk-update-other-party",
+  "money-desk-set-other-party-active", "money-desk-settle-advance",
   "guided-receipt",
 ] as const;
 
@@ -296,6 +301,39 @@ export async function POST(request: Request) {
         // `money-desk-create` / `guided-receipt` above, after the user confirms the review card.
         const v = z.object({ text: z.string().min(2).max(500) }).parse(payload);
         result = await interpretSmartFinance(prisma, user.id, { text: v.text });
+        break;
+      }
+      case "money-desk-treasury-context":
+        // Read-only: every active treasury account with its real ledger balance + recent activity.
+        result = await treasuryContext(prisma, user.id);
+        break;
+      case "money-desk-confirm-other-party": {
+        // Governed create of a SeeraFinancialDimension{kind:OTHER_PARTY} after explicit user
+        // confirmation on the Smart Finance review card. Requires coa:manage; audited; duplicate-safe
+        // on normalized name and mobile.
+        const v = z.object({ name: z.string().min(2).max(160), mobile: z.string().max(20).optional(), partyType: z.string().max(60).optional(), purpose: z.string().max(240).optional(), relationship: z.string().max(120).optional(), notes: z.string().max(500).optional() }).parse(payload);
+        result = await confirmOtherParty(prisma, user.id, v);
+        break;
+      }
+      case "money-desk-update-other-party": {
+        const v = z.object({ dimensionId: z.string(), name: z.string().max(160).optional(), mobile: z.string().max(20).optional(), partyType: z.string().max(60).optional(), relationship: z.string().max(120).optional(), notes: z.string().max(500).optional() }).parse(payload);
+        result = await updateOtherParty(prisma, user.id, v.dimensionId, v);
+        break;
+      }
+      case "money-desk-set-other-party-active": {
+        const v = z.object({ dimensionId: z.string(), isActive: z.boolean() }).parse(payload);
+        result = await setOtherPartyActive(prisma, user.id, v.dimensionId, v.isActive);
+        break;
+      }
+      case "money-desk-settle-advance": {
+        // Advance settlement / recovery — a governed MANUAL journal (journal:post) that credits
+        // account 1300 for the Other Party. Never posts more than the outstanding advance.
+        const base = z.object({ dimensionId: z.string(), amount: z.number().positive(), date: z.coerce.date(), reason: z.string().min(1).max(240), idempotencyKey: z.string() });
+        const v = z.discriminatedUnion("kind", [
+          base.extend({ kind: z.literal("RECOVERY_CASH"), treasuryAccountId: z.string(), treasuryAccountCoaCode: z.string() }),
+          base.extend({ kind: z.literal("SETTLE_TO_EXPENSE"), expenseAccountCode: z.string() }),
+        ]).parse(payload);
+        result = await settleAdvance(prisma, user.id, v);
         break;
       }
       case "guided-receipt":

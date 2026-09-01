@@ -280,6 +280,13 @@ const HANDLERS: Record<string, Handler> = {
       paymentMode: (formData.paymentMode as "CASH" | "BANK" | "UPI" | "OTHER") ?? "CASH",
       treasuryAccountId: txn.treasuryAccountId ?? undefined,
       partyName: txn.counterpartyName ?? undefined,
+      // Smart Finance "Other Party" passthrough: when the entry is against a governed
+      // SeeraFinancialDimension{kind:OTHER_PARTY} (a person who is NOT an employee — labour advance
+      // etc.), thread its type+id so the resulting SeeraExpense.payeeType/payeeId anchor it, and
+      // the same person resolves automatically on the next natural-language entry. No effect for
+      // ordinary entries (both undefined) — quickEntryCreate keeps its existing default behaviour.
+      partyType: (formData.partyType as string) || undefined,
+      partyId: (formData.partyId as string) || undefined,
       employeeId: (formData.employeeId as string) ?? undefined,
       // Governed override (Money Desk maturity pass, 23-Aug) — left blank, this auto-derives from
       // employeeId inside quickEntryCreate; an operator can still override with an explicit

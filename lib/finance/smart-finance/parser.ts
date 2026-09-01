@@ -41,6 +41,12 @@ export type ParsedSmartFinance = {
   categoryKeyword: string | null;
   purposeCode: string | null;
   purposeLabel: string | null;
+  /** "Ramesh se advance wapas mila" → RECOVERY; "Ramesh ka advance settle hua" → SETTLE. */
+  advanceSettlement: "RECOVERY" | "SETTLE" | null;
+  /** Product/SKU phrase when the sentence describes goods, e.g. "Seera Cake". */
+  productText: string | null;
+  quantity: number | null;
+  unitOfMeasure: string | null;
   partyTypeHint: PartyTypeHint | null;
   /** Best-effort party / employee name phrase left after removing every recognised token. */
   partyText: string | null;
@@ -160,6 +166,36 @@ function parseCategory(text: string): { keyword: string; purposeCode: string; la
   return null;
 }
 
+// ── Goods / SKU ───────────────────────────────────────────────────────────────────────────────
+const GOODS_UNITS = ["box", "boxes", "carton", "cartons", "case", "cases", "peti", "petiyan", "पेटी", "डिब्बा", "dibba", "packet", "packets", "pkt", "bag", "bags", "bori", "बोरी", "piece", "pieces", "pcs", "pc", "nos", "nag", "नग", "dozen", "dozens", "darjan", "kg", "kgs", "litre", "litres", "ltr", "unit", "units"];
+function parseGoods(lowerNorm: string, originalText: string): { quantity: number | null; unitOfMeasure: string | null; productText: string | null } {
+  const unitAlt = GOODS_UNITS.map((u) => u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  // "<qty> <unit>"  OR  "<unit> <qty>"
+  let m = lowerNorm.match(new RegExp(`\\b(\\d{1,5})\\s*(${unitAlt})\\b`, "i")) ?? lowerNorm.match(new RegExp(`\\b(${unitAlt})\\s*(\\d{1,5})\\b`, "i"));
+  if (!m) {
+    // spoken: "das box", "do carton"
+    const sm = lowerNorm.match(new RegExp(`\\b([a-zऀ-ॿ]+)\\s+(${unitAlt})\\b`, "i"));
+    if (sm && UNIT_WORDS[sm[1]!.toLowerCase()] != null) m = [sm[0], String(UNIT_WORDS[sm[1]!.toLowerCase()]), sm[2]!] as unknown as RegExpMatchArray;
+  }
+  if (!m) return { quantity: null, unitOfMeasure: null, productText: null };
+  const qty = /^\d+$/.test(m[1]!) ? Number(m[1]) : Number(m[2]);
+  const unit = /^\d+$/.test(m[1]!) ? m[2]! : m[1]!;
+
+  // Product phrase = the noun phrase adjacent to the qty/unit. Hindi word order puts it BEFORE
+  // ("Seera Cake ke 10 box"); English/Hinglish often AFTER ("5 carton detergent powder"). Prefer
+  // the "before" side; fall back to "after" when "before" has nothing usable.
+  const idx = lowerNorm.indexOf(m[0]!);
+  const clean = (chunk: string) =>
+    (chunk.match(WORD) ?? []).filter(
+      (w) => !STOPWORDS.has(w) && !GOODS_UNITS.includes(w) && !/^\d+$/.test(w) && UNIT_WORDS[w] == null && !MONEY_IN_WORDS.includes(w) && !MONEY_OUT_WORDS.includes(w) && !["bech", "becha", "sold", "sale", "payment", "ka", "ke", "ki"].includes(w),
+    );
+  const before = clean(lowerNorm.slice(0, idx).replace(/\bke\b|\bका\b|\bki\b|\bकी\b\s*$/i, " "));
+  const after = clean(lowerNorm.slice(idx + m[0]!.length));
+  const productWords = before.length ? before.slice(-3) : after.slice(0, 3);
+  const productText = productWords.join(" ").trim() || null;
+  return { quantity: Number.isFinite(qty) && qty > 0 ? qty : null, unitOfMeasure: unit.toLowerCase(), productText };
+}
+
 // ── Party type ────────────────────────────────────────────────────────────────────────────────
 function parsePartyType(text: string): PartyTypeHint | null {
   for (const entry of PARTY_TYPE_KEYWORDS) {
@@ -206,11 +242,21 @@ function parseDate(tokens: string[], text: string, today: Date): { date: string 
 // the party ("Fatehnagar distributor").
 function isolateResidual(
   originalText: string,
-  consumed: { amountText: string | null; categoryKeyword: string | null; dateWord: string | null; bankKeyword?: string },
+  consumed: { amountText: string | null; categoryKeyword: string | null; dateWord: string | null; bankKeyword?: string; productText?: string | null; unit?: string | null },
 ): { partyText: string | null; purposeText: string | null } {
   let s = ` ${originalText.toLowerCase()} `;
-  const drop = [consumed.amountText, consumed.categoryKeyword, consumed.bankKeyword].filter(Boolean) as string[];
+  const drop = [consumed.amountText, consumed.categoryKeyword, consumed.bankKeyword, consumed.productText, consumed.unit].filter(Boolean) as string[];
   for (const d of drop) s = s.replace(new RegExp(d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), " ");
+  // A sentence can contain vocabulary from more than one category ("travel reimbursement") even
+  // though only one wins as the official purposeCode. Strip every recognised category keyword, not
+  // only the winner, so a second category word never leaks into the party/purpose residual and
+  // silently swallows the person's name (e.g. "reimbursement" contaminating "reimbursement ramesh").
+  for (const entry of CATEGORY_KEYWORDS) {
+    for (const kw of entry.keywords) {
+      if (kw === consumed.categoryKeyword) continue;
+      s = s.replace(new RegExp(`(^|[^a-z\u0900-\u097F])${kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z\u0900-\u097F]|$)`, "gi"), "$1 $2");
+    }
+  }
   s = s
     .replace(/[₹]/g, " ")
     .replace(/\b\d+(\.\d+)?\b/g, " ")
@@ -273,11 +319,23 @@ export function parseSmartFinance(input: string, today: Date = new Date()): Pars
   const amountHit = digit ?? spoken;
   if (!amountHit) warnings.push("No amount detected");
 
-  const category = parseCategory(lowerNorm);
+  // Advance settlement / recovery — detected BEFORE category so "advance settle hua" is not read as
+  // a fresh "advance" (EXP-ADVANCE). "wapas / return / recover / se ... mila" ⇒ cash coming back;
+  // "settle / adjust / kaat" ⇒ the advance is consumed as an expense.
+  const isAdvanceContext = /\b(advance|advanc|peshgi|पेशगी|अग्रिम)\b/i.test(lowerNorm);
+  let advanceSettlement: "RECOVERY" | "SETTLE" | null = null;
+  if (isAdvanceContext) {
+    if (/\b(wapas|waapas|wapis|return|returned|recover|recovered|vasool|vasul|se .* (mila|mile|aaya|aaye))\b/i.test(lowerNorm) || /\bse\b.*\badvance\b/i.test(lowerNorm) || /\badvance\b.*\bwapas\b/i.test(lowerNorm)) advanceSettlement = "RECOVERY";
+    else if (/\b(settle|settled|settlement|adjust|adjusted|kaat|kaata|kata|clear|cleared|nil kar)\b/i.test(lowerNorm)) advanceSettlement = "SETTLE";
+  }
+
+  const category = advanceSettlement ? null : parseCategory(lowerNorm);
   const dir = parseDirection(tokens, lowerNorm);
 
   let direction = dir.direction;
   let directionInferred = false;
+  if (advanceSettlement === "RECOVERY" && !direction) { direction = "MONEY_IN"; directionInferred = true; }
+  if (advanceSettlement === "SETTLE" && !direction) { direction = "MONEY_OUT"; directionInferred = true; }
   if (!direction && category) {
     // Every category in the lexicon today is an expense ⇒ money out. A receipt keyword would have
     // set direction=MONEY_IN above already.
@@ -288,12 +346,15 @@ export function parseSmartFinance(input: string, today: Date = new Date()): Pars
 
   let purposeCode = category?.purposeCode ?? null;
   let purposeLabel = category?.label ?? null;
-  if (!purposeCode && direction === "MONEY_IN") {
+  if (!purposeCode && direction === "MONEY_IN" && !advanceSettlement) {
     purposeCode = "REC-INS";
     purposeLabel = "Institutional Receipt";
   }
-  if (!purposeCode && direction === "MONEY_OUT") warnings.push("Could not match an expense category");
+  if (!purposeCode && direction === "MONEY_OUT" && !advanceSettlement) warnings.push("Could not match an expense category");
 
+  // Goods / SKU context — "10 box", "5 carton", "2 peti" etc. near a product word. Extracts the
+  // quantity + unit; the product phrase itself is resolved server-side against SeeraSku.
+  const { quantity, unitOfMeasure, productText } = parseGoods(lowerNorm, originalText);
   const partyTypeHint = parsePartyType(lowerNorm);
   const treasuryHint = parseTreasury(lowerNorm);
   const { date, word: dateWord } = parseDate(tokens, lowerNorm, today);
@@ -302,6 +363,8 @@ export function parseSmartFinance(input: string, today: Date = new Date()): Pars
     categoryKeyword: category?.keyword ?? null,
     dateWord,
     bankKeyword: treasuryHint?.bankKeyword,
+    productText,
+    unit: unitOfMeasure,
   });
 
   return {
@@ -316,6 +379,10 @@ export function parseSmartFinance(input: string, today: Date = new Date()): Pars
     categoryKeyword: category?.keyword ?? null,
     purposeCode,
     purposeLabel,
+    advanceSettlement,
+    productText,
+    quantity,
+    unitOfMeasure,
     partyTypeHint,
     partyText,
     treasuryHint,

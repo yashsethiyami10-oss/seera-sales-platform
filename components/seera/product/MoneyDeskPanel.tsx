@@ -254,7 +254,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
 
       {!openDirection && (
         <>
-          <SmartFinanceEntry language={language} territories={supporting.territories} purposes={purposes.map((p) => ({ code: p.code, label: p.label, hindiLabel: p.hindiLabel }))} />
+          <SmartFinanceEntry language={language} portal={portal} territories={supporting.territories} purposes={purposes.map((p) => ({ code: p.code, label: p.label, hindiLabel: p.hindiLabel }))} />
           <div style={{ gridColumn: "1/-1", display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
             <small style={{ opacity: 0.6 }}>{hi ? "या निर्देशित प्रविष्टि:" : "or use guided entry:"}</small>
             <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
@@ -330,7 +330,10 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
                     ) : (
                       <select value={treasuryAccountId} onChange={(e) => setTreasuryAccountId(e.target.value)}>
                         <option value="">{hi ? "चुनें" : "Choose"}</option>
-                        {supporting.treasuryAccounts.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
+                        {supporting.treasuryAccounts.map((t) => {
+                          const bal = home.cashBankToday.find((c) => c.treasuryAccountId === t.id)?.balance;
+                          return <option key={t.id} value={t.id}>{t.name} ({t.kind}){bal != null ? ` · ${money(bal)}` : ""}</option>;
+                        })}
                       </select>
                     )}
                   </label>
