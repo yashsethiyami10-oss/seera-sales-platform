@@ -141,7 +141,7 @@ describe("field photo Cloudinary signed upload + finalize", () => {
   it("rejects a finalize call whose public_id falls outside the visit's governed folder (forged folder)", async () => {
     const { finalizeFieldPhotoUpload } = await import("../../lib/sales-distribution/field-photo-cloudinary-service");
     await expect(
-      finalizeFieldPhotoUpload(db, execA.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId: "seera/field-visits/some-other-visit/forged-id" }),
+      finalizeFieldPhotoUpload(db, execA.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId: "seera/field-visits/some-other-visit/forged-id", version: 1234567890, signature: "mock-signature", secureUrl: "https://res.cloudinary.com/test-cloud/image/upload/v1234567890/seera/field-visits/some-other-visit/forged-id.jpg", bytes: 500_000, width: 1280, height: 960, format: "jpg" }),
     ).rejects.toMatchObject({ code: "PHOTO_SCOPE_DENIED" });
   }, 20_000);
 
@@ -149,7 +149,7 @@ describe("field photo Cloudinary signed upload + finalize", () => {
     const { createFieldPhotoUploadSignature, finalizeFieldPhotoUpload } = await import("../../lib/sales-distribution/field-photo-cloudinary-service");
     const signed = await createFieldPhotoUploadSignature(db, execA.id, visitA.id);
     await expect(
-      finalizeFieldPhotoUpload(db, execA.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId: `${fullPublicId(signed)}/../../escape` }),
+      finalizeFieldPhotoUpload(db, execA.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId: `${fullPublicId(signed)}/../../escape`, version: 1234567890, signature: "mock-signature", secureUrl: `https://res.cloudinary.com/test-cloud/image/upload/v1234567890/${fullPublicId(signed)}/../../escape.jpg`, bytes: 500_000, width: 1280, height: 960, format: "jpg" }),
     ).rejects.toMatchObject({ code: "PHOTO_SCOPE_DENIED" });
   }, 20_000);
 
