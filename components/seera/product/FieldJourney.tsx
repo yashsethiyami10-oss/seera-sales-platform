@@ -157,14 +157,12 @@ function yieldToPaint(): Promise<void> {
 // already-proven 2-decode path — never a guess, never a silently-wrong dimension.
 const PREVIEW_MAX_DIMENSION = 800;
 const PREVIEW_QUALITY = 0.7;
-const UPLOAD_MAX_DIMENSION = 1920;
-const UPLOAD_QUALITY = 0.84;
+const MAX_FINAL_UPLOAD_BYTES = 8_000_000;
 // Vercel Functions cap the whole JSON request at 4.5 MB. Base64 adds roughly one third, and the
 // request also carries JSON metadata, so 3 MB is the hard final-blob ceiling. Only originals at or
 // below 1 MB are safe fallback candidates when a browser cannot resize; a multi-megabyte camera
 // file must fail closed instead of recreating the memory spike this path exists to prevent.
-const MAX_FINAL_UPLOAD_BYTES = 3_000_000;
-const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 1_000_000;
+const MAX_SAFE_ORIGINAL_FALLBACK_BYTES = 8_000_000;
 const PHOTO_TOO_LARGE_MESSAGE = "Photo is too large for this device. Please retake the photo.";
 const PHOTO_PREP_FAILED_MESSAGE = "Photo could not be prepared. Please retake.";
 // Real camera JPEGs put their SOF (dimensions) and APP1/EXIF (orientation) markers within the
@@ -354,6 +352,10 @@ async function decodeAndDeriveDerivatives(file: File): Promise<{ uploadBlob: Blo
 
 // Single entry point for the whole camera-return pipeline.
 async function preparePhotoDerivatives(file: File): Promise<{ uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number }> {
+  if (/^image\/jpeg$/i.test(file.type)) {
+    if (file.size > MAX_FINAL_UPLOAD_BYTES) throw new Error(PHOTO_TOO_LARGE_MESSAGE);
+    return { uploadBlob: file, previewBlob: file };
+  }
   let derivatives: { uploadBlob: Blob; previewBlob: Blob; sourceWidth?: number; sourceHeight?: number };
   if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap === "undefined") {
     // Can't safely decode this format at all (e.g. HEIC/HEIF) — go straight to the fail-closed
@@ -1173,15 +1175,20 @@ export function FieldJourney({
 
       if (!blob || blob.size === 0) throw new Error(hi ? "फ़ोटो वापस नहीं मिल सकी। कृपया फिर से लें।" : "The captured photo could not be recovered. Please retake.");
 
-      // Native Camera's targetWidth/targetHeight/quality are best-effort hints; on real devices the
-      // returned JPEG can still exceed the server's 3 MB / 1280px constraints. NEVER upload that
-      // native result directly. Run the same bounded derivative pipeline used by the browser path so
-      // the preview and the Cloudinary upload are both derived from the constrained JPEG, while the
-      // original high-resolution camera blob is released as soon as preparation completes.
-      const { uploadBlob, previewBlob } = await preparePhotoDerivatives(
-        new File([blob], "field-visit.jpg", { type: "image/jpeg" }),
-      );
+      // Upload the native camera JPEG as-is. Do NOT decode it through canvas/ImageBitmap:
+      // high-megapixel Android/browser devices can run out of renderer memory during a second
+      // full-resolution decode. Cloudinary receives the original JPEG and the server performs the
+      // authoritative size/dimension validation. The preview also uses an object URL, so preview
+      // creation does not allocate another decoded bitmap.
+      if (blob.size > MAX_FINAL_UPLOAD_BYTES) {
+        throw new Error(hi ? "फ़ोटो 8 MB से बड़ी है। कृपया कम रोशनी/ज़ूम के बिना दोबारा लें।" : "Photo is larger than 8 MB. Please retake without zoom or use a lower camera resolution.");
+      }
+      if (!/^image\/jpeg$/i.test(blob.type)) {
+        throw new Error(hi ? "कैमरा JPEG फ़ोटो उपलब्ध नहीं है। कृपया फिर से लें।" : "Camera did not return a JPEG photo. Please retake.");
+      }
 
+      const uploadBlob = blob;
+      const previewBlob = blob;
       const previewUrl = URL.createObjectURL(previewBlob);
       photoPreviewUrlRef.current = previewUrl;
       setPhotoPreview(previewUrl);
@@ -1216,9 +1223,7 @@ export function FieldJourney({
       const { Camera } = await import("@capacitor/camera");
       if (typeof sessionStorage !== "undefined") sessionStorage.setItem(`seera:camera-pending:${visit.id}`, "1");
       const result = await Camera.takePhoto({
-        quality: 74,
-        targetWidth: UPLOAD_MAX_DIMENSION,
-        targetHeight: UPLOAD_MAX_DIMENSION,
+        quality: 95,
         correctOrientation: true,
       });
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
