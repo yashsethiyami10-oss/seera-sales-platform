@@ -87,6 +87,11 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
       throw new FoundationError("ACCESS_DENIED", `${def.additionalPermission} permission required for ${def.label}`, 403);
   }
   if (input.amount <= 0) throw new FoundationError("INVALID_AMOUNT", "Amount must be positive", 400);
+  // Idempotency is checked BEFORE any master-data side effect. A replay must be a pure read,
+  // not create/re-resolve a Vendor a second time.
+  const existing = await db.seeraMoneyDeskTransaction.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+  if (existing) return existing;
+
   // counterpartyId/counterpartyName are top-level MoneyDeskCreateInput fields (not part of the
   // purpose-specific formData blob) — the registry's requiredFields list treats them as ordinary
   // field keys, so check both places rather than only formData.
@@ -137,9 +142,6 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
   }
   if (def.documentPolicy === "REQUIRED" && !input.documentFileId)
     throw new FoundationError("MONEY_DESK_DOCUMENT_REQUIRED", `${def.label} requires a supporting document`, 400);
-
-  const existing = await db.seeraMoneyDeskTransaction.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
-  if (existing) return existing;
 
   // QUICK_ENTRY_EXPENSE purposes (Salary/Fuel/Rent/.../Other) reuse quickEntryCreate, which already
   // runs its OWN threshold-based approval gate internally via submitExpense — checking
