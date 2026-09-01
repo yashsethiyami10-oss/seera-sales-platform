@@ -1179,10 +1179,10 @@ export function FieldJourney({
       // Upload the native camera JPEG as-is. Do NOT decode it through canvas/ImageBitmap:
       // high-megapixel Android/browser devices can run out of renderer memory during a second
       // full-resolution decode. Cloudinary receives the original JPEG and the server performs the
-      // authoritative size/dimension validation. The preview also uses an object URL, so preview
-      // creation does not allocate another decoded bitmap.
+      // authoritative size/dimension validation. Native quality 90 keeps normal evidence photos
+      // materially smaller than quality 95 while preserving high visual quality.
       if (blob.size > MAX_FINAL_UPLOAD_BYTES) {
-        throw new Error(hi ? "फ़ोटो 8 MB से बड़ी है। कृपया कम रोशनी/ज़ूम के बिना दोबारा लें।" : "Photo is larger than 8 MB. Please retake without zoom or use a lower camera resolution.");
+        throw new Error(hi ? "फ़ोटो 10 MB से बड़ी है। कृपया कम resolution पर दोबारा लें।" : "Photo is larger than 10 MB. Please retake at a lower camera resolution.");
       }
       if (!/^image\/jpeg$/i.test(blob.type)) {
         throw new Error(hi ? "कैमरा JPEG फ़ोटो उपलब्ध नहीं है। कृपया फिर से लें।" : "Camera did not return a JPEG photo. Please retake.");
@@ -1222,7 +1222,7 @@ export function FieldJourney({
       const { Camera } = await import("@capacitor/camera");
       if (typeof sessionStorage !== "undefined") sessionStorage.setItem(`seera:camera-pending:${visit.id}`, "1");
       const result = await Camera.takePhoto({
-        quality: 95,
+        quality: 90,
         correctOrientation: true,
       });
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(`seera:camera-pending:${visit.id}`);
