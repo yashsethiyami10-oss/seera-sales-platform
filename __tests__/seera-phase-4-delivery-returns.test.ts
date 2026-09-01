@@ -54,6 +54,11 @@ describe("Part 4 delivery/return regression guards", () => {
     ).toBe("PARTIAL_DELIVERED");
   });
 
+  // FoundationError carries a governed machine-readable `.code` distinct from its human-readable
+  // `.message` (see lib/foundation/errors.ts) — every throw site in this codebase follows that
+  // split deliberately, so the regression guard must assert on `.code` (via objectContaining),
+  // not on `.message` text via the plain-string form of toThrowError (which checks .message and
+  // was failing here even though the actual application logic was already correct).
   it("requires full quantity for ACCEPT", () => {
     expect(() =>
       validateInitialFulfilmentDecision(
@@ -61,7 +66,7 @@ describe("Part 4 delivery/return regression guards", () => {
         [{ id: "l1", orderedQuantity: 10 }],
         [{ lineId: "l1", quantity: 9 }],
       ),
-    ).toThrowError("FULL_ACCEPTANCE_REQUIRED");
+    ).toThrow(expect.objectContaining({ code: "FULL_ACCEPTANCE_REQUIRED" }));
   });
 
   it("requires an incomplete positive quantity for PARTIAL_ACCEPT", () => {
@@ -71,7 +76,7 @@ describe("Part 4 delivery/return regression guards", () => {
         [{ id: "l1", orderedQuantity: 10 }],
         [{ lineId: "l1", quantity: 10 }],
       ),
-    ).toThrowError("PARTIAL_ACCEPTANCE_REQUIRED");
+    ).toThrow(expect.objectContaining({ code: "PARTIAL_ACCEPTANCE_REQUIRED" }));
   });
 
   it("requires a reason for REJECT/HOLD", () => {
@@ -81,13 +86,13 @@ describe("Part 4 delivery/return regression guards", () => {
         [{ id: "l1", orderedQuantity: 10 }],
         [],
       ),
-    ).toThrowError("DECISION_REASON_REQUIRED");
+    ).toThrow(expect.objectContaining({ code: "DECISION_REASON_REQUIRED" }));
   });
 
   it("rejects returns above the delivered-but-not-already-returned balance", () => {
     expect(() =>
       assertReturnDoesNotExceedDelivered(10, 3, 8),
-    ).toThrowError("RETURN_EXCEEDS_DELIVERED");
+    ).toThrow(expect.objectContaining({ code: "RETURN_EXCEEDS_DELIVERED" }));
   });
 
   it("accepts a return inside the delivered-but-not-returned balance", () => {
@@ -96,8 +101,8 @@ describe("Part 4 delivery/return regression guards", () => {
     ).not.toThrow();
   });
   it("requires structured proof for actual delivered outcomes and binds it to the exact delivery", () => {
-    expect(() => assertDeliveryProof("DELIVERED", undefined, "order-1", "delivery-1")).toThrowError("DELIVERY_PROOF_REQUIRED");
-    expect(() => assertDeliveryProof("DELIVERED", { mode: "PHOTO", reference: "photo-1", orderId: "order-2", deliveryId: "delivery-1" }, "order-1", "delivery-1")).toThrowError("DELIVERY_PROOF_SCOPE_DENIED");
+    expect(() => assertDeliveryProof("DELIVERED", undefined, "order-1", "delivery-1")).toThrow(expect.objectContaining({ code: "DELIVERY_PROOF_REQUIRED" }));
+    expect(() => assertDeliveryProof("DELIVERED", { mode: "PHOTO", reference: "photo-1", orderId: "order-2", deliveryId: "delivery-1" }, "order-1", "delivery-1")).toThrow(expect.objectContaining({ code: "DELIVERY_PROOF_SCOPE_DENIED" }));
     expect(() => assertDeliveryProof("DELIVERED", { mode: "PHOTO", reference: "photo-1", orderId: "order-1", deliveryId: "delivery-1" }, "order-1", "delivery-1")).not.toThrow();
     expect(() => assertDeliveryProof("REFUSED", undefined, "order-1", "delivery-1")).not.toThrow();
   });

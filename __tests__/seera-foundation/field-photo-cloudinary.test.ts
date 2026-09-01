@@ -154,7 +154,11 @@ describe("field photo Cloudinary signed upload + finalize", () => {
   }, 20_000);
 
   it("rejects finalize when the Cloudinary resource does not match expected constraints (oversized/forged)", async () => {
-    const { createFieldPhotoUploadSignature, finalizeFieldPhotoUpload } = await import("../../lib/sales-distribution/field-photo-cloudinary-service");
+    // field-photo-cloudinary-service.ts's MAX_UPLOAD_BYTES was deliberately raised to 10,000,000
+    // (10 MB) as part of the field-photo quality/memory hardening pass, matching the client's own
+    // "Photo is larger than 10 MB" ceiling (FieldJourney.tsx) — 9 MB is now correctly ACCEPTED, so
+    // the "oversized" probe must exceed the real, current governed maximum to still test rejection.
+    const { createFieldPhotoUploadSignature, finalizeFieldPhotoUpload, fieldPhotoConstraints } = await import("../../lib/sales-distribution/field-photo-cloudinary-service");
     const signed = await createFieldPhotoUploadSignature(db, execA.id, visitA.id);
     const publicId = fullPublicId(signed);
     await expect(
@@ -165,7 +169,7 @@ describe("field photo Cloudinary signed upload + finalize", () => {
         version: 1234567890,
         signature: "mock-signature",
         secureUrl: `https://res.cloudinary.com/test-cloud/image/upload/v1234567890/${publicId}.jpg`,
-        bytes: 9_000_000,
+        bytes: fieldPhotoConstraints.MAX_UPLOAD_BYTES + 1,
         width: 1280,
         height: 960,
         format: "jpg",

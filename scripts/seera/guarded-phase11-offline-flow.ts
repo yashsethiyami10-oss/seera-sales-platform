@@ -11,7 +11,7 @@ const root=path.resolve(import.meta.dirname,"..","..");
 const production=envFile(path.join(root,".env")).DATABASE_URL;
 const test=envFile(path.join(root,".env.test")).TEST_DATABASE_URL;
 const target=authorizeDatabaseCommand({intendedRole:"test",write:true,targetUrl:test,productionUrl:production,testUrl:test});
-const runtime=new URL(test);runtime.searchParams.set("connection_limit","4");runtime.searchParams.set("pool_timeout","60");
+const runtime=new URL(test);runtime.searchParams.set("connection_limit","4");runtime.searchParams.set("pool_timeout","60");runtime.searchParams.set("statement_timeout","60000");runtime.searchParams.set("connect_timeout","20");
 
 async function preflight(attempt:number){const db=new PrismaClient({datasources:{db:{url:runtime.toString()}}}),started=Date.now();try{const oneAt=Date.now();await db.$queryRaw`SELECT 1`;const oneMs=Date.now()-oneAt;const nowAt=Date.now();await db.$queryRaw`SELECT now()`;const nowMs=Date.now()-nowAt;if(oneMs>15_000||nowMs>15_000)throw new Error(`PREFLIGHT_SLOW select1=${oneMs} selectNow=${nowMs}`);console.log(JSON.stringify({event:"preflight",attempt,status:"PASS",select1Ms:oneMs,selectNowMs:nowMs,totalMs:Date.now()-started,fingerprint:target.fingerprint}));return true;}catch(error){console.log(JSON.stringify({event:"preflight",attempt,status:"FAIL",durationMs:Date.now()-started,code:typeof error==="object"&&error&&"code" in error?String(error.code):null,message:error instanceof Error?error.message:"UNKNOWN"}));return false;}finally{const at=Date.now();await db.$disconnect();console.log(JSON.stringify({event:"preflight-disconnect",attempt,durationMs:Date.now()-at}));}}
 

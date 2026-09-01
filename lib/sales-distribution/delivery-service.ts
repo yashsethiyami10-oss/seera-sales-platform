@@ -1,4 +1,4 @@
-import type { DeliveryStatus, Prisma, PrismaClient } from "@prisma/client";
+import type { DeliveryStatus, Prisma, PrismaClient, SalesOrderStatus } from "@prisma/client";
 import { createHash } from "crypto";
 import { effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
@@ -10,6 +10,22 @@ import { orderLineAwareCanonicalPieces } from "./company-order-catalog";
 function numberFor(prefix: string, key: string) {
   return `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
 }
+// Refusal/return/damage can exhaust an order line's remaining dispatched balance without making
+// the commercial order "DELIVERED" — status is derived only from deliveredQuantity versus the
+// non-cancelled ordered quantity, exactly as completeDelivery already computed inline. Extracted
+// as its own pure function so this boundary (booked/delivered must never silently become
+// equivalent, SR-019) is independently testable without a transaction/DB round trip.
+export function derivePostDeliveryOrderStatus(
+  lines: { orderedQuantity: number; cancelledQuantity: number; deliveredQuantity: number; refusedQuantity: number; returnedQuantity: number }[],
+  currentStatus: SalesOrderStatus,
+): SalesOrderStatus {
+  const fullyDelivered = lines.length > 0 && lines.every((x) => x.deliveredQuantity >= x.orderedQuantity - x.cancelledQuantity);
+  if (fullyDelivered) return "DELIVERED";
+  const someDelivered = lines.some((x) => x.deliveredQuantity > 0);
+  if (someDelivered) return "PARTIAL_DELIVERED";
+  return currentStatus;
+}
+
 export function assertDeliveryProof(
   status: DeliveryStatus,
   proof: Record<string, unknown> | undefined,
@@ -291,24 +307,21 @@ export async function completeDelivery(
       const lines = await tx.seeraOrderLine.findMany({
         where: { orderId: delivery.orderId },
       });
-      // Refusal/return/damage can exhaust the remaining balance without making the
-      // commercial order "DELIVERED". Delivery status is based only on deliveredQuantity
-      // versus the non-cancelled ordered quantity.
-      const fullyDelivered = lines.length > 0 && lines.every(
-        (x) =>
-          Number(x.deliveredQuantity) >=
-          Number(x.orderedQuantity) - Number(x.cancelledQuantity),
+      const derivedStatus = derivePostDeliveryOrderStatus(
+        lines.map((x) => ({
+          orderedQuantity: Number(x.orderedQuantity),
+          cancelledQuantity: Number(x.cancelledQuantity),
+          deliveredQuantity: Number(x.deliveredQuantity),
+          refusedQuantity: Number(x.refusedQuantity),
+          returnedQuantity: Number(x.returnedQuantity),
+        })),
+        delivery.order.status,
       );
-      const someDelivered = lines.some((x) => Number(x.deliveredQuantity) > 0);
       await tx.seeraSalesOrder.update({
         where: { id: delivery.orderId },
         data: {
-          status: fullyDelivered
-            ? "DELIVERED"
-            : someDelivered
-              ? "PARTIAL_DELIVERED"
-              : delivery.order.status,
-          ...(fullyDelivered ? { deliveredAt: new Date() } : {}),
+          status: derivedStatus,
+          ...(derivedStatus === "DELIVERED" ? { deliveredAt: new Date() } : {}),
         },
       });
       await recordAudit(tx, {

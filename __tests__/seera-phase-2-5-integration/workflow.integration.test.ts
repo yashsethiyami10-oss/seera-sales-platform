@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { prisma, roleUsers, setup } from "@/__tests__/seera-block3/test-context";
 import { assistedDistributorOperation, createCompanyOrder, createPriceVersion, createSku, endFieldDay, evaluateOrderCredit, fulfilRetailerOrder, placeRetailerOrder, reconcileStock, recordInventoryMovement, startFieldDay } from "@/lib/sales-distribution/workflow-service";
+import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
 import { requirePartyMembership } from "@/lib/sales-distribution/scope";
+import { syncOfflineOperation } from "@/lib/phase-11/offline-sync-service";
 
 const suffix = randomBytes(5).toString("hex");
 let founder = "", executive = "", manager = "", distributorOwner = "", superStockistOwner = "";
@@ -75,4 +77,168 @@ describe("guarded Phase 2-5 shared-truth integration", () => {
     expect((await prisma.user.findUniqueOrThrow({ where: { id: executive } })).preferredLanguage).toBe("HI");
     expect((await prisma.user.update({ where: { id: executive }, data: { preferredLanguage: "EN" } })).preferredLanguage).toBe("EN");
   });
+
+  it("createRetailer rejects an explicit distributorId outside the Executive's authorized scope (never trust a client-supplied Partner ID)", async () => {
+    await expect(
+      createRetailer(prisma, executive, {
+        businessName: `Cross-Network Retailer ${suffix}`,
+        address: { city: "Test" },
+        distributorId: otherDistributorId,
+        idempotencyKey: `xnet-retailer-${suffix}`,
+      }),
+    ).rejects.toMatchObject({ code: "DISTRIBUTOR_NOT_AUTHORIZED" });
+    expect(await prisma.seeraRetailer.count({ where: { distributorId: otherDistributorId } })).toBe(0);
+  });
+
+  it("createRetailer accepts an explicit distributorId that IS in the Executive's authorized scope", async () => {
+    const created = await createRetailer(prisma, executive, {
+      businessName: `Own-Network Retailer ${suffix}`,
+      address: { city: "Test" },
+      distributorId,
+      idempotencyKey: `ownnet-retailer-${suffix}`,
+    });
+    expect(created.distributorId).toBe(distributorId);
+  });
+
+  it("createRetailer duplicate detection catches a GSTIN match even with a different name/mobile (never only mobile+name)", async () => {
+    const gstin = `09GSTX${suffix.slice(0, 9).toUpperCase()}Z5`;
+    await createRetailer(prisma, executive, {
+      businessName: `GSTIN Original ${suffix}`,
+      address: { city: "Test" },
+      distributorId,
+      gstin,
+      idempotencyKey: `gstin-original-${suffix}`,
+    });
+    await expect(
+      createRetailer(prisma, executive, {
+        businessName: `Completely Different Name ${suffix}`,
+        mobile: "9999999999",
+        address: { city: "Test" },
+        distributorId,
+        gstin,
+        idempotencyKey: `gstin-duplicate-${suffix}`,
+      }),
+    ).rejects.toMatchObject({ code: "SIMILAR_RETAILER_EXISTS" });
+  });
+
+// Offline ORDER_DRAFT vs. work-session lifecycle (Part 3 audit, Founder-flagged critical issue):
+// the sync dispatcher used to hardcode sessionActive:true for ORDER_DRAFT instead of re-checking
+// the originating WorkSession at replay time, unlike VISIT_DRAFT right next to it in the same
+// file, which already re-checks. Fixed in lib/phase-11/offline-sync-service.ts. These tests prove
+// a stale/ended session can no longer silently become an authoritative order.
+describe("offline ORDER_DRAFT replay vs. session/master-data lifecycle", () => {
+  let session2 = "", visit2 = "";
+
+  async function freshActiveVisit() {
+    const session = await startFieldDay(prisma, executive, { employeeRole: "SALES_EXECUTIVE", workingType: "RETAILING", workingDistributorId: distributorId });
+    const visit = await prisma.seeraVisit.create({ data: { workSessionId: session.id, retailerId, checkedInAt: new Date(), idempotencyKey: `offline-visit-${randomBytes(5).toString("hex")}` } });
+    return { sessionId: session.id, visitId: visit.id };
+  }
+  function orderPayload(visitId: string, overrides: Record<string, unknown> = {}) {
+    return { retailerId, commercialPartyId: distributorId, lines: [{ skuId, quantity: 1 }], visitId, ...overrides };
+  }
+  function offlineInput(clientOperationId: string, payload: Record<string, unknown>) {
+    return {
+      clientOperationId,
+      deviceId: "test-device-00000001",
+      sessionContext: { sessionId: "s1", appVersion: "1.0.0", platform: "android" },
+      entityType: "SeeraSalesOrder",
+      actionType: "ORDER_DRAFT" as const,
+      localCreatedAt: new Date(),
+      payloadVersion: 1 as const,
+      payload,
+    };
+  }
+
+  beforeAll(async () => {
+    const s = await freshActiveVisit();
+    session2 = s.sessionId;
+    visit2 = s.visitId;
+  }, 60000);
+
+  it("1. offline order while session ACTIVE syncs successfully", async () => {
+    const key = randomUUID();
+    const result = await syncOfflineOperation(prisma, executive, offlineInput(key, orderPayload(visit2, { idempotencyKey: `off-order-${key}` })));
+    expect(result.status).toBe("SYNCED");
+    expect(await prisma.seeraSalesOrder.count({ where: { visitId: visit2 } })).toBe(1);
+  });
+
+  it("2/10. replaying the exact same clientOperationId multiple times never creates a second order", async () => {
+    const key = randomUUID();
+    const input = offlineInput(key, orderPayload(visit2, { idempotencyKey: `off-order-${key}` }));
+    const first = await syncOfflineOperation(prisma, executive, input);
+    const second = await syncOfflineOperation(prisma, executive, input);
+    const third = await syncOfflineOperation(prisma, executive, input);
+    expect(first.id).toBe(second.id);
+    expect(second.id).toBe(third.id);
+    expect(await prisma.seeraOfflineOperation.count({ where: { clientOperationId: key } })).toBe(1);
+  });
+
+  it("3. session ENDED before sync is deterministically rejected — zero order created", async () => {
+    // A real employee can only have one ACTIVE WorkSession at a time (startFieldDay enforces this,
+    // and session2 above is deliberately kept active for the other tests in this block), so this
+    // scenario's "session existed, then ended" precondition is set up directly rather than via a
+    // second startFieldDay/endFieldDay pair, which would collide with session2's own active state.
+    const endedSession = await prisma.seeraWorkSession.create({ data: { employeeId: executive, employeeRole: "SALES_EXECUTIVE", workingType: "RETAILING", workingDistributorId: distributorId, status: "ENDED", startedAt: new Date(Date.now() - 3600_000), endedAt: new Date(), outcome: "COMPLETED" } });
+    const visit = await prisma.seeraVisit.create({ data: { workSessionId: endedSession.id, retailerId, checkedInAt: new Date(Date.now() - 1800_000), idempotencyKey: `offline-visit-ended-${randomBytes(5).toString("hex")}` } });
+    const { id: visitId } = visit;
+    const key = randomUUID();
+    await expect(syncOfflineOperation(prisma, executive, offlineInput(key, orderPayload(visitId, { idempotencyKey: `off-order-${key}` })))).rejects.toMatchObject({
+      conflict: { classification: "SERVER_REJECTED", code: "IDENTITY_OR_SESSION_REVOKED" },
+    });
+    expect(await prisma.seeraSalesOrder.count({ where: { visitId } })).toBe(0);
+  });
+
+  it("4. retailer deactivated before sync → conflict, zero order", async () => {
+    await prisma.seeraRetailer.update({ where: { id: retailerId }, data: { lifecycle: "INACTIVE" } });
+    const key = randomUUID();
+    const before = await prisma.seeraSalesOrder.count({ where: { visitId: visit2 } });
+    try {
+      await expect(syncOfflineOperation(prisma, executive, offlineInput(key, orderPayload(visit2, { idempotencyKey: `off-order-${key}` })))).rejects.toMatchObject({
+        conflict: { classification: "SERVER_REJECTED", code: "RETAILER_DEACTIVATED" },
+      });
+      expect(await prisma.seeraSalesOrder.count({ where: { visitId: visit2 } })).toBe(before);
+    } finally {
+      await prisma.seeraRetailer.update({ where: { id: retailerId }, data: { lifecycle: "ACTIVE" } });
+    }
+  });
+
+  it("5. SKU disabled before sync → conflict, zero order", async () => {
+    await prisma.seeraSku.update({ where: { id: skuId }, data: { status: "DISCONTINUED" } });
+    const key = randomUUID();
+    try {
+      await expect(syncOfflineOperation(prisma, executive, offlineInput(key, orderPayload(visit2, { idempotencyKey: `off-order-${key}` })))).rejects.toMatchObject({
+        conflict: { classification: "SERVER_REJECTED", code: "SKU_DISABLED" },
+      });
+    } finally {
+      await prisma.seeraSku.update({ where: { id: skuId }, data: { status: "ACTIVE" } });
+    }
+  });
+
+  it("6. stale client-side price snapshot → USER_REVIEW_REQUIRED, not silently repriced or silently posted", async () => {
+    const key = randomUUID();
+    await expect(
+      syncOfflineOperation(prisma, executive, offlineInput(key, orderPayload(visit2, { idempotencyKey: `off-order-${key}`, lines: [{ skuId, quantity: 1, priceSnapshot: 1 }] }))),
+    ).rejects.toMatchObject({ conflict: { classification: "USER_REVIEW_REQUIRED", code: "PRICE_CHANGED" } });
+  });
+
+  it("7. retailer's commercial-party assignment changed before sync → ASSIGNMENT_CHANGED conflict", async () => {
+    const key = randomUUID();
+    await expect(
+      syncOfflineOperation(prisma, executive, offlineInput(key, orderPayload(visit2, { idempotencyKey: `off-order-${key}`, commercialPartyId: otherDistributorId }))),
+    ).rejects.toMatchObject({ conflict: { classification: "USER_REVIEW_REQUIRED", code: "ASSIGNMENT_CHANGED" } });
+  });
+
+  it("9. a suspended/inactive user identity is rejected server-side even with a technically-open visit", async () => {
+    await prisma.user.update({ where: { id: executive }, data: { status: "SUSPENDED" } });
+    const key = randomUUID();
+    try {
+      await expect(syncOfflineOperation(prisma, executive, offlineInput(key, orderPayload(visit2, { idempotencyKey: `off-order-${key}` })))).rejects.toMatchObject({
+        code: "OFFLINE_IDENTITY_REVOKED",
+      });
+    } finally {
+      await prisma.user.update({ where: { id: executive }, data: { status: "ACTIVE" } });
+    }
+  });
+});
 });

@@ -9,7 +9,7 @@ import { eligibleDelivered } from "./business-rules";
 import { canonicalDistributorExposure } from "./credit-service";
 import { recordGpsSample } from "./field-travel-service";
 import { queueRetailerCommunicationSafe, type RetailerCommEventType } from "./retailer-communication-service";
-import { companyDirectPartnerId, isCompanyDirectEligible } from "./scope";
+import { companyDirectPartnerId, isCompanyDirectEligible, executiveAuthorizedDistributors } from "./scope";
 
 const numberFor = (prefix: string, key: string) =>
   `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 14).toUpperCase()}`;
@@ -398,17 +398,22 @@ const SHOP_TYPES = [
 
 export async function findSimilarRetailers(
   db: PrismaClient,
-  input: { businessName: string; mobile?: string },
+  input: { businessName: string; mobile?: string; gstin?: string },
 ) {
   const normalizedMobile = input.mobile?.replace(/\D/g, "") ?? "";
+  // GSTIN is a legally unique registration — an exact (case-insensitive) match is a strong signal
+  // no fuzzy check can beat, and doesn't invent a new detection strategy: it's the same "exact
+  // match on a governed identifier" the mobile check already does, just for a second identifier.
+  const normalizedGstin = input.gstin?.trim();
   return db.seeraRetailer.findMany({
     where: {
       OR: [
         ...(normalizedMobile ? [{ normalizedMobile, NOT: { normalizedMobile: "" } }] : []),
         { businessName: { equals: input.businessName, mode: "insensitive" as const } },
+        ...(normalizedGstin ? [{ gstin: { equals: normalizedGstin, mode: "insensitive" as const } }] : []),
       ],
     },
-    select: { id: true, businessName: true, mobile: true, address: true, lifecycle: true },
+    select: { id: true, businessName: true, mobile: true, address: true, lifecycle: true, gstin: true },
     take: 5,
   });
 }
@@ -494,7 +499,7 @@ export async function createRetailer(
   const [similar, anyOwn, activeSession, cdPartnerId] = await Promise.all([
     input.confirmDuplicate
       ? Promise.resolve([])
-      : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile }),
+      : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile, gstin: input.gstin }),
     input.distributorId
       ? Promise.resolve(null)
       : db.seeraRetailer.findFirst({
@@ -519,6 +524,16 @@ export async function createRetailer(
     );
   if (input.distributorId && cdPartnerId && input.distributorId === cdPartnerId && !(await isCompanyDirectEligible(db, actorId)))
     throw new FoundationError("COMPANY_DIRECT_NOT_ELIGIBLE", "You are not authorized to assign retailers to Company Direct", 403);
+  // Never trust a client-supplied Partner ID alone — same governed check startFieldDay already
+  // applies to workingDistributorId (workflow-service.ts), reused here rather than a parallel/
+  // looser check. An empty authorized set means the signal doesn't apply to this actor (e.g. a
+  // Sales Manager, whose own distributor scope isn't retailer-derived) — never MORE permissive
+  // than the pre-existing behaviour, only closes the gap when the signal is actually meaningful.
+  if (input.distributorId && !(cdPartnerId && input.distributorId === cdPartnerId)) {
+    const authorized = await executiveAuthorizedDistributors(db, actorId);
+    if (authorized.length > 0 && !authorized.some((d) => d.id === input.distributorId))
+      throw new FoundationError("DISTRIBUTOR_NOT_AUTHORIZED", "That Distributor is not in your authorized working scope", 403);
+  }
   const distributorId = input.distributorId ?? activeSession?.workingDistributorId ?? anyOwn?.distributorId ?? undefined;
   const retailer = await db.$transaction(async (tx) => {
     // Real unique-indexed lookup (SeeraRetailer.idempotencyKey), not the previous unindexed
@@ -617,7 +632,7 @@ export async function createRetailerAndCheckIn(
   const [similar, anyOwn, session, open, existingByKey, cdPartnerId] = await Promise.all([
     input.confirmDuplicate
       ? Promise.resolve([])
-      : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile }),
+      : findSimilarRetailers(db, { businessName: input.businessName, mobile: input.mobile, gstin: input.gstin }),
     input.distributorId
       ? Promise.resolve(null)
       : db.seeraRetailer.findFirst({
@@ -656,6 +671,14 @@ export async function createRetailerAndCheckIn(
     throw new FoundationError("ACTIVE_WORKDAY_REQUIRED", "Start Day before checking in", 409);
   if (input.distributorId && cdPartnerId && input.distributorId === cdPartnerId && !existingByKey && !(await isCompanyDirectEligible(db, actorId)))
     throw new FoundationError("COMPANY_DIRECT_NOT_ELIGIBLE", "You are not authorized to assign retailers to Company Direct", 403);
+  // Same governed authorized-distributor check as createRetailer / startFieldDay. `session` above
+  // already proves this actor holds an ACTIVE SALES_EXECUTIVE work session, so this function is
+  // Executive-only by construction — no Manager-caller edge case to guard against here.
+  if (input.distributorId && !existingByKey && !(cdPartnerId && input.distributorId === cdPartnerId)) {
+    const authorized = await executiveAuthorizedDistributors(db, actorId);
+    if (authorized.length > 0 && !authorized.some((d) => d.id === input.distributorId))
+      throw new FoundationError("DISTRIBUTOR_NOT_AUTHORIZED", "That Distributor is not in your authorized working scope", 403);
+  }
   // Same OPEN_VISIT_EXISTS governance as the standalone executiveCheckIn: only blocks when the
   // open visit belongs to a DIFFERENT retailer. For a brand-new retailer (existingByKey is null)
   // that's any open visit at all; for a retry of this same call, it's correctly a no-op once the

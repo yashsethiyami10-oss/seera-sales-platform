@@ -925,11 +925,15 @@ export function FieldJourney({
     [busy, setBusy] = useState(false),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
-    [mode, setMode] = useState<"ORDER" | "PHOTO" | "FOLLOW_UP">(
+    [mode, setMode] = useState<"ORDER" | "COLLECTION" | "PHOTO" | "FOLLOW_UP">(
       rawVisit && (rawVisit.orderCount > 0 || rawVisit.photos.length > 0) ? "PHOTO" : "ORDER",
     ),
     [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine("initial")]),
     [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
+    // Collection capture (SR-011/SR-009): Sales Executives can never accept cash on behalf of the
+    // company (recordCollection itself rejects CASH — EXECUTIVE_CASH_PROHIBITED), so the mode list
+    // deliberately starts on BANK, matching the governed reference-required paths only.
+    [collectionMode, setCollectionMode] = useState<"BANK" | "UPI" | "CHEQUE">("BANK"),
     [photoPreview, setPhotoPreview] = useState<string | null>(null),
     // P0 21-Aug fix: photo type is chosen BEFORE opening the camera and read directly from this
     // state at capture time, since the upload now fires automatically the instant a photo is
@@ -2171,19 +2175,23 @@ export function FieldJourney({
           </div>
         </header>
         <div className={styles.tabs}>
-          {(["ORDER", "PHOTO", "FOLLOW_UP"] as const).map((x) => (
+          {(["ORDER", "COLLECTION", "PHOTO", "FOLLOW_UP"] as const).map((x) => (
             <button type="button" key={x} data-active={mode === x} onClick={() => setMode(x)}>
               {x === "ORDER"
                 ? hi
                   ? "ऑर्डर"
                   : "Order"
-                : x === "PHOTO"
+                : x === "COLLECTION"
                   ? hi
-                    ? "फ़ोटो"
-                    : "Photo"
-                  : hi
-                    ? "फॉलो-अप"
-                    : "Follow-up"}
+                    ? "कलेक्शन"
+                    : "Collection"
+                  : x === "PHOTO"
+                    ? hi
+                      ? "फ़ोटो"
+                      : "Photo"
+                    : hi
+                      ? "फॉलो-अप"
+                      : "Follow-up"}
             </button>
           ))}
         </div>
@@ -2251,6 +2259,70 @@ export function FieldJourney({
             </label>
             <button className={styles.primary} disabled={busy || !skus.length}>
               {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "ऑर्डर सहेजें" : "Save order"}
+            </button>
+          </form>
+        )}
+        {mode === "COLLECTION" && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              const amount = Number(f.get("amount"));
+              const reference = String(f.get("reference") ?? "").trim();
+              if (!(amount > 0)) {
+                setMessage({ ok: false, text: hi ? "राशि ₹0 से अधिक दर्ज करें।" : "Enter an amount greater than ₹0." });
+                return;
+              }
+              if (!reference) {
+                setMessage({
+                  ok: false,
+                  text: hi ? "बैंक, UPI या चेक संदर्भ आवश्यक है।" : "A bank, UPI or cheque reference is required.",
+                });
+                return;
+              }
+              void run(
+                "collection",
+                {
+                  retailerId: visit.retailerId,
+                  amount,
+                  paymentMode: collectionMode,
+                  reference,
+                  remarks: String(f.get("remarks") ?? "") || undefined,
+                  idempotencyKey: key(),
+                },
+                { entityType: "SeeraCollectionEntry", actionType: "COLLECTION_DRAFT" },
+                hi ? "कलेक्शन दर्ज किया गया।" : "Collection recorded.",
+                hi ? "कलेक्शन दर्ज हो रहा है…" : "Recording collection…",
+              );
+            }}
+          >
+            <p className={styles.note}>
+              {hi
+                ? "एक्ज़िक्यूटिव नकद स्वीकार नहीं कर सकते — बैंक, UPI या चेक संदर्भ आवश्यक है।"
+                : "Executives cannot accept cash — a bank, UPI or cheque reference is required."}
+            </p>
+            <label>
+              {hi ? "राशि" : "Amount"}
+              <input name="amount" type="number" min="1" step="0.01" required />
+            </label>
+            <label>
+              {hi ? "भुगतान माध्यम" : "Payment mode"}
+              <select value={collectionMode} onChange={(e) => setCollectionMode(e.target.value as "BANK" | "UPI" | "CHEQUE")}>
+                <option value="BANK">{hi ? "बैंक ट्रांसफर" : "Bank transfer"}</option>
+                <option value="UPI">UPI</option>
+                <option value="CHEQUE">{hi ? "चेक" : "Cheque"}</option>
+              </select>
+            </label>
+            <label>
+              {hi ? "संदर्भ (UTR / UPI / चेक नंबर)" : "Reference (UTR / UPI / cheque no.)"}
+              <input name="reference" required />
+            </label>
+            <label>
+              {hi ? "टिप्पणी" : "Remarks"}
+              <input name="remarks" />
+            </label>
+            <button className={styles.primary} disabled={busy}>
+              {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "कलेक्शन सहेजें" : "Save collection"}
             </button>
           </form>
         )}

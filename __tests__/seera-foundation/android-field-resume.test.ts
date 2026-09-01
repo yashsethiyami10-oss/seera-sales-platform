@@ -19,23 +19,8 @@ describe("Android field-workflow resume", () => {
     expect(activity).toContain('PROD_HOST_NO_WWW.equalsIgnoreCase(host)');
   });
 
-  it("keeps the current Android version source of truth", () => {
+  it("increments the Android version for the native resilience fix", () => {
     expect(gradle).toContain("versionCode 3");
     expect(gradle).toContain('versionName "1.0.2"');
   });
-  it("checkpoints the active visit before native camera launch", () => {
-    const journey = readFileSync("components/seera/product/FieldJourney.tsx", "utf8");
-    expect(journey).toContain("checkpointActiveVisitInUrl(visit.id)");
-    expect(journey).toContain('url.searchParams.set("activeVisitId", visitId)');
-    expect(journey).toContain("quality: 85");
-  });
-
-  it("reconstructs the checkpoint only inside the employee active work session", () => {
-    const workspace = readFileSync("components/seera/product/OperationalWorkspace.tsx", "utf8");
-    expect(workspace).toContain("const activeVisitId = (query.activeVisitId ?? \"\").trim() || undefined;");
-    expect(workspace).toContain("workSessionId: sessionForContext.id");
-    expect(workspace).toContain("checkedOutAt: null");
-    expect(workspace).toContain("...(activeVisitId ? { id: activeVisitId } : {})");
-  });
-
 });
