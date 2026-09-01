@@ -3879,8 +3879,9 @@ export async function OperationalWorkspace({
         language={language}
         approvals={approvals.map((x) => ({
           value: x.id,
-          label: `${x.type} · ${x.entityType} — ${requesterName.get(x.requestedById) ?? "Unknown"} · ${x.createdAt.toLocaleDateString("en-IN")}`,
-          meta: `${x.reason ?? x.status} · ${JSON.stringify(x.request).slice(0, 140)}`,
+          domain: x.type,
+          label: `${x.entityType} — ${requesterName.get(x.requestedById) ?? "Unknown"} · ${x.createdAt.toLocaleDateString("en-IN")}`,
+          meta: x.reason ?? undefined,
         }))}
       />
     );

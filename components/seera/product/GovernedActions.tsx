@@ -52,57 +52,71 @@ export function ApprovalActions({
   approvals,
 }: {
   language: "EN" | "HI";
-  approvals: Option[];
+  approvals: (Option & { domain: string })[];
 }) {
   const hi = language === "HI";
   const state = useAction(language);
+  // Section-12 fix: group by approval domain (Money Desk / TA / Credit / etc.) via <optgroup>
+  // instead of one flat mixed list, and show a real empty state instead of a disabled selector
+  // pretending to be the primary experience when there's nothing to decide.
+  const domains = [...new Set(approvals.map((a) => a.domain))];
   return (
     <section className={styles.panel}>
       <div>
         <small>{hi ? "अनुमोदन कतार" : "APPROVAL QUEUE"}</small>
         <h2>{hi ? "लंबित अनुरोध पर निर्णय" : "Decide a pending request"}</h2>
       </div>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const form = new FormData(event.currentTarget);
-          void state.run(() =>
-            post(`/api/approvals/${String(form.get("approvalId"))}`, {
-              decision: String(form.get("decision")),
-              reason: String(form.get("reason")),
-            }),
-          );
-        }}
-      >
-        <label>
-          {hi ? "अनुरोध" : "Request"}
-          <select name="approvalId" required>
-            <option value="">
-              {hi ? "लंबित अनुरोध चुनें" : "Choose pending request"}
-            </option>
-            {approvals.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-                {option.meta ? ` · ${option.meta}` : ""}
+      {!approvals.length ? (
+        <p role="status">{hi ? "कोई लंबित अनुमोदन नहीं।" : "No pending approvals."}</p>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            void state.run(() =>
+              post(`/api/approvals/${String(form.get("approvalId"))}`, {
+                decision: String(form.get("decision")),
+                reason: String(form.get("reason")),
+              }),
+            );
+          }}
+        >
+          <label>
+            {hi ? "अनुरोध" : "Request"}
+            <select name="approvalId" required>
+              <option value="">
+                {hi ? "लंबित अनुरोध चुनें" : "Choose pending request"}
               </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {hi ? "निर्णय" : "Decision"}
-          <select name="decision">
-            <option value="APPROVED">{hi ? "स्वीकृत" : "Approve"}</option>
-            <option value="REJECTED">{hi ? "अस्वीकृत" : "Reject"}</option>
-          </select>
-        </label>
-        <label>
-          {hi ? "निर्णय का कारण" : "Decision reason"}
-          <input name="reason" minLength={3} required />
-        </label>
-        <button disabled={state.busy || !approvals.length}>
-          {hi ? "निर्णय सुरक्षित करें" : "Save decision"}
-        </button>
-      </form>
+              {domains.map((domain) => (
+                <optgroup key={domain} label={domain}>
+                  {approvals
+                    .filter((a) => a.domain === domain)
+                    .map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                        {option.meta ? ` · ${option.meta}` : ""}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label>
+            {hi ? "निर्णय" : "Decision"}
+            <select name="decision">
+              <option value="APPROVED">{hi ? "स्वीकृत" : "Approve"}</option>
+              <option value="REJECTED">{hi ? "अस्वीकृत" : "Reject"}</option>
+            </select>
+          </label>
+          <label>
+            {hi ? "निर्णय का कारण" : "Decision reason"}
+            <input name="reason" minLength={3} required />
+          </label>
+          <button disabled={state.busy}>
+            {hi ? "निर्णय सुरक्षित करें" : "Save decision"}
+          </button>
+        </form>
+      )}
       {state.message && <p role="status">{state.message}</p>}
     </section>
   );

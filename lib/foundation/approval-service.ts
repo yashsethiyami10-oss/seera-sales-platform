@@ -29,6 +29,18 @@ export async function decideApproval(
         "Approval unavailable",
         404,
       );
+    // Section-12 fix: maker-checker was not actually enforced here - nothing stopped the same
+    // actor who requested this item from also deciding it, and system:super_admin's role-scope
+    // bypass just below made this concretely reachable (a super_admin whose own request landed in
+    // this queue could approve/reject their own transaction). Founder-final-authority actions
+    // (Money Desk's finalizeForFounder) are unaffected - those never enter this generic approval
+    // queue at all, by design.
+    if (item.requestedById === actorId)
+      throw new FoundationError(
+        "SELF_APPROVAL_DENIED",
+        "You cannot decide your own request",
+        403,
+      );
     const roles = await tx.userRoleAssignment.findMany({
       where: { userId: actorId, status: "ACTIVE" },
       select: { role: { select: { code: true } } },
