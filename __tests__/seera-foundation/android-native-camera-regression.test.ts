@@ -13,7 +13,9 @@ describe("Android native camera regression", () => {
     expect(journey).toContain('Camera.takePhoto(');
     expect(journey).toContain('appRestoredResult');
     expect(journey).toContain('seera:camera-pending:');
-    expect(journey).toContain('quality: 85');
+    expect(journey).toContain('quality: 88');
+    expect(journey).toContain('targetWidth: 2048');
+    expect(journey).toContain('targetHeight: 2048');
     expect(journey).toContain('const MAX_FINAL_UPLOAD_BYTES = 10_000_000;');
     expect(journey).toContain('const uploadBlob = blob;');
     expect(journey).toContain('Do not render the full-resolution camera blob before upload.');
