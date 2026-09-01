@@ -13,12 +13,10 @@ process.env.CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || "test-c
 process.env.CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || "test-key";
 process.env.CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || "test-secret-never-returned";
 
-const resourceMock = vi.fn();
 vi.mock("cloudinary", () => ({
   v2: {
     config: vi.fn(),
     utils: { api_sign_request: vi.fn(() => "mock-signature") },
-    api: { resource: (...args: unknown[]) => resourceMock(...args) },
   },
 }));
 
@@ -47,20 +45,6 @@ function fullPublicId(signed: { folder: string; public_id: string }) {
   return `${signed.folder}/${signed.public_id}`;
 }
 
-function fakeCloudinaryResource(publicId: string, overrides: Record<string, unknown> = {}) {
-  return {
-    public_id: publicId,
-    resource_type: "image",
-    type: "upload",
-    secure_url: `https://res.cloudinary.com/test-cloud/image/upload/${publicId}.jpg`,
-    bytes: 500_000,
-    width: 1280,
-    height: 960,
-    format: "jpg",
-    ...overrides,
-  };
-}
-
 describe("field photo Cloudinary signed upload + finalize", () => {
   let execA: { id: string };
   let execB: { id: string };
@@ -70,7 +54,6 @@ describe("field photo Cloudinary signed upload + finalize", () => {
 
   beforeAll(async () => {
     console.log(`[SEERA DB GUARD] role=${target.role} fingerprint=${target.fingerprint}`);
-    resourceMock.mockReset();
     const { startFieldDay, endFieldDay } = await import("../../lib/sales-distribution/workflow-service");
     const { executiveCheckIn } = await import("../../lib/sales-distribution/field-portal-service");
     const { executiveAuthorizedDistributors } = await import("../../lib/sales-distribution/scope");
@@ -132,9 +115,18 @@ describe("field photo Cloudinary signed upload + finalize", () => {
     const { createFieldPhotoUploadSignature, finalizeFieldPhotoUpload } = await import("../../lib/sales-distribution/field-photo-cloudinary-service");
     const signed = await createFieldPhotoUploadSignature(db, execA.id, visitA.id);
     const publicId = fullPublicId(signed);
-    resourceMock.mockResolvedValueOnce(fakeCloudinaryResource(publicId));
-
-    const photo = await finalizeFieldPhotoUpload(db, execA.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId });
+    const photo = await finalizeFieldPhotoUpload(db, execA.id, {
+      visitId: visitA.id,
+      photoType: "SHOPFRONT",
+      publicId,
+      version: 1234567890,
+      signature: "mock-signature",
+      secureUrl: `https://res.cloudinary.com/test-cloud/image/upload/v1234567890/${publicId}.jpg`,
+      bytes: 500_000,
+      width: 1280,
+      height: 960,
+      format: "jpg",
+    });
     expect(photo.storageProvider).toBe("CLOUDINARY");
     expect(photo.publicId).toBe(publicId);
     expect(photo.secureUrl).toContain("res.cloudinary.com");
@@ -165,9 +157,19 @@ describe("field photo Cloudinary signed upload + finalize", () => {
     const { createFieldPhotoUploadSignature, finalizeFieldPhotoUpload } = await import("../../lib/sales-distribution/field-photo-cloudinary-service");
     const signed = await createFieldPhotoUploadSignature(db, execA.id, visitA.id);
     const publicId = fullPublicId(signed);
-    resourceMock.mockResolvedValueOnce(fakeCloudinaryResource(publicId, { bytes: 9_000_000 }));
     await expect(
-      finalizeFieldPhotoUpload(db, execA.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId }),
+      finalizeFieldPhotoUpload(db, execA.id, {
+        visitId: visitA.id,
+        photoType: "SHOPFRONT",
+        publicId,
+        version: 1234567890,
+        signature: "mock-signature",
+        secureUrl: `https://res.cloudinary.com/test-cloud/image/upload/v1234567890/${publicId}.jpg`,
+        bytes: 9_000_000,
+        width: 1280,
+        height: 960,
+        format: "jpg",
+      }),
     ).rejects.toMatchObject({ code: "PHOTO_UPLOAD_INVALID" });
   }, 20_000);
 
@@ -175,10 +177,21 @@ describe("field photo Cloudinary signed upload + finalize", () => {
     const { createFieldPhotoUploadSignature, finalizeFieldPhotoUpload } = await import("../../lib/sales-distribution/field-photo-cloudinary-service");
     const signed = await createFieldPhotoUploadSignature(db, execA.id, visitA.id);
     const publicId = fullPublicId(signed);
-    resourceMock.mockResolvedValueOnce(fakeCloudinaryResource(publicId));
-    await finalizeFieldPhotoUpload(db, execA.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId });
+    const finalizeInput = {
+      visitId: visitA.id,
+      photoType: "SHOPFRONT" as const,
+      publicId,
+      version: 1234567890,
+      signature: "mock-signature",
+      secureUrl: `https://res.cloudinary.com/test-cloud/image/upload/v1234567890/${publicId}.jpg`,
+      bytes: 500_000,
+      width: 1280,
+      height: 960,
+      format: "jpg",
+    };
+    await finalizeFieldPhotoUpload(db, execA.id, finalizeInput);
     await expect(
-      finalizeFieldPhotoUpload(db, execB.id, { visitId: visitA.id, photoType: "SHOPFRONT", publicId }),
+      finalizeFieldPhotoUpload(db, execB.id, finalizeInput),
     ).rejects.toMatchObject({ code: "VISIT_SCOPE_DENIED" });
   }, 20_000);
 
