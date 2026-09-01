@@ -18,7 +18,8 @@ describe("Start Day durability boundary", () => {
     const gps = fn.indexOf('source: "START_DAY"');
     expect(sessionWrite).toBeGreaterThanOrEqual(0);
     expect(gps).toBeGreaterThan(sessionWrite);
-    const postCommit = fn.slice(gps);\n    expect(postCommit).toContain("const gpsSample = async () =>");
+    const postCommit = fn.slice(gps);
+    expect(postCommit).toContain("const gpsSample = async () =>");
     expect(fn).toContain("after(gpsSample)");
     expect(fn).toContain("workflow.startFieldDay.gps_sample_failed");
   });
