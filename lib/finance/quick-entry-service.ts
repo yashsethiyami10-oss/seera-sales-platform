@@ -131,6 +131,9 @@ export async function quickEntryCreate(
     territoryId?: string;
     remark?: string;
     documentFileId?: string;
+    // Internal-only Money Desk flag. Honored only for an actor with system:super_admin;
+    // the public quick-entry API does not expose this as a policy bypass.
+    finalizeForFounder?: boolean;
     idempotencyKey: string;
   },
 ) {
@@ -166,20 +169,23 @@ export async function quickEntryCreate(
     idempotencyKey: input.idempotencyKey,
   });
 
-  // submitExpense is the REAL governed approval-policy check (spec Part 17
-  // does not mean "skip approval" — it means "don't make the user pick an
-  // account"). A small/authorized entry clears it immediately; a large one
-  // correctly queues for approval exactly as it would from the full form.
-  const submitted = await submitExpense(db, actorId, expense.id);
-  if (submitted.status !== "APPROVED") return { expense: submitted, category, treasuryAccount };
-
-  // Only chain straight through to POSTED if this actor independently holds
-  // expense:post too — i.e. this is the SAME three taps a Founder/Accounts
-  // user would make manually, just done in one request because they're
-  // authorized for all three steps. Anyone who isn't stops here, correctly,
-  // with the expense sitting APPROVED (not yet financially posted) for
-  // someone with posting authority to complete.
   const permissions = await effectivePermissions(db, actorId);
+  // A Founder is the final authority. Money Desk may explicitly request Founder-finalization,
+  // but only the system:super_admin permission can activate it. Normal Quick Entry continues
+  // through the existing approval-policy engine unchanged.
+  const submitted = input.finalizeForFounder && permissions.has("system:super_admin")
+    ? await db.seeraExpense.update({ where: { id: expense.id }, data: { status: "APPROVED" } }).then(async (updated) => {
+        await recordAudit(db, {
+          actorId,
+          action: "finance.expense.founder_finalized",
+          entityType: "SeeraExpense",
+          entityId: expense.id,
+          afterState: { status: "APPROVED", approvalBypass: "FOUNDER_FINAL_AUTHORITY" },
+        });
+        return updated;
+      })
+    : await submitExpense(db, actorId, expense.id);
+  if (submitted.status !== "APPROVED") return { expense: submitted, category, treasuryAccount };
   if (!permissions.has("expense:post") && !permissions.has("system:super_admin")) return { expense: submitted, category, treasuryAccount };
 
   const posted = await postExpense(db, actorId, expense.id, { paidNow: true, treasuryAccountId: treasuryAccount.id, treasuryAccountCoaCode: treasuryCoa.code });
