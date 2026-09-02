@@ -1,5 +1,5 @@
 import type { JournalSourceType, Prisma, PrismaClient } from "@prisma/client";
-import { authorize } from "@/lib/foundation/authorization-service";
+import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { financeNumberFor } from "./numbering";
@@ -109,7 +109,15 @@ export async function reverseJournal(db: PrismaClient, actorId: string, journalI
   if (input.approverId !== actorId) throw new FoundationError("APPROVER_IDENTITY_MISMATCH", "The signed-in approver must own the decision", 403);
   return db.$transaction(async (tx) => {
     const original = await tx.seeraJournalEntry.findUniqueOrThrow({ where: { id: journalId }, include: { lines: true } });
-    if (original.actorId === actorId) throw new FoundationError("JOURNAL_SELF_REVERSAL_DENIED", "Independent approval is required for reversal", 403);
+    // P0 Money Desk architecture correction: a genuine Founder (system:super_admin) is the same
+    // final-authority signal already used elsewhere (money-desk-service.ts's resolveMoneyDeskSource
+    // / finalizeForFounder) — reused here, narrowly, so the Founder isn't blocked from reversing
+    // their OWN posted journal. Every other actor still requires independent reversal, unchanged.
+    if (original.actorId === actorId) {
+      const permissions = await effectivePermissions(db, actorId);
+      if (!permissions.has("system:super_admin"))
+        throw new FoundationError("JOURNAL_SELF_REVERSAL_DENIED", "Independent approval is required for reversal", 403);
+    }
     if (original.status !== "POSTED") throw new FoundationError("JOURNAL_NOT_REVERSIBLE", "Only posted journals may be reversed", 409);
     const existing = await tx.seeraJournalEntry.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existing) return existing;

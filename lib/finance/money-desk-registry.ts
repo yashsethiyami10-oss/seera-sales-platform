@@ -39,7 +39,7 @@ export type MoneyDeskPurposeDefinition = {
   // Which orchestration handler in money-desk-service.ts's HANDLERS map runs this purpose —
   // deliberately a plain string key, not a function reference, so this file stays pure data.
   handler:
-    | "RAW_MATERIAL_PURCHASE" | "VENDOR_PAYMENT" | "INSTITUTIONAL_RECEIPT" | "OFFLINE_SALE"
+    | "RAW_MATERIAL_PURCHASE" | "VENDOR_PAYMENT" | "INSTITUTIONAL_RECEIPT" | "OFFLINE_SALE" | "OFFLINE_SALE_ANONYMOUS"
     | "QUICK_ENTRY_EXPENSE" | "FIXED_ASSET" | "REFUND" | "ADJUSTMENT";
   quickEntryType?: "EXPENSE" | "ADVANCE" | "REIMBURSEMENT" | "SALARY" | "PAYMENT" | "OTHER";
   quickEntryCategoryCode?: string; // SeeraExpenseCategory.code, when the handler is QUICK_ENTRY_EXPENSE with a fixed category
@@ -130,7 +130,36 @@ export const MONEY_DESK_PURPOSES: Record<string, MoneyDeskPurposeDefinition> = {
     // Sales Manager or Founder also given Money Desk access) can complete this purpose today.
     additionalPermission: "retailer:order",
     gstApplicable: true,
-    description: "A walk-in / counter / factory-gate cash sale. Always goes through the real Sales/Inventory order path (a governed walk-in customer record + a real order) — never a finance-only journal.",
+    // P0 architecture correction: this purpose is for a NAMED customer — either an existing one
+    // (pass the optional retailerId field; the handler reuses it and never creates a second master
+    // record) or a genuinely new one (leave retailerId blank and pass counterpartyName; the handler
+    // creates exactly one new retailer, inline, and uses it — "+ Add Customer" without leaving the
+    // sale). It always goes through the real Sales/Inventory order path (a real ledgered party + a
+    // real order) — never a finance-only journal. A sale with NO identifiable customer at all (true
+    // walk-in) is NOT this purpose — use "SALE-WALKIN" instead, which deliberately does not
+    // create/require any customer ledger record.
+    description: "A sale to a known/named customer — existing (reused) or newly added inline. Always creates/reuses one real ledgered party and a real Sales order. For an anonymous walk-in with no customer to name, use \"Anonymous / Walk-in Cash Sale\" instead.",
+  },
+  "SALE-WALKIN": {
+    code: "SALE-WALKIN",
+    label: "Anonymous / Walk-in Cash Sale",
+    hindiLabel: "अज्ञात ग्राहक नकद बिक्री",
+    group: "RECEIPTS",
+    allowedDirections: ["CASH_IN", "BANK_IN"],
+    counterpartyType: "NONE",
+    requiredFields: [],
+    optionalFields: ["counterpartyName"],
+    handler: "OFFLINE_SALE_ANONYMOUS",
+    // Deliberately false/null: this purpose reuses the same minimal, non-ledger
+    // SeeraFactoryCashSale event (lib/finance/factory-cash-sale-service.ts) built for exactly this
+    // case — no retailer master record, no Sales order, no SKU-level stock deduction. If the
+    // customer's identity matters (repeat buyer, needs a ledger), use "SALE-OFF" instead.
+    inventoryEffect: false,
+    stockDomain: null,
+    documentPolicy: "OPTIONAL",
+    approvalCategory: "PAYMENT",
+    gstApplicable: true,
+    description: "Cash/UPI/bank received for a genuine walk-in sale with no customer to name and no ledger required — never creates a retailer master record. counterpartyName here is a free-text note only (e.g. \"Ramesh, no ledger\"), not a party identity.",
   },
   "SAL-EMP": {
     code: "SAL-EMP",

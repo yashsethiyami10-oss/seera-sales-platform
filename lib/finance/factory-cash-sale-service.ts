@@ -13,10 +13,15 @@ import { FoundationError } from "@/lib/foundation/errors";
 export async function createFactoryCashSale(
   db: PrismaClient,
   actorId: string,
-  input: { saleDate: Date; partyName?: string; amount: number; notes?: string },
+  input: { saleDate: Date; partyName?: string; amount: number; notes?: string; idempotencyKey: string },
 ) {
   await authorize(db, { actorId, permission: "money_desk:create" });
   if (!(input.amount > 0)) throw new FoundationError("INVALID_AMOUNT", "Amount must be greater than ₹0", 400);
+  // Same idempotency convention as every other Money Desk downstream master (SeeraRetailer,
+  // SeeraVendor, ...) — a retried caller (e.g. a Money Desk transaction resumed after a transient
+  // failure) must RESUME, not double-record, this sale.
+  const existing = await db.seeraFactoryCashSale.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+  if (existing) return existing;
   const sale = await db.seeraFactoryCashSale.create({
     data: {
       saleDate: input.saleDate,
@@ -24,6 +29,7 @@ export async function createFactoryCashSale(
       amount: input.amount,
       notes: input.notes?.trim() || undefined,
       createdById: actorId,
+      idempotencyKey: input.idempotencyKey,
     },
   });
   await recordAudit(db, {

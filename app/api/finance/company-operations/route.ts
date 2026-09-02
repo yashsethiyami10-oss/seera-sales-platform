@@ -19,7 +19,7 @@ import { postOpeningBalances } from "@/lib/finance/opening-balance-service";
 import { lockPeriod, reopenPeriod } from "@/lib/finance/period-service";
 import { createPayrollEntry, accruePayrollEntry, paySalary } from "@/lib/finance/payroll-service";
 import { updateFinanceApprovalPolicy, seedDefaultFinanceApprovalPolicies, decideApproval } from "@/lib/finance/approval-policy-service";
-import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
+import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction, editMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
 import { MONEY_DESK_PURPOSE_CODES } from "@/lib/finance/money-desk-registry";
 import { interpretSmartFinance } from "@/lib/finance/smart-finance/service";
 import { treasuryContext } from "@/lib/finance/smart-finance/context";
@@ -47,7 +47,7 @@ const ACTIONS = [
   "lock-period", "reopen-period",
   "create-payroll-entry", "accrue-payroll-entry", "pay-salary",
   "update-finance-approval-policy", "decide-finance-approval",
-  "money-desk-create", "money-desk-decide-approval", "money-desk-void", "money-desk-smart-interpret",
+  "money-desk-create", "money-desk-decide-approval", "money-desk-void", "money-desk-edit", "money-desk-smart-interpret",
   "money-desk-treasury-context", "money-desk-confirm-other-party", "money-desk-update-other-party",
   "money-desk-set-other-party-active", "money-desk-settle-advance",
   "guided-receipt",
@@ -298,6 +298,22 @@ export async function POST(request: Request) {
         result = await voidMoneyDeskTransaction(prisma, user.id, v.transactionId, v);
         break;
       }
+      case "money-desk-edit": {
+        const v = z
+          .object({
+            transactionId: z.string(),
+            amount: z.number().optional(),
+            date: z.coerce.date().optional(),
+            counterpartyName: z.string().optional(),
+            description: z.string().optional(),
+            formData: z.record(z.unknown()).optional(),
+            reason: z.string(),
+            idempotencyKey: z.string(),
+          })
+          .parse(payload);
+        result = await editMoneyDeskTransaction(prisma, user.id, v.transactionId, v);
+        break;
+      }
       case "money-desk-smart-interpret": {
         // Interpretation only — never posts. The client posts the returned payload through
         // `money-desk-create` / `guided-receipt` above, after the user confirms the review card.
@@ -369,6 +385,7 @@ export async function POST(request: Request) {
               partyName: z.string().optional(),
               amount: z.number(),
               notes: z.string().optional(),
+              idempotencyKey: z.string(),
             })
             .parse(payload),
         );

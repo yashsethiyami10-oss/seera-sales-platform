@@ -1459,13 +1459,17 @@ model SeeraSalesOrder {
 // totals/analytics/Founder Sales Overview reporting, which read this table alongside
 // SeeraSalesOrder rather than this table pretending to be one.
 model SeeraFactoryCashSale {
-  id          String   @id @default(cuid())
-  saleDate    DateTime
-  partyName   String?
-  amount      Decimal  @db.Decimal(14, 2)
-  notes       String?
-  createdById String
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  saleDate       DateTime
+  partyName      String?
+  amount         Decimal  @db.Decimal(14, 2)
+  notes          String?
+  createdById    String
+  createdAt      DateTime @default(now())
+  // Added for the Money Desk "SALE-WALKIN" wiring (P0 architecture correction): retrying a
+  // Money Desk transaction stuck in POSTING must RESUME, not double-record, the underlying sale —
+  // same convention as every other Money Desk downstream master (SeeraRetailer, SeeraVendor, ...).
+  idempotencyKey String   @unique
 
   @@index([saleDate])
   @@index([createdById, createdAt])
@@ -2819,12 +2823,30 @@ enum MoneyDeskStatus {
   VOIDED
 }
 
+// P0 Money Desk architecture correction: server-determined origin, never client-supplied. Computed
+// from the actor's ACTUAL effective permissions at creation time (system:super_admin =
+// FOUNDER_PORTAL) - the same secure signal already established elsewhere in this file
+// (finalizeForFounder) - not from any string the client sends. Governs the Founder-auto-post rule.
+enum MoneyDeskSource {
+  FOUNDER_PORTAL
+  ACCOUNTS_PORTAL
+  MANAGER_PORTAL
+  OTHER_OPERATOR
+  SYSTEM
+}
+
 model SeeraMoneyDeskTransaction {
   id                String             @id @default(cuid())
   transactionNumber String             @unique
   purposeCode       String
   direction         MoneyDeskDirection
   status            MoneyDeskStatus    @default(DRAFT)
+  source            MoneyDeskSource    @default(OTHER_OPERATOR)
+  // Self-reference for governed correction (Edit-after-posted): the ORIGINAL row a corrected
+  // version replaces. Nullable - only set on the NEW row created by a correction; the original row
+  // is never mutated/deleted, only voided, so both the original and corrected versions remain
+  // independently auditable.
+  correctionOfId    String?
   amount            Decimal            @db.Decimal(16, 2)
   date              DateTime
   treasuryAccountId String?
@@ -2853,6 +2875,7 @@ model SeeraMoneyDeskTransaction {
 
   @@index([status, createdAt])
   @@index([purposeCode, createdAt])
+  @@index([correctionOfId])
   @@map("seera_money_desk_transactions")
 }
 

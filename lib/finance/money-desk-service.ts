@@ -54,6 +54,24 @@ async function requireCashOrBankPermission(db: PrismaClient, actorId: string, di
     throw new FoundationError("ACCESS_DENIED", `${needed} permission required`, 403);
 }
 
+// P0 Money Desk architecture correction: origin is a SERVER fact, derived from the actor's ACTUAL
+// effective permissions/role at the moment of creation — never trusted from anything the client
+// sends. system:super_admin is the SAME signal already established elsewhere in this file
+// (finalizeForFounder) for "this actor has genuine Founder authority" — reused here rather than
+// inventing a second, weaker check. The other buckets are informational (who/what created this,
+// for the transaction detail/audit trail) and do not themselves grant any bypass — only
+// FOUNDER_PORTAL does, and only because it's tied to the same permission the rest of this codebase
+// already treats as Founder-final-authority.
+async function resolveMoneyDeskSource(db: PrismaClient, actorId: string): Promise<"FOUNDER_PORTAL" | "ACCOUNTS_PORTAL" | "MANAGER_PORTAL" | "OTHER_OPERATOR"> {
+  const permissions = await effectivePermissions(db, actorId);
+  if (permissions.has("system:super_admin")) return "FOUNDER_PORTAL";
+  const roles = await db.userRoleAssignment.findMany({ where: { userId: actorId, status: "ACTIVE" }, select: { role: { select: { code: true } } } });
+  const codes = new Set(roles.map((r) => r.role.code));
+  if (codes.has("ACCOUNTS_MANAGER") || codes.has("ACCOUNTS_EXECUTIVE")) return "ACCOUNTS_PORTAL";
+  if (codes.has("SALES_MANAGER")) return "MANAGER_PORTAL";
+  return "OTHER_OPERATOR";
+}
+
 export type MoneyDeskCreateInput = {
   purposeCode: string;
   direction: MoneyDeskDirection;
@@ -151,8 +169,22 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
   // handler's own status check (below) surfaces that honestly via Needs Attention rather than a
   // second Money-Desk-level approval screen.
   const policy = await db.seeraFinanceApprovalPolicy.findUnique({ where: { category: def.approvalCategory } });
+  const source = await resolveMoneyDeskSource(db, actorId);
+  // P0 architecture correction: a Founder-Portal-originated entry is authoritative — it must not
+  // sit in PENDING_APPROVAL waiting for someone else's sign-off on the Founder's own action. This
+  // is the ONLY thing FOUNDER_PORTAL grants; every other purpose/policy/threshold rule below is
+  // otherwise unchanged, and normal operators (ACCOUNTS_PORTAL/MANAGER_PORTAL/OTHER_OPERATOR) still
+  // go through the exact same policy-threshold gate as before.
   const requiresApproval =
-    def.handler === "QUICK_ENTRY_EXPENSE" ? false : def.code === "ADJ-GOV" ? true : policy ? policy.requiresApproval && input.amount >= Number(policy.thresholdAmount) : true;
+    source === "FOUNDER_PORTAL"
+      ? false
+      : def.handler === "QUICK_ENTRY_EXPENSE"
+        ? false
+        : def.code === "ADJ-GOV"
+          ? true
+          : policy
+            ? policy.requiresApproval && input.amount >= Number(policy.thresholdAmount)
+            : true;
 
   const created = await db.seeraMoneyDeskTransaction.create({
     data: {
@@ -160,6 +192,7 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
       purposeCode: def.code,
       direction: input.direction,
       status: requiresApproval ? "PENDING_APPROVAL" : "POSTING",
+      source,
       amount: input.amount,
       date: input.date,
       treasuryAccountId: input.treasuryAccountId,
@@ -173,7 +206,7 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
       idempotencyKey: input.idempotencyKey,
     },
   });
-  await recordAudit(db, { actorId, action: "money_desk.transaction.created", entityType: "SeeraMoneyDeskTransaction", entityId: created.id, afterState: { purposeCode: def.code, amount: input.amount, status: created.status } });
+  await recordAudit(db, { actorId, action: "money_desk.transaction.created", entityType: "SeeraMoneyDeskTransaction", entityId: created.id, afterState: { purposeCode: def.code, amount: input.amount, status: created.status, source } });
 
   if (created.status === "PENDING_APPROVAL") return created;
   return processMoneyDeskTransaction(db, actorId, created.id);
@@ -239,7 +272,15 @@ export async function voidMoneyDeskTransaction(db: PrismaClient, actorId: string
   if (!input.reason.trim()) throw new FoundationError("MONEY_DESK_VOID_REASON_REQUIRED", "A reason is required", 400);
   const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
   if (txn.status !== "POSTED") throw new FoundationError("MONEY_DESK_NOT_VOIDABLE", "Only a posted transaction can be voided", 409);
-  if (txn.requestedById === actorId) throw new FoundationError("MONEY_DESK_SELF_VOID_DENIED", "Independent approval is required to void your own transaction", 403);
+  // P0 architecture correction (Rule 4): a genuine Founder (system:super_admin) does not need
+  // another user's independent sign-off to void/correct their OWN Founder-Portal entry — same
+  // final-authority signal as resolveMoneyDeskSource's FOUNDER_PORTAL bypass above. Every other
+  // actor (Accounts/Manager/Operator) still requires independent maker-checker void, unchanged.
+  if (txn.requestedById === actorId) {
+    const permissions = await effectivePermissions(db, actorId);
+    if (!permissions.has("system:super_admin"))
+      throw new FoundationError("MONEY_DESK_SELF_VOID_DENIED", "Independent approval is required to void your own transaction", 403);
+  }
   const refs = (txn.downstreamRefs ?? {}) as { journalId?: string };
   if (!refs.journalId)
     throw new FoundationError(
@@ -252,6 +293,65 @@ export async function voidMoneyDeskTransaction(db: PrismaClient, actorId: string
   const voided = await db.seeraMoneyDeskTransaction.update({ where: { id: transactionId }, data: { status: "VOIDED", voidedById: actorId, voidedAt: new Date(), voidReason: input.reason } });
   await recordAudit(db, { actorId, action: "money_desk.transaction.voided", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, reason: input.reason });
   return voided;
+}
+
+// P0 architecture correction (Rule 3): the Founder can edit their OWN entry. Deliberately a thin
+// orchestration over the two primitives above, not a new mutation path — never touches accounting
+// state directly. Not-yet-posted (DRAFT/PENDING_APPROVAL) is a genuine safe in-place update (no
+// accounting effect exists yet to protect). POSTED is a governed correction: void the original
+// (reusing voidMoneyDeskTransaction — including its own Founder-self-void bypass and its existing,
+// documented V1 scope limit to journal-only purposes) and create a new, corrected transaction
+// linked back via correctionOfId — the original row is never rewritten or deleted, only VOIDED.
+export async function editMoneyDeskTransaction(
+  db: PrismaClient,
+  actorId: string,
+  transactionId: string,
+  input: { amount?: number; date?: Date; counterpartyName?: string; description?: string; formData?: Record<string, unknown>; reason: string; idempotencyKey: string },
+) {
+  if (!input.reason.trim()) throw new FoundationError("MONEY_DESK_EDIT_REASON_REQUIRED", "A reason is required", 400);
+  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
+  if (txn.requestedById !== actorId) throw new FoundationError("MONEY_DESK_EDIT_NOT_OWNER", "You may only edit an entry you created", 403);
+  const permissions = await effectivePermissions(db, actorId);
+  if (!permissions.has("system:super_admin"))
+    throw new FoundationError("MONEY_DESK_EDIT_FOUNDER_ONLY", "Direct edit is a Founder-Portal capability — void and re-enter, or ask a Founder to correct it", 403);
+
+  if (txn.status === "DRAFT" || txn.status === "PENDING_APPROVAL") {
+    const updated = await db.seeraMoneyDeskTransaction.update({
+      where: { id: transactionId },
+      data: {
+        amount: input.amount ?? undefined,
+        date: input.date ?? undefined,
+        counterpartyName: input.counterpartyName ?? undefined,
+        description: input.description ?? undefined,
+        formData: input.formData ? (input.formData as never) : undefined,
+      },
+    });
+    await recordAudit(db, { actorId, action: "money_desk.transaction.edited_pre_post", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, reason: input.reason, afterState: { amount: updated.amount.toString(), date: updated.date.toISOString() } });
+    return updated;
+  }
+
+  if (txn.status === "POSTED") {
+    const voided = await voidMoneyDeskTransaction(db, actorId, transactionId, { reason: `Correction: ${input.reason}` });
+    const corrected = await createMoneyDeskTransaction(db, actorId, {
+      purposeCode: txn.purposeCode,
+      direction: txn.direction,
+      amount: input.amount ?? Number(txn.amount),
+      date: input.date ?? txn.date,
+      treasuryAccountId: txn.treasuryAccountId ?? undefined,
+      counterpartyType: txn.counterpartyType ?? undefined,
+      counterpartyId: txn.counterpartyId ?? undefined,
+      counterpartyName: input.counterpartyName ?? txn.counterpartyName ?? undefined,
+      description: input.description ?? txn.description ?? undefined,
+      documentFileId: txn.documentFileId ?? undefined,
+      formData: (input.formData ?? (txn.formData as Record<string, unknown>)) ?? {},
+      idempotencyKey: input.idempotencyKey,
+    });
+    await db.seeraMoneyDeskTransaction.update({ where: { id: corrected.id }, data: { correctionOfId: transactionId } });
+    await recordAudit(db, { actorId, action: "money_desk.transaction.corrected", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, reason: input.reason, afterState: { correctedTransactionId: corrected.id, voidedStatus: voided.status } });
+    return { ...corrected, correctionOfId: transactionId };
+  }
+
+  throw new FoundationError("MONEY_DESK_EDIT_NOT_ALLOWED", `Cannot edit a transaction in ${txn.status} status`, 409);
 }
 
 type Handler = (
@@ -467,20 +567,52 @@ const HANDLERS: Record<string, Handler> = {
     return { grnId: postedGrn.id, vendorId, billId: bill.id, paymentId, paidNow };
   },
 
+  // P0 architecture correction (Rules 6-11): this purpose is now for a NAMED customer only — a
+  // genuinely anonymous walk-in belongs to SALE-WALKIN/OFFLINE_SALE_ANONYMOUS below, which never
+  // reaches this handler at all. An existing customer (formData.retailerId set) is REUSED, never
+  // re-created; a new one is created exactly once, inline, from the typed name — "+ Add Customer"
+  // without abandoning the sale. This was the exact bug Rule 11 flagged: the old handler
+  // unconditionally created a brand-new SeeraRetailer master record on every single sale.
   OFFLINE_SALE: async (db, actorId, txn, formData) => {
-    const retailer = await createRetailer(db, actorId, {
-      businessName: txn.counterpartyName ?? "Walk-in / Counter Sale",
-      address: { line: "Counter sale — no fixed address" },
-      customerType: "INSTITUTIONAL_OTHER",
-      idempotencyKey: `${txn.idempotencyKey}:retailer`,
-    });
+    const existingRetailerId = (formData.retailerId as string | undefined)?.trim();
+    let retailerId: string;
+    if (existingRetailerId) {
+      const existing = await db.seeraRetailer.findUnique({ where: { id: existingRetailerId }, select: { id: true } });
+      if (!existing) throw new FoundationError("MONEY_DESK_RETAILER_NOT_FOUND", "The selected existing customer could not be found", 404);
+      retailerId = existing.id;
+    } else {
+      const retailer = await createRetailer(db, actorId, {
+        businessName: txn.counterpartyName ?? "Walk-in / Counter Sale",
+        address: { line: "Counter sale — no fixed address" },
+        customerType: "INSTITUTIONAL_OTHER",
+        idempotencyKey: `${txn.idempotencyKey}:retailer`,
+      });
+      retailerId = retailer.id;
+    }
     const lines = (formData.skuLines as { skuId: string; quantity: number; rate?: number }[]) ?? [];
     const order = await placeRetailerOrder(
       db,
       { actorId, sourcePortal: "sales-manager", commercialPartyType: "DISTRIBUTOR", commercialPartyId: "" },
-      { retailerId: retailer.id, idempotencyKey: `${txn.idempotencyKey}:order`, lines, source: "OTHER" },
+      { retailerId, idempotencyKey: `${txn.idempotencyKey}:order`, lines, source: "OTHER" },
     );
-    return { retailerId: retailer.id, orderId: order.id };
+    return { retailerId, orderId: order.id };
+  },
+
+  // The genuine walk-in path (SALE-WALKIN purpose): deliberately does NOT touch the
+  // Sales/Retailer/Inventory system at all — no retailer master record, no order, no SKU-level
+  // stock deduction. Reuses the existing, already-governed, non-ledger SeeraFactoryCashSale event
+  // (factory-cash-sale-service.ts) built earlier specifically for "no unnecessary ledger
+  // requirement" cash sales — this is its intended caller, not a parallel accounting path.
+  OFFLINE_SALE_ANONYMOUS: async (db, actorId, txn) => {
+    const { createFactoryCashSale } = await import("./factory-cash-sale-service");
+    const sale = await createFactoryCashSale(db, actorId, {
+      saleDate: txn.date,
+      partyName: txn.counterpartyName ?? undefined,
+      amount: Number(txn.amount),
+      notes: txn.description ?? undefined,
+      idempotencyKey: `${txn.idempotencyKey}:cashsale`,
+    });
+    return { factoryCashSaleId: sale.id };
   },
 };
 

@@ -317,10 +317,22 @@ export function SmartFinanceEntry({
 
     run
       .then((r) => {
+        // P0 architecture correction (Rule 5): never say "Posted" for a transaction that is NOT
+        // actually posted yet — PENDING_APPROVAL must read as submitted-and-waiting, not as a
+        // contradictory "Posted — status: PENDING_APPROVAL".
+        const status = r?.status;
         setOkText(
-          hi
-            ? `पोस्ट किया गया${r?.status ? ` — स्थिति: ${r.status}` : ""}. ${r?.status === "PENDING_APPROVAL" ? "स्वतंत्र अनुमोदन प्रतीक्षित।" : ""}`
-            : `Posted${r?.status ? ` — status: ${r.status}` : ""}. ${r?.status === "PENDING_APPROVAL" ? "Awaiting independent approval." : ""}`,
+          status === "PENDING_APPROVAL"
+            ? hi
+              ? "सबमिट किया गया — स्वतंत्र अनुमोदन के लिए प्रतीक्षित। यह अभी तक पोस्ट नहीं हुआ है।"
+              : "Submitted — awaiting independent approval. Not yet posted."
+            : status === "POSTED" || !status
+              ? hi
+                ? "पोस्ट किया गया — सामान्य खाता बही में दर्ज।"
+                : "Posted — recorded in the general ledger."
+              : hi
+                ? `पोस्ट किया गया — स्थिति: ${status}`
+                : `Posted — status: ${status}`,
         );
         setStage("done");
         router.refresh();

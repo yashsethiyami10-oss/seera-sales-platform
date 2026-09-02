@@ -15,6 +15,19 @@ async function post(action: string, payload: unknown) {
   if (!r.ok) throw new Error(d?.error?.message ?? d?.error?.code ?? "Action failed");
   return d;
 }
+async function postDistribution(action: string, payload: unknown) {
+  const r = await fetch("/api/distribution/operations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const code = d?.error?.code as string | undefined;
+    // Real governed action (createSuperStockist), real RBAC (master:manage) — a P0 architecture
+    // correction (Rule 14): "No parties found" must never be a dead end. If the signed-in actor
+    // isn't authorized to create the master record, say so plainly instead of a raw ACCESS_DENIED.
+    if (code === "ACCESS_DENIED") throw new Error("ACCESS_DENIED_ADD_PARTY");
+    throw new Error(d?.error?.message ?? code ?? "Action failed");
+  }
+  return d;
+}
 async function getReport(report: string, params: Record<string, string> = {}) {
   const qs = new URLSearchParams({ report, ...params }).toString();
   const r = await fetch(`/api/finance/company-reports?${qs}`);
@@ -54,6 +67,17 @@ export function GuidedMoneyIn({ language, treasuryAccounts, onDone, onCancel }: 
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
 
+  // P0 architecture correction (Rule 14): "No parties found" for S.S. Receipt must not be a dead
+  // end — offer a governed "+ Add Super Stockist" inline, or a clear ask-an-authorized-user message
+  // when the signed-in actor lacks master:manage. Scoped to SUPER_STOCKIST specifically (what was
+  // reported); Distributor has an equivalent createStandaloneDistributor action but was not part of
+  // this ask.
+  const [addingParty, setAddingParty] = useState(false);
+  const [newFirmName, setNewFirmName] = useState("");
+  const [newMobile, setNewMobile] = useState("");
+  const [addPartyBusy, setAddPartyBusy] = useState(false);
+  const [addPartyError, setAddPartyError] = useState<string | null>(null);
+
   const isPartnerFlow = kind === "DISTRIBUTOR" || kind === "SUPER_STOCKIST";
   const partyName = parties.find((p) => p.id === partyId)?.name ?? "";
   const selectedDoc = outstanding?.outstanding.find((d) => d.documentId === documentId);
@@ -68,6 +92,28 @@ export function GuidedMoneyIn({ language, treasuryAccounts, onDone, onCancel }: 
     getReport("party-outstanding", { partyType: kind === "DISTRIBUTOR" ? "DISTRIBUTOR" : "SUPER_STOCKIST", partyId: pid })
       .then(setOutstanding)
       .catch(() => setOutstanding(null));
+  }
+
+  function submitAddSuperStockist() {
+    if (!newFirmName.trim() || newMobile.replace(/\D/g, "").length < 10) return;
+    setAddPartyBusy(true);
+    setAddPartyError(null);
+    postDistribution("create-super-stockist", {
+      firmName: newFirmName.trim(),
+      address: { line: "Added from S.S. Receipt — details to be completed" },
+      mobile: newMobile.trim(),
+      idempotencyKey: key(),
+    })
+      .then((created: { id: string; legalName: string }) => {
+        setParties((prev) => [...prev, { id: created.id, name: created.legalName }]);
+        setPartyId(created.id);
+        setDocumentId("");
+        setAddingParty(false);
+        setNewFirmName("");
+        setNewMobile("");
+      })
+      .catch((e) => setAddPartyError(e instanceof Error ? e.message : "Could not add Super Stockist"))
+      .finally(() => setAddPartyBusy(false));
   }
 
   function next() { setError(null); setStep((s) => s + 1); }
@@ -152,6 +198,32 @@ export function GuidedMoneyIn({ language, treasuryAccounts, onDone, onCancel }: 
             </label>
           ) : (
             <label>{hi ? "नाम / विवरण" : "Name / description"}<input value={counterpartyName} onChange={(e) => setCounterpartyName(e.target.value)} placeholder={hi ? "ग्राहक का नाम" : "Customer name"} /></label>
+          )}
+          {kind === "SUPER_STOCKIST" && !addingParty && (
+            <button type="button" className={styles.secondaryBig} onClick={() => { setAddingParty(true); setAddPartyError(null); }}>
+              {hi ? "+ नया एस.एस. जोड़ें" : "+ Add Super Stockist"}
+            </button>
+          )}
+          {kind === "SUPER_STOCKIST" && addingParty && (
+            <div className={styles.list}>
+              <label>{hi ? "फर्म का नाम" : "Firm name"}<input value={newFirmName} onChange={(e) => setNewFirmName(e.target.value)} placeholder={hi ? "फर्म / कानूनी नाम" : "Firm / legal name"} /></label>
+              <label>{hi ? "मोबाइल" : "Mobile"}<input value={newMobile} onChange={(e) => setNewMobile(e.target.value)} placeholder={hi ? "मोबाइल नंबर" : "Mobile number"} /></label>
+              {addPartyError === "ACCESS_DENIED_ADD_PARTY" ? (
+                <p role="status" data-ok="false">
+                  {hi
+                    ? "आपके पास नया एस.एस. जोड़ने का अधिकार नहीं है — किसी अधिकृत उपयोगकर्ता (Founder/Admin) से कहें।"
+                    : "You don't have authority to add a new Super Stockist — ask an authorized user (Founder/Admin)."}
+                </p>
+              ) : addPartyError ? (
+                <p role="status" data-ok="false">{addPartyError}</p>
+              ) : null}
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" className={styles.secondaryBig} disabled={addPartyBusy} onClick={() => { setAddingParty(false); setAddPartyError(null); }}>{hi ? "रद्द करें" : "Cancel"}</button>
+                <button type="button" className={styles.primaryBig} disabled={addPartyBusy || !newFirmName.trim() || newMobile.replace(/\D/g, "").length < 10} onClick={submitAddSuperStockist}>
+                  {addPartyBusy ? (hi ? "जोड़ा जा रहा है…" : "Adding…") : (hi ? "एस.एस. जोड़ें" : "Add Super Stockist")}
+                </button>
+              </div>
+            </div>
           )}
           {isPartnerFlow && partyId && outstanding && (
             <div className={styles.tableWrap}>
