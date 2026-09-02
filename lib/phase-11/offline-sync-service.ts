@@ -1,4 +1,4 @@
-import type {Prisma,PrismaClient} from "@prisma/client";import {FoundationError} from "@/lib/foundation/errors";import {recordAudit} from "@/lib/foundation/audit-service";import {offlineOperationSchema,type OfflineOperationInput} from "./offline-contract";import {classifyOfflineConflict} from "./conflict-engine";import {placeRetailerOrder,endFieldDay} from "@/lib/sales-distribution/workflow-service";import {recordCollection,captureMarketIntelligence} from "@/lib/sales-distribution/operational-service";import {executiveCheckOut,createFollowUp} from "@/lib/sales-distribution/field-portal-service";import {createDistributorProspect} from "@/lib/sales-distribution/manager-service";
+import type {Prisma,PrismaClient} from "@prisma/client";import {FoundationError} from "@/lib/foundation/errors";import {recordAudit} from "@/lib/foundation/audit-service";import {offlineOperationSchema,type OfflineOperationInput} from "./offline-contract";import {classifyOfflineConflict} from "./conflict-engine";import {placeRetailerOrder,endFieldDay} from "@/lib/sales-distribution/workflow-service";import {recordCollection,captureMarketIntelligence} from "@/lib/sales-distribution/operational-service";import {executiveCheckOut,createFollowUp,createRetailerAndCheckIn} from "@/lib/sales-distribution/field-portal-service";import {createDistributorProspect} from "@/lib/sales-distribution/manager-service";
 import {acceptAndPrepareRetailerOrder,recordEasyDeliveryOutcome,deliverRemainingRetailerOrder} from "@/lib/sales-distribution/distributor-easy-mode-service";
 const p=<T>(value:unknown)=>value as T;
 async function dispatch(db:PrismaClient,userId:string,input:OfflineOperationInput){const data=input.payload;
@@ -16,6 +16,21 @@ async function dispatch(db:PrismaClient,userId:string,input:OfflineOperationInpu
  if(input.actionType==="MARKET_INTELLIGENCE_DRAFT")return captureMarketIntelligence(db,userId,p<Parameters<typeof captureMarketIntelligence>[2]>(data));
  if(input.actionType==="DAY_END_DRAFT"){await endFieldDay(db,userId,p<string>(data.sessionId),{outcome:p<string>(data.outcome),remarks:p<string|undefined>(data.remarks)});return{id:p<string>(data.sessionId)};}
  if(input.actionType==="VISIT_DRAFT"){const session=await db.seeraWorkSession.findFirst({where:{id:p<string>(data.workSessionId),employeeId:userId,status:"ACTIVE"}}),retailer=await db.seeraRetailer.findFirst({where:{id:p<string>(data.retailerId),salespersonId:userId,lifecycle:"ACTIVE"}});const conflict=classifyOfflineConflict({userActive:true,sessionActive:Boolean(session),retailerActive:Boolean(retailer),visitDuplicate:Boolean(await db.seeraVisit.findUnique({where:{idempotencyKey:input.clientOperationId}}))});if(conflict?.classification==="AUTO_RESOLVABLE")return await db.seeraVisit.findUniqueOrThrow({where:{idempotencyKey:input.clientOperationId}});if(conflict)throw Object.assign(new FoundationError(conflict.code,"Offline visit conflict",409),{conflict});return db.seeraVisit.create({data:{workSessionId:session!.id,retailerId:retailer!.id,checkedInAt:input.localCreatedAt,checkInLatitude:p<number|undefined>(data.latitude),checkInLongitude:p<number|undefined>(data.longitude),gpsExceptionReason:p<string|undefined>(data.gpsExceptionReason),idempotencyKey:input.clientOperationId}});}
+ if(input.actionType==="ADD_CUSTOMER_DRAFT"){
+   // Production-stability fix: Add Customer previously had NO offline draft type at all (only
+   // VISIT_DRAFT existed, and that requires an already-persisted retailerId - check-in to an
+   // EXISTING retailer, not creating a new one). createRetailerAndCheckIn already re-verifies the
+   // work session is ACTIVE server-side (throws ACTIVE_WORKDAY_REQUIRED itself if stale) and
+   // already has its own idempotent-retry lookup internally - reused as-is, not duplicated here.
+   // Two distinct idempotency keys (retailer create + visit check-in) derived deterministically
+   // from the one clientOperationId this queued item carries, same convention
+   // managerRetailerCheckIn's own offline-adjacent field-creation path already uses.
+   return createRetailerAndCheckIn(db,userId,{
+     ...p<Parameters<typeof createRetailerAndCheckIn>[2]>(data),
+     idempotencyKey:input.clientOperationId,
+     checkInIdempotencyKey:`${input.clientOperationId}-checkin`,
+   });
+ }
  if(input.actionType==="VISIT_CHECK_OUT"||input.actionType==="NO_ORDER_DRAFT")return executiveCheckOut(db,userId,p<string>(data.visitId),p<Parameters<typeof executiveCheckOut>[3]>(data));
  if(input.actionType==="FOLLOW_UP_DRAFT")return createFollowUp(db,userId,{...p<Parameters<typeof createFollowUp>[2]>(data),idempotencyKey:input.clientOperationId});
  if(input.actionType==="DISTRIBUTOR_PROSPECT_DRAFT")return createDistributorProspect(db,userId,p<Parameters<typeof createDistributorProspect>[2]>(data));

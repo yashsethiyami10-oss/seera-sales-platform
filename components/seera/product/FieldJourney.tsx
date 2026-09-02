@@ -1695,28 +1695,55 @@ export function FieldJourney({
     setGpsStatus(status);
     if (!addCustomerKeysRef.current) addCustomerKeysRef.current = { idempotencyKey: key(), checkInIdempotencyKey: key() };
     const { idempotencyKey, checkInIdempotencyKey } = addCustomerKeysRef.current;
-    const result = await send("create-retailer-and-check-in", {
-      businessName: String(f.get("businessName")),
-      address: { area: String(f.get("area")) },
-      ownerName: String(f.get("ownerName") ?? "") || undefined,
-      mobile: String(f.get("mobile") ?? "") || undefined,
-      alternateMobile: String(f.get("alternateMobile") ?? "") || undefined,
-      customerType: String(f.get("customerType") ?? "") || undefined,
-      pincode: String(f.get("pincode") ?? "") || undefined,
-      gstin: String(f.get("gstin") ?? "") || undefined,
-      notes: String(f.get("notes") ?? "") || undefined,
-      beatId: String(f.get("beatId") ?? "") || undefined,
-      territoryId: beatOptions.find((b) => b.value === String(f.get("beatId") ?? ""))?.territoryId,
-      latitude: point.latitude,
-      longitude: point.longitude,
-      accuracy: point.accuracy,
-      confirmDuplicate,
-      idempotencyKey,
-      workSessionId: session!.id,
-      checkInIdempotencyKey,
-    });
+    // Production-stability fix: this previously called send() directly, bypassing runOrQueue
+    // entirely — Add Customer was the one major field mutation with NO offline-queue fallback on
+    // a genuine network failure (send()'s own NETWORK_ERROR path), unlike every sibling action
+    // (Order, Checkout, End Day all go through run()/runOrQueue). runOrQueue tries the real
+    // request first — this is not "always queue offline", it still resolves normally online —
+    // and only falls back to a safe, idempotent-keyed queue entry on an actual network failure.
+    const outcome = await runOrQueue(
+      "create-retailer-and-check-in",
+      {
+        businessName: String(f.get("businessName")),
+        address: { area: String(f.get("area")) },
+        ownerName: String(f.get("ownerName") ?? "") || undefined,
+        mobile: String(f.get("mobile") ?? "") || undefined,
+        alternateMobile: String(f.get("alternateMobile") ?? "") || undefined,
+        customerType: String(f.get("customerType") ?? "") || undefined,
+        pincode: String(f.get("pincode") ?? "") || undefined,
+        gstin: String(f.get("gstin") ?? "") || undefined,
+        notes: String(f.get("notes") ?? "") || undefined,
+        beatId: String(f.get("beatId") ?? "") || undefined,
+        territoryId: beatOptions.find((b) => b.value === String(f.get("beatId") ?? ""))?.territoryId,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        accuracy: point.accuracy,
+        confirmDuplicate,
+        idempotencyKey,
+        workSessionId: session!.id,
+        checkInIdempotencyKey,
+      },
+      { entityType: "SeeraRetailer", actionType: "ADD_CUSTOMER_DRAFT" },
+    );
     setBusy(false);
     setBusyLabel(null);
+    if ("queued" in outcome) {
+      // No real retailer/visit exists yet — queued for sync, not a fabricated optimistic visit.
+      // Same terminal-outcome-for-this-attempt semantics as an online success: reset the key so a
+      // genuinely new attempt (a different shop) gets its own key, and close the form so the user
+      // isn't left staring at it.
+      addCustomerKeysRef.current = null;
+      setDuplicateWarning(null);
+      setShowAddCustomer(false);
+      setMessage({
+        ok: true,
+        text: hi
+          ? "कोई नेटवर्क नहीं — ग्राहक सुरक्षित रूप से सिंक के लिए कतार में है। ऑनलाइन होने पर विज़िट शुरू होगी।"
+          : "No network — customer safely queued to sync. The visit will start once you're back online.",
+      });
+      return;
+    }
+    const result = outcome;
     if (!result.success) {
       const similar = result.details?.similar as { id: string; businessName: string; mobile: string | null }[] | undefined;
       if (similar?.length) setDuplicateWarning({ similar });
