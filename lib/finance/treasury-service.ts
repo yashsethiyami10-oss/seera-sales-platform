@@ -27,6 +27,24 @@ export async function createTreasuryAccount(
   });
 }
 
+// Money Desk 2.0 (Rule 10): fixes "No Treasury Accounts configured" properly — an idempotent
+// bootstrap, not a hard-coded fake balance. createTreasuryAccount() itself always creates a new
+// row (it has no upsert path, since each call also creates a linked SeeraChartOfAccount) — this
+// wraps it with a find-first-by-code check so calling it again after the accounts already exist
+// is a safe no-op, never a duplicate Cash/Bank account or a duplicate deployment-time seed.
+export async function ensureDefaultTreasuryAccounts(db: PrismaClient, actorId: string) {
+  const defaults: { code: string; name: string; kind: "CASH" | "BANK" }[] = [
+    { code: "CASH-MAIN", name: "Cash", kind: "CASH" },
+    { code: "BANK-MAIN", name: "Bank Account", kind: "BANK" },
+  ];
+  const results = [];
+  for (const d of defaults) {
+    const existing = await db.seeraTreasuryAccount.findUnique({ where: { code: d.code } });
+    results.push(existing ?? (await createTreasuryAccount(db, actorId, { kind: d.kind, code: d.code, name: d.name })));
+  }
+  return results;
+}
+
 export async function listTreasuryAccounts(db: PrismaClient, actorId: string) {
   await authorize(db, { actorId, permission: "gl:view" });
   return db.seeraTreasuryAccount.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });

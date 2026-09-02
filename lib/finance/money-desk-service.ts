@@ -12,6 +12,7 @@ import { createGrn, postGrn } from "@/lib/manufacturing/grn-service";
 import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
 import { placeRetailerOrder } from "@/lib/sales-distribution/workflow-service";
 import { deriveCostCentre } from "./cost-centre";
+import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
 
 // SEERA MONEY DESK — ORCHESTRATION ENGINE. "User enters the business
 // transaction. System decides the accounting." This file is the ONLY place a
@@ -215,20 +216,7 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
 export async function decideMoneyDeskApproval(db: PrismaClient, actorId: string, transactionId: string, input: { decision: "APPROVED" | "REJECTED"; reason: string }) {
   await authorize(db, { actorId, permission: "money_desk:approve" });
   if (!input.reason.trim()) throw new FoundationError("MONEY_DESK_APPROVAL_REASON_REQUIRED", "A reason is required", 400);
-  // Explicit read projection intentionally excludes the two newest Money Desk columns
-  // (source/correctionOfId). This keeps historical Money Desk reads backward-compatible while
-  // production migration state is being reconciled; writes still require the governed schema.
-  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({
-    where: { id: transactionId },
-    select: {
-      id: true, transactionNumber: true, purposeCode: true, direction: true, status: true,
-      amount: true, date: true, treasuryAccountId: true, counterpartyType: true,
-      counterpartyId: true, counterpartyName: true, description: true, documentFileId: true,
-      formData: true, downstreamRefs: true, failureReason: true, requestedById: true,
-      approvedById: true, approvedAt: true, voidedById: true, voidedAt: true,
-      voidReason: true, idempotencyKey: true, createdAt: true, updatedAt: true,
-    },
-  });
+  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
   if (txn.status !== "PENDING_APPROVAL") throw new FoundationError("MONEY_DESK_NOT_PENDING_APPROVAL", "This transaction is not awaiting approval", 409);
   // Maker-checker (same convention as journal reversal / claim settlement elsewhere in this
   // codebase): the person who entered the transaction cannot also be the one who approves it.
@@ -717,19 +705,7 @@ async function salesDistributionBridge(db: PrismaClient, viewAll: boolean) {
 export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: string, transactionId: string) {
   const { permissions } = await authorize(db, { actorId, permission: "money_desk:view" });
   const viewAll = permissions.has("money_desk:view_all") || permissions.has("system:super_admin");
-  // Keep drill-down reads compatible with historical production schema while the additive
-  // Money Desk source/correction migration is being reconciled.
-  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({
-    where: { id: transactionId },
-    select: {
-      id: true, transactionNumber: true, purposeCode: true, direction: true, status: true,
-      amount: true, date: true, treasuryAccountId: true, counterpartyType: true,
-      counterpartyId: true, counterpartyName: true, description: true, documentFileId: true,
-      formData: true, downstreamRefs: true, failureReason: true, requestedById: true,
-      approvedById: true, approvedAt: true, voidedById: true, voidedAt: true,
-      voidReason: true, idempotencyKey: true, createdAt: true, updatedAt: true,
-    },
-  });
+  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
   if (!viewAll && txn.requestedById !== actorId) throw new FoundationError("MONEY_DESK_SCOPE_DENIED", "This transaction is outside your scope", 403);
 
   const def = purposeDefinition(txn.purposeCode);
@@ -769,6 +745,16 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
   else if (vendorBill) ledgerLink = { partyType: "VENDOR", partyId: vendorBill.vendorId, label: vendor?.tradeName ?? vendor?.legalName ?? "Vendor" };
   else if (expense?.employeeId) ledgerLink = { partyType: "EMPLOYEE", partyId: expense.employeeId, label: employee?.name ?? employee?.email ?? "Employee" };
   else if (employee) ledgerLink = { partyType: "EMPLOYEE", partyId: employee.id, label: employee.name ?? employee.email };
+  else {
+    // Retail Customer ledger link (Rule 11/19) — only when this transaction genuinely resolved to
+    // a real SeeraRetailer (SALE-OFF's downstreamRefs.retailerId, or a future Retail Customer
+    // Payment's counterpartyId typed as CUSTOMER), never fabricated for a walk-in with no party.
+    const retailerId = typeof refs.retailerId === "string" ? refs.retailerId : txn.counterpartyType === "CUSTOMER" ? txn.counterpartyId : null;
+    if (retailerId) {
+      const retailer = await db.seeraRetailer.findUnique({ where: { id: retailerId }, select: { businessName: true } });
+      if (retailer) ledgerLink = { partyType: "RETAILER", partyId: retailerId, label: retailer.businessName };
+    }
+  }
 
   // Smart Finance provenance (spec §18/§19) — when a transaction was entered by typing/speaking a
   // sentence, formData.__smartFinance carries the exact instruction + the structured interpretation
@@ -790,6 +776,13 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     purposeHindiLabel: def.hindiLabel,
     source: smartFinance ? "SMART_FINANCE" : "GUIDED",
     smartFinance,
+    // Distinct from `source` above (which describes HOW the entry was typed — Smart Finance vs the
+    // guided form). `originPortal` is the P0 architecture correction's server-derived WHO/WHAT
+    // created it (FOUNDER_PORTAL/ACCOUNTS_PORTAL/MANAGER_PORTAL/OTHER_OPERATOR) — Rule 19's
+    // "transaction detail must show source/created-from" requirement.
+    originPortal: txn.source,
+    correctionOfId: txn.correctionOfId,
+    correctedByTransactionId: (await db.seeraMoneyDeskTransaction.findFirst({ where: { correctionOfId: txn.id }, select: { id: true } }))?.id ?? null,
     direction: txn.direction,
     status: txn.status,
     amount: txn.amount,
@@ -838,6 +831,7 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
         id: true, transactionNumber: true, purposeCode: true, direction: true, status: true,
         amount: true, date: true, treasuryAccountId: true, counterpartyName: true,
         requestedById: true, formData: true, failureReason: true, createdAt: true,
+        source: true, correctionOfId: true,
       },
     }),
     db.seeraMoneyDeskTransaction.findMany({
@@ -927,7 +921,7 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
 // is convenience data, never the security boundary.
 export async function moneyDeskSupportingData(db: PrismaClient, actorId: string) {
   await authorize(db, { actorId, permission: "money_desk:view" });
-  const [treasuryAccounts, vendors, materials, locations, pendingReturnRequests, openVendorBills, territories] = await Promise.all([
+  const [treasuryAccounts, vendors, materials, locations, pendingReturnRequests, openVendorBills, territories, employees, retailers] = await Promise.all([
     db.seeraTreasuryAccount.findMany({ where: { isActive: true }, select: { id: true, name: true, kind: true, chartOfAccountId: true } }),
     db.seeraVendor.findMany({ where: { isActive: true }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 200 }),
     db.seeraManufacturingMaterial.findMany({ select: { id: true, code: true, name: true, baseUnit: true }, orderBy: { name: "asc" }, take: 500 }),
@@ -938,6 +932,18 @@ export async function moneyDeskSupportingData(db: PrismaClient, actorId: string)
     // rows the Sales & Distribution domain already governs (Beat Planner, Executive assignment);
     // Money Desk reads this, it never maintains its own copy of geography.
     db.seeraGeographyNode.findMany({ where: { level: "TERRITORY", status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    // Money Desk 2.0 (Rule 21): a real employee picker, not a raw-ID text input. Excludes external
+    // party portal logins (Retailer/Distributor/S.S.) — same list ledgerPartyOptions("EMPLOYEE")
+    // already governs, inlined here to avoid a second permission round trip.
+    db.user.findMany({
+      where: { status: "ACTIVE", roleAssignments: { some: { status: "ACTIVE", role: { code: { notIn: [...EXTERNAL_PARTY_PORTAL_ROLE_CODES] } } } } },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true },
+      take: 500,
+    }),
+    // Retail/Factory Sale customer picker (Rule 6/11/21) — same real SeeraRetailer master
+    // createRetailer/OFFLINE_SALE already use, never a duplicate customer list.
+    db.seeraRetailer.findMany({ orderBy: { businessName: "asc" }, select: { id: true, businessName: true, mobile: true }, take: 2000 }),
   ]);
   const treasuryCoaIds = treasuryAccounts.map((t) => t.chartOfAccountId);
   const treasuryCoas = await db.seeraChartOfAccount.findMany({ where: { id: { in: treasuryCoaIds } }, select: { id: true, code: true } });
@@ -950,5 +956,7 @@ export async function moneyDeskSupportingData(db: PrismaClient, actorId: string)
     pendingReturnRequests,
     openVendorBills: openVendorBills.map((b) => ({ id: b.id, billNumber: b.billNumber, vendorId: b.vendorId, due: Number(b.grossAmount) - Number(b.paidAmount) })),
     territories,
+    employees: employees.map((e) => ({ id: e.id, name: e.name ?? e.email })),
+    retailers: retailers.map((r) => ({ id: r.id, name: r.mobile ? `${r.businessName} (${r.mobile})` : r.businessName })),
   };
 }

@@ -78,20 +78,48 @@ export function GuidedMoneyIn({ language, treasuryAccounts, onDone, onCancel }: 
   const [addPartyBusy, setAddPartyBusy] = useState(false);
   const [addPartyError, setAddPartyError] = useState<string | null>(null);
 
-  const isPartnerFlow = kind === "DISTRIBUTOR" || kind === "SUPER_STOCKIST";
+  // Money Desk 2.0 (Rule 4/12): "Customer Collection" (retail/institutional customer receipt) is a
+  // real partner-flow now — same party-picker/outstanding-allocation shape as Distributor/S.S.,
+  // reusing the RETAILER party type the ledger engine already supports (party-ledger-service.ts).
+  const isPartnerFlow = kind === "DISTRIBUTOR" || kind === "SUPER_STOCKIST" || kind === "COLLECTION";
+  const ledgerPartyType = kind === "DISTRIBUTOR" ? "DISTRIBUTOR" : kind === "SUPER_STOCKIST" ? "SUPER_STOCKIST" : "RETAILER";
   const partyName = parties.find((p) => p.id === partyId)?.name ?? "";
   const selectedDoc = outstanding?.outstanding.find((d) => d.documentId === documentId);
 
   useEffect(() => {
     if (!isPartnerFlow) return;
-    getReport("ledger-parties", { partyType: kind === "DISTRIBUTOR" ? "DISTRIBUTOR" : "SUPER_STOCKIST" }).then(setParties).catch(() => setParties([]));
-  }, [kind, isPartnerFlow]);
+    getReport("ledger-parties", { partyType: ledgerPartyType }).then(setParties).catch(() => setParties([]));
+  }, [kind, isPartnerFlow, ledgerPartyType]);
 
   function loadOutstanding(pid: string) {
     if (!isPartnerFlow || !pid) return;
-    getReport("party-outstanding", { partyType: kind === "DISTRIBUTOR" ? "DISTRIBUTOR" : "SUPER_STOCKIST", partyId: pid })
+    getReport("party-outstanding", { partyType: ledgerPartyType, partyId: pid })
       .then(setOutstanding)
       .catch(() => setOutstanding(null));
+  }
+
+  function submitAddCustomer() {
+    if (!newFirmName.trim()) return;
+    setAddPartyBusy(true);
+    setAddPartyError(null);
+    post("create-retail-customer", {
+      businessName: newFirmName.trim(),
+      mobile: newMobile.trim() || undefined,
+      idempotencyKey: key(),
+    })
+      .then((created: { id: string; businessName: string }) => {
+        setParties((prev) => [...prev, { id: created.id, name: created.businessName }]);
+        setPartyId(created.id);
+        setDocumentId("");
+        setAddingParty(false);
+        setNewFirmName("");
+        setNewMobile("");
+      })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : "";
+        setAddPartyError(message.includes("ACCESS_DENIED") || message.toLowerCase().includes("permission") ? "ACCESS_DENIED_ADD_PARTY" : message || "Could not add customer");
+      })
+      .finally(() => setAddPartyBusy(false));
   }
 
   function submitAddSuperStockist() {
@@ -126,7 +154,7 @@ export function GuidedMoneyIn({ language, treasuryAccounts, onDone, onCancel }: 
     const idempotencyKey = key();
     const run = isPartnerFlow
       ? post("guided-receipt", {
-          payerType: kind,
+          payerType: ledgerPartyType,
           payerId: partyId,
           payeeType: "COMPANY",
           payeeId: "COMPANY",
@@ -221,6 +249,32 @@ export function GuidedMoneyIn({ language, treasuryAccounts, onDone, onCancel }: 
                 <button type="button" className={styles.secondaryBig} disabled={addPartyBusy} onClick={() => { setAddingParty(false); setAddPartyError(null); }}>{hi ? "रद्द करें" : "Cancel"}</button>
                 <button type="button" className={styles.primaryBig} disabled={addPartyBusy || !newFirmName.trim() || newMobile.replace(/\D/g, "").length < 10} onClick={submitAddSuperStockist}>
                   {addPartyBusy ? (hi ? "जोड़ा जा रहा है…" : "Adding…") : (hi ? "एस.एस. जोड़ें" : "Add Super Stockist")}
+                </button>
+              </div>
+            </div>
+          )}
+          {kind === "COLLECTION" && !addingParty && (
+            <button type="button" className={styles.secondaryBig} onClick={() => { setAddingParty(true); setAddPartyError(null); }}>
+              {hi ? "+ नया ग्राहक जोड़ें" : "+ Add Customer"}
+            </button>
+          )}
+          {kind === "COLLECTION" && addingParty && (
+            <div className={styles.list}>
+              <label>{hi ? "ग्राहक / फर्म का नाम" : "Customer / firm name"}<input value={newFirmName} onChange={(e) => setNewFirmName(e.target.value)} placeholder={hi ? "ग्राहक का नाम" : "Customer name"} /></label>
+              <label>{hi ? "मोबाइल (वैकल्पिक)" : "Mobile (optional)"}<input value={newMobile} onChange={(e) => setNewMobile(e.target.value)} placeholder={hi ? "मोबाइल नंबर" : "Mobile number"} /></label>
+              {addPartyError === "ACCESS_DENIED_ADD_PARTY" ? (
+                <p role="status" data-ok="false">
+                  {hi
+                    ? "आपके पास नया ग्राहक जोड़ने का अधिकार नहीं है — किसी अधिकृत उपयोगकर्ता से कहें।"
+                    : "You don't have authority to add a new customer — ask an authorized user."}
+                </p>
+              ) : addPartyError ? (
+                <p role="status" data-ok="false">{addPartyError}</p>
+              ) : null}
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" className={styles.secondaryBig} disabled={addPartyBusy} onClick={() => { setAddingParty(false); setAddPartyError(null); }}>{hi ? "रद्द करें" : "Cancel"}</button>
+                <button type="button" className={styles.primaryBig} disabled={addPartyBusy || !newFirmName.trim()} onClick={submitAddCustomer}>
+                  {addPartyBusy ? (hi ? "जोड़ा जा रहा है…" : "Adding…") : (hi ? "ग्राहक जोड़ें" : "Add Customer")}
                 </button>
               </div>
             </div>

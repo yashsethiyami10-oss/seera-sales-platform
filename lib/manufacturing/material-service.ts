@@ -59,7 +59,54 @@ export async function nearExpiryMaterials(db: PrismaClient, actorId: string, wit
   return lots.map((l) => ({ ...l, expired: l.expiryDate! < now, daysRemaining: Math.ceil((l.expiryDate!.getTime() - now.getTime()) / 86_400_000) }));
 }
 
+// Money Desk 2.0 (Rule 7): the detergent-cake raw-material set the Founder specified must be
+// selectable from Money Desk's Raw Material Purchase flow. Idempotent (upsert-by-code, same
+// pattern as seedDefaultChartOfAccounts) — safe to call again if the list grows. Reuses the
+// existing SeeraManufacturingMaterial master; never a duplicate/parallel material list.
+const DETERGENT_CAKE_RAW_MATERIALS: { code: string; name: string; baseUnit: ManufacturingUnit }[] = [
+  { code: "RM-SLURRY", name: "Slurry", baseUnit: "KG" },
+  { code: "RM-SODA-ASH", name: "Soda Ash", baseUnit: "KG" },
+  { code: "RM-DOLOMITE", name: "Dolomite", baseUnit: "KG" },
+  { code: "RM-CHINA-CLAY", name: "China Clay", baseUnit: "KG" },
+  { code: "RM-AOS", name: "AOS", baseUnit: "KG" },
+  { code: "RM-SLES", name: "SLES", baseUnit: "KG" },
+  { code: "RM-POLYMER", name: "Polymer", baseUnit: "KG" },
+  { code: "RM-SODIUM-SILICATE", name: "Sodium Silicate", baseUnit: "KG" },
+  { code: "RM-COLOUR", name: "Colour", baseUnit: "KG" },
+  { code: "RM-PERFUME", name: "Perfume", baseUnit: "LITRE" },
+  { code: "RM-CAUSTIC", name: "Caustic", baseUnit: "KG" },
+  { code: "RM-SALT", name: "Salt", baseUnit: "KG" },
+  { code: "RM-COLOUR-GRADIENTS", name: "Colour Gradients", baseUnit: "KG" },
+  { code: "RM-CBSX", name: "CBSX", baseUnit: "KG" },
+];
+
+export async function seedDetergentCakeMaterials(db: PrismaClient, actorId: string) {
+  await authorize(db, { actorId, permission: "mfg_material:manage" });
+  const results = [];
+  for (const m of DETERGENT_CAKE_RAW_MATERIALS) {
+    results.push(
+      await db.seeraManufacturingMaterial.upsert({
+        where: { code: m.code },
+        update: {},
+        create: { code: m.code, name: m.name, type: "RAW_MATERIAL", category: "Detergent Cake", baseUnit: m.baseUnit, purchaseUnit: m.baseUnit, issueUnit: m.baseUnit, conversionFactor: 1, createdById: actorId },
+      }),
+    );
+  }
+  await recordAudit(db, { actorId, action: "mfg.material.seeded", entityType: "SeeraManufacturingMaterial", entityId: "detergent-cake-set", afterState: { count: results.length } });
+  return results;
+}
+
 // --- Locations --------------------------------------------------------------
+// Idempotent default RAW_STORE location so Money Desk's location picker is never empty on a fresh
+// deployment. Safe to call repeatedly; never creates a second store for the same code.
+export async function seedDefaultManufacturingLocation(db: PrismaClient, actorId: string) {
+  await authorize(db, { actorId, permission: "mfg_location:manage" });
+  return db.seeraManufacturingLocation.upsert({
+    where: { code: "RM-STORE-MAIN" },
+    update: {},
+    create: { code: "RM-STORE-MAIN", name: "Main Raw Material Store", type: "RAW_STORE" },
+  });
+}
 export async function createLocation(db: PrismaClient, actorId: string, input: { code: string; name: string; type: string; notes?: string }) {
   await authorize(db, { actorId, permission: "mfg_location:manage" });
   const location = await db.seeraManufacturingLocation.create({ data: input as never });

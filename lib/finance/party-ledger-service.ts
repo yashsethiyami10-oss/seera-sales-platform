@@ -15,7 +15,14 @@ import { getOtherPartyIdentity } from "./smart-finance/other-party";
 // SeeraExpense, SeeraTaClaim) so PDF/CSV/UI can never disagree with each other or invent a
 // second accounting effect (spec §38 "exactly once").
 
-export type LedgerPartyType = "DISTRIBUTOR" | "SUPER_STOCKIST" | "VENDOR" | "EMPLOYEE" | "OTHER_PARTY";
+// Money Desk 2.0 (Rule 11/12): RETAILER covers BOTH institutional/named customers and
+// once-created walk-ins — SeeraRetailer is the single sales-side master (no separate
+// SeeraCustomer model exists). The underlying accounting engine (ledgerReadModel/
+// partyOutstanding in financial-service.ts) is generic on partyType: string and already
+// posts real SeeraFinancialEntry rows for retailer invoices (billing-service.ts's
+// issueDocument sets debitPartyType/buyerType "RETAILER") — this is a presentation-layer
+// addition only, never a second ledger engine.
+export type LedgerPartyType = "DISTRIBUTOR" | "SUPER_STOCKIST" | "VENDOR" | "EMPLOYEE" | "OTHER_PARTY" | "RETAILER";
 
 export type LedgerLine = { skuCode: string; product: string; pack: string; uom: string; quantity: number; rate: number; taxable: number; gst: number; lineTotal: number };
 
@@ -137,7 +144,59 @@ export async function partyLedgerStatement(db: PrismaClient, actorId: string, in
   if (input.partyType === "DISTRIBUTOR" || input.partyType === "SUPER_STOCKIST") return distributorOrSsLedger(db, actorId, input.partyType, input.partyId, from, to);
   if (input.partyType === "VENDOR") return vendorLedger(db, actorId, input.partyId, from, to);
   if (input.partyType === "OTHER_PARTY") return otherPartyLedger(db, actorId, input.partyId, from, to);
+  if (input.partyType === "RETAILER") return retailerLedger(db, actorId, input.partyId, from, to);
   return employeeLedger(db, actorId, input.partyId, from, to);
+}
+
+// Customer / Retail Customer ledger (Rule 11/12) — same shape as distributorOrSsLedger, swapping
+// SeeraPartner for SeeraRetailer as the party master. Debit-normal (a receivable) — same convention
+// as Distributor/S.S. Never fabricates a balance: rows come only from ledgerReadModel's real,
+// already-posted SeeraFinancialEntry rows for this retailer.
+async function retailerLedger(db: PrismaClient, actorId: string, retailerId: string, from: Date, to: Date): Promise<PartyLedgerStatement> {
+  const [retailer, ledger] = await Promise.all([
+    db.seeraRetailer.findUniqueOrThrow({ where: { id: retailerId } }),
+    ledgerReadModel(db, actorId, { partyType: "RETAILER", partyId: retailerId }),
+  ]);
+  const documentIds = ledger.transactions.map((e) => e.documentId).filter((id): id is string => !!id);
+  const actorIds = [...new Set(ledger.transactions.map((e) => e.actorId))];
+  const [documents, actors, territoryNode] = await Promise.all([
+    documentIds.length ? db.seeraCommercialDocument.findMany({ where: { id: { in: documentIds } } }) : Promise.resolve([]),
+    actorIds.length ? db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+    retailer.territoryId ? db.seeraGeographyNode.findUnique({ where: { id: retailer.territoryId }, select: { name: true } }) : Promise.resolve(null),
+  ]);
+  const documentById = new Map(documents.map((d) => [d.id, d]));
+  const actorNameById = new Map(actors.map((a) => [a.id, a.name]));
+  const address = retailer.address as { line1?: string; line?: string; city?: string; state?: string } | null;
+  const addressText = address ? [address.line1 ?? address.line, address.city, address.state].filter(Boolean).join(", ") : null;
+
+  const rows: Omit<LedgerRow, "balance">[] = ledger.transactions.map((e) => {
+    const isDebit = e.debitPartyId === retailerId && e.debitPartyType === "RETAILER";
+    const document = e.documentId ? documentById.get(e.documentId) : undefined;
+    return {
+      id: e.id,
+      date: (e.postedAt ?? e.createdAt).toISOString(),
+      particulars: FINANCIAL_ENTRY_LABEL[e.type] ?? e.type,
+      voucher: document?.documentNumber ?? e.entryNumber,
+      debit: isDebit ? Number(e.amount) : 0,
+      credit: isDebit ? 0 : Number(e.amount),
+      sourceType: document ? "SeeraCommercialDocument" : "SeeraFinancialEntry",
+      sourceId: document?.id ?? e.id,
+      reason: e.reason,
+      createdBy: actorNameById.get(e.actorId) ?? e.actorId,
+      postedAt: e.postedAt ? e.postedAt.toISOString() : null,
+      lines: document && document.type !== "PAYMENT_RECEIPT" ? buildLines(document.lineSnapshot) : null,
+    };
+  });
+
+  const { openingBalance, rows: finalRows, totals } = partitionAndRunningBalance(rows, from, to, "DEBIT");
+  return {
+    party: { id: retailer.id, name: retailer.businessName, type: "RETAILER", address: addressText, mobile: retailer.mobile, gstin: retailer.gstin, territory: territoryNode?.name ?? null },
+    period: { from: from.toISOString(), to: to.toISOString() },
+    normalSide: "DEBIT",
+    openingBalance,
+    rows: finalRows,
+    totals,
+  };
 }
 
 // OTHER PARTY (Smart Finance non-employee person) ledger — same Professional Ledger engine as every
@@ -440,6 +499,13 @@ export async function ledgerPartyOptions(db: PrismaClient, actorId: string, part
     const vendors = await db.seeraVendor.findMany({ orderBy: { legalName: "asc" }, select: { id: true, legalName: true, tradeName: true } });
     return vendors.map((v) => ({ id: v.id, name: v.tradeName ?? v.legalName }));
   }
+  if (partyType === "RETAILER") {
+    // Same broad Finance/Founder oversight gate as Distributor/S.S. above — this lists EVERY
+    // retailer, which only a Finance oversight actor may enumerate.
+    await authorize(db, { actorId, permission: "finance_dashboard:view" });
+    const retailers = await db.seeraRetailer.findMany({ orderBy: { businessName: "asc" }, select: { id: true, businessName: true, mobile: true }, take: 2000 });
+    return retailers.map((r) => ({ id: r.id, name: r.mobile ? `${r.businessName} (${r.mobile})` : r.businessName }));
+  }
   if (partyType === "OTHER_PARTY") {
     await authorize(db, { actorId, permission: "expense:create" });
     const parties = await db.seeraFinancialDimension.findMany({ where: { kind: OTHER_PARTY_DIMENSION_KIND, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
@@ -464,12 +530,12 @@ export async function ledgerPartyOptions(db: PrismaClient, actorId: string, part
 // own Ledger/Credit screens already read, just gated to the Accounts/Founder oversight permission
 // instead of self-scope (this endpoint is for Accounts picking ANY party while recording a
 // receipt, not a party viewing its own position).
-export async function partyOutstandingForGuidedReceipt(db: PrismaClient, actorId: string, input: { partyType: "DISTRIBUTOR" | "SUPER_STOCKIST"; partyId: string }) {
+export async function partyOutstandingForGuidedReceipt(db: PrismaClient, actorId: string, input: { partyType: "DISTRIBUTOR" | "SUPER_STOCKIST" | "RETAILER"; partyId: string }) {
   await authorize(db, { actorId, permission: "finance_dashboard:view" });
   return partyOutstanding(db, input.partyType, input.partyId, new Date());
 }
 
 export function assertKnownPartyType(value: string | null): LedgerPartyType {
-  if (value === "DISTRIBUTOR" || value === "SUPER_STOCKIST" || value === "VENDOR" || value === "EMPLOYEE" || value === "OTHER_PARTY") return value;
+  if (value === "DISTRIBUTOR" || value === "SUPER_STOCKIST" || value === "VENDOR" || value === "EMPLOYEE" || value === "OTHER_PARTY" || value === "RETAILER") return value;
   throw new FoundationError("UNKNOWN_PARTY_TYPE", "Unknown ledger party type", 400);
 }

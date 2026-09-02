@@ -143,6 +143,58 @@ export async function companySalesBySS(db: PrismaClient, actorId: string, input:
   return [...byParty.entries()].map(([partyId, v]) => ({ partyId, ...v })).sort((a, b) => b.total - a.total);
 }
 
+// Purchase Register (Money Desk 2.0 Rule 19) — the vendor-side mirror of salesRegister above,
+// reading the SAME authoritative SeeraVendorBill rows createVendorBill already posts; never a
+// parallel purchase table.
+export async function purchaseRegister(db: PrismaClient, actorId: string, input: { from: Date; to: Date }) {
+  await authorize(db, { actorId, permission: "financial_statements:view" });
+  const bills = await db.seeraVendorBill.findMany({
+    where: { status: { not: "CANCELLED" }, invoiceDate: { gte: input.from, lte: input.to } },
+    orderBy: { invoiceDate: "desc" },
+  });
+  const vendorIds = [...new Set(bills.map((b) => b.vendorId))];
+  const vendors = vendorIds.length ? await db.seeraVendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, legalName: true, tradeName: true, gstin: true, state: true } }) : [];
+  const vendorById = new Map(vendors.map((v) => [v.id, v]));
+  return bills.map((b) => {
+    const vendor = vendorById.get(b.vendorId);
+    const paid = Number(b.paidAmount);
+    const gross = Number(b.grossAmount);
+    return {
+      id: b.id, billNumber: b.billNumber, vendorInvoiceNumber: b.vendorInvoiceNumber, invoiceDate: b.invoiceDate,
+      vendorName: vendor?.tradeName ?? vendor?.legalName ?? b.vendorId, gstin: vendor?.gstin ?? null, state: vendor?.state ?? null,
+      taxable: Number(b.taxable), cgst: Number(b.cgst), sgst: Number(b.sgst), igst: Number(b.igst), gross, paid, balance: gross - paid,
+      status: paid >= gross ? "PAID" : paid > 0 ? "PARTIALLY_PAID" : "UNPAID",
+    };
+  });
+}
+
+// Payables ageing — same pattern receivablesAgeing above uses, from the Vendor side: distinct
+// vendors with any non-cancelled/non-paid bill -> bucket each bill's overdue-vs-dueDate amount.
+// Reuses SeeraVendorBill.dueDate directly (vendor360's own per-vendor ageing logic, applied
+// company-wide instead of one vendor at a time).
+export async function payablesAgeing(db: PrismaClient, actorId: string) {
+  await authorize(db, { actorId, permission: "financial_statements:view" });
+  const now = new Date();
+  const bills = await db.seeraVendorBill.findMany({ where: { status: { notIn: ["PAID", "CANCELLED"] } }, select: { vendorId: true, dueDate: true, grossAmount: true, paidAmount: true } });
+  const vendorIds = [...new Set(bills.map((b) => b.vendorId))];
+  const vendors = vendorIds.length ? await db.seeraVendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, legalName: true, tradeName: true } }) : [];
+  const vendorById = new Map(vendors.map((v) => [v.id, v]));
+  const buckets = { NOT_DUE: 0, "1_30": 0, "31_60": 0, "61_90": 0, "90_PLUS": 0 };
+  const totalByVendor = new Map<string, number>();
+  for (const bill of bills) {
+    const due = Math.max(0, Number(bill.grossAmount) - Number(bill.paidAmount));
+    if (due <= 0) continue;
+    const bucket = ageingBucket(bill.dueDate, now);
+    buckets[bucket] += due;
+    totalByVendor.set(bill.vendorId, (totalByVendor.get(bill.vendorId) ?? 0) + due);
+  }
+  const rows = [...totalByVendor.entries()].map(([vendorId, outstandingTotal]) => {
+    const vendor = vendorById.get(vendorId);
+    return { partyType: "VENDOR", partyId: vendorId, name: vendor?.tradeName ?? vendor?.legalName ?? vendorId, outstandingTotal };
+  }).sort((a, b) => b.outstandingTotal - a.outstandingTotal);
+  return { rows, buckets };
+}
+
 export async function companySalesByProduct(db: PrismaClient, actorId: string, input: { from: Date; to: Date }) {
   await authorize(db, { actorId, permission: "financial_statements:view" });
   const docs = await db.seeraCommercialDocument.findMany({ where: { issuerType: "COMPANY", status: "ISSUED", type: { in: ["TAX_INVOICE", "NON_TAX_INVOICE"] }, issueDate: { gte: input.from, lte: input.to } }, select: { lineSnapshot: true } });

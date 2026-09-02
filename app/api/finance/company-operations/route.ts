@@ -7,7 +7,8 @@ import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { createAccount, updateAccount, seedDefaultChartOfAccounts } from "@/lib/finance/chart-of-accounts";
 import { createDimension, seedDefaultDimensions } from "@/lib/finance/dimension-service";
 import { postJournal, reverseJournal } from "@/lib/finance/journal-service";
-import { createTreasuryAccount, recordMoneyIn, recordMoneyOut, transferFunds, commitBankStatementImport, confirmBankMatch, unmatchBankLine, suggestBankMatches, setTreasuryAccountActive } from "@/lib/finance/treasury-service";
+import { createTreasuryAccount, recordMoneyIn, recordMoneyOut, transferFunds, commitBankStatementImport, confirmBankMatch, unmatchBankLine, suggestBankMatches, setTreasuryAccountActive, ensureDefaultTreasuryAccounts } from "@/lib/finance/treasury-service";
+import { seedDetergentCakeMaterials, seedDefaultManufacturingLocation } from "@/lib/manufacturing/material-service";
 import { createVendor, updateVendor, createVendorBill, recordVendorPayment } from "@/lib/finance/vendor-service";
 import { createExpenseCategory, createExpense, submitExpense, decideExpense, postExpense, payExpensePayable, reverseExpense, createRecurringExpenseTemplate, generateExpenseFromRecurringTemplate, skipRecurringOccurrence, setRecurringTemplateActive } from "@/lib/finance/expense-service";
 import { quickEntryCreate, QUICK_ENTRY_TYPES } from "@/lib/finance/quick-entry-service";
@@ -27,11 +28,13 @@ import { confirmOtherParty, updateOtherParty, setOtherPartyActive } from "@/lib/
 import { settleAdvance } from "@/lib/finance/smart-finance/advance-lifecycle";
 import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
 import { createFactoryCashSale } from "@/lib/finance/factory-cash-sale-service";
+import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
 
 const ACTIONS = [
   "bootstrap-coa", "bootstrap-dimensions", "bootstrap-approval-policies",
+  "bootstrap-treasury", "bootstrap-materials", "bootstrap-location",
   "create-account", "update-account", "create-dimension",
   "post-manual-journal", "reverse-journal",
   "create-treasury-account", "set-treasury-account-active", "money-in", "money-out", "transfer-funds",
@@ -52,6 +55,7 @@ const ACTIONS = [
   "money-desk-set-other-party-active", "money-desk-settle-advance",
   "guided-receipt",
   "record-factory-cash-sale",
+  "create-retail-customer",
 ] as const;
 
 const body = z.object({ action: z.enum(ACTIONS), payload: z.record(z.unknown()) });
@@ -72,6 +76,15 @@ export async function POST(request: Request) {
         break;
       case "bootstrap-approval-policies":
         result = await seedDefaultFinanceApprovalPolicies(prisma, user.id);
+        break;
+      case "bootstrap-treasury":
+        result = await ensureDefaultTreasuryAccounts(prisma, user.id);
+        break;
+      case "bootstrap-materials":
+        result = await seedDetergentCakeMaterials(prisma, user.id);
+        break;
+      case "bootstrap-location":
+        result = await seedDefaultManufacturingLocation(prisma, user.id);
         break;
       case "create-account":
         result = await createAccount(prisma, user.id, z.object({ code: z.string(), name: z.string(), type: z.enum(["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE"]), parentCode: z.string().optional() }).parse(payload));
@@ -388,6 +401,29 @@ export async function POST(request: Request) {
               idempotencyKey: z.string(),
             })
             .parse(payload),
+        );
+        break;
+      case "create-retail-customer":
+        // Money Desk 2.0 (Rule 12): "+ Add Customer" for Money In / Retail Sale. Reuses the SAME
+        // governed createRetailer() the field portal and Money Desk's own OFFLINE_SALE handler
+        // already use — never a duplicate customer master. createRetailer's own retailer:visit
+        // authorization is unchanged; a Founder passes via the existing system:super_admin bypass,
+        // an actor without either authority correctly gets ACCESS_DENIED (surfaced by the UI as
+        // "ask an authorized user", never a silent bypass).
+        result = await createRetailer(
+          prisma,
+          user.id,
+          z
+            .object({
+              businessName: z.string().min(1),
+              mobile: z.string().optional(),
+              address: z.record(z.unknown()).optional(),
+              gstin: z.string().optional(),
+              customerType: z.string().optional(),
+              idempotencyKey: z.string(),
+            })
+            .transform((v) => ({ ...v, address: v.address ?? { line: "Added from Money Desk — details to be completed" } }))
+            .parse(payload) as never,
         );
         break;
     }

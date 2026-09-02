@@ -1449,6 +1449,8 @@ function ReportsCenterSection() {
   const { data: ageing } = useReportOnDemand<{ rows: { partyId: string; name: string; outstandingTotal: number }[]; buckets: Record<string, number> }>("receivables-ageing", {}, []);
   const { data: bySS } = useReportOnDemand<{ partyId: string; name: string; total: number }[]>("sales-by-ss", { from, to }, [from, to]);
   const { data: byProduct } = useReportOnDemand<{ product: string; total: number }[]>("sales-by-product", { from, to }, [from, to]);
+  const { data: purchases } = useReportOnDemand<{ id: string; billNumber: string; vendorName: string; invoiceDate: string; gross: number; paid: number; balance: number; status: string }[]>("purchase-register", { from, to }, [from, to]);
+  const { data: payablesAgeing } = useReportOnDemand<{ rows: { partyId: string; name: string; outstandingTotal: number }[]; buckets: Record<string, number> }>("payables-ageing", {}, []);
   return (
     <div>
       <div className={styles.inlineActions}>
@@ -1469,6 +1471,10 @@ function ReportsCenterSection() {
       <div className={styles.tableWrap}><table><tbody>{bySS?.map((s) => <tr key={s.partyId}><td>{s.name}</td><td>{money(s.total)}</td></tr>)}</tbody></table></div>
       <h4>Company Sales by Product <button type="button" disabled={!byProduct?.length} onClick={() => exportCsv("sales-by-product", byProduct ?? [])}>EXPORT CSV</button></h4>
       <div className={styles.tableWrap}><table><tbody>{byProduct?.slice(0, 15).map((p) => <tr key={p.product}><td>{p.product}</td><td>{money(p.total)}</td></tr>)}</tbody></table></div>
+      <h4>Purchase Register <button type="button" disabled={!purchases?.length} onClick={() => exportCsv("purchase-register", purchases ?? [])}>EXPORT CSV</button></h4>
+      <div className={styles.tableWrap}><table><thead><tr><th>Bill #</th><th>Vendor</th><th>Date</th><th>Gross</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{purchases?.map((p) => <tr key={p.id}><td>{p.billNumber}</td><td>{p.vendorName}</td><td>{new Date(p.invoiceDate).toLocaleDateString("en-IN")}</td><td>{money(p.gross)}</td><td>{money(p.paid)}</td><td>{money(p.balance)}</td><td>{p.status}</td></tr>)}</tbody></table></div>
+      <h4>Payables Ageing <button type="button" disabled={!payablesAgeing?.rows.length} onClick={() => exportCsv("payables-ageing", payablesAgeing?.rows ?? [])}>EXPORT CSV</button></h4>
+      {payablesAgeing && <p>Not due {money(payablesAgeing.buckets.NOT_DUE)} · 1-30d {money(payablesAgeing.buckets["1_30"])} · 31-60d {money(payablesAgeing.buckets["31_60"])} · 61-90d {money(payablesAgeing.buckets["61_90"])} · 90+d {money(payablesAgeing.buckets["90_PLUS"])}</p>}
     </div>
   );
 }
@@ -1591,6 +1597,9 @@ function SettingsSection({ ctx }: { ctx: Ctx }) {
       {(data.chartOfAccounts?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-coa", {}, "Chart of Accounts seeded.")}>BOOTSTRAP CHART OF ACCOUNTS</button>}
       {(data.dimensions?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-dimensions", {}, "Dimensions seeded.")}>BOOTSTRAP DEPARTMENTS</button>}
       {(data.approvalPolicies?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-approval-policies", {}, "Approval policies seeded.")}>BOOTSTRAP APPROVAL POLICIES</button>}
+      {(data.treasuryAccounts?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-treasury", {}, "Default Cash and Bank accounts created.")}>BOOTSTRAP TREASURY (Cash + Bank)</button>}
+      <button type="button" disabled={busy} onClick={() => run("bootstrap-materials", {}, "Detergent-cake raw materials seeded.")}>SEED DETERGENT-CAKE RAW MATERIALS</button>
+      <button type="button" disabled={busy} onClick={() => run("bootstrap-location", {}, "Main Raw Material Store location created.")}>SEED DEFAULT RAW MATERIAL LOCATION</button>
       {data.openingBalances && !data.openingBalances.posted && (data.treasuryAccounts?.length ?? 0) > 0 && (
         <details><summary>OPENING BALANCE WIZARD (one-time)</summary>
           <OpeningBalanceWizard ctx={ctx} />

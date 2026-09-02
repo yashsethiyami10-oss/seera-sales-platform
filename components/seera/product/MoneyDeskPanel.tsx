@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import { GuidedMoneyIn } from "./GuidedMoneyIn";
 import { SmartFinanceEntry } from "./SmartFinanceEntry";
+import { FileUploadField } from "./FileUploadField";
 
 const key = () => crypto.randomUUID();
 async function post(action: string, payload: unknown) {
@@ -50,6 +51,8 @@ type SupportingData = {
   pendingReturnRequests: { id: string; requestNumber: string; reason: string; retailerId: string | null }[];
   openVendorBills: { id: string; billNumber: string; vendorId: string; due: number }[];
   territories: { id: string; name: string }[];
+  employees: { id: string; name: string }[];
+  retailers: { id: string; name: string }[];
 };
 type TxnRow = { id: string; transactionNumber: string; purposeCode: string; direction: Direction; status: string; amount: string | number; date: string; requestedById: string; counterpartyName: string | null; failureReason: string | null; employeeName?: string | null; territoryName?: string | null; treasuryName?: string | null; source?: string | null };
 type HomeData = {
@@ -66,7 +69,7 @@ type HomeData = {
   };
 };
 
-const FIELD_LABEL: Record<string, { en: string; hi: string; type: "text" | "number" | "date" | "select-material" | "select-location" | "select-vendor" | "select-bill" | "select-return" | "select-unit" | "checkbox" }> = {
+const FIELD_LABEL: Record<string, { en: string; hi: string; type: "text" | "number" | "date" | "select-material" | "select-location" | "select-vendor" | "select-bill" | "select-return" | "select-unit" | "select-retailer" | "checkbox" }> = {
   counterpartyId: { en: "Vendor", hi: "विक्रेता", type: "select-vendor" },
   counterpartyName: { en: "Name / description", hi: "नाम / विवरण", type: "text" },
   vendorInvoiceNumber: { en: "Vendor invoice #", hi: "विक्रेता चालान #", type: "text" },
@@ -81,7 +84,7 @@ const FIELD_LABEL: Record<string, { en: string; hi: string; type: "text" | "numb
   expiryDate: { en: "Expiry date", hi: "समाप्ति तिथि", type: "date" },
   paidNow: { en: "Paid now (vs. on credit)", hi: "अभी भुगतान (बनाम उधार)", type: "checkbox" },
   billId: { en: "Vendor bill", hi: "विक्रेता बिल", type: "select-bill" },
-  retailerId: { en: "Retailer (optional)", hi: "रिटेलर (वैकल्पिक)", type: "text" },
+  retailerId: { en: "Existing customer (leave blank to add a new named customer below)", hi: "मौजूदा ग्राहक (नया ग्राहक जोड़ने के लिए खाली छोड़ें)", type: "select-retailer" },
   sourceReturnRequestId: { en: "Return request", hi: "वापसी अनुरोध", type: "select-return" },
   adjustmentAccountCode: { en: "Account code", hi: "खाता कोड", type: "text" },
   usefulLifeMonths: { en: "Useful life (months)", hi: "उपयोगी जीवन (महीने)", type: "number" },
@@ -113,6 +116,7 @@ function OutFieldControl({ field, value, onChange, supporting, hi, required }: {
   if (meta.type === "select-bill") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.openVendorBills.map((b) => <option key={b.id} value={b.id}>{b.billNumber} — {money(b.due)} due</option>)}</select>;
   if (meta.type === "select-return") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{supporting.pendingReturnRequests.map((r) => <option key={r.id} value={r.id}>{r.requestNumber} — {r.reason}</option>)}</select>;
   if (meta.type === "select-unit") return <select value={value} onChange={(e) => onChange(e.target.value)} required={required}><option value="">{hi ? "चुनें" : "Choose"}</option>{["KG", "GRAM", "LITRE", "ML", "PCS", "ROLL", "BOX", "BAG", "CARTON", "DRUM", "CAN", "METER", "OTHER"].map((u) => <option key={u} value={u}>{u}</option>)}</select>;
+  if (meta.type === "select-retailer") return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">{supporting.retailers.length === 0 ? (hi ? "कोई ग्राहक नहीं मिला" : "No customers found") : (hi ? "नया ग्राहक (नीचे नाम लिखें)" : "New customer (type name below)")}</option>{supporting.retailers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>;
   if (meta.type === "checkbox") return <input type="checkbox" checked={value === "on"} onChange={(e) => onChange(e.target.checked ? "on" : "")} />;
   return <input value={value} onChange={(e) => onChange(e.target.value)} type={meta.type === "date" ? "date" : meta.type === "number" ? "number" : "text"} step={meta.type === "number" ? "0.01" : undefined} required={required} />;
 }
@@ -338,7 +342,21 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
                     )}
                   </label>
                   {selectedPurpose.documentPolicy !== "NONE" && (
-                    <label>{hi ? "दस्तावेज़ आईडी" : "Document file id"} {selectedPurpose.documentPolicy === "REQUIRED" ? "*" : ""}<input value={documentFileId} onChange={(e) => setDocumentFileId(e.target.value)} /></label>
+                    <div>
+                      <FileUploadField
+                        language={language}
+                        label={`${hi ? "दस्तावेज़ अपलोड करें" : "Upload document"}${selectedPurpose.documentPolicy === "REQUIRED" ? " *" : ""}`}
+                        documentType="SUPPORTING_DOCUMENT"
+                        issuerType="COMPANY"
+                        issuerId="COMPANY"
+                        buyerType={fieldValues.counterpartyId ? "VENDOR" : "COMPANY"}
+                        buyerId={fieldValues.counterpartyId || "COMPANY"}
+                        sourcePortal={portal}
+                        amount={Number(amount) || 0}
+                        onUploaded={setDocumentFileId}
+                      />
+                      {documentFileId && <p role="status" data-ok="true">{hi ? "अपलोड हो गया।" : "Uploaded."}</p>}
+                    </div>
                   )}
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     <button type="button" className={styles.secondaryBig} onClick={() => setOutStep(0)}>{hi ? "पीछे" : "Back"}</button>
@@ -350,7 +368,10 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
               {outStep === 2 && (
                 <div className={styles.list}>
                   <label>{hi ? "कर्मचारी (वैकल्पिक)" : "Employee (optional)"}
-                    <input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required={selectedPurpose.requiredFields.includes("employeeId")} placeholder={hi ? "कर्मचारी आईडी" : "Employee id"} />
+                    <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required={selectedPurpose.requiredFields.includes("employeeId")}>
+                      <option value="">{hi ? "चुनें" : "Choose"}</option>
+                      {supporting.employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
                   </label>
                   <label>{hi ? "क्षेत्र / टेरिटरी (वैकल्पिक)" : "Territory (optional)"}
                     <select value={territoryId} onChange={(e) => setTerritoryId(e.target.value)}>

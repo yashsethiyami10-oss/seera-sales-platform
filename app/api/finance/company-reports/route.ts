@@ -4,7 +4,7 @@ import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
 import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { FoundationError } from "@/lib/foundation/errors";
-import { salesRegister, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, costCentreSummary, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct } from "@/lib/finance/reports-service";
+import { salesRegister, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, costCentreSummary, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct, purchaseRegister, payablesAgeing } from "@/lib/finance/reports-service";
 import { financeGlobalSearch } from "@/lib/finance/search-service";
 import { financialIntelligenceFeed } from "@/lib/finance/intelligence-service";
 import { journalDetail, recentJournals } from "@/lib/finance/journal-service";
@@ -43,6 +43,12 @@ export async function GET(request: Request) {
       case "receivables-ageing":
         result = await receivablesAgeing(prisma, user.id);
         break;
+      case "purchase-register":
+        result = await purchaseRegister(prisma, user.id, { from, to });
+        break;
+      case "payables-ageing":
+        result = await payablesAgeing(prisma, user.id);
+        break;
       case "expense-by-category":
         result = await expenseByCategory(prisma, user.id, { from, to });
         break;
@@ -58,7 +64,7 @@ export async function GET(request: Request) {
       case "party-outstanding": {
         const partyType = url.searchParams.get("partyType");
         const partyId = url.searchParams.get("partyId");
-        if ((partyType !== "DISTRIBUTOR" && partyType !== "SUPER_STOCKIST") || !partyId) throw new FoundationError("PARTY_ID_REQUIRED", "partyType (DISTRIBUTOR/SUPER_STOCKIST) and partyId are required", 400);
+        if ((partyType !== "DISTRIBUTOR" && partyType !== "SUPER_STOCKIST" && partyType !== "RETAILER") || !partyId) throw new FoundationError("PARTY_ID_REQUIRED", "partyType (DISTRIBUTOR/SUPER_STOCKIST/RETAILER) and partyId are required", 400);
         result = await partyOutstandingForGuidedReceipt(prisma, user.id, { partyType, partyId });
         break;
       }
