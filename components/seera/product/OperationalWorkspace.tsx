@@ -3022,6 +3022,16 @@ export async function OperationalWorkspace({
       session
         ? db.seeraVisit.findFirst({
             where: { workSessionId: session.id, checkedOutAt: null },
+            include: {
+              retailer: {
+                select: {
+                  businessName: true,
+                  mobile: true,
+                  address: true,
+                  distributorId: true,
+                },
+              },
+            },
           })
         : Promise.resolve(null),
       db.seeraRetailer.findMany({
@@ -3069,6 +3079,19 @@ export async function OperationalWorkspace({
         language={language}
         sessionId={session?.id}
         activeVisit={visit?.id}
+        activeVisitDetails={
+          visit
+            ? {
+                retailerName: visit.retailer?.businessName ?? "Retailer",
+                retailerMobile: visit.retailer?.mobile ?? null,
+                retailerArea:
+                  (() => {
+                    const address = visit.retailer?.address as { area?: string; city?: string } | null;
+                    return address?.area ?? address?.city ?? null;
+                  })(),
+              }
+            : undefined
+        }
         retailers={retailers.map((x) => ({
           value: x.id,
           label: x.businessName,
@@ -4242,7 +4265,19 @@ export async function OperationalWorkspace({
       workflow = <MoneyDeskPanel language={language} portal={portal} purposes={purposes} supporting={supporting} home={home as never} />;
     } catch (error) {
       const incidentId = crypto.randomUUID();
-      operationalLog("error", "money_desk.load_failed", { incidentId, actorId: userId, errorName: error instanceof Error ? error.name : "unknown" });
+      const errorDetails = error instanceof Error
+        ? {
+            errorName: error.name,
+            errorMessage: error.message.slice(0, 500),
+            errorCode: "code" in error && typeof error.code === "string" ? error.code : undefined,
+          }
+        : { errorName: "unknown", errorMessage: String(error).slice(0, 500) };
+      operationalLog("error", "money_desk.load_failed", {
+        incidentId,
+        actorId: userId,
+        operation: "moneyDeskHome+moneyDeskSupportingData",
+        ...errorDetails,
+      });
       workflow = (
         <EmptyState
           title="Money Desk data is temporarily unavailable"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import styles from "./WorkflowActions.module.css";
 import journeyStyles from "./FieldJourney.module.css";
@@ -20,6 +20,15 @@ type LinkedActivity = {
   photos: number;
   followUpsDue: number;
   exceptions: number;
+  activeVisit?: {
+    id: string;
+    retailerName: string;
+    retailerMobile?: string | null;
+    retailerArea?: string | null;
+    checkedInAt: string | Date;
+    outcome?: string | null;
+    photos: number;
+  } | null;
 };
 
 async function send(body: unknown) {
@@ -61,6 +70,7 @@ export function ManagerFieldActions({
   language,
   sessionId,
   activeVisit,
+  activeVisitDetails,
   activeJoint,
   jointExecutiveName,
   jointExecutiveSyncNote,
@@ -76,6 +86,13 @@ export function ManagerFieldActions({
   language: "EN" | "HI";
   sessionId?: string;
   activeVisit?: string;
+  activeVisitDetails?: {
+    retailerName: string;
+    retailerMobile?: string | null;
+    retailerArea?: string | null;
+    distributorName?: string | null;
+    checkedInAt?: string | null;
+  };
   activeJoint?: string;
   jointExecutiveName?: string;
   jointExecutiveSyncNote?: string;
@@ -100,6 +117,7 @@ export function ManagerFieldActions({
     checkoutKeyRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
+    [retailingStep, setRetailingStep] = useState<"CUSTOMER" | "ORDER">("CUSTOMER"),
     [outcome, setOutcome] = useState("ORDER_BOOKED"),
     [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
     [showAddCustomer, setShowAddCustomer] = useState(false),
@@ -109,6 +127,11 @@ export function ManagerFieldActions({
     [orderLines, setOrderLines] = useState<{ key: string; skuId: string; quantity: number; rate: number }[]>([
       { key: crypto.randomUUID(), skuId: "", quantity: 1, rate: 0 },
     ]);
+  useEffect(() => {
+    // The customer stage is a hard boundary for every new/resumed visit identity.
+    setRetailingStep("CUSTOMER");
+  }, [activeVisit]);
+
   const skuById = new Map(skus.map((s) => [s.value, s]));
 
   const run = async (body: unknown): Promise<boolean> => {
@@ -308,7 +331,19 @@ export function ManagerFieldActions({
       <section className={styles.panel} id="manager-field-panel" key={activeVisit ?? "no-visit"}>
         <div>
           <small>{hi ? "मैनेजर रिटेलिंग" : "MANAGER RETAILING"}</small>
-          <h2>{activeVisit ? (hi ? "विज़िट पूरी करें" : "Complete visit") : hi ? "रिटेलर पर चेक-इन" : "Check in at retailer"}</h2>
+          <h2>
+            {activeVisit
+              ? retailingStep === "CUSTOMER"
+                ? hi
+                  ? "ग्राहक विवरण"
+                  : "Customer details"
+                : hi
+                  ? "ऑर्डर / विज़िट"
+                  : "Order / visit"
+              : hi
+                ? "रिटेलर पर चेक-इन"
+                : "Check in at retailer"}
+          </h2>
         </div>
         {gpsStatus !== "IDLE" && <div className={journeyStyles.gpsRow}><GpsBadge language={language} status={gpsStatus} /></div>}
         {!activeVisit ? (
@@ -339,8 +374,37 @@ export function ManagerFieldActions({
               <button disabled={busy || !sessionId || !retailers.length}>{hi ? "चेक-इन" : "Check in"}</button>
             </form>
           </>
+        ) : retailingStep === "CUSTOMER" ? (
+          <div>
+            <div className={styles.note}>
+              <strong>{hi ? "ग्राहक विवरण" : "CUSTOMER DETAILS"}</strong>
+              <p>{activeVisitDetails?.retailerName ?? "Retailer"}</p>
+              <p>
+                {activeVisitDetails?.retailerMobile ?? (hi ? "मोबाइल उपलब्ध नहीं" : "No mobile")}
+                {activeVisitDetails?.retailerArea ? ` · ${activeVisitDetails.retailerArea}` : ""}
+              </p>
+              {activeVisitDetails?.distributorName && <p>{hi ? "वितरक" : "Distributor"}: {activeVisitDetails.distributorName}</p>}
+              {activeVisitDetails?.checkedInAt && (
+                <p>
+                  {hi ? "चेक-इन" : "Checked in"}: {new Date(activeVisitDetails.checkedInAt).toLocaleTimeString(hi ? "hi-IN" : "en-IN", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
+            </div>
+            <div className={styles.note}>
+              <strong>{hi ? "विज़िट प्रगति" : "VISIT PROGRESS"}</strong>
+              <p>{hi ? "ग्राहक की पहचान और चेक-इन पूरा है। अब ऑर्डर/नो-ऑर्डर निर्णय से पहले बिक्री कार्य पूरा करें।" : "Customer identity and check-in are complete. Continue to the sales step before completing the visit."}</p>
+            </div>
+            <button type="button" className={styles.primary} onClick={() => setRetailingStep("ORDER")}>
+              {hi ? "आगे बढ़ें" : "Continue"}
+            </button>
+          </div>
         ) : (
-          <form
+          <>
+            <div className={styles.note}>
+              <strong>{hi ? "ऑर्डर निर्णय" : "ORDER DECISION"}</strong>
+              <p>{hi ? "ग्राहक विवरण की पुष्टि हो चुकी है। अब ऑर्डर या नो-ऑर्डर पूरा करें।" : "Customer details are confirmed. Complete the order or no-order decision."}</p>
+            </div>
+            <form
             onSubmit={(event) => {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
@@ -480,8 +544,9 @@ export function ManagerFieldActions({
               <input name="routeDeviationReason" placeholder={hi ? "वैकल्पिक" : "Optional"} />
             </label>
             {capturePhotoButton(activeVisit)}
-            <button disabled={busy}>{outcome === "ORDER_BOOKED" ? (hi ? "ऑर्डर बुक करें और चेक-आउट करें" : "Book order & check out") : hi ? "चेक-आउट" : "Check out"}</button>
-          </form>
+              <button disabled={busy}>{outcome === "ORDER_BOOKED" ? (hi ? "ऑर्डर बुक करें और चेक-आउट करें" : "Book order & check out") : hi ? "चेक-आउट" : "Check out"}</button>
+            </form>
+          </>
         )}
         {message && <p role="status">{message}</p>}
       </section>
@@ -667,9 +732,53 @@ export function ManagerFieldActions({
         </form>
       ) : (
         <>
+          <div className={styles.note}>
+            <small>{hi ? "सक्रिय विज़िट" : "ACTIVE VISIT"}</small>
+            <h3>
+              {linkedActivity?.activeVisit?.retailerName ??
+                (hi ? "ग्राहक विवरण की प्रतीक्षा है" : "Waiting for customer details")}
+            </h3>
+            {linkedActivity?.activeVisit ? (
+              <p>
+                {linkedActivity.activeVisit.retailerMobile ?? (hi ? "मोबाइल उपलब्ध नहीं" : "No mobile")}
+                {linkedActivity.activeVisit.retailerArea ? " · " + linkedActivity.activeVisit.retailerArea : ""}
+                {" · "}
+                {hi ? "चेक-इन" : "Checked in"}{" "}
+                {new Date(linkedActivity.activeVisit.checkedInAt).toLocaleTimeString(hi ? "hi-IN" : "en-IN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            ) : (
+              <p>{hi ? "एग्जीक्यूटिव के ग्राहक पर चेक-इन करते ही यहाँ ग्राहक संदर्भ दिखाई देगा।" : "Customer context appears here as soon as the Executive checks in."}</p>
+            )}
+          </div>
+          <div className={styles.note}>
+            <strong>{hi ? "विज़िट वर्कफ़्लो" : "VISIT WORKFLOW"}</strong>
+            <div className={styles.quickActions}>
+              {["CUSTOMER", "ORDER", "COLLECTION", "PHOTO", "FOLLOW_UP"].map((step) => (
+                <span key={step} className={styles.badge}>
+                  {step === "CUSTOMER"
+                    ? hi ? "ग्राहक विवरण" : "Customer details"
+                    : step === "ORDER"
+                      ? hi ? "ऑर्डर" : "Order"
+                      : step === "COLLECTION"
+                        ? hi ? "कलेक्शन" : "Collection"
+                        : step === "PHOTO"
+                          ? hi ? "फ़ोटो" : "Photo"
+                          : hi ? "फॉलो-अप" : "Follow-up"}
+                </span>
+              ))}
+            </div>
+            <p>
+              {hi
+                ? "यह Joint Working view Executive की उसी live visit को दिखाता है। Order/Collection/Photo/Follow-up की actual entry Executive portal में ही रहेगी, ताकि Manager duplicate transaction न बनाए।"
+                : "This Joint Working view mirrors the Executive's live visit. Actual Order/Collection/Photo/Follow-up entry remains in the Executive portal so the Manager cannot create duplicate transactions."}
+            </p>
+          </div>
           <p className={styles.emptyHint}>
             {hi
-              ? `${jointExecutiveName ?? "एग्जीक्यूटिव"} इस समय अपनी सामान्य विज़िट प्रक्रिया दर्ज कर रहे हैं — नीचे उनकी लाइव गतिविधि दिखाई गई है।`
+              ? `${jointExecutiveName ?? "एग्जीक्यूटिव"} अपनी सामान्य विज़िट प्रक्रिया दर्ज कर रहे हैं — नीचे उनकी लाइव गतिविधि दिखाई गई है।`
               : `${jointExecutiveName ?? "The Executive"} is logging their own visits as usual — their live activity during this session is shown below.`}
           </p>
           {jointExecutiveSyncNote && (
