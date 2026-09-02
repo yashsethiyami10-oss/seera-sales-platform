@@ -412,7 +412,7 @@ function sendPhotoTelemetry(event: string, fields: Record<string, unknown> = {})
   }).catch(() => {});
 }
 
-async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: Blob, signedOverride?: SignedPhotoUpload) {
+async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: Blob, signedOverride?: SignedPhotoUpload, onFinalizeStart?: () => void) {
   const uploadStart = performance.now();
   sendPhotoTelemetry("UPLOAD_START", { visitId, outputBytes: blob.size });
   const signed = signedOverride ?? await postPhotoJson<SignedPhotoUpload>("/api/field/photos/upload-signature", { visitId });
@@ -439,6 +439,7 @@ async function uploadFieldPhotoDirect(visitId: string, photoType: string, blob: 
   // Finalize is the authoritative save, but do not block the UI on a telemetry POST.
   // The old implementation emitted telemetry immediately before finalize; keep telemetry
   // observational and completely outside the critical save path.
+  onFinalizeStart?.();
   const finalizeStart = performance.now();
   try {
     const result = await postPhotoJson<{ id: string; photoType: string; capturedAt: string; secureUrl: string }>("/api/field/photos/finalize", {
@@ -1212,8 +1213,14 @@ export function FieldJourney({
     const inflightKey = `seera:photo-inflight:${visit.id}`;
     if (typeof sessionStorage !== "undefined") sessionStorage.setItem(inflightKey, "1");
     setBusy(true);
-    setBusyLabel(hi ? "फ़ोटो सहेजी जा रही है…" : "Saving photo…");
+    // P0 photo-timing fix: previously a single generic "Saving photo…" label for the entire
+    // duration (local blob read + network upload + finalize), giving no feedback on which of
+    // those genuinely-different-duration stages is in progress — the UI could look identically
+    // "frozen" whether it was 200ms into a fast local read or 15s into a slow network upload.
+    // Distinct stage labels below give real, honest state instead of one undifferentiated wait.
+    setBusyLabel(hi ? "फ़ोटो तैयार हो रही है…" : "Preparing photo…");
     setMessage(null);
+    const captureReturnedAt = performance.now();
 
     try {
       let blob: Blob | null = null;
@@ -1246,6 +1253,12 @@ export function FieldJourney({
       }
 
       if (!blob || blob.size === 0) throw new Error(hi ? "फ़ोटो वापस नहीं मिल सकी। कृपया फिर से लें।" : "The captured photo could not be recovered. Please retake.");
+      // Previously unmeasured stage: reading the native camera result (a local file:// / capacitor://
+      // URI) into a JS Blob via fetch() above had no timing visibility at all — UPLOAD_START (inside
+      // uploadFieldPhotoDirect) only fires once this local read has already finished, so any real
+      // slowness here was invisible. Reuses the SAME IMAGE_PREP_SUCCESS event the browser-fallback
+      // path (below) already sends for the equivalent stage, instead of inventing a new event name.
+      sendPhotoTelemetry("IMAGE_PREP_SUCCESS", { visitId: visit.id, elapsedMs: Math.round(performance.now() - captureReturnedAt), sourceBytes: blob.size, sourceMime: blob.type });
 
       // Upload the native camera JPEG as-is. Do NOT decode it through canvas/ImageBitmap:
       // high-megapixel Android/browser devices can run out of renderer memory during a second
@@ -1264,7 +1277,11 @@ export function FieldJourney({
       // exact low-memory renderer failure seen in field UAT. The upload itself is a Blob/FormData
       // operation and does not require decoding the image.
       const uploadBlob = blob;
-      const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob, signedOverride);
+      setBusyLabel(hi ? "अपलोड हो रहा है…" : "Uploading…");
+      const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob, signedOverride, () =>
+        setBusyLabel(hi ? "सहेजा जा रहा है…" : "Saving…"),
+      );
+      sendPhotoTelemetry("TOTAL_SAVE_COMPLETE", { visitId: visit.id, elapsedMs: Math.round(performance.now() - captureReturnedAt), outputBytes: uploadBlob.size });
       setLocalAddedPhotos((current) => [...current, data]);
       revokePhotoPreview();
       setPhotoPreview(null);

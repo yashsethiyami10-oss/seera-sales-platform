@@ -901,6 +901,9 @@ const PHOTO_TELEMETRY_EVENTS = [
   "UPLOAD_START", "UPLOAD_SUCCESS", "UPLOAD_FAILED",
   "FINALIZE_START", "FINALIZE_SUCCESS", "FINALIZE_FAILED",
   "RENDERER_RELOAD_RESUME",
+  // P0 photo-timing fix: a single end-to-end number (capture-returned -> durably saved), so total
+  // save latency doesn't have to be reconstructed by hand from the individual stage events above.
+  "TOTAL_SAVE_COMPLETE",
 ] as const;
 export type PhotoTelemetryEvent = (typeof PHOTO_TELEMETRY_EVENTS)[number];
 
