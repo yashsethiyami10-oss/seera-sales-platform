@@ -6,6 +6,7 @@ import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { FoundationError } from "@/lib/foundation/errors";
 import { partyLedgerStatement, assertKnownPartyType } from "@/lib/finance/party-ledger-service";
 import { renderLedgerStatementPdf } from "@/lib/finance/statement-pdf";
+import { getCompanyProfile } from "@/lib/finance/company-profile-service";
 
 // Same UI-reads-the-same-service-the-PDF-reads pattern as /api/finance/statements/pdf — the PDF
 // can never disagree with the on-screen ledger because both call partyLedgerStatement() directly,
@@ -22,8 +23,13 @@ export async function GET(request: Request) {
     const to = url.searchParams.get("to") ? new Date(url.searchParams.get("to")!) : new Date();
 
     const statement = await partyLedgerStatement(prisma, user.id, { partyType, partyId, from, to });
+    const companyProfile = await getCompanyProfile(prisma);
+    const { formatAddress } = await import("@/lib/sales-distribution/document-lines");
     const bytes = await renderLedgerStatementPdf({
-      companyName: "SEERA",
+      companyName: companyProfile?.tradeName || companyProfile?.legalName || "SEERA",
+      company: companyProfile
+        ? { gstin: companyProfile.gstin, address: formatAddress(companyProfile.registeredAddress), phone: companyProfile.phone, email: companyProfile.email }
+        : undefined,
       party: statement.party,
       period: statement.period,
       openingBalance: statement.openingBalance,

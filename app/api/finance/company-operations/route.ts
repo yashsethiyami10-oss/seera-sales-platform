@@ -29,6 +29,7 @@ import { settleAdvance } from "@/lib/finance/smart-finance/advance-lifecycle";
 import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
 import { createFactoryCashSale } from "@/lib/finance/factory-cash-sale-service";
 import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
+import { getCompanyProfileForSettings, upsertCompanyProfile, uploadCompanyBrandingAsset } from "@/lib/finance/company-profile-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
 
@@ -56,6 +57,7 @@ const ACTIONS = [
   "guided-receipt",
   "record-factory-cash-sale",
   "create-retail-customer",
+  "get-company-profile", "update-company-profile", "upload-company-branding-asset",
 ] as const;
 
 const body = z.object({ action: z.enum(ACTIONS), payload: z.record(z.unknown()) });
@@ -426,6 +428,43 @@ export async function POST(request: Request) {
             .parse(payload) as never,
         );
         break;
+      case "get-company-profile":
+        result = await getCompanyProfileForSettings(prisma, user.id);
+        break;
+      case "update-company-profile":
+        result = await upsertCompanyProfile(
+          prisma,
+          user.id,
+          z
+            .object({
+              legalName: z.string().min(1),
+              tradeName: z.string().optional(),
+              gstin: z.string().optional(),
+              pan: z.string().optional(),
+              address: z.record(z.unknown()),
+              state: z.string(),
+              stateCode: z.string(),
+              phone: z.string().optional(),
+              email: z.string().optional(),
+              website: z.string().optional(),
+              bankName: z.string().optional(),
+              bankAccountName: z.string().optional(),
+              bankAccountNumber: z.string().optional(),
+              ifsc: z.string().optional(),
+              upiId: z.string().optional(),
+              signatoryName: z.string().optional(),
+              signatoryDesignation: z.string().optional(),
+              invoicePrefix: z.string().optional(),
+              termsAndConditions: z.string().optional(),
+            })
+            .parse(payload),
+        );
+        break;
+      case "upload-company-branding-asset": {
+        const v = z.object({ kind: z.enum(["LOGO", "SIGNATURE", "SEAL"]), originalName: z.string(), mimeType: z.string(), bytesBase64: z.string() }).parse(payload);
+        result = await uploadCompanyBrandingAsset(prisma, user.id, { kind: v.kind, originalName: v.originalName, mimeType: v.mimeType, bytes: new Uint8Array(Buffer.from(v.bytesBase64, "base64")) });
+        break;
+      }
     }
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

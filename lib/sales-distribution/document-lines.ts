@@ -293,6 +293,26 @@ export async function partySnapshot(
       mobile: retailer.mobile ?? retailer.normalizedMobile ?? undefined,
     };
   }
+  // Money Desk 2.0 (Part AD/G) — the Company itself as issuer (a Company-direct/factory/retail
+  // sale invoiced straight from SEERA, not through a Distributor/S.S.). Reads the Founder-
+  // configured Company Profile (company-profile-service.ts); "SEERA" is the same safe display-name
+  // fallback already hardcoded elsewhere (statement-pdf.ts's ledger header) for the unconfigured
+  // case — never a fabricated GSTIN/PAN/address when the profile hasn't been set up yet.
+  if (partyType === "COMPANY") {
+    const { getCompanyProfile } = await import("@/lib/finance/company-profile-service");
+    const profile = await getCompanyProfile(db);
+    if (!profile) return { legalName: "SEERA", address: "" };
+    return {
+      legalName: profile.legalName,
+      tradeName: profile.tradeName ?? undefined,
+      gstin: profile.gstin ?? undefined,
+      address: formatAddress(profile.registeredAddress),
+      state: profile.state || undefined,
+      stateCode: profile.stateCode || undefined,
+      contactName: profile.signatoryName ?? undefined,
+      mobile: profile.phone ?? undefined,
+    };
+  }
   const partner = await db.seeraPartner.findUniqueOrThrow({ where: { id: partyId } });
   const contact = partner.primaryContact as { ownerName?: string; mobile?: string } | null;
   return {

@@ -1600,6 +1600,10 @@ function SettingsSection({ ctx }: { ctx: Ctx }) {
       {(data.treasuryAccounts?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-treasury", {}, "Default Cash and Bank accounts created.")}>BOOTSTRAP TREASURY (Cash + Bank)</button>}
       <button type="button" disabled={busy} onClick={() => run("bootstrap-materials", {}, "Detergent-cake raw materials seeded.")}>SEED DETERGENT-CAKE RAW MATERIALS</button>
       <button type="button" disabled={busy} onClick={() => run("bootstrap-location", {}, "Main Raw Material Store location created.")}>SEED DEFAULT RAW MATERIAL LOCATION</button>
+      <details open>
+        <summary>COMPANY PROFILE (document identity — invoice/bill/ledger header, signature, seal)</summary>
+        <CompanyProfileSection />
+      </details>
       {data.openingBalances && !data.openingBalances.posted && (data.treasuryAccounts?.length ?? 0) > 0 && (
         <details><summary>OPENING BALANCE WIZARD (one-time)</summary>
           <OpeningBalanceWizard ctx={ctx} />
@@ -1612,6 +1616,121 @@ function SettingsSection({ ctx }: { ctx: Ctx }) {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// Money Desk 2.0 (Part AD) — Founder-only Company Profile: the real legal/bank/branding identity
+// used to render a professional Sales Invoice / Purchase Bill / Ledger Statement (partySnapshot's
+// COMPANY branch, document-lines.ts). Self-contained (own fetch-on-mount + local form state),
+// same pattern as SmartFinanceEntry/GuidedMoneyIn, rather than wiring into the page-level
+// FinanceWorkspaceData loader for a screen that's read/written only here.
+type CompanyProfile = {
+  legalName: string; tradeName: string | null; gstin: string | null; pan: string | null;
+  registeredAddress: unknown; state: string; stateCode: string; phone: string | null; email: string | null;
+  website: string | null; bankName: string | null; bankAccountName: string | null; bankAccountNumber: string | null;
+  ifsc: string | null; upiId: string | null; signatoryName: string | null; signatoryDesignation: string | null;
+  invoicePrefix: string; termsAndConditions: string | null; logoFileId: string | null; signatureFileId: string | null; sealFileId: string | null;
+};
+function CompanyProfileSection() {
+  const [profile, setProfile] = useState<CompanyProfile | null | undefined>(undefined);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    post("get-company-profile", {})
+      .then((p: CompanyProfile | null) => {
+        setProfile(p);
+        const addr = (p?.registeredAddress ?? {}) as Record<string, unknown>;
+        setForm({
+          legalName: p?.legalName ?? "", tradeName: p?.tradeName ?? "", gstin: p?.gstin ?? "", pan: p?.pan ?? "",
+          addressLine: (addr.line as string) ?? "", addressCity: (addr.city as string) ?? "", addressPincode: (addr.pincode as string) ?? "",
+          state: p?.state ?? "", stateCode: p?.stateCode ?? "", phone: p?.phone ?? "", email: p?.email ?? "", website: p?.website ?? "",
+          bankName: p?.bankName ?? "", bankAccountName: p?.bankAccountName ?? "", bankAccountNumber: p?.bankAccountNumber ?? "",
+          ifsc: p?.ifsc ?? "", upiId: p?.upiId ?? "", signatoryName: p?.signatoryName ?? "", signatoryDesignation: p?.signatoryDesignation ?? "",
+          invoicePrefix: p?.invoicePrefix ?? "SEERA", termsAndConditions: p?.termsAndConditions ?? "",
+        });
+      })
+      .catch((e) => setMessage({ ok: false, text: e instanceof Error ? e.message : "Could not load Company Profile" }));
+  }, []);
+
+  function field(key: string) { return form[key] ?? ""; }
+  function setField(key: string, value: string) { setForm((s) => ({ ...s, [key]: value })); }
+
+  function save() {
+    if (!form.legalName?.trim()) { setMessage({ ok: false, text: "Legal name is required" }); return; }
+    setBusy(true);
+    setMessage(null);
+    post("update-company-profile", {
+      legalName: form.legalName, tradeName: form.tradeName || undefined, gstin: form.gstin || undefined, pan: form.pan || undefined,
+      address: { line: form.addressLine, city: form.addressCity, pincode: form.addressPincode },
+      state: form.state, stateCode: form.stateCode, phone: form.phone || undefined, email: form.email || undefined, website: form.website || undefined,
+      bankName: form.bankName || undefined, bankAccountName: form.bankAccountName || undefined, bankAccountNumber: form.bankAccountNumber || undefined,
+      ifsc: form.ifsc || undefined, upiId: form.upiId || undefined, signatoryName: form.signatoryName || undefined, signatoryDesignation: form.signatoryDesignation || undefined,
+      invoicePrefix: form.invoicePrefix || undefined, termsAndConditions: form.termsAndConditions || undefined,
+    })
+      .then((p: CompanyProfile) => setProfile(p))
+      .then(() => setMessage({ ok: true, text: "Company Profile saved." }))
+      .catch((e) => setMessage({ ok: false, text: e instanceof Error ? e.message : "Could not save Company Profile" }))
+      .finally(() => setBusy(false));
+  }
+
+  function uploadAsset(kind: "LOGO" | "SIGNATURE" | "SEAL", file: File) {
+    setBusy(true);
+    setMessage(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const bytesBase64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+      post("upload-company-branding-asset", { kind, originalName: file.name, mimeType: file.type, bytesBase64 })
+        .then((p: CompanyProfile) => { setProfile(p); setMessage({ ok: true, text: `${kind === "LOGO" ? "Logo" : kind === "SIGNATURE" ? "Signature" : "Seal"} uploaded.` }); })
+        .catch((e) => setMessage({ ok: false, text: e instanceof Error ? e.message : "Upload failed" }))
+        .finally(() => setBusy(false));
+    };
+    reader.onerror = () => { setBusy(false); setMessage({ ok: false, text: "Could not read file" }); };
+    reader.readAsDataURL(file);
+  }
+
+  if (profile === undefined) return <p>Loading Company Profile…</p>;
+
+  return (
+    <div>
+      {message && <p role="status" data-ok={message.ok}>{message.text}</p>}
+      {!profile && <p className={styles.emptyHint}>Not configured yet — every document currently renders with the "SEERA" fallback name only. Fill this in to show real GSTIN/address/bank details and a real signature/seal on invoices, bills, and ledger statements.</p>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "0.5rem" }}>
+        <label>Legal name *<input value={field("legalName")} onChange={(e) => setField("legalName", e.target.value)} /></label>
+        <label>Trade/brand name<input value={field("tradeName")} onChange={(e) => setField("tradeName", e.target.value)} /></label>
+        <label>GSTIN<input value={field("gstin")} onChange={(e) => setField("gstin", e.target.value)} /></label>
+        <label>PAN<input value={field("pan")} onChange={(e) => setField("pan", e.target.value)} /></label>
+        <label>Address line<input value={field("addressLine")} onChange={(e) => setField("addressLine", e.target.value)} /></label>
+        <label>City<input value={field("addressCity")} onChange={(e) => setField("addressCity", e.target.value)} /></label>
+        <label>Pincode<input value={field("addressPincode")} onChange={(e) => setField("addressPincode", e.target.value)} /></label>
+        <label>State *<input value={field("state")} onChange={(e) => setField("state", e.target.value)} /></label>
+        <label>State code *<input value={field("stateCode")} onChange={(e) => setField("stateCode", e.target.value)} placeholder="e.g. 09" /></label>
+        <label>Phone<input value={field("phone")} onChange={(e) => setField("phone", e.target.value)} /></label>
+        <label>Email<input value={field("email")} onChange={(e) => setField("email", e.target.value)} /></label>
+        <label>Website<input value={field("website")} onChange={(e) => setField("website", e.target.value)} /></label>
+        <label>Bank name<input value={field("bankName")} onChange={(e) => setField("bankName", e.target.value)} /></label>
+        <label>Bank account name<input value={field("bankAccountName")} onChange={(e) => setField("bankAccountName", e.target.value)} /></label>
+        <label>Bank account number<input value={field("bankAccountNumber")} onChange={(e) => setField("bankAccountNumber", e.target.value)} /></label>
+        <label>IFSC<input value={field("ifsc")} onChange={(e) => setField("ifsc", e.target.value)} /></label>
+        <label>UPI ID<input value={field("upiId")} onChange={(e) => setField("upiId", e.target.value)} /></label>
+        <label>Authorized signatory name<input value={field("signatoryName")} onChange={(e) => setField("signatoryName", e.target.value)} /></label>
+        <label>Signatory designation<input value={field("signatoryDesignation")} onChange={(e) => setField("signatoryDesignation", e.target.value)} placeholder="e.g. Director" /></label>
+        <label>Invoice number prefix<input value={field("invoicePrefix")} onChange={(e) => setField("invoicePrefix", e.target.value)} /></label>
+      </div>
+      <label style={{ display: "block", marginTop: "0.5rem" }}>Invoice/bill Terms &amp; Conditions
+        <textarea value={field("termsAndConditions")} onChange={(e) => setField("termsAndConditions", e.target.value)} rows={3} style={{ width: "100%" }} />
+      </label>
+      <button type="button" disabled={busy} onClick={save} style={{ marginTop: "0.5rem" }}>{busy ? "SAVING…" : "SAVE COMPANY PROFILE"}</button>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "0.5rem", marginTop: "1rem" }}>
+        <label>Logo{profile?.logoFileId ? " (configured)" : ""}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("LOGO", f); }} /></label>
+        <label>Authorized signature{profile?.signatureFileId ? " (configured)" : ""}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("SIGNATURE", f); }} /></label>
+        <label>Company seal{profile?.sealFileId ? " (configured)" : ""}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("SEAL", f); }} /></label>
+      </div>
+      {!profile && <p className={styles.emptyHint}>Save the legal details above first — signature/seal upload needs a saved profile to attach to.</p>}
     </div>
   );
 }

@@ -4,8 +4,9 @@ import { authorize, effectivePermissions } from "@/lib/foundation/authorization-
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { documentNumber } from "./phase6-9-rules";
-import { documentPdfFilename, renderIssuedDocumentPdf, type IssuedDocumentSnapshot } from "./document-pdf";
+import { documentPdfFilename, renderIssuedDocumentPdf, type IssuedDocumentSnapshot, type DocumentBranding } from "./document-pdf";
 import { taxSplit, type CommercialLineSnapshot } from "./document-lines";
+import { getCompanyProfile, getBrandingAssetBytes } from "@/lib/finance/company-profile-service";
 import { postJournalForCompanyDocument } from "@/lib/finance/sales-integration-service";
 import type { MessagingProvider } from "@/lib/messaging/types";
 import { normalizeIndianMobile } from "@/lib/messaging/phone";
@@ -109,10 +110,33 @@ async function snapshotForPdf(db: PrismaClient, document: Awaited<ReturnType<Pri
   return { type: document.type, documentNumber: document.documentNumber, issueDate: (document.issueDate ?? document.issuedAt ?? document.createdAt).toISOString().slice(0, 10), issuer: document.issuerSnapshot as IssuedDocumentSnapshot["issuer"], buyer: document.buyerSnapshot as IssuedDocumentSnapshot["buyer"], orderReference: document.orderId ?? undefined, lines, subtotal: Number(document.subtotal), taxableTotal: Number(document.taxableTotal), cgstTotal: Number(document.cgstTotal), sgstTotal: Number(document.sgstTotal), igstTotal: Number(document.igstTotal), grandTotal: Number(document.grandTotal), currency: document.currency, paymentTerms: terms?.text, notes: supplyNotes, validUntil: document.validUntil ? document.validUntil.toISOString().slice(0, 10) : undefined, originalDocumentNumber, originalDocumentDate };
 }
 
+// Money Desk 2.0 (Part N) — real signature/seal images + signatory name, fetched fresh at
+// render/download time from the Founder-configured Company Profile. Only meaningful when the
+// COMPANY itself is the issuer (a Distributor/S.S.-issued document has no such configured asset,
+// and this deliberately never fabricates a signature/seal for a party that never set one up).
+// Every failure path here (unconfigured, missing file) resolves to `undefined` — document-pdf.ts
+// already renders the plain text fallback when branding is undefined, so this never blocks
+// issuance/download.
+async function companyBrandingFor(db: PrismaClient, document: { issuerType: string }): Promise<DocumentBranding | undefined> {
+  if (document.issuerType !== "COMPANY") return undefined;
+  const profile = await getCompanyProfile(db);
+  if (!profile) return undefined;
+  const [signatureImage, sealImage] = await Promise.all([
+    getBrandingAssetBytes(db, profile.signatureFileId),
+    getBrandingAssetBytes(db, profile.sealFileId),
+  ]);
+  return {
+    signatoryName: profile.signatoryName ?? undefined,
+    signatoryDesignation: profile.signatoryDesignation ?? undefined,
+    signatureImage: signatureImage ?? undefined,
+    sealImage: sealImage ?? undefined,
+  };
+}
+
 export async function downloadDocument(db: PrismaClient, actorId: string, documentId: string) {
   await authorize(db, { actorId, permission: "document:view_scoped" }); const document = await db.seeraCommercialDocument.findUniqueOrThrow({ where: { id: documentId } });
   if (!(await canAccessDocument(db, actorId, document))) throw new FoundationError("DOCUMENT_SCOPE_DENIED", "Document scope denied", 403);
-  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); const bytes = await renderIssuedDocumentPdf(await snapshotForPdf(db, document)); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes, mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
+  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); const bytes = await renderIssuedDocumentPdf(await snapshotForPdf(db, document), await companyBrandingFor(db, document)); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes, mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
   if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404); const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } }); if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404); await recordAudit(db, { actorId, action: "document.download", entityType: "SeeraCommercialDocument", entityId: document.id }); return { bytes: new Uint8Array(file.contentBytes), mimeType: file.mimeType, filename: file.originalName };
 }
 
@@ -173,7 +197,7 @@ export async function sendDocumentViaWhatsApp(
   let bytes: Uint8Array, mimeType: string, filename: string;
   if (document.source === "SYSTEM_GENERATED") {
     if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be shared", 409);
-    bytes = await renderIssuedDocumentPdf(await snapshotForPdf(db, document));
+    bytes = await renderIssuedDocumentPdf(await snapshotForPdf(db, document), await companyBrandingFor(db, document));
     mimeType = "application/pdf";
     filename = documentPdfFilename({ type: document.type, documentNumber: document.documentNumber });
   } else {
@@ -240,7 +264,7 @@ export async function downloadValidatedShare(db: PrismaClient, grantId: string) 
   const grant = await db.seeraDocumentShareGrant.findFirst({ where: { id: grantId, revokedAt: null, expiresAt: { gt: new Date() }, accessCount: { gt: 0 } }, include: { document: true } });
   if (!grant) throw new FoundationError("SHARE_ACCESS_DENIED", "Secure share unavailable", 403);
   const document = grant.document;
-  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); return { bytes: await renderIssuedDocumentPdf(await snapshotForPdf(db, document)), mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
+  if (document.source === "SYSTEM_GENERATED") { if (document.status === "DRAFT") throw new FoundationError("DOCUMENT_NOT_ISSUED", "Only an issued document can be rendered", 409); return { bytes: await renderIssuedDocumentPdf(await snapshotForPdf(db, document), await companyBrandingFor(db, document)), mimeType: "application/pdf", filename: documentPdfFilename({ type: document.type, documentNumber: document.documentNumber }) }; }
   if (!document.externalFileId) throw new FoundationError("DOCUMENT_FILE_MISSING", "Uploaded file unavailable", 404); const file = await db.storedFile.findFirstOrThrow({ where: { id: document.externalFileId, lifecycleStatus: "ACTIVE", revokedAt: null } }); if (!file.contentBytes) throw new FoundationError("DOCUMENT_FILE_CONTENT_MISSING", "Private file content unavailable", 404); return { bytes: new Uint8Array(file.contentBytes), mimeType: file.mimeType, filename: file.originalName };
 }
 

@@ -1896,6 +1896,24 @@ model SeeraBillingProfile {
   createdById        String
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+  // Money Desk 2.0 (Part AD) — Founder-configured document identity, currently used only by
+  // ownerType "COMPANY" (the Founder's own SEERA legal/branding identity for a Company-issued
+  // Sales Invoice/Purchase Bill/Ledger Statement). Additive, nullable, and harmless on every
+  // existing DISTRIBUTOR/SUPER_STOCKIST/COMPANY_DIRECT row, which never sets them.
+  phone                String?
+  email                String?
+  website              String?
+  bankName             String?
+  bankAccountName      String?
+  bankAccountNumber    String?
+  ifsc                 String?
+  upiId                String?
+  logoFileId           String?
+  signatureFileId      String?
+  sealFileId           String?
+  signatoryName        String?
+  signatoryDesignation String?
+  termsAndConditions   String?
 
   @@unique([ownerType, ownerId, effectiveFrom])
   @@index([ownerType, ownerId, verificationStatus, effectiveFrom, effectiveTo])

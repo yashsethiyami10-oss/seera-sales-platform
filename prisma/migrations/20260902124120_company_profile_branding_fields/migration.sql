@@ -1,0 +1,15 @@
+-- AlterTable
+ALTER TABLE "seera_billing_profiles" ADD COLUMN     "bankAccountName" TEXT,
+ADD COLUMN     "bankAccountNumber" TEXT,
+ADD COLUMN     "bankName" TEXT,
+ADD COLUMN     "email" TEXT,
+ADD COLUMN     "ifsc" TEXT,
+ADD COLUMN     "logoFileId" TEXT,
+ADD COLUMN     "phone" TEXT,
+ADD COLUMN     "sealFileId" TEXT,
+ADD COLUMN     "signatoryDesignation" TEXT,
+ADD COLUMN     "signatoryName" TEXT,
+ADD COLUMN     "signatureFileId" TEXT,
+ADD COLUMN     "termsAndConditions" TEXT,
+ADD COLUMN     "upiId" TEXT,
+ADD COLUMN     "website" TEXT;

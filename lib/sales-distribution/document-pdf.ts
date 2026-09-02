@@ -85,7 +85,21 @@ export function documentPdfFilename(input: Pick<IssuedDocumentSnapshot, "type" |
 // document-service.ts) and only rewrites how it's drawn: branded header, boxed issuer/buyer
 // sections, a real bordered item table with every GST column the Founder asked for, and a clearly
 // separated totals block.
-export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot): Promise<Uint8Array> {
+// Money Desk 2.0 (Part N) — optional, render-time-only branding: a real signature/seal image and
+// signatory name/designation, when the Founder has configured a Company Profile. Deliberately NOT
+// part of IssuedDocumentSnapshot (which stays the immutable issuance-time financial/party record) —
+// the signature/seal reflects the CURRENT Company Profile at download/print time, same as how a
+// real letterhead can be updated without needing to reissue every historical invoice. Every field
+// is optional; when none are supplied, the exact previous text-only "Authorised Signatory / Seal"
+// line renders unchanged.
+export type DocumentBranding = {
+  signatoryName?: string;
+  signatoryDesignation?: string;
+  signatureImage?: { bytes: Uint8Array; mimeType: string };
+  sealImage?: { bytes: Uint8Array; mimeType: string };
+};
+
+export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot, branding?: DocumentBranding): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const latin = await pdf.embedFont(readFileSync(safeFile("noto-sans/files/noto-sans-latin-400-normal.woff")), { subset: true });
@@ -97,6 +111,16 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   } catch {
     logo = undefined; // Never let a missing/unreadable logo asset block document issuance.
   }
+  const embedBrandingImage = async (image?: { bytes: Uint8Array; mimeType: string }): Promise<PDFImage | undefined> => {
+    if (!image) return undefined;
+    try {
+      return image.mimeType === "image/png" ? await pdf.embedPng(image.bytes) : await pdf.embedJpg(image.bytes);
+    } catch {
+      return undefined; // A corrupt/unreadable configured asset degrades to the text-only fallback, never blocks issuance.
+    }
+  };
+  const signatureImage = await embedBrandingImage(branding?.signatureImage);
+  const sealImage = await embedBrandingImage(branding?.sealImage);
 
   let page = pdf.addPage(PAGE as unknown as [number, number]);
   let y = PAGE[1] - MARGIN;
@@ -327,16 +351,40 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot):
   }
 
   // ---- Signatory block ----
-  ensureRoom(60);
+  // Part N: a real configured seal image draws to the left of the signature line (the standard
+  // Indian-business placement, often overlapping/adjacent to the line), a real configured
+  // signature image draws just above it. Either, both, or neither may be configured — the text
+  // fallback ("Authorised Signatory / Seal") always still renders, so an unconfigured Company
+  // Profile never looks broken, exactly as Part N requires.
+  ensureRoom(70);
   y -= 8;
   const sigWidth = 180;
   const sigX = MARGIN + CONTENT_WIDTH - sigWidth;
   text(`For ${snapshot.issuer.tradeName ?? snapshot.issuer.legalName}`, sigX, y, { size: 8.5, strong: true });
+  y -= 6;
+  if (sealImage) {
+    const sealSize = 44;
+    page.drawImage(sealImage, { x: sigX - sealSize - 8, y: y - sealSize, width: sealSize, height: sealSize, opacity: 0.85 });
+  }
+  if (signatureImage) {
+    const sigImgH = 30;
+    const sigImgW = (signatureImage.width / signatureImage.height) * sigImgH;
+    page.drawImage(signatureImage, { x: sigX + (sigWidth - sigImgW) / 2, y: y - sigImgH - 4, width: sigImgW, height: sigImgH });
+  }
   y -= 42;
   page.drawLine({ start: { x: sigX, y }, end: { x: sigX + sigWidth, y }, thickness: 0.6, color: RULE });
   y -= 10;
-  text("Authorised Signatory / Seal", sigX, y, { size: 7.5, color: MUTED });
-  y -= 16;
+  if (branding?.signatoryName) {
+    rightText(branding.signatoryName, sigX + sigWidth, y, { size: 8, strong: true });
+    y -= 11;
+    if (branding.signatoryDesignation) {
+      rightText(branding.signatoryDesignation, sigX + sigWidth, y, { size: 7.5, color: MUTED });
+      y -= 11;
+    }
+  } else {
+    text("Authorised Signatory / Seal", sigX, y, { size: 7.5, color: MUTED });
+    y -= 16;
+  }
 
   // ---- Footer ----
   ensureRoom(20);

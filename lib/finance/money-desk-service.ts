@@ -13,6 +13,7 @@ import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
 import { placeRetailerOrder } from "@/lib/sales-distribution/workflow-service";
 import { deriveCostCentre } from "./cost-centre";
 import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
+import { operationalLog } from "@/lib/foundation/logger";
 
 // SEERA MONEY DESK — ORCHESTRATION ENGINE. "User enters the business
 // transaction. System decides the accounting." This file is the ONLY place a
@@ -822,8 +823,9 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
   const viewAll = permissions.has("money_desk:view_all") || permissions.has("system:super_admin");
   const scope = viewAll ? {} : { requestedById: actorId };
 
+  const emptySalesDistribution = { pendingPaymentProofs: [], pendingTaClaims: [], recentEntries: [] };
   const [recent, pendingApproval, stuckPosting, treasuryAccounts, todayLines, salesDistribution] = await Promise.all([
-    db.seeraMoneyDeskTransaction.findMany({
+    resilientList(db, actorId, "recentTransactions", db.seeraMoneyDeskTransaction.findMany({
       where: scope,
       orderBy: { createdAt: "desc" },
       take: 25,
@@ -833,24 +835,27 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
         requestedById: true, formData: true, failureReason: true, createdAt: true,
         source: true, correctionOfId: true,
       },
-    }),
-    db.seeraMoneyDeskTransaction.findMany({
+    })),
+    resilientList(db, actorId, "pendingApprovals", db.seeraMoneyDeskTransaction.findMany({
       where: { ...scope, status: "PENDING_APPROVAL" },
       orderBy: { createdAt: "asc" },
       select: { id: true, transactionNumber: true, purposeCode: true, amount: true, requestedById: true },
-    }),
-    db.seeraMoneyDeskTransaction.findMany({
+    })),
+    resilientList(db, actorId, "needsAttention", db.seeraMoneyDeskTransaction.findMany({
       where: { ...scope, status: "POSTING", failureReason: { not: null } },
       orderBy: { createdAt: "asc" },
       select: { id: true, transactionNumber: true, purposeCode: true, amount: true, failureReason: true },
-    }),
-    db.seeraTreasuryAccount.findMany({ where: { isActive: true } }),
-    db.seeraJournalLine.groupBy({
+    })),
+    resilientList(db, actorId, "cashBankToday.accounts", db.seeraTreasuryAccount.findMany({ where: { isActive: true } })),
+    resilientList(db, actorId, "cashBankToday.todayLines", db.seeraJournalLine.groupBy({
       by: ["treasuryAccountId"],
       where: { treasuryAccountId: { not: null }, journal: { status: "POSTED", date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } },
       _sum: { debit: true, credit: true },
+    })),
+    salesDistributionBridge(db, viewAll).catch((error) => {
+      operationalLog("error", "money_desk.supporting_data.section_failed", { actorId, section: "salesDistribution", errorMessage: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500) });
+      return emptySalesDistribution;
     }),
-    salesDistributionBridge(db, viewAll),
   ]);
 
   // Opening-today + today's net movement, per treasury account — a real, if
@@ -858,11 +863,11 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
   // what's already posted historically), running balance straight off the
   // ledger. allTimeLines gives the true balance as of right now; todayLines
   // is only used to label how much of it moved today.
-  const allTimeLines = await db.seeraJournalLine.groupBy({
+  const allTimeLines = await resilientList(db, actorId, "cashBankToday.allTimeLines", db.seeraJournalLine.groupBy({
     by: ["treasuryAccountId"],
     where: { treasuryAccountId: { not: null }, journal: { status: "POSTED" } },
     _sum: { debit: true, credit: true },
-  });
+  }));
   const balanceByAccount = new Map(allTimeLines.map((l) => [l.treasuryAccountId, Number(l._sum.debit ?? 0) - Number(l._sum.credit ?? 0)]));
   const todayMovementByAccount = new Map(todayLines.map((l) => [l.treasuryAccountId, Number(l._sum.debit ?? 0) - Number(l._sum.credit ?? 0)]));
 
@@ -882,9 +887,9 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
   const territoryIds = [...new Set(recent.map((t) => (t.formData as Record<string, unknown>)?.territoryId).filter((v): v is string => typeof v === "string"))];
   const treasuryIds = [...new Set(recent.map((t) => t.treasuryAccountId).filter((v): v is string => Boolean(v)))];
   const [employees, territories, treasuries] = await Promise.all([
-    employeeIds.length ? db.user.findMany({ where: { id: { in: employeeIds } }, select: { id: true, name: true, email: true } }) : Promise.resolve([]),
-    territoryIds.length ? db.seeraGeographyNode.findMany({ where: { id: { in: territoryIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
-    treasuryIds.length ? db.seeraTreasuryAccount.findMany({ where: { id: { in: treasuryIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+    employeeIds.length ? resilientList(db, actorId, "recentTransactions.employeeNames", db.user.findMany({ where: { id: { in: employeeIds } }, select: { id: true, name: true, email: true } })) : Promise.resolve([]),
+    territoryIds.length ? resilientList(db, actorId, "recentTransactions.territoryNames", db.seeraGeographyNode.findMany({ where: { id: { in: territoryIds } }, select: { id: true, name: true } })) : Promise.resolve([]),
+    treasuryIds.length ? resilientList(db, actorId, "recentTransactions.treasuryNames", db.seeraTreasuryAccount.findMany({ where: { id: { in: treasuryIds } }, select: { id: true, name: true } })) : Promise.resolve([]),
   ]);
   const employeeNameById = new Map(employees.map((e) => [e.id, e.name ?? e.email]));
   const territoryNameById = new Map(territories.map((t) => [t.id, t.name]));
@@ -899,7 +904,11 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
     const empId = typeof fd.employeeId === "string" ? fd.employeeId : undefined;
     const terrId = typeof fd.territoryId === "string" ? fd.territoryId : undefined;
     const isSmart = Boolean((fd.__smartFinance as { originalText?: string } | undefined)?.originalText);
-    return { ...t, amount: Number(t.amount), source: isSmart ? "SMART_FINANCE" : "GUIDED", employeeName: empId ? (employeeNameById.get(empId) ?? null) : null, territoryName: terrId ? (territoryNameById.get(terrId) ?? null) : null, treasuryName: t.treasuryAccountId ? (treasuryNameById.get(t.treasuryAccountId) ?? null) : null };
+    // `t.source` here is the DB column (FOUNDER_PORTAL/ACCOUNTS_PORTAL/...) — kept as originPortal,
+    // distinct from the pre-existing `source` key below (SMART_FINANCE vs GUIDED, i.e. HOW the entry
+    // was typed). Overwriting one with the other was a real bug: the new source column was silently
+    // discarded on every home-list row. See moneyDeskTransactionDetail's same originPortal split.
+    return { ...t, amount: Number(t.amount), source: isSmart ? "SMART_FINANCE" : "GUIDED", originPortal: t.source, employeeName: empId ? (employeeNameById.get(empId) ?? null) : null, territoryName: terrId ? (territoryNameById.get(terrId) ?? null) : null, treasuryName: t.treasuryAccountId ? (treasuryNameById.get(t.treasuryAccountId) ?? null) : null };
   };
 
   return {
@@ -919,34 +928,51 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
 // actually completing a gated purpose (e.g. Raw Material Purchase without
 // mfg_grn:manage) still fails at submit time inside the real handler — this
 // is convenience data, never the security boundary.
+// Money Desk 2.0 (Part AB): a failure in ONE picker list must not blank the entire Money Desk
+// screen — the previous behaviour let any single query inside this function's Promise.all reject
+// the whole call, which the caller (OperationalWorkspace.tsx) then turned into a full-page "Money
+// Desk data is temporarily unavailable". Each query is now independently resilient: a genuine
+// failure degrades that ONE picker to empty (never silently — it's logged with the actor and a
+// correlation id) instead of taking down transaction entry, approvals, and every other section.
+function resilientList<T>(db: PrismaClient, actorId: string, section: string, query: Promise<T[]>): Promise<T[]> {
+  return query.catch((error) => {
+    operationalLog("error", "money_desk.supporting_data.section_failed", {
+      actorId,
+      section,
+      errorMessage: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+    });
+    return [];
+  });
+}
+
 export async function moneyDeskSupportingData(db: PrismaClient, actorId: string) {
   await authorize(db, { actorId, permission: "money_desk:view" });
   const [treasuryAccounts, vendors, materials, locations, pendingReturnRequests, openVendorBills, territories, employees, retailers] = await Promise.all([
-    db.seeraTreasuryAccount.findMany({ where: { isActive: true }, select: { id: true, name: true, kind: true, chartOfAccountId: true } }),
-    db.seeraVendor.findMany({ where: { isActive: true }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 200 }),
-    db.seeraManufacturingMaterial.findMany({ select: { id: true, code: true, name: true, baseUnit: true }, orderBy: { name: "asc" }, take: 500 }),
-    db.seeraManufacturingLocation.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
-    db.seeraReturnRequest.findMany({ where: { status: "APPROVED", creditNoteRequested: true, refundJournalId: null }, select: { id: true, requestNumber: true, reason: true, retailerId: true }, orderBy: { createdAt: "desc" }, take: 100 }),
-    db.seeraVendorBill.findMany({ where: { status: { in: ["APPROVED", "PARTIALLY_PAID"] } }, select: { id: true, billNumber: true, vendorId: true, grossAmount: true, paidAmount: true }, orderBy: { dueDate: "asc" }, take: 200 }),
+    resilientList(db, actorId, "treasuryAccounts", db.seeraTreasuryAccount.findMany({ where: { isActive: true }, select: { id: true, name: true, kind: true, chartOfAccountId: true } })),
+    resilientList(db, actorId, "vendors", db.seeraVendor.findMany({ where: { isActive: true }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 200 })),
+    resilientList(db, actorId, "materials", db.seeraManufacturingMaterial.findMany({ select: { id: true, code: true, name: true, baseUnit: true }, orderBy: { name: "asc" }, take: 500 })),
+    resilientList(db, actorId, "locations", db.seeraManufacturingLocation.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } })),
+    resilientList(db, actorId, "pendingReturnRequests", db.seeraReturnRequest.findMany({ where: { status: "APPROVED", creditNoteRequested: true, refundJournalId: null }, select: { id: true, requestNumber: true, reason: true, retailerId: true }, orderBy: { createdAt: "desc" }, take: 100 })),
+    resilientList(db, actorId, "openVendorBills", db.seeraVendorBill.findMany({ where: { status: { in: ["APPROVED", "PARTIALLY_PAID"] } }, select: { id: true, billNumber: true, vendorId: true, grossAmount: true, paidAmount: true }, orderBy: { dueDate: "asc" }, take: 200 })),
     // Territory picker (Money Desk maturity pass, 23-Aug) — same SeeraGeographyNode{level:TERRITORY}
     // rows the Sales & Distribution domain already governs (Beat Planner, Executive assignment);
     // Money Desk reads this, it never maintains its own copy of geography.
-    db.seeraGeographyNode.findMany({ where: { level: "TERRITORY", status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    resilientList(db, actorId, "territories", db.seeraGeographyNode.findMany({ where: { level: "TERRITORY", status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } })),
     // Money Desk 2.0 (Rule 21): a real employee picker, not a raw-ID text input. Excludes external
     // party portal logins (Retailer/Distributor/S.S.) — same list ledgerPartyOptions("EMPLOYEE")
     // already governs, inlined here to avoid a second permission round trip.
-    db.user.findMany({
+    resilientList(db, actorId, "employees", db.user.findMany({
       where: { status: "ACTIVE", roleAssignments: { some: { status: "ACTIVE", role: { code: { notIn: [...EXTERNAL_PARTY_PORTAL_ROLE_CODES] } } } } },
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true },
       take: 500,
-    }),
+    })),
     // Retail/Factory Sale customer picker (Rule 6/11/21) — same real SeeraRetailer master
     // createRetailer/OFFLINE_SALE already use, never a duplicate customer list.
-    db.seeraRetailer.findMany({ orderBy: { businessName: "asc" }, select: { id: true, businessName: true, mobile: true }, take: 2000 }),
+    resilientList(db, actorId, "retailers", db.seeraRetailer.findMany({ orderBy: { businessName: "asc" }, select: { id: true, businessName: true, mobile: true }, take: 2000 })),
   ]);
   const treasuryCoaIds = treasuryAccounts.map((t) => t.chartOfAccountId);
-  const treasuryCoas = await db.seeraChartOfAccount.findMany({ where: { id: { in: treasuryCoaIds } }, select: { id: true, code: true } });
+  const treasuryCoas = await resilientList(db, actorId, "treasuryCoas", db.seeraChartOfAccount.findMany({ where: { id: { in: treasuryCoaIds } }, select: { id: true, code: true } }));
   const coaCodeByAccountId = new Map(treasuryCoas.map((c) => [c.id, c.code]));
   return {
     treasuryAccounts: treasuryAccounts.map((t) => ({ id: t.id, name: t.name, kind: t.kind, coaCode: coaCodeByAccountId.get(t.chartOfAccountId) ?? "" })),

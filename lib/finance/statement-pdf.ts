@@ -52,6 +52,10 @@ function truncate(text: string, maxChars: number) {
 
 export async function renderLedgerStatementPdf(input: {
   companyName: string;
+  // Money Desk 2.0 (Part F) — real Founder-configured company identity on the ledger header
+  // (GSTIN/address/phone/email), when available. Every field optional so an unconfigured Company
+  // Profile still renders the exact same header as before (just the company name), never invented.
+  company?: { gstin?: string | null; address?: string | null; phone?: string | null; email?: string | null };
   party: { name: string; type: string; address?: string | null; mobile?: string | null; gstin?: string | null; territory?: string | null };
   period: { from: string; to: string };
   openingBalance: number;
@@ -88,6 +92,9 @@ export async function renderLedgerStatementPdf(input: {
 
   // Statement header block
   line(input.companyName, { size: 16, useBold: true }); y -= 20;
+  if (input.company?.address) { line(input.company.address, { size: 8.5 }); y -= 11; }
+  const companyBits = [input.company?.gstin ? `GSTIN: ${input.company.gstin}` : null, input.company?.phone ? `Phone: ${input.company.phone}` : null, input.company?.email ? `Email: ${input.company.email}` : null].filter(Boolean).join("   ");
+  if (companyBits) { line(companyBits, { size: 8.5 }); y -= 12; }
   line("LEDGER STATEMENT", { size: 12, useBold: true }); y -= 18;
   line(`${input.party.name} (${input.party.type.replace(/_/g, " ")})`, { size: 10.5, useBold: true }); y -= 14;
   if (input.party.address) { line(input.party.address, { size: 9 }); y -= 12; }
