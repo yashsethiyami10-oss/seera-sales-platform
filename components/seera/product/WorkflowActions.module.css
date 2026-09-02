@@ -12,7 +12,7 @@
 .orderCard header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.orderCard header strong{display:block;font-size:16px;color:#172033}.orderCard header small{display:block;color:#64748b;font-size:12px;margin-top:2px}
 .cardLines{list-style:none;margin:0;padding:0;display:grid;gap:10px}.cardLines li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;background:#fff;border:1px solid #ead8d2;border-radius:10px}.cardLines li[data-short=true]{border-color:#f3c9c9;background:#fff5f5}.cardLines li>div{display:grid;gap:2px}.cardLines li span{font-weight:800;color:#172033;font-size:14px}.cardLines li small{color:#64748b;font-size:12px}
 .shortHint{color:#a61f2a!important;font-weight:800}
-.cardLines input{width:78px;min-height:44px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;font-size:15px;text-align:center}
+.cardLines input{width:78px;min-height:44px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;font-size:16px;text-align:center}
 .cardTotal{margin:0;font-weight:900;font-size:15px;color:#172033}
 .cardActions{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
 .primaryBig,.secondaryBig,.dangerBig{min-height:52px;border-radius:12px;font-weight:850;font-size:15px;border:0;cursor:pointer}

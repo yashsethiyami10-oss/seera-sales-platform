@@ -217,6 +217,14 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                   type="button"
                   onClick={(event) => {
                     const form = new FormData(event.currentTarget.closest("form")!);
+                    // Team Verification fix: this is type="button", not type="submit" — the
+                    // native `required` attribute on the reason input NEVER fires for a manual
+                    // FormData read + fetch() like this, only for a real form submission. A
+                    // Manager could click "Set duty" with reason left blank, get a real but
+                    // easy-to-miss TA_DUTY_REASON_REQUIRED rejection, and reasonably conclude the
+                    // button just doesn't work — live production data showed every claim stuck at
+                    // dutyType=UNCLASSIFIED, consistent with this. Enforced explicitly now.
+                    if (!String(form.get("reason") ?? "").trim()) { setMessage(hi ? "कारण आवश्यक है।" : "Reason is required."); return; }
                     void (async () => {
                       setBusy(true); setMessage("");
                       try { await send("/api/travel/classification", { kind: "duty", claimId: c.id, dutyType: String(form.get("dutyType")), reason: String(form.get("reason")) }); setMessage(hi ? "ड्यूटी वर्गीकृत की गई।" : "Duty classified."); router.refresh(); }
@@ -233,6 +241,7 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                       type="button"
                       onClick={(event) => {
                         const form = new FormData(event.currentTarget.closest("form")!);
+                        if (!String(form.get("reason") ?? "").trim()) { setMessage(hi ? "कारण आवश्यक है।" : "Reason is required."); return; }
                         void (async () => {
                           setBusy(true); setMessage("");
                           try { await send("/api/travel/classification", { kind: "day", claimId: c.id, dayClassification: String(form.get("dayClassification")), reason: String(form.get("reason")) }); setMessage(hi ? "दिन प्रकार निर्धारित किया गया।" : "Day type classified."); router.refresh(); }
@@ -249,6 +258,7 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                   type="button"
                   onClick={(event) => {
                     const form = new FormData(event.currentTarget.closest("form")!);
+                    if (!String(form.get("reason") ?? "").trim()) { setMessage(hi ? "कारण आवश्यक है।" : "Reason is required."); return; }
                     void (async () => {
                       setBusy(true);
                       setMessage("");
@@ -271,6 +281,7 @@ export function TeamTaClaimsPanel({ language, claims }: { language: "EN" | "HI";
                   type="button"
                   onClick={(event) => {
                     const form = new FormData(event.currentTarget.closest("form")!);
+                    if (!String(form.get("reason") ?? "").trim()) { setMessage(hi ? "कारण आवश्यक है।" : "Reason is required."); return; }
                     void (async () => {
                       setBusy(true); setMessage("");
                       try { await send("/api/travel/operations", { action: "return", payload: { claimId: c.id, reason: String(form.get("reason")) } }); setMessage(hi ? "स्पष्टीकरण के लिए लौटाया गया।" : "Returned for clarification."); router.refresh(); }

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import styles from "./WorkflowActions.module.css";
 import journeyStyles from "./FieldJourney.module.css";
 import { captureGps, GpsBadge, type GpsStatus } from "./gps";
@@ -143,13 +144,38 @@ export function ManagerFieldActions({
     return { latitude: point.latitude, longitude: point.longitude, accuracy: point.accuracy, gpsExceptionReason, ...extra };
   };
 
+  // Issue 1 fix: this previously used <input type="file" capture="environment"> for BOTH "take a
+  // fresh photo" and "pick an existing one" — a single ambiguous action, and capture="environment"
+  // is a hint, not a guarantee: Android WebView/OEM browser behavior for it is inconsistent, and it
+  // commonly opens a chooser (Camera app vs Files/Gallery) or defaults to gallery instead of the
+  // camera directly. The Executive field flow was already hardened away from this exact pattern to
+  // the native Capacitor Camera plugin (FieldJourney.tsx's openNativeCamera) - reused here for the
+  // camera invocation only. The EXISTING capture-photo-manager upload action (base64 to the legacy
+  // DB-blob path) is left unchanged - that is a separate system, not what's reported broken, and
+  // the shared Cloudinary pipeline other portals use is currently hard-scoped to
+  // employeeRole:"SALES_EXECUTIVE" (requireActiveOwnedVisit), so switching upload mechanisms here
+  // would require widening that shared, security-sensitive check - a larger change than this fix.
+  const takeNativePhoto = async () => {
+    try {
+      const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+      const result = await Camera.getPhoto({
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+        quality: 88,
+        correctOrientation: true,
+      });
+      if (result.base64String) setPhotoPreview(`data:image/${result.format === "jpg" ? "jpeg" : result.format ?? "jpeg"};base64,${result.base64String}`);
+    } catch {
+      // User cancelled the native camera, or it genuinely failed — no preview change either way.
+    }
+  };
+
   const capturePhotoButton = (visitId: string | undefined) => (
     <div>
       <input
         ref={fileRef}
         type="file"
         accept="image/jpeg,image/png,image/webp"
-        capture="environment"
         style={{ display: "none" }}
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -160,24 +186,32 @@ export function ManagerFieldActions({
         }}
       />
       <div className={journeyStyles.quickActions}>
-        <button type="button" onClick={() => fileRef.current?.click()}>
-          {photoPreview ? (hi ? "फिर से लें" : "Retake") : hi ? "कैमरा खोलें" : "Open camera"}
+        <button type="button" onClick={() => (Capacitor.isNativePlatform() ? takeNativePhoto() : fileRef.current?.click())}>
+          {photoPreview ? (hi ? "फिर से लें" : "Retake") : hi ? "फ़ोटो लें" : "Take photo"}
         </button>
+        {Capacitor.isNativePlatform() && (
+          <button type="button" onClick={() => fileRef.current?.click()}>
+            {hi ? "गैलरी से चुनें" : "Choose from gallery"}
+          </button>
+        )}
         {photoPreview && (
           <button
             type="button"
             disabled={busy || !visitId}
             onClick={() => {
-              const file = fileRef.current?.files?.[0];
-              if (!file || !visitId) return;
+              if (!photoPreview || !visitId) return;
               setBusy(true);
-              const reader = new FileReader();
-              reader.onload = async () => {
+              // Save reads directly from photoPreview now (a data: URL either way) instead of
+              // fileRef.current.files - the native camera path (takeNativePhoto above) never
+              // populates the file input at all, only this state.
+              void (async () => {
                 try {
-                  const base64 = String(reader.result).split(",")[1] ?? "";
+                  const match = /^data:([^;]+);base64,(.*)$/.exec(photoPreview);
+                  if (!match) throw new Error("Invalid photo data");
+                  const [, mimeType, base64] = match;
                   await send({
                     action: "capture-photo-manager",
-                    payload: { visitId, photoType: "SHOPFRONT", fileBase64: base64, mimeType: file.type, originalName: file.name, idempotencyKey: crypto.randomUUID() },
+                    payload: { visitId, photoType: "SHOPFRONT", fileBase64: base64, mimeType, originalName: "photo.jpg", idempotencyKey: crypto.randomUUID() },
                   });
                   setPhotoPreview(null);
                   setMessage(hi ? "फ़ोटो जोड़ी गई।" : "Photo added.");
@@ -187,8 +221,7 @@ export function ManagerFieldActions({
                 } finally {
                   setBusy(false);
                 }
-              };
-              reader.readAsDataURL(file);
+              })();
             }}
           >
             {hi ? "फ़ोटो सहेजें" : "Save photo"}
@@ -264,7 +297,15 @@ export function ManagerFieldActions({
         </section>
       );
     return (
-      <section className={styles.panel} id="manager-field-panel">
+      // Issue 3 fix: orderLines/paymentType/outcome/gpsStatus are plain useState with no reset tied
+      // to which visit they belong to — completing Customer A's order and checking in Customer B
+      // left Customer A's exact line items (product/quantity/rate) pre-filled on Customer B's order
+      // form, since the SAME component instance (and its state) just kept rendering. Keying on
+      // activeVisit forces a full remount whenever the visit identity changes (undefined -> visit A
+      // -> undefined -> visit B), clearing every local field for the new customer — the same
+      // key={visit.id} pattern FieldJourney.tsx's own equivalent section already uses for the
+      // Executive flow, applied here for the first time.
+      <section className={styles.panel} id="manager-field-panel" key={activeVisit ?? "no-visit"}>
         <div>
           <small>{hi ? "मैनेजर रिटेलिंग" : "MANAGER RETAILING"}</small>
           <h2>{activeVisit ? (hi ? "विज़िट पूरी करें" : "Complete visit") : hi ? "रिटेलर पर चेक-इन" : "Check in at retailer"}</h2>

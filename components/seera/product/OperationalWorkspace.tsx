@@ -2992,7 +2992,13 @@ export async function OperationalWorkspace({
     // required field: the actual root cause of "Request validation failed" on this screen.
     // team doesn't depend on session/visit (and retailers doesn't depend on session/visit either,
     // only on team) — these were 4 sequential round trips for no reason; now 2 rounds of 2.
-    const [session, team] = await Promise.all([
+    // Division-isolation fix: retailingDistributors below (the Manager Retailing distributor
+    // picker) previously queried EVERY active distributor company-wide with no scope filter at
+    // all — a Jhansi Manager saw Bhilwara distributors (and every other division's) in this
+    // dropdown. resolveManagerOperationalScope is the same governed territory-scope function the
+    // Beat Planner distributor picker just above already correctly uses (line ~2766) — reused
+    // here rather than inventing a second scoping mechanism.
+    const [session, team, managerScope] = await Promise.all([
       db.seeraWorkSession.findFirst({
         where: {
           employeeId: userId,
@@ -3010,6 +3016,7 @@ export async function OperationalWorkspace({
         },
         select: { subjectId: true },
       }),
+      resolveManagerOperationalScope(db, userId),
     ]);
     const [visit, retailers] = await Promise.all([
       session
@@ -3052,7 +3059,9 @@ export async function OperationalWorkspace({
         orderBy: { productName: "asc" },
         take: 200,
       }),
-      db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 250 }),
+      managerScope.unrestricted
+        ? db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE" }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" }, take: 250 })
+        : db.seeraPartner.findMany({ where: { type: "DISTRIBUTOR", lifecycle: "ACTIVE", id: { in: managerScope.distributorIds } }, select: { id: true, legalName: true, tradeName: true }, orderBy: { legalName: "asc" } }),
     ]);
     workflow = (
       <ManagerFieldActions
