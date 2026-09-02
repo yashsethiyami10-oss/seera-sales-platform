@@ -934,11 +934,11 @@ function VendorsSection({ ctx }: { ctx: Ctx }) {
       <h3>Payables</h3>
       <div className={styles.tableWrap}>
         <table>
-          <thead><tr><th>Vendor</th><th>Invoice</th><th>Due date</th><th>Gross</th><th>Due</th><th>Status</th><th></th><th></th></tr></thead>
+          <thead><tr><th>Vendor</th><th>Invoice</th><th>Due date</th><th>Gross</th><th>Due</th><th>Status</th><th></th><th></th><th></th></tr></thead>
           <tbody>
-            {(data.payables ?? []).length === 0 && <tr><td colSpan={8}>No vendor bills.</td></tr>}
+            {(data.payables ?? []).length === 0 && <tr><td colSpan={9}>No vendor bills.</td></tr>}
             {(data.payables ?? []).map((b) => (
-              <tr key={b.id}><td>{b.vendor?.legalName}</td><td>{b.vendorInvoiceNumber}</td><td>{fmtDate(b.dueDate)}</td><td>{money(Number(b.grossAmount))}</td><td>{money(b.due)}</td><td>{b.status}</td><td><ViewJournalButton journalId={b.journalId} /></td><td><DocAttach entityType="SeeraVendorBill" entityId={b.id} /></td></tr>
+              <tr key={b.id}><td>{b.vendor?.legalName}</td><td>{b.vendorInvoiceNumber}</td><td>{fmtDate(b.dueDate)}</td><td>{money(Number(b.grossAmount))}</td><td>{money(b.due)}</td><td>{b.status}</td><td><ViewJournalButton journalId={b.journalId} /></td><td><DocAttach entityType="SeeraVendorBill" entityId={b.id} /></td><td><a href={`/api/finance/vendor-bill-pdf?billId=${b.id}`} target="_blank" rel="noreferrer">PURCHASE BILL PDF</a></td></tr>
             ))}
           </tbody>
         </table>

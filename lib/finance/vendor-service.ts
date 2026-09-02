@@ -5,6 +5,8 @@ import { FoundationError } from "@/lib/foundation/errors";
 import { postJournal, postJournalInTx, type JournalLineInput } from "./journal-service";
 import { accountByCode } from "./chart-of-accounts";
 import { financeNumberFor } from "./numbering";
+import { partySnapshot } from "@/lib/sales-distribution/document-lines";
+import type { IssuedDocumentSnapshot, DocumentLineSnapshot } from "@/lib/sales-distribution/document-pdf";
 
 export async function createVendor(db: PrismaClient, actorId: string, input: { code: string; legalName: string; tradeName?: string; gstin?: string; pan?: string; contactPerson?: string; phone?: string; email?: string; address?: object; state?: string; stateCode?: string; paymentTermsDays?: number; category?: string }) {
   await authorize(db, { actorId, permission: "vendor:manage" });
@@ -84,6 +86,57 @@ export async function createVendorBill(
     await recordAudit(tx, { actorId, action: "finance.vendor_bill.created", entityType: "SeeraVendorBill", entityId: bill.id, afterState: { vendorId: input.vendorId, grossAmount } });
     return posted;
   });
+}
+
+// Money Desk 2.0 (Part 16) — Purchase Bill as a real professional document, reusing the SAME
+// IssuedDocumentSnapshot shape/renderer Sales Invoices already use (document-pdf.ts) — never a
+// second document engine. ISSUED BY is the Vendor (they issued the original bill to us); BILLED TO
+// is the Company. Item lines come from the real GRN this bill was raised against when one exists
+// (SeeraGrnLine — real material/quantity/unitCost); otherwise a single line from the bill's own
+// category/description, since a service/expense-only bill genuinely has no line-item granularity
+// to show. Per-line CGST/SGST/IGST are deliberately left blank ("—") rather than a fabricated
+// proportional split — the bill's own real taxable/cgst/sgst/igst are the authoritative totals,
+// rendered in the (already server-computed, never re-derived) totals block.
+export async function vendorBillSnapshot(db: PrismaClient, actorId: string, billId: string): Promise<IssuedDocumentSnapshot> {
+  await authorize(db, { actorId, permission: "vendor:manage" });
+  const bill = await db.seeraVendorBill.findUniqueOrThrow({ where: { id: billId } });
+  const [issuer, buyer] = await Promise.all([partySnapshot(db, "VENDOR", bill.vendorId), partySnapshot(db, "COMPANY", "COMPANY")]);
+
+  let lines: DocumentLineSnapshot[] = [];
+  if (bill.sourceGrnId) {
+    const grn = await db.seeraGrn.findUnique({ where: { id: bill.sourceGrnId }, include: { lines: true } });
+    if (grn && grn.lines.length > 0) {
+      const materials = await db.seeraManufacturingMaterial.findMany({ where: { id: { in: grn.lines.map((l) => l.materialId) } } });
+      const materialById = new Map(materials.map((m) => [m.id, m]));
+      lines = grn.lines.map((l) => {
+        const material = materialById.get(l.materialId);
+        const quantity = Number(l.acceptedQuantity);
+        const rate = Number(l.unitCost ?? 0);
+        const taxableValue = quantity * rate;
+        return { description: material?.name ?? l.materialId, hsn: material?.hsn ?? undefined, quantity, unit: l.unit, rate, taxableValue, total: taxableValue };
+      });
+    }
+  }
+  if (lines.length === 0) {
+    lines = [{ description: bill.description || bill.category, quantity: 1, unit: "LOT", rate: Number(bill.taxable), taxableValue: Number(bill.taxable), total: Number(bill.taxable) }];
+  }
+
+  return {
+    type: "PURCHASE_BILL",
+    documentNumber: bill.billNumber,
+    issueDate: bill.invoiceDate.toLocaleDateString("en-IN"),
+    issuer,
+    buyer,
+    orderReference: bill.vendorInvoiceNumber ? `Supplier Invoice ${bill.vendorInvoiceNumber}` : undefined,
+    lines,
+    subtotal: Number(bill.taxable),
+    taxableTotal: Number(bill.taxable),
+    cgstTotal: Number(bill.cgst),
+    sgstTotal: Number(bill.sgst),
+    igstTotal: Number(bill.igst),
+    grandTotal: Number(bill.grossAmount),
+    paymentTerms: `Due ${bill.dueDate.toLocaleDateString("en-IN")} — ${bill.status === "PAID" ? "Paid in full" : bill.status === "PARTIALLY_PAID" ? `Paid ₹${Number(bill.paidAmount).toLocaleString("en-IN")} of ₹${Number(bill.grossAmount).toLocaleString("en-IN")}` : "Outstanding"}`,
+  };
 }
 
 export async function recordVendorPayment(db: PrismaClient, actorId: string, input: { vendorId: string; billId?: string; amount: number; treasuryAccountId: string; treasuryAccountCoaCode: string; paymentMode: string; reference?: string; paymentDate: Date; idempotencyKey: string }) {

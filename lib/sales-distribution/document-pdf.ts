@@ -97,6 +97,15 @@ export type DocumentBranding = {
   signatoryDesignation?: string;
   signatureImage?: { bytes: Uint8Array; mimeType: string };
   sealImage?: { bytes: Uint8Array; mimeType: string };
+  // Money Desk 2.0 (Part 16 fix) — which party's name the "For {}" signatory line names. Defaults
+  // to "issuer" (unchanged behaviour for every existing Sales Invoice/Quotation/etc. call site,
+  // where the issuer — SEERA or a Distributor/S.S. — is the one authorizing their own outgoing
+  // document). A Purchase Bill sets this to "buyer": there, `issuer` is the VENDOR (they issued the
+  // original bill to us, shown correctly in the ISSUED BY box) but the signatory authorizing OUR
+  // OWN internal record of that purchase is the Company itself — without this, the block would
+  // read "For <Vendor>" directly above the Company's own configured signatory name, which is
+  // backwards. Verified against a real generated PDF (pdftotext) before this fix existed.
+  signatoryParty?: "issuer" | "buyer";
 };
 
 export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot, branding?: DocumentBranding): Promise<Uint8Array> {
@@ -360,7 +369,8 @@ export async function renderIssuedDocumentPdf(snapshot: IssuedDocumentSnapshot, 
   y -= 8;
   const sigWidth = 180;
   const sigX = MARGIN + CONTENT_WIDTH - sigWidth;
-  text(`For ${snapshot.issuer.tradeName ?? snapshot.issuer.legalName}`, sigX, y, { size: 8.5, strong: true });
+  const signatoryOwner = branding?.signatoryParty === "buyer" ? snapshot.buyer : snapshot.issuer;
+  text(`For ${signatoryOwner.tradeName ?? signatoryOwner.legalName}`, sigX, y, { size: 8.5, strong: true });
   y -= 6;
   if (sealImage) {
     const sealSize = 44;

@@ -313,6 +313,23 @@ export async function partySnapshot(
       mobile: profile.phone ?? undefined,
     };
   }
+  // Money Desk 2.0 (Part 16, Purchase Bill) — a Vendor/Supplier as the ISSUER of a Purchase Bill
+  // (they issued the original invoice to SEERA). SeeraVendor is a distinct master from
+  // SeeraPartner (Distributor/S.S./Company-Direct) — this was a genuine gap: nothing previously
+  // resolved a VENDOR through partySnapshot at all, since Sales-side documents never involve one.
+  if (partyType === "VENDOR") {
+    const vendor = await db.seeraVendor.findUniqueOrThrow({ where: { id: partyId } });
+    return {
+      legalName: vendor.legalName,
+      tradeName: vendor.tradeName ?? undefined,
+      gstin: vendor.gstin ?? undefined,
+      address: formatAddress(vendor.address),
+      state: vendor.state ?? stateFromAddress(vendor.address),
+      stateCode: vendor.stateCode ?? stateCodeFromGstin(vendor.gstin),
+      contactName: vendor.contactPerson ?? undefined,
+      mobile: vendor.phone ?? undefined,
+    };
+  }
   const partner = await db.seeraPartner.findUniqueOrThrow({ where: { id: partyId } });
   const contact = partner.primaryContact as { ownerName?: string; mobile?: string } | null;
   return {

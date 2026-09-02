@@ -241,8 +241,22 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
           <small>{hi ? "मनी डेस्क" : "MONEY DESK"}</small>
           <h2>{hi ? "पैसा प्रबंधन" : "Money Management"}</h2>
         </div>
-        <a href={`/portal/${portal}/finance-os`} style={{ fontSize: "0.85rem" }}>{hi ? "फाइनेंस ओएस खोलें (लेजर, रिपोर्ट, विवरण) →" : "Open Finance OS (Ledgers, Reports, Statements) →"}</a>
       </div>
+
+      {/* Money Desk 2.0 (Part 4): a professional operational front door — direct links into each
+          real Finance OS section (never a duplicate engine), not one generic "open the other
+          screen" link. Every link below deep-links FinanceWorkspacePanel's own group/section
+          query params, the same mechanism the "View Ledger"/"View Details" links already use. */}
+      <nav className={styles.inlineActions} aria-label={hi ? "मनी डेस्क नेविगेशन" : "Money Desk navigation"} style={{ gridColumn: "1/-1" }}>
+        <a href={`/portal/${portal}/finance-os?group=overview`}>{hi ? "अवलोकन" : "Overview"}</a>
+        <a href={`/portal/${portal}/finance-os?group=sales&section=ledger`}>{hi ? "पार्टियां / लेजर" : "Parties / Ledgers"}</a>
+        <a href={`/portal/${portal}/finance-os?group=sales&section=register`}>{hi ? "इनवॉइस" : "Invoices"}</a>
+        <a href={`/portal/${portal}/finance-os?group=purchases&section=vendors`}>{hi ? "बिल / विक्रेता" : "Bills / Vendors"}</a>
+        <a href={`/portal/${portal}/finance-os?group=control&section=approvals`}>{hi ? "अनुमोदन" : "Approvals"}</a>
+        <a href={`/portal/${portal}/finance-os?group=tools&section=reports`}>{hi ? "रिपोर्ट" : "Reports"}</a>
+        <a href={`/portal/${portal}/finance-os?group=statements&section=pl`}>{hi ? "P&L" : "P&L"}</a>
+        <a href={`/portal/${portal}/finance-os?group=tools&section=settings`}>{hi ? "सेटिंग्स" : "Masters / Settings"}</a>
+      </nav>
 
       <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
         <strong>{hi ? "आज नकद / बैंक (वास्तविक बहीखाता)" : "Today's Cash / Bank (real ledger)"}</strong>
