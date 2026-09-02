@@ -6,4 +6,3 @@ console.error(
     "No database command is authorized until the clean Seera schema and identity guard pass review.",
 );
 process.exit(1);
-

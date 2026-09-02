@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node scripts/seera/production-build-preflight.cjs && prisma generate && next build",
     "start": "next start",
     "start:passenger": "node server.js",
     "lint": "next lint",

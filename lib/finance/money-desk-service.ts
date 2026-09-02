@@ -215,7 +215,20 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
 export async function decideMoneyDeskApproval(db: PrismaClient, actorId: string, transactionId: string, input: { decision: "APPROVED" | "REJECTED"; reason: string }) {
   await authorize(db, { actorId, permission: "money_desk:approve" });
   if (!input.reason.trim()) throw new FoundationError("MONEY_DESK_APPROVAL_REASON_REQUIRED", "A reason is required", 400);
-  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
+  // Explicit read projection intentionally excludes the two newest Money Desk columns
+  // (source/correctionOfId). This keeps historical Money Desk reads backward-compatible while
+  // production migration state is being reconciled; writes still require the governed schema.
+  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({
+    where: { id: transactionId },
+    select: {
+      id: true, transactionNumber: true, purposeCode: true, direction: true, status: true,
+      amount: true, date: true, treasuryAccountId: true, counterpartyType: true,
+      counterpartyId: true, counterpartyName: true, description: true, documentFileId: true,
+      formData: true, downstreamRefs: true, failureReason: true, requestedById: true,
+      approvedById: true, approvedAt: true, voidedById: true, voidedAt: true,
+      voidReason: true, idempotencyKey: true, createdAt: true, updatedAt: true,
+    },
+  });
   if (txn.status !== "PENDING_APPROVAL") throw new FoundationError("MONEY_DESK_NOT_PENDING_APPROVAL", "This transaction is not awaiting approval", 409);
   // Maker-checker (same convention as journal reversal / claim settlement elsewhere in this
   // codebase): the person who entered the transaction cannot also be the one who approves it.
@@ -704,7 +717,19 @@ async function salesDistributionBridge(db: PrismaClient, viewAll: boolean) {
 export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: string, transactionId: string) {
   const { permissions } = await authorize(db, { actorId, permission: "money_desk:view" });
   const viewAll = permissions.has("money_desk:view_all") || permissions.has("system:super_admin");
-  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
+  // Keep drill-down reads compatible with historical production schema while the additive
+  // Money Desk source/correction migration is being reconciled.
+  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({
+    where: { id: transactionId },
+    select: {
+      id: true, transactionNumber: true, purposeCode: true, direction: true, status: true,
+      amount: true, date: true, treasuryAccountId: true, counterpartyType: true,
+      counterpartyId: true, counterpartyName: true, description: true, documentFileId: true,
+      formData: true, downstreamRefs: true, failureReason: true, requestedById: true,
+      approvedById: true, approvedAt: true, voidedById: true, voidedAt: true,
+      voidReason: true, idempotencyKey: true, createdAt: true, updatedAt: true,
+    },
+  });
   if (!viewAll && txn.requestedById !== actorId) throw new FoundationError("MONEY_DESK_SCOPE_DENIED", "This transaction is outside your scope", 403);
 
   const def = purposeDefinition(txn.purposeCode);
@@ -805,9 +830,26 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
   const scope = viewAll ? {} : { requestedById: actorId };
 
   const [recent, pendingApproval, stuckPosting, treasuryAccounts, todayLines, salesDistribution] = await Promise.all([
-    db.seeraMoneyDeskTransaction.findMany({ where: scope, orderBy: { createdAt: "desc" }, take: 25 }),
-    db.seeraMoneyDeskTransaction.findMany({ where: { ...scope, status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" } }),
-    db.seeraMoneyDeskTransaction.findMany({ where: { ...scope, status: "POSTING", failureReason: { not: null } }, orderBy: { createdAt: "asc" } }),
+    db.seeraMoneyDeskTransaction.findMany({
+      where: scope,
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      select: {
+        id: true, transactionNumber: true, purposeCode: true, direction: true, status: true,
+        amount: true, date: true, treasuryAccountId: true, counterpartyName: true,
+        requestedById: true, formData: true, failureReason: true, createdAt: true,
+      },
+    }),
+    db.seeraMoneyDeskTransaction.findMany({
+      where: { ...scope, status: "PENDING_APPROVAL" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, transactionNumber: true, purposeCode: true, amount: true, requestedById: true },
+    }),
+    db.seeraMoneyDeskTransaction.findMany({
+      where: { ...scope, status: "POSTING", failureReason: { not: null } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, transactionNumber: true, purposeCode: true, amount: true, failureReason: true },
+    }),
     db.seeraTreasuryAccount.findMany({ where: { isActive: true } }),
     db.seeraJournalLine.groupBy({
       by: ["treasuryAccountId"],

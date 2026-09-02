@@ -717,7 +717,16 @@ export async function jointWorkLinkedActivity(db: PrismaClient, managerId: strin
       workSession: { employeeId: joint.salesExecutiveId },
       checkedInAt: { gte: joint.startedAt, lte: windowEnd },
     },
-    include: { retailer: { select: { businessName: true } }, photos: { where: { deletedAt: null }, select: { id: true } } },
+    include: {
+      retailer: {
+        select: {
+          businessName: true,
+          mobile: true,
+          address: true,
+        },
+      },
+      photos: { where: { deletedAt: null }, select: { id: true } },
+    },
     orderBy: { checkedInAt: "asc" },
   });
   const retailerIds = visits.map((v) => v.retailerId).filter((x): x is string => Boolean(x));
@@ -746,8 +755,25 @@ export async function jointWorkLinkedActivity(db: PrismaClient, managerId: strin
       ),
     0,
   );
+  const activeVisit =
+    [...visits]
+      .filter((v) => !v.checkedOutAt)
+      .sort((a, b) => b.checkedInAt.getTime() - a.checkedInAt.getTime())[0] ?? null;
+  const activeRetailerAddress = activeVisit?.retailer?.address as { area?: string; city?: string } | null | undefined;
+
   return {
     joint,
+    activeVisit: activeVisit
+      ? {
+          id: activeVisit.id,
+          retailerName: activeVisit.retailer?.businessName ?? "Retailer",
+          retailerMobile: activeVisit.retailer?.mobile ?? null,
+          retailerArea: activeRetailerAddress?.area ?? activeRetailerAddress?.city ?? null,
+          checkedInAt: activeVisit.checkedInAt,
+          outcome: activeVisit.outcome,
+          photos: activeVisit.photos.length,
+        }
+      : null,
     shopsVisited: visits.length,
     productive: visits.filter((v) => v.outcome === "PRODUCTIVE").length,
     orders: orders.length,
