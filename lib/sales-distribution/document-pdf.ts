@@ -72,7 +72,10 @@ const HEADER_FILL = rgb(0.94, 0.95, 0.98);
 // glyph, and Noto Sans Devanagari — which does — has no Western digit glyphs, so routing a whole
 // money string through it renders every digit as a missing-glyph box. "Rs." avoids the font-
 // coverage problem entirely and is standard on printed Indian business documents.
-const money = (n: number, currency = "INR") => `${currency === "INR" ? "Rs. " : currency + " "}${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Exported (Gap 2, Final 100% Gap Closure) — the Ledger Statement PDF now reuses this exact same
+// money formatter instead of its own separate one, so a rupee figure never looks different between
+// document types in the same professional document family.
+export const money = (n: number, currency = "INR") => `${currency === "INR" ? "Rs. " : currency + " "}${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function documentPdfFilename(input: Pick<IssuedDocumentSnapshot, "type" | "documentNumber">) {
   return `${input.type}-${input.documentNumber}`.replace(/[^A-Za-z0-9._-]+/g, "_") + ".pdf";
