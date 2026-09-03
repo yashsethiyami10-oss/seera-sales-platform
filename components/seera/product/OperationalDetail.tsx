@@ -18,6 +18,7 @@ import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { DistributorClosureSettlementPanel } from "./DistributorClosureSettlementPanel";
 import { AssignRetailerCommercialPartyPanel } from "./AssignRetailerCommercialPartyPanel";
 import { canonicalDistributorExposure, superStockistDistributorCollectionsSnapshot } from "@/lib/sales-distribution/credit-service";
+import { MoneyDeskTransactionActions } from "./MoneyDeskTransactionActions";
 import { companyOrderNextStep } from "@/lib/sales-distribution/business-rules";
 import { partnerObligationsPreview } from "@/lib/sales-distribution/travel-lifecycle-service";
 import { distributorClosureStockPosition } from "@/lib/sales-distribution/distributor-management-service";
@@ -181,6 +182,14 @@ export async function OperationalDetail({
             ]}
           />
         </section>
+        <MoneyDeskTransactionActions
+          language={language}
+          transactionId={detail.id}
+          amount={detail.amount}
+          canApprove={detail.canApprove}
+          canVoid={detail.canVoid}
+          canEdit={detail.canEdit}
+        />
       </>
     );
   }

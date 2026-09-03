@@ -34,14 +34,14 @@ function exportCsv(filename: string, rows: Record<string, unknown>[]) {
   URL.revokeObjectURL(url);
 }
 
-type PartyType = "DISTRIBUTOR" | "SUPER_STOCKIST" | "VENDOR" | "EMPLOYEE" | "OTHER_PARTY";
+type PartyType = "DISTRIBUTOR" | "SUPER_STOCKIST" | "VENDOR" | "EMPLOYEE" | "OTHER_PARTY" | "RETAILER";
 // "Other Person" here matches the label Smart Finance's own review card already uses for this
 // same governed record (SeeraFinancialDimension, kind OTHER_PARTY) — a person who isn't an
 // employee (labour, contractor, agent, etc.). Backend already supports this fully
 // (ledgerPartyOptions / partyLedgerStatement / assertKnownPartyType); this was the one remaining
 // gap — no UI tab existed to reach it, so a Founder had no way to see e.g. "how much have we paid
 // Ramesh" even though the ledger data was already there.
-const PARTY_TYPE_LABEL: Record<PartyType, string> = { DISTRIBUTOR: "Distributor", SUPER_STOCKIST: "Super Stockist", VENDOR: "Vendor", EMPLOYEE: "Employee", OTHER_PARTY: "Other Person" };
+const PARTY_TYPE_LABEL: Record<PartyType, string> = { DISTRIBUTOR: "Distributor", SUPER_STOCKIST: "Super Stockist", VENDOR: "Vendor", EMPLOYEE: "Employee", OTHER_PARTY: "Other Person", RETAILER: "Retail Customer" };
 
 type LedgerLine = { skuCode: string; product: string; pack: string; uom: string; quantity: number; rate: number; taxable: number; gst: number; lineTotal: number };
 type LedgerRow = { id: string; date: string; particulars: string; voucher: string; debit: number; credit: number; balance: number; sourceType: string; sourceId: string; reason?: string | null; territory?: string | null; costCentre?: string | null; treasury?: string | null; paymentReference?: string | null; createdBy?: string | null; postedAt: string | null; lines?: LedgerLine[] | null; moneyDeskTransactionId?: string | null };

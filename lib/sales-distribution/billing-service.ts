@@ -1,5 +1,5 @@
 import type { FinancialEntryType, Prisma, PrismaClient } from "@prisma/client";
-import { authorize } from "@/lib/foundation/authorization-service";
+import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { documentNumber } from "./phase6-9-rules";
@@ -44,9 +44,25 @@ const financialYear = (date: Date) => {
 // so this module does not require it. This intentionally does not touch rbac-catalog.ts.
 async function requireIssuerScope(db: PrismaClient, actorId: string, issuerType: string, issuerId: string) {
   await authorize(db, { actorId, permission: "document:issue" });
-  if (issuerType === "DISTRIBUTOR" || issuerType === "SUPER_STOCKIST")
+  if (issuerType === "DISTRIBUTOR" || issuerType === "SUPER_STOCKIST") {
     await requirePartyMembership(db, actorId, issuerId, issuerType);
-  else throw new FoundationError("INVALID_ISSUER_TYPE", "Billing documents can only be issued by a Distributor or Super Stockist", 400);
+    return;
+  }
+  // Money Desk 2.0 (Part 20/34) — the Company itself as issuer (a Company-direct/factory/retail
+  // sale invoiced straight from SEERA, not routed through a Distributor/S.S.). This is genuinely
+  // new: nothing previously let issueBillingDraft be called with issuerType "COMPANY" at all — a
+  // real structural gap for "Sale -> Invoice -> Ledger" on a named customer. Gated narrower than
+  // the base document:issue permission every issuer already needs — real Money Desk transaction
+  // authority (the same actors who can already record a Factory/Retail Sale), not just any
+  // document:issue holder, since issuing AS the Company is more sensitive than issuing as one's own
+  // scoped Distributor/S.S. party.
+  if (issuerType === "COMPANY") {
+    const permissions = await effectivePermissions(db, actorId);
+    if (!permissions.has("money_desk:create") && !permissions.has("system:super_admin"))
+      throw new FoundationError("COMPANY_ISSUER_ACCESS_DENIED", "Issuing a Company-direct document requires Money Desk authority", 403);
+    return;
+  }
+  throw new FoundationError("INVALID_ISSUER_TYPE", "Billing documents can only be issued by a Distributor, Super Stockist, or the Company", 400);
 }
 
 async function loadOwnedDocument(db: PrismaClient, documentId: string) {
@@ -87,7 +103,7 @@ export async function createBillingDraft(
   actorId: string,
   input: {
     type: BillingType;
-    issuerType: "DISTRIBUTOR" | "SUPER_STOCKIST";
+    issuerType: "DISTRIBUTOR" | "SUPER_STOCKIST" | "COMPANY";
     issuerId: string;
     buyerType: "RETAILER" | "DISTRIBUTOR" | "SUPER_STOCKIST";
     buyerId: string;

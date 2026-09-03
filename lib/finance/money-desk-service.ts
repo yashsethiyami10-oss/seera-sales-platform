@@ -786,7 +786,10 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     correctedByTransactionId: (await db.seeraMoneyDeskTransaction.findFirst({ where: { correctionOfId: txn.id }, select: { id: true } }))?.id ?? null,
     direction: txn.direction,
     status: txn.status,
-    amount: txn.amount,
+    // Plain number, not the raw Prisma Decimal instance — a Decimal can't cross the Server->Client
+    // Component boundary (MoneyDeskTransactionActions is "use client"), same convention moneyDeskHome's
+    // enrichRow already uses for the identical reason.
+    amount: Number(txn.amount),
     date: txn.date,
     reference: (formData.reference as string) ?? txn.description ?? null,
     counterpartyName: txn.counterpartyName,
@@ -815,6 +818,13 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     voidReason: txn.voidReason,
     failureReason: txn.failureReason,
     createdAt: txn.createdAt,
+    // Money Desk 2.0 (Part 25) — action-gating flags for the Transaction Detail UI. The server-side
+    // authorize()/permission checks inside decideMoneyDeskApproval/voidMoneyDeskTransaction/
+    // editMoneyDeskTransaction remain the real boundary; these only decide which buttons render, so
+    // a user is never shown an action they'd immediately be denied for.
+    canApprove: txn.status === "PENDING_APPROVAL" && txn.requestedById !== actorId && (permissions.has("money_desk:approve") || permissions.has("system:super_admin")),
+    canVoid: txn.status === "POSTED" && (permissions.has("money_desk:reverse") || permissions.has("system:super_admin")) && (txn.requestedById !== actorId || permissions.has("system:super_admin")),
+    canEdit: txn.requestedById === actorId && permissions.has("system:super_admin") && (txn.status === "POSTED" || txn.status === "PENDING_APPROVAL" || txn.status === "DRAFT"),
   };
 }
 
