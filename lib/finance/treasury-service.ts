@@ -24,7 +24,7 @@ export async function createTreasuryAccount(
     });
     await recordAudit(tx, { actorId, action: "finance.treasury_account.created", entityType: "SeeraTreasuryAccount", entityId: account.id, afterState: { kind: account.kind, code: account.code, name: account.name } });
     return { ...account, chartOfAccountCode: coa.code };
-  });
+  }, { timeout: 15_000 });
 }
 
 // Money Desk 2.0 (Rule 10): fixes "No Treasury Accounts configured" properly — an idempotent

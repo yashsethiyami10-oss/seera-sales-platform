@@ -159,24 +159,24 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
 
   return (
     <section className={styles.panel}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "0.5rem" }}>
+      <header className={styles.workspaceHeader}>
         <div>
-          <small>{isFounder ? "FOUNDER FINANCE" : "ACCOUNTS"}</small>
+          <span className={styles.workspaceEyebrow}>{isFounder ? "FOUNDER FINANCE" : "ACCOUNTS"}</span>
           <h2>Company Finance</h2>
+          <p className={styles.workspaceSubtitle}>One control centre for cash, parties, invoices, purchases, ledgers and financial statements.</p>
         </div>
-        {/* One Finance Control Centre, not two disconnected products (§2) — Money Desk's guided
-            transaction entry stays its own route (a separate, narrower money_desk:* permission gate
-            than financial_statements:view), but every screen cross-links to the other so the
-            Founder never has to remember which one has what. */}
-        <a href={`/portal/${portal}/money-desk`} style={{ fontSize: "0.85rem" }}>{"Open Money Desk (guided entry) →"}</a>
-      </div>
-      <div className={styles.inlineActions} role="tablist" aria-label="Finance groups">
+        <div className={styles.workspaceHeaderActions}>
+          <a className={styles.accent} href={"/portal/"+portal+"/money-desk"}>Money Desk</a>
+          {isFounder && <a href={"/portal/"+portal+"/finance-os?group=tools&section=settings"}>Settings</a>}
+        </div>
+      </header>
+      <div className={styles.groupNav} role="tablist" aria-label="Finance groups">
         {visibleGroups.map((g) => (
           <button key={g} type="button" onClick={() => setGroup(g)} aria-pressed={group === g} style={{ fontWeight: group === g ? 700 : 400 }}>{GROUP_LABEL[g]}</button>
         ))}
       </div>
       {GROUP_SECTIONS[group].length > 0 && (
-        <div className={styles.inlineActions} role="tablist" aria-label="Finance sections">
+        <div className={styles.sectionNav} role="tablist" aria-label="Finance sections">
           {GROUP_SECTIONS[group].filter((s) => !(group === "tools" && s.key === "settings" && !isFounder)).map((s) => (
             <button key={s.key} type="button" onClick={() => setSection(s.key)} aria-pressed={section === s.key} style={{ fontWeight: section === s.key ? 700 : 400 }}>{s.label}</button>
           ))}
@@ -1588,11 +1588,76 @@ function OpeningBalanceWizard({ ctx }: { ctx: Ctx }) {
   );
 }
 
+function TreasuryAccountsSection({ ctx }: { ctx: Ctx }) {
+  const { data, run, busy } = ctx;
+  const accounts = (data.allTreasuryAccounts ?? data.treasuryAccounts ?? []) as { id: string; kind: string; code: string; name: string; bankName?: string | null; accountType?: string | null; maskedAccountNumber?: string | null; ifsc?: string | null; openingBalance?: unknown; isActive: boolean; chartOfAccountId: string }[];
+  const coaById = new Map((data.chartOfAccounts ?? []).map((a) => [a.id, a]));
+  return (
+    <div className={styles.financeSection}>
+      <div className={styles.financeSectionHeader}>
+        <div><h3>Treasury Accounts</h3><p>Every active Cash/Bank account appears automatically in Money Desk and guided entries.</p></div>
+        <span className={styles.badge}>{accounts.filter((a) => a.isActive).length} ACTIVE</span>
+      </div>
+      <form className={styles.treasuryForm} onSubmit={(e) => {
+        e.preventDefault();
+        const f = new FormData(e.currentTarget);
+        run("create-treasury-account", {
+          kind: String(f.get("kind")),
+          code: String(f.get("code")).trim(),
+          name: String(f.get("name")).trim(),
+          bankName: String(f.get("bankName") || "").trim() || undefined,
+          accountType: String(f.get("accountType") || "").trim() || undefined,
+          maskedAccountNumber: String(f.get("maskedAccountNumber") || "").trim() || undefined,
+          ifsc: String(f.get("ifsc") || "").trim() || undefined,
+          openingBalance: f.get("openingBalance") ? Number(f.get("openingBalance")) : undefined,
+          openingBalanceDate: f.get("openingBalanceDate") ? String(f.get("openingBalanceDate")) : undefined,
+        }, "Treasury account added. It is now available in Money Desk.");
+        (e.currentTarget as HTMLFormElement).reset();
+      }}>
+        <label>Account kind *
+          <select name="kind" defaultValue="CASH"><option value="CASH">Cash</option><option value="BANK">Bank</option></select>
+        </label>
+        <label>Account code *<input name="code" required placeholder="CASH-COUNTER-01" /></label>
+        <label>Account name *<input name="name" required placeholder="Main Cash / HDFC Current" /></label>
+        <label>Bank name (Bank only)<input name="bankName" placeholder="HDFC Bank" /></label>
+        <label>Account type / subtype<input name="accountType" placeholder="Current / Savings" /></label>
+        <label>Account number (last 4 only)<input name="maskedAccountNumber" inputMode="numeric" maxLength={4} placeholder="4521" /></label>
+        <label>IFSC<input name="ifsc" placeholder="HDFC0001234" /></label>
+        <label>Reference opening balance<input name="openingBalance" type="number" step="0.01" min="0" placeholder="0" /></label>
+        <label>Opening balance date<input name="openingBalanceDate" type="date" /></label>
+        <p className={styles.treasuryNote}>Opening balance here is for account reference/display. Use the one-time Opening Balance Wizard below to post the actual GL opening balance.</p>
+        <div className={styles.wide}><button type="submit" disabled={busy}>+ ADD TREASURY ACCOUNT</button></div>
+      </form>
+      <div className={styles.treasuryGrid}>
+        {accounts.length === 0 && <p className={styles.emptyHint}>No Treasury accounts yet. Add your first Cash or Bank account above.</p>}
+        {accounts.map((a) => {
+          const coa = coaById.get(a.chartOfAccountId);
+          return (
+            <article key={a.id} className={styles.treasuryCard} data-inactive={!a.isActive}>
+              <div className={styles.treasuryCardTop}>
+                <div><strong>{a.name}</strong><div className={styles.treasuryMeta}>{a.kind} · {a.code}{a.bankName ? " · "+a.bankName : ""}</div></div>
+                <span className={styles.statusPill} data-inactive={!a.isActive}>{a.isActive ? "ACTIVE" : "INACTIVE"}</span>
+              </div>
+              <div className={styles.treasuryBalance}>₹{Number(a.openingBalance ?? 0).toLocaleString("en-IN")}</div>
+              <div className={styles.treasuryMeta}>Opening/reference balance · GL account {coa?.code ?? "—"}{a.ifsc ? " · IFSC "+a.ifsc : ""}</div>
+              <button type="button" disabled={busy} onClick={() => run("set-treasury-account-active", { treasuryAccountId: a.id, isActive: !a.isActive }, a.isActive ? "Treasury account deactivated." : "Treasury account activated.")}>{a.isActive ? "DEACTIVATE" : "ACTIVATE"}</button>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SettingsSection({ ctx }: { ctx: Ctx }) {
   const { data, run, busy } = ctx;
   const coaByCode = new Map((data.chartOfAccounts ?? []).map((a) => [a.code, a]));
   return (
-    <div>
+    <div className={styles.financeSection}>
+      <div className={styles.financeSectionHeader}>
+        <div><h3>Finance Settings & Masters</h3><p>All accounting configuration used by Money Desk lives here.</p></div>
+      </div>
+      <TreasuryAccountsSection ctx={ctx} />
       <p>Chart of Accounts: {data.chartOfAccounts?.length ?? 0} accounts configured.</p>
       {(data.chartOfAccounts?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-coa", {}, "Chart of Accounts seeded.")}>BOOTSTRAP CHART OF ACCOUNTS</button>}
       {(data.dimensions?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-dimensions", {}, "Dimensions seeded.")}>BOOTSTRAP DEPARTMENTS</button>}
