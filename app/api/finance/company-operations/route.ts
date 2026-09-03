@@ -9,7 +9,7 @@ import { createDimension, seedDefaultDimensions } from "@/lib/finance/dimension-
 import { postJournal, reverseJournal } from "@/lib/finance/journal-service";
 import { createTreasuryAccount, recordMoneyIn, recordMoneyOut, transferFunds, commitBankStatementImport, confirmBankMatch, unmatchBankLine, suggestBankMatches, setTreasuryAccountActive, ensureDefaultTreasuryAccounts } from "@/lib/finance/treasury-service";
 import { seedDetergentCakeMaterials, seedDefaultManufacturingLocation } from "@/lib/manufacturing/material-service";
-import { createVendor, updateVendor, createVendorBill, recordVendorPayment } from "@/lib/finance/vendor-service";
+import { createVendor, updateVendor, createVendorBill, recordVendorPayment, VENDOR_CATEGORIES } from "@/lib/finance/vendor-service";
 import { createExpenseCategory, createExpense, submitExpense, decideExpense, postExpense, payExpensePayable, reverseExpense, createRecurringExpenseTemplate, generateExpenseFromRecurringTemplate, skipRecurringOccurrence, setRecurringTemplateActive } from "@/lib/finance/expense-service";
 import { quickEntryCreate, QUICK_ENTRY_TYPES } from "@/lib/finance/quick-entry-service";
 import { seedQuickEntryCategoryMaster } from "@/lib/finance/chart-of-accounts";
@@ -28,7 +28,7 @@ import { confirmOtherParty, updateOtherParty, setOtherPartyActive } from "@/lib/
 import { settleAdvance } from "@/lib/finance/smart-finance/advance-lifecycle";
 import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service";
 import { createFactoryCashSale } from "@/lib/finance/factory-cash-sale-service";
-import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
+import { createRetailer, CUSTOMER_TYPES } from "@/lib/sales-distribution/field-portal-service";
 import { getCompanyProfileForSettings, upsertCompanyProfile, uploadCompanyBrandingAsset } from "@/lib/finance/company-profile-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
@@ -141,10 +141,10 @@ export async function POST(request: Request) {
         break;
       }
       case "create-vendor":
-        result = await createVendor(prisma, user.id, z.object({ code: z.string(), legalName: z.string(), tradeName: z.string().optional(), gstin: z.string().optional(), pan: z.string().optional(), contactPerson: z.string().optional(), phone: z.string().optional(), email: z.string().optional(), address: z.record(z.unknown()).optional(), state: z.string().optional(), stateCode: z.string().optional(), paymentTermsDays: z.number().int().optional(), category: z.string().optional() }).parse(payload));
+        result = await createVendor(prisma, user.id, z.object({ code: z.string(), legalName: z.string(), tradeName: z.string().optional(), gstin: z.string().optional(), pan: z.string().optional(), contactPerson: z.string().optional(), phone: z.string().optional(), email: z.string().optional(), address: z.record(z.unknown()).optional(), state: z.string().optional(), stateCode: z.string().optional(), paymentTermsDays: z.number().int().optional(), category: z.enum(VENDOR_CATEGORIES).optional() }).parse(payload));
         break;
       case "update-vendor": {
-        const v = z.object({ vendorId: z.string() }).and(z.object({ legalName: z.string().optional(), tradeName: z.string().optional(), gstin: z.string().optional(), pan: z.string().optional(), contactPerson: z.string().optional(), phone: z.string().optional(), email: z.string().optional(), state: z.string().optional(), stateCode: z.string().optional(), paymentTermsDays: z.number().int().optional(), category: z.string().optional(), isActive: z.boolean().optional() })).parse(payload);
+        const v = z.object({ vendorId: z.string() }).and(z.object({ legalName: z.string().optional(), tradeName: z.string().optional(), gstin: z.string().optional(), pan: z.string().optional(), contactPerson: z.string().optional(), phone: z.string().optional(), email: z.string().optional(), state: z.string().optional(), stateCode: z.string().optional(), paymentTermsDays: z.number().int().optional(), category: z.enum(VENDOR_CATEGORIES).optional(), isActive: z.boolean().optional() })).parse(payload);
         result = await updateVendor(prisma, user.id, v.vendorId, v);
         break;
       }
@@ -421,7 +421,7 @@ export async function POST(request: Request) {
               mobile: z.string().optional(),
               address: z.record(z.unknown()).optional(),
               gstin: z.string().optional(),
-              customerType: z.string().optional(),
+              customerType: z.enum(CUSTOMER_TYPES).optional(),
               idempotencyKey: z.string(),
             })
             .transform((v) => ({ ...v, address: v.address ?? { line: "Added from Money Desk — details to be completed" } }))

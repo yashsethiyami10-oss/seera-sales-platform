@@ -446,11 +446,25 @@ export async function executiveRetailerSearch(
 // Only Shop/Firm Name and Area/Address are mandatory — every other field is optional, and a new
 // retailer must be usable in the current visit/order immediately (lifecycle ACTIVE right away);
 // Manager review happens after the fact via the audit trail, it never blocks first use.
-const CUSTOMER_TYPES = [
+//
+// P0-4 (Money Desk 2.0 Final Gap Closure — Party Taxonomy): this IS the canonical, validated
+// Customer sub-type taxonomy for SeeraRetailer — `customerType` on the model is a plain `String?`
+// (confirmed via schema audit: no Prisma enum exists, so none needs to change/migrate). Exported
+// so every call site (field/manager operations routes, Money Desk's create-retail-customer action)
+// shares this ONE list instead of re-declaring their own copy — three call sites were found
+// independently hardcoding this exact array before this fix, a real drift risk.
+// "CORPORATE" added here (genuinely missing before). Deliberately NOT adding "DISTRIBUTOR" /
+// "SUPER_STOCKIST" / "DEALER" as customerType values: those are already first-class party records
+// (SeeraPartner, via distributor-management-service.ts) with their own billing/ledger/RBAC scope —
+// encoding them as a SeeraRetailer.customerType string as well would create a second, conflicting
+// representation of the same real-world party, exactly the "duplicate party engine" this mission's
+// own rules forbid. A genuine Distributor/Dealer/Super Stockist is never a SeeraRetailer.
+export const CUSTOMER_TYPES = [
   "RETAILER",
   "WHOLESALER",
   "DISTRIBUTOR_PROSPECT",
   "INSTITUTIONAL_OTHER",
+  "CORPORATE",
 ] as const;
 
 export async function createRetailer(

@@ -24,7 +24,7 @@ import {
   assignDistributorToOrder,
   assignRetailerCommercialParty,
 } from "@/lib/sales-distribution/manager-service";
-import { capturePhoto } from "@/lib/sales-distribution/field-portal-service";
+import { capturePhoto, CUSTOMER_TYPES } from "@/lib/sales-distribution/field-portal-service";
 import { assistedDistributorOperation, endFieldDay, startFieldDay, recordPaymentPromise } from "@/lib/sales-distribution/workflow-service";
 import {
   createBeatPlan,
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
                 mobile: z.string().optional(),
                 alternateMobile: z.string().optional(),
                 pincode: z.string().optional(),
-                customerType: z.enum(["RETAILER", "WHOLESALER", "DISTRIBUTOR_PROSPECT", "INSTITUTIONAL_OTHER"]).optional(),
+                customerType: z.enum(CUSTOMER_TYPES).optional(),
                 gstin: z.string().optional(),
                 distributorId: z.string().optional(),
                 notes: z.string().optional(),

@@ -8,7 +8,16 @@ import { financeNumberFor } from "./numbering";
 import { partySnapshot } from "@/lib/sales-distribution/document-lines";
 import type { IssuedDocumentSnapshot, DocumentLineSnapshot } from "@/lib/sales-distribution/document-pdf";
 
-export async function createVendor(db: PrismaClient, actorId: string, input: { code: string; legalName: string; tradeName?: string; gstin?: string; pan?: string; contactPerson?: string; phone?: string; email?: string; address?: object; state?: string; stateCode?: string; paymentTermsDays?: number; category?: string }) {
+// P0-4 (Money Desk 2.0 Final Gap Closure — Party Taxonomy): the canonical, validated Supplier
+// sub-type taxonomy for SeeraVendor. `category` on the model is a plain `String?` (schema audit:
+// no Prisma enum exists — a real migration was never needed) and was previously completely
+// unvalidated free text at every call site (createVendor/updateVendor's own TS type, and the Zod
+// schemas in company-operations/route.ts, all just `string`). Confirmed via a live DB read (TEST
+// and production) that no vendor anywhere has ever had a `category` value set — introducing this
+// validated list is purely additive, not a breaking change against any real data.
+export const VENDOR_CATEGORIES = ["VENDOR", "RAW_MATERIAL_SUPPLIER", "SERVICE_PROVIDER", "OTHER"] as const;
+
+export async function createVendor(db: PrismaClient, actorId: string, input: { code: string; legalName: string; tradeName?: string; gstin?: string; pan?: string; contactPerson?: string; phone?: string; email?: string; address?: object; state?: string; stateCode?: string; paymentTermsDays?: number; category?: (typeof VENDOR_CATEGORIES)[number] }) {
   await authorize(db, { actorId, permission: "vendor:manage" });
   const existing = await db.seeraVendor.findUnique({ where: { code: input.code } });
   if (existing) throw new FoundationError("VENDOR_CODE_EXISTS", "A vendor with this code already exists", 409);
@@ -17,7 +26,7 @@ export async function createVendor(db: PrismaClient, actorId: string, input: { c
   return vendor;
 }
 
-export async function updateVendor(db: PrismaClient, actorId: string, vendorId: string, input: Partial<{ legalName: string; tradeName: string; gstin: string; pan: string; contactPerson: string; phone: string; email: string; state: string; stateCode: string; paymentTermsDays: number; category: string; isActive: boolean }>) {
+export async function updateVendor(db: PrismaClient, actorId: string, vendorId: string, input: Partial<{ legalName: string; tradeName: string; gstin: string; pan: string; contactPerson: string; phone: string; email: string; state: string; stateCode: string; paymentTermsDays: number; category: (typeof VENDOR_CATEGORIES)[number]; isActive: boolean }>) {
   await authorize(db, { actorId, permission: "vendor:manage" });
   const before = await db.seeraVendor.findUniqueOrThrow({ where: { id: vendorId } });
   const after = await db.seeraVendor.update({ where: { id: vendorId }, data: input });
@@ -143,34 +152,46 @@ export async function recordVendorPayment(db: PrismaClient, actorId: string, inp
   await authorize(db, { actorId, permission: "vendor_payment:record" });
   if (input.amount <= 0) throw new FoundationError("INVALID_AMOUNT", "Amount must be positive", 400);
 
-  return db.$transaction(async (tx) => {
-    let bill = null;
-    if (input.billId) {
-      bill = await tx.seeraVendorBill.findUniqueOrThrow({ where: { id: input.billId } });
-      const due = Number(bill.grossAmount) - Number(bill.paidAmount);
-      if (input.amount > due) throw new FoundationError("PAYMENT_EXCEEDS_DUE", "Payment exceeds the amount due on this bill", 400);
-    }
-    const payment = await tx.seeraVendorPayment.create({ data: { paymentNumber: financeNumberFor("VP", input.idempotencyKey), vendorId: input.vendorId, billId: input.billId, amount: input.amount, treasuryAccountId: input.treasuryAccountId, paymentMode: input.paymentMode, reference: input.reference, paymentDate: input.paymentDate, actorId, idempotencyKey: input.idempotencyKey } });
-    const journal = await postJournalInTx(tx, actorId, {
-      date: input.paymentDate,
-      sourceType: "VENDOR_PAYMENT",
-      sourceId: payment.id,
-      narration: `Vendor payment — ${input.reference ?? input.paymentMode}`,
-      idempotencyKey: `${input.idempotencyKey}:journal`,
-      lines: [
-        { accountId: "2000", debit: input.amount, partyType: "VENDOR", partyId: input.vendorId, treasuryAccountId: undefined, description: input.reference },
-        { accountId: input.treasuryAccountCoaCode, credit: input.amount, treasuryAccountId: input.treasuryAccountId, description: input.reference },
-      ],
-    });
-    await tx.seeraVendorPayment.update({ where: { id: payment.id }, data: { journalId: journal.id } });
-    if (bill) {
-      const newPaid = Number(bill.paidAmount) + input.amount;
-      const status: VendorBillStatus = newPaid >= Number(bill.grossAmount) ? "PAID" : "PARTIALLY_PAID";
-      await tx.seeraVendorBill.update({ where: { id: bill.id }, data: { paidAmount: newPaid, status } });
-    }
-    await recordAudit(tx, { actorId, action: "finance.vendor_payment.recorded", entityType: "SeeraVendorPayment", entityId: payment.id, afterState: { vendorId: input.vendorId, amount: input.amount, billId: input.billId } });
-    return payment;
-  });
+  return db.$transaction(
+    async (tx) => {
+      let bill = null;
+      if (input.billId) {
+        bill = await tx.seeraVendorBill.findUniqueOrThrow({ where: { id: input.billId } });
+        const due = Number(bill.grossAmount) - Number(bill.paidAmount);
+        if (input.amount > due) throw new FoundationError("PAYMENT_EXCEEDS_DUE", "Payment exceeds the amount due on this bill", 400);
+      }
+      const payment = await tx.seeraVendorPayment.create({ data: { paymentNumber: financeNumberFor("VP", input.idempotencyKey), vendorId: input.vendorId, billId: input.billId, amount: input.amount, treasuryAccountId: input.treasuryAccountId, paymentMode: input.paymentMode, reference: input.reference, paymentDate: input.paymentDate, actorId, idempotencyKey: input.idempotencyKey } });
+      const journal = await postJournalInTx(tx, actorId, {
+        date: input.paymentDate,
+        sourceType: "VENDOR_PAYMENT",
+        sourceId: payment.id,
+        narration: `Vendor payment — ${input.reference ?? input.paymentMode}`,
+        idempotencyKey: `${input.idempotencyKey}:journal`,
+        lines: [
+          { accountId: "2000", debit: input.amount, partyType: "VENDOR", partyId: input.vendorId, treasuryAccountId: undefined, description: input.reference },
+          { accountId: input.treasuryAccountCoaCode, credit: input.amount, treasuryAccountId: input.treasuryAccountId, description: input.reference },
+        ],
+      });
+      await tx.seeraVendorPayment.update({ where: { id: payment.id }, data: { journalId: journal.id } });
+      if (bill) {
+        const newPaid = Number(bill.paidAmount) + input.amount;
+        const status: VendorBillStatus = newPaid >= Number(bill.grossAmount) ? "PAID" : "PARTIALLY_PAID";
+        await tx.seeraVendorBill.update({ where: { id: bill.id }, data: { paidAmount: newPaid, status } });
+      }
+      await recordAudit(tx, { actorId, action: "finance.vendor_payment.recorded", entityType: "SeeraVendorPayment", entityId: payment.id, afterState: { vendorId: input.vendorId, amount: input.amount, billId: input.billId } });
+      return payment;
+    },
+    // This transaction does 6+ sequential round trips (bill lookup, payment create, journal
+    // posting's own account lookups + entry + lines, payment update, bill update, audit log) —
+    // reproduced this session hitting Prisma's bare 5000ms interactive-transaction default under
+    // real (Neon serverless) network latency, three times in a row in TEST DB, each time failing
+    // at the very last statement (recordAudit) after all the real accounting work had already run.
+    // Widening the timeout is the fix Prisma's own error message suggests; the alternative (doing
+    // less work in the transaction) would mean splitting the journal post from its payment/bill
+    // linkage, risking a real partial-write (payment or journal without the other) — worse than a
+    // slower but atomic single transaction.
+    { timeout: 15_000 },
+  );
 }
 
 export async function payablesView(db: PrismaClient, actorId: string, filter?: "DUE_TODAY" | "DUE_7_DAYS" | "OVERDUE" | "PARTIALLY_PAID" | "PAID") {

@@ -27,6 +27,7 @@ import {
   acknowledgeInstruction,
   completeInstruction,
   recordPhotoTelemetry,
+  CUSTOMER_TYPES,
 } from "@/lib/sales-distribution/field-portal-service";
 
 const body = z.object({
@@ -260,9 +261,7 @@ export async function POST(request: Request) {
                 "OTHER",
               ])
               .optional(),
-            customerType: z
-              .enum(["RETAILER", "WHOLESALER", "DISTRIBUTOR_PROSPECT", "INSTITUTIONAL_OTHER"])
-              .optional(),
+            customerType: z.enum(CUSTOMER_TYPES).optional(),
             gstin: z.string().optional(),
             distributorId: z.string().optional(),
             territoryId: z.string().optional(),
@@ -301,9 +300,7 @@ export async function POST(request: Request) {
                 "OTHER",
               ])
               .optional(),
-            customerType: z
-              .enum(["RETAILER", "WHOLESALER", "DISTRIBUTOR_PROSPECT", "INSTITUTIONAL_OTHER"])
-              .optional(),
+            customerType: z.enum(CUSTOMER_TYPES).optional(),
             gstin: z.string().optional(),
             distributorId: z.string().optional(),
             territoryId: z.string().optional(),
