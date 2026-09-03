@@ -236,27 +236,32 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
 
   return (
     <section className={styles.panel}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "0.5rem" }}>
-        <div>
-          <small>{hi ? "मनी डेस्क" : "MONEY DESK"}</small>
-          <h2>{hi ? "पैसा प्रबंधन" : "Money Management"}</h2>
+      <div className={styles.moneyDeskHero}>
+        <div className={styles.moneyDeskHeroHeader}>
+          <div>
+            <span className={styles.workspaceEyebrow}>{hi ? "मनी डेस्क" : "MONEY DESK"}</span>
+            <h2>{hi ? "पैसा प्रबंधन" : "Money Management"}</h2>
+            <p className={styles.workspaceSubtitle}>Track every rupee across Cash, Bank, Customers, Vendors, Expenses and Ledgers.</p>
+          </div>
+          <div className={styles.workspaceHeaderActions}>
+            <a className={styles.accent} href={"/portal/"+portal+"/finance-os?group=tools&section=settings"}>{hi ? "सेटिंग्स" : "Settings"}</a>
+          </div>
         </div>
+        <div className={styles.moneyDeskKpis}>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "कुल सक्रिय खाते" : "ACTIVE TREASURY"}</small><strong>{supporting.treasuryAccounts.length}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "आज का बैंक + नकद" : "CASH + BANK TODAY"}</small><strong>{money(home.cashBankToday.reduce((s,a)=>s+Number(a.balance||0),0))}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "ध्यान देने योग्य" : "NEEDS ATTENTION"}</small><strong>{home.needsAttention.length}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "अनुमोदन लंबित" : "PENDING APPROVALS"}</small><strong>{home.pendingApprovals.length}</strong></div>
+        </div>
+        <nav className={styles.moneyDeskNav} aria-label={hi ? "मनी डेस्क नेविगेशन" : "Money Desk navigation"}>
+          <a data-primary="true" href={"/portal/"+portal+"/money-desk"}>{hi ? "ओवरव्यू" : "Overview"}</a>
+          <a href={"/portal/"+portal+"/finance-os?group=sales&section=ledger"}>{hi ? "पार्टी लेजर" : "Party Ledgers"}</a>
+          <a href={"/portal/"+portal+"/finance-os?group=sales&section=register"}>{hi ? "इनवॉइस" : "Invoices"}</a>
+          <a href={"/portal/"+portal+"/finance-os?group=purchases&section=vendors"}>{hi ? "बिल / विक्रेता" : "Bills / Vendors"}</a>
+          <a href={"/portal/"+portal+"/finance-os?group=tools&section=reports"}>{hi ? "रिपोर्ट" : "Reports"}</a>
+          <a href={"/portal/"+portal+"/finance-os?group=statements&section=pl"}>P&amp;L</a>
+        </nav>
       </div>
-
-      {/* Money Desk 2.0 (Part 4): a professional operational front door — direct links into each
-          real Finance OS section (never a duplicate engine), not one generic "open the other
-          screen" link. Every link below deep-links FinanceWorkspacePanel's own group/section
-          query params, the same mechanism the "View Ledger"/"View Details" links already use. */}
-      <nav className={styles.inlineActions} aria-label={hi ? "मनी डेस्क नेविगेशन" : "Money Desk navigation"} style={{ gridColumn: "1/-1" }}>
-        <a href={`/portal/${portal}/finance-os?group=overview`}>{hi ? "अवलोकन" : "Overview"}</a>
-        <a href={`/portal/${portal}/finance-os?group=sales&section=ledger`}>{hi ? "पार्टियां / लेजर" : "Parties / Ledgers"}</a>
-        <a href={`/portal/${portal}/finance-os?group=sales&section=register`}>{hi ? "इनवॉइस" : "Invoices"}</a>
-        <a href={`/portal/${portal}/finance-os?group=purchases&section=vendors`}>{hi ? "बिल / विक्रेता" : "Bills / Vendors"}</a>
-        <a href={`/portal/${portal}/finance-os?group=control&section=approvals`}>{hi ? "अनुमोदन" : "Approvals"}</a>
-        <a href={`/portal/${portal}/finance-os?group=tools&section=reports`}>{hi ? "रिपोर्ट" : "Reports"}</a>
-        <a href={`/portal/${portal}/finance-os?group=statements&section=pl`}>{hi ? "P&L" : "P&L"}</a>
-        <a href={`/portal/${portal}/finance-os?group=tools&section=settings`}>{hi ? "सेटिंग्स" : "Masters / Settings"}</a>
-      </nav>
 
       <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
         <strong>{hi ? "आज नकद / बैंक (वास्तविक बहीखाता)" : "Today's Cash / Bank (real ledger)"}</strong>
@@ -273,10 +278,9 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
       {!openDirection && (
         <>
           <SmartFinanceEntry language={language} portal={portal} territories={supporting.territories} purposes={purposes.map((p) => ({ code: p.code, label: p.label, hindiLabel: p.hindiLabel }))} />
-          <div style={{ gridColumn: "1/-1", display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
-            <small style={{ opacity: 0.6 }}>{hi ? "या निर्देशित प्रविष्टि:" : "or use guided entry:"}</small>
-            <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
-            <button type="button" className={styles.primaryBig} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ RECORD MONEY OUT"}</button>
+          <div className={styles.moneyDeskActions} style={{ gridColumn: "1/-1" }}>
+            <button type="button" className={styles.primaryBig+" "+styles.moneyDeskAction+" "+styles.moneyDeskActionIn} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
+            <button type="button" className={styles.primaryBig+" "+styles.moneyDeskAction+" "+styles.moneyDeskActionOut} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ RECORD MONEY OUT"}</button>
           </div>
         </>
       )}
