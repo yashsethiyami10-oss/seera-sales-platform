@@ -4,6 +4,7 @@ import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { documentNumber } from "./phase6-9-rules";
 import { requirePartyMembership } from "./scope";
+import { postJournalInTx, type JournalLineInput } from "@/lib/finance/journal-service";
 import {
   buildLineSnapshots,
   assertLinesTaxConfigured,
@@ -281,6 +282,10 @@ export async function issueBillingDraft(prisma: PrismaClient, actorId: string, d
       mobile: contact?.mobile ?? undefined,
     } as Prisma.InputJsonValue;
   }
+  // Widened timeout (matches the same fix already applied to recordVendorPayment): the Gap 1
+  // journal bridge below adds real extra round trips (sequence upsert already existed; now also a
+  // full postJournalInTx call) to this transaction, reproduced hitting Prisma's bare 5000ms default
+  // under real Neon latency this session.
   return prisma.$transaction(async (tx) => {
     // Authoritative, race-safe re-check inside the transaction: two drafts against the same
     // invoice could each pass createBillingDraft's/updateBillingDraft's early check and still
@@ -346,6 +351,49 @@ export async function issueBillingDraft(prisma: PrismaClient, actorId: string, d
           postedAt: now,
         },
       });
+      // Gap 1 (Final Gap Closure — dual-ledger reconciliation): bridges this SAME issuance event into
+      // the journal/chart-of-accounts rail that P&L/Balance Sheet/Cash Flow actually read, so an
+      // invoice's revenue and receivable stop being invisible to those statements — without touching
+      // the SeeraFinancialEntry row above (retailerLedger/distributorOrSsLedger's own proven read
+      // model, unchanged) and without creating a second accounting engine: both postings describe the
+      // SAME economic event, made atomically in the SAME transaction, off the SAME real totals.
+      //
+      // Deliberately scoped to issuerType "COMPANY" only. A Distributor/Super Stockist issuing an
+      // invoice to a Retailer is an arm's-length resale between two OTHER parties — it is not a SEERA
+      // sale and must never touch SEERA's own P&L/Balance Sheet a second time. SEERA's own revenue for
+      // that stock was already recognised when the Company originally dispatched it to the Distributor
+      // (SeeraCompanyDispatchAllocation / the existing COGS-confidence mechanism in profitAndLoss) —
+      // bridging Distributor/S.S. invoices here as well would double-count Company revenue.
+      if (document.issuerType === "COMPANY") {
+        const taxable = Number(document.taxableTotal);
+        const cgst = Number(document.cgstTotal);
+        const sgst = Number(document.sgstTotal);
+        const igst = Number(document.igstTotal);
+        const grand = Number(document.grandTotal);
+        const lines: JournalLineInput[] = buyerDebit
+          ? [
+              { accountId: "1100", debit: grand, partyType: document.buyerType, partyId: document.buyerId, description: number },
+              { accountId: "4000", credit: taxable, description: number },
+              ...(cgst > 0 ? [{ accountId: "2021", credit: cgst, description: "Output CGST" }] : []),
+              ...(sgst > 0 ? [{ accountId: "2022", credit: sgst, description: "Output SGST" }] : []),
+              ...(igst > 0 ? [{ accountId: "2023", credit: igst, description: "Output IGST" }] : []),
+            ]
+          : [
+              { accountId: "4000", debit: taxable, description: number },
+              ...(cgst > 0 ? [{ accountId: "2021", debit: cgst, description: "Output CGST" }] : []),
+              ...(sgst > 0 ? [{ accountId: "2022", debit: sgst, description: "Output SGST" }] : []),
+              ...(igst > 0 ? [{ accountId: "2023", debit: igst, description: "Output IGST" }] : []),
+              { accountId: "1100", credit: grand, partyType: document.buyerType, partyId: document.buyerId, description: number },
+            ];
+        await postJournalInTx(tx, actorId, {
+          date: now,
+          sourceType: type === "CREDIT_NOTE" ? "SALES_CREDIT_NOTE" : type === "DEBIT_NOTE" ? "SALES_DEBIT_NOTE" : "SALES_INVOICE",
+          sourceId: document.id,
+          narration: `${type === "CREDIT_NOTE" ? "Credit Note" : type === "DEBIT_NOTE" ? "Debit Note" : "Sales Invoice"} ${number}`,
+          idempotencyKey: `${document.idempotencyKey}:journal`,
+          lines,
+        });
+      }
     }
     await recordAudit(tx, {
       actorId,
@@ -355,7 +403,7 @@ export async function issueBillingDraft(prisma: PrismaClient, actorId: string, d
       afterState: { documentNumber: number, type, grandTotal: document.grandTotal.toString() },
     });
     return updated;
-  });
+  }, { timeout: 15_000 });
 }
 
 // Final Master Revision (Part 9, 22-Aug): a Distributor/S.S. controls their own real physical/
