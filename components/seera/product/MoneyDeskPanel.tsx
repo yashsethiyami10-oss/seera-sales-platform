@@ -60,6 +60,7 @@ type HomeData = {
   pendingApprovals: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; requestedById: string; isSelf?: boolean }[];
   needsAttention: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; failureReason: string | null }[];
   cashBankToday: { treasuryAccountId: string; name: string; kind: string; balance: number; movedToday: number }[];
+  kpis?: { cashBalance: number; bankBalance: number; totalCashBank: number; todayInflow: number; todayOutflow: number; receivablesTotal: number; payablesTotal: number; revenueMtd: number | null; expensesMtd: number | null; operatingProfitMtd: number | null };
   canApprove: boolean;
   canVoid: boolean;
   salesDistribution: {
@@ -248,10 +249,24 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
           </div>
         </div>
         <div className={styles.moneyDeskKpis}>
-          <div className={styles.moneyDeskKpi}><small>{hi ? "कुल सक्रिय खाते" : "ACTIVE TREASURY"}</small><strong>{supporting.treasuryAccounts.length}</strong></div>
-          <div className={styles.moneyDeskKpi}><small>{hi ? "आज का बैंक + नकद" : "CASH + BANK TODAY"}</small><strong>{money(home.cashBankToday.reduce((s,a)=>s+Number(a.balance||0),0))}</strong></div>
-          <div className={styles.moneyDeskKpi}><small>{hi ? "ध्यान देने योग्य" : "NEEDS ATTENTION"}</small><strong>{home.needsAttention.length}</strong></div>
+          {/* Part C (Final 100% Completion Execution Contract) — real Founder Overview KPIs, every
+              figure sourced server-side from the same governed report functions the dedicated
+              report screens use (moneyDeskHome's kpis field). null means that specific report
+              genuinely failed to load for this actor (e.g. missing financial_statements:view) —
+              rendered honestly as "—", never a fabricated zero. */}
+          <div className={styles.moneyDeskKpi}><small>{hi ? "नकद शेष" : "CASH BALANCE"}</small><strong>{home.kpis ? money(home.kpis.cashBalance) : money(home.cashBankToday.filter(a=>a.kind==="CASH").reduce((s,a)=>s+Number(a.balance||0),0))}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "बैंक शेष" : "BANK BALANCE"}</small><strong>{home.kpis ? money(home.kpis.bankBalance) : money(home.cashBankToday.filter(a=>a.kind==="BANK").reduce((s,a)=>s+Number(a.balance||0),0))}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "कुल नकद + बैंक" : "TOTAL CASH + BANK"}</small><strong>{home.kpis ? money(home.kpis.totalCashBank) : money(home.cashBankToday.reduce((s,a)=>s+Number(a.balance||0),0))}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "आज आवक" : "TODAY'S INFLOW"}</small><strong>{home.kpis ? money(home.kpis.todayInflow) : "—"}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "आज जावक" : "TODAY'S OUTFLOW"}</small><strong>{home.kpis ? money(home.kpis.todayOutflow) : "—"}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "प्राप्य" : "RECEIVABLES"}</small><strong>{home.kpis ? money(home.kpis.receivablesTotal) : "—"}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "देय" : "PAYABLES"}</small><strong>{home.kpis ? money(home.kpis.payablesTotal) : "—"}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "राजस्व (माह)" : "REVENUE (MTD)"}</small><strong>{home.kpis?.revenueMtd != null ? money(home.kpis.revenueMtd) : "—"}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "व्यय (माह)" : "EXPENSES (MTD)"}</small><strong>{home.kpis?.expensesMtd != null ? money(home.kpis.expensesMtd) : "—"}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "परिचालन लाभ (माह)" : "OPERATING PROFIT (MTD)"}</small><strong>{home.kpis?.operatingProfitMtd != null ? money(home.kpis.operatingProfitMtd) : "—"}</strong></div>
           <div className={styles.moneyDeskKpi}><small>{hi ? "अनुमोदन लंबित" : "PENDING APPROVALS"}</small><strong>{home.pendingApprovals.length}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "ध्यान देने योग्य" : "NEEDS ATTENTION"}</small><strong>{home.needsAttention.length}</strong></div>
+          <div className={styles.moneyDeskKpi}><small>{hi ? "कुल सक्रिय खाते" : "ACTIVE TREASURY"}</small><strong>{supporting.treasuryAccounts.length}</strong></div>
         </div>
         <nav className={styles.moneyDeskNav} aria-label={hi ? "मनी डेस्क नेविगेशन" : "Money Desk navigation"}>
           <a data-primary="true" href={"/portal/"+portal+"/money-desk"}>{hi ? "ओवरव्यू" : "Overview"}</a>

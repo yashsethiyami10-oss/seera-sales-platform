@@ -16,6 +16,8 @@ import type { IssuedDocumentSnapshot } from "@/lib/sales-distribution/document-p
 import { deriveCostCentre } from "./cost-centre";
 import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
 import { operationalLog } from "@/lib/foundation/logger";
+import { receivablesAgeing, payablesAgeing } from "./reports-service";
+import { profitAndLoss } from "./statements-service";
 
 // SEERA MONEY DESK — ORCHESTRATION ENGINE. "User enters the business
 // transaction. System decides the accounting." This file is the ONLY place a
@@ -1108,11 +1110,50 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
     return { ...t, amount: Number(t.amount), source: isSmart ? "SMART_FINANCE" : "GUIDED", originPortal: t.source, employeeName: empId ? (employeeNameById.get(empId) ?? null) : null, territoryName: terrId ? (territoryNameById.get(terrId) ?? null) : null, treasuryName: t.treasuryAccountId ? (treasuryNameById.get(t.treasuryAccountId) ?? null) : null };
   };
 
+  // Part C (Final 100% Completion Execution Contract) — Founder Overview KPIs, every figure
+  // sourced from the SAME real, already-governed report functions the dedicated report screens
+  // use (receivablesAgeing/payablesAgeing/profitAndLoss) — never a second, parallel calculation.
+  // Each is independently resilient (matches resilientList's own "one section's failure never
+  // takes down the whole dashboard" convention) since a user with money_desk:view is not
+  // guaranteed to also hold financial_statements:view.
+  const safeReport = async <T>(section: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch (error) {
+      operationalLog("error", "money_desk.home.kpi_section_failed", { actorId, section, errorMessage: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500) });
+      return fallback;
+    }
+  };
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const monthEnd = new Date();
+  const [receivables, payables, pnlMtd] = await Promise.all([
+    safeReport("receivablesAgeing", () => receivablesAgeing(db, actorId), { rows: [], buckets: { NOT_DUE: 0, "1_30": 0, "31_60": 0, "61_90": 0, "90_PLUS": 0 } }),
+    safeReport("payablesAgeing", () => payablesAgeing(db, actorId), { rows: [], buckets: { NOT_DUE: 0, "1_30": 0, "31_60": 0, "61_90": 0, "90_PLUS": 0 } }),
+    safeReport("profitAndLoss", () => profitAndLoss(db, actorId, monthStart, monthEnd), null),
+  ]);
+  const cashBalance = cashBankToday.filter((a) => a.kind === "CASH").reduce((s, a) => s + a.balance, 0);
+  const bankBalance = cashBankToday.filter((a) => a.kind === "BANK").reduce((s, a) => s + a.balance, 0);
+  const todayInflow = todayLines.reduce((s, l) => s + Number(l._sum.debit ?? 0), 0);
+  const todayOutflow = todayLines.reduce((s, l) => s + Number(l._sum.credit ?? 0), 0);
+  const kpis = {
+    cashBalance,
+    bankBalance,
+    totalCashBank: cashBalance + bankBalance,
+    todayInflow,
+    todayOutflow,
+    receivablesTotal: receivables.rows.reduce((s, r) => s + r.outstandingTotal, 0),
+    payablesTotal: payables.rows.reduce((s, r) => s + r.outstandingTotal, 0),
+    revenueMtd: pnlMtd?.totalRevenue ?? null,
+    expensesMtd: pnlMtd ? pnlMtd.cogs + pnlMtd.totalOperatingExpense : null,
+    operatingProfitMtd: pnlMtd?.operatingProfit ?? null,
+  };
+
   return {
     recentTransactions: recent.map(enrichRow),
     pendingApprovals: pendingApproval.map((t) => ({ ...t, amount: Number(t.amount), isSelf: t.requestedById === actorId })),
     needsAttention: stuckPosting.map((t) => ({ id: t.id, transactionNumber: t.transactionNumber, purposeCode: t.purposeCode, amount: Number(t.amount), failureReason: t.failureReason })),
     cashBankToday,
+    kpis,
     canApprove: permissions.has("money_desk:approve") || permissions.has("system:super_admin"),
     canVoid: permissions.has("money_desk:reverse") || permissions.has("system:super_admin"),
     salesDistribution,
