@@ -37,9 +37,14 @@ async function main() {
   check("14 detergent-cake materials created/found", materialsFirst.length === 14);
   const materialsSecond = await seedDetergentCakeMaterials(prisma, founder.id);
   check("re-running is idempotent (still 14, no dupes)", materialsSecond.length === 14);
-  const materialCountInDb = await prisma.seeraManufacturingMaterial.count({ where: { code: { startsWith: "RM-" } } });
-  check("exactly 14 RM- rows exist in the DB (no duplicates from double-seed)", materialCountInDb === 14);
   const expectedCodes = ["RM-SLURRY", "RM-SODA-ASH", "RM-DOLOMITE", "RM-CHINA-CLAY", "RM-AOS", "RM-SLES", "RM-POLYMER", "RM-SODIUM-SILICATE", "RM-COLOUR", "RM-PERFUME", "RM-CAUSTIC", "RM-SALT", "RM-COLOUR-GRADIENTS", "RM-CBSX"];
+  // Scoped to the 14 named codes specifically — NOT a broad `startsWith: "RM-"` count, which also
+  // matches unrelated pre-existing "RM-<random>" TEST_ONLY_MANUFACTURING_FIXTURE rows from a
+  // completely different, older manufacturing test suite sharing the same TEST DB. That broader
+  // filter was a false-failure risk in this assertion, not a real defect in the seeding logic
+  // itself (already proven idempotent by the check just above).
+  const materialCountInDb = await prisma.seeraManufacturingMaterial.count({ where: { code: { in: expectedCodes } } });
+  check("exactly 14 named RM- rows exist in the DB (no duplicates from double-seed)", materialCountInDb === 14);
   const actualCodes = new Set(materialsFirst.map((m) => m.code));
   check("all 14 named materials present (Slurry..CBSX)", expectedCodes.every((c) => actualCodes.has(c)));
 

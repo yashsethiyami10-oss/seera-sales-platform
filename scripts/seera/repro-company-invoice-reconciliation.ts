@@ -88,7 +88,12 @@ async function main() {
   console.log("\n=== Cleanup ===");
   await prisma.seeraFinancialEntry.deleteMany({ where: { documentId: issued.id } });
   await prisma.seeraCommercialDocument.delete({ where: { id: issued.id } });
-  await prisma.seeraDocumentSequence.deleteMany({ where: { issuerId: "COMPANY" } });
+  // Deliberately NOT deleting SeeraDocumentSequence here — it's a shared, monotonic, real-world-
+  // semantics numbering counter (issuerId "COMPANY" is used by every COMPANY-issued invoice test in
+  // this suite). Resetting it back to 1 on every run is what caused a genuine documentNumber unique-
+  // constraint collision against a leftover document from an earlier/interrupted run (found and
+  // fixed in this session) — the counter is harmless to leave monotonically increasing forever,
+  // exactly like a real invoice sequence never reuses a number.
   await prisma.seeraRetailer.delete({ where: { id: retailer.id } });
   await prisma.seeraBillingProfile.delete({ where: { id: profile.id } });
   const remainingDoc = await prisma.seeraCommercialDocument.count({ where: { id: issued.id } });

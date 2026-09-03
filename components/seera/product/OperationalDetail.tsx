@@ -142,7 +142,37 @@ export async function OperationalDetail({
         {detail.sourceDocuments.length > 0 && (
           <section className={styles.card}>
             <h3>{hi ? "स्रोत दस्तावेज़" : "Source Documents"}</h3>
-            <Fields items={detail.sourceDocuments.map((d) => ({ label: d.type, value: d.label }))} />
+            <Fields items={detail.sourceDocuments.filter((d) => d.type !== "Invoice").map((d) => ({ label: d.type, value: d.label }))} />
+            {/* P0-2 (Money Desk 2.0 Final Gap Closure) — a real, downloadable invoice PDF link, not
+                just a bare id in a text field. Reuses the SAME governed /api/documents/[id]/download
+                route (downloadDocument) every other issued document already uses — no second
+                download path. */}
+            {detail.sourceDocuments.filter((d) => d.type === "Invoice").map((d) => (
+              <p key={d.id || d.label}>
+                <strong>{hi ? "इनवॉइस" : "Invoice"}:</strong>{" "}
+                {d.id ? (
+                  <Link href={`/api/documents/${d.id}/download`} className={styles.button}>
+                    {d.label} — {hi ? "PDF डाउनलोड करें" : "Download PDF"}
+                  </Link>
+                ) : (
+                  <span>{d.label}</span>
+                )}
+              </p>
+            ))}
+          </section>
+        )}
+        {/* P0-3 (Money Desk 2.0 Final Gap Closure) — Payment Receipt PDF link for any POSTED
+            Money-In transaction. Uses the transaction's own id (moneyDeskReceiptSnapshot reads
+            straight off moneyDeskTransactionDetail), not a SeeraCommercialDocument id — this is a
+            deliberately separate, read-only download path from the Invoice link above. */}
+        {(detail.direction === "CASH_IN" || detail.direction === "BANK_IN") && detail.status === "POSTED" && (
+          <section className={styles.card}>
+            <h3>{hi ? "भुगतान रसीद" : "Payment Receipt"}</h3>
+            <p>
+              <Link href={`/api/finance/money-desk-receipt-pdf?transactionId=${detail.id}`} className={styles.button}>
+                {detail.transactionNumber} — {hi ? "रसीद PDF डाउनलोड करें" : "Download Receipt PDF"}
+              </Link>
+            </p>
           </section>
         )}
         <section className={styles.card}>

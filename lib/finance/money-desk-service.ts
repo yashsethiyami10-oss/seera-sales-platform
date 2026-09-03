@@ -11,6 +11,8 @@ import { postJournal } from "./journal-service";
 import { createGrn, postGrn } from "@/lib/manufacturing/grn-service";
 import { createRetailer } from "@/lib/sales-distribution/field-portal-service";
 import { placeRetailerOrder } from "@/lib/sales-distribution/workflow-service";
+import { createBillingDraft, issueBillingDraft } from "@/lib/sales-distribution/billing-service";
+import type { IssuedDocumentSnapshot } from "@/lib/sales-distribution/document-pdf";
 import { deriveCostCentre } from "./cost-centre";
 import { EXTERNAL_PARTY_PORTAL_ROLE_CODES } from "@/lib/foundation/rbac-catalog";
 import { operationalLog } from "@/lib/foundation/logger";
@@ -597,7 +599,41 @@ const HANDLERS: Record<string, Handler> = {
       { actorId, sourcePortal: "sales-manager", commercialPartyType: "DISTRIBUTOR", commercialPartyId: "" },
       { retailerId, idempotencyKey: `${txn.idempotencyKey}:order`, lines, source: "OTHER" },
     );
-    return { retailerId, orderId: order.id };
+    // P0-2 (Money Desk 2.0 Final Gap Closure) — auto-issue a real Company Tax Invoice for this
+    // named-customer sale. A retry safely RESUMES — placeRetailerOrder above and
+    // createBillingDraft/issueBillingDraft below are each independently idempotent on their own
+    // derived key, so re-invoking this handler after a partial failure never creates a second order
+    // or a second invoice. Line items come from the ORDER's own real SeeraOrderLine rows
+    // (priceSnapshot/taxSnapshot), never re-derived from formData — the order is the authoritative
+    // source of what was actually sold at what price, so the invoice can never numerically disagree
+    // with it.
+    const invoiceLines = order.lines.map((l) => {
+      const tax = l.taxSnapshot as { rate?: string } | null;
+      return { skuId: l.skuId, quantity: Number(l.orderedQuantity), rate: Number(l.priceSnapshot), taxRate: tax?.rate != null ? Number(tax.rate) : undefined };
+    });
+    try {
+      const draft = await createBillingDraft(db, actorId, {
+        type: "TAX_INVOICE", issuerType: "COMPANY", issuerId: "COMPANY", buyerType: "RETAILER", buyerId: retailerId,
+        sourcePortal: "money-desk", orderId: order.id, lines: invoiceLines, idempotencyKey: `${txn.idempotencyKey}:invoice`,
+      });
+      const issued = draft.status === "DRAFT" ? await issueBillingDraft(db, actorId, draft.id) : draft;
+      return { retailerId, orderId: order.id, invoiceId: issued.id, invoiceNumber: issued.documentNumber };
+    } catch (error) {
+      // The ONE specific, expected pre-condition failure — the Founder has not yet configured/
+      // verified the Company Profile in Finance OS Settings (P0-1's own bootstrap step). Sales must
+      // keep working exactly as they did before this invoice-issuance feature existed (order
+      // created, transaction POSTED) rather than newly breaking every named-customer Money Desk
+      // sale in an environment where Company Profile setup simply hasn't happened yet — "existing
+      // working functionality must be preserved" outranks auto-invoicing for this one precondition.
+      // Any OTHER failure (a real bug, not a missing precondition) still propagates up through
+      // processMoneyDeskTransaction's own existing catch, which records failureReason and leaves
+      // the transaction in POSTING ("Needs Attention") for honest investigation.
+      if (error instanceof FoundationError && error.code === "VERIFIED_BILLING_PROFILE_REQUIRED") {
+        operationalLog("warn", "money_desk.sale.invoice_skipped_no_company_profile", { actorId, transactionId: txn.id, retailerId, orderId: order.id });
+        return { retailerId, orderId: order.id, invoiceSkippedReason: "COMPANY_PROFILE_NOT_CONFIGURED" };
+      }
+      throw error;
+    }
   },
 
   // The genuine walk-in path (SALE-WALKIN purpose): deliberately does NOT touch the
@@ -806,6 +842,15 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
       vendorPayment ? { type: "Vendor Payment", label: vendorPayment.paymentNumber, id: vendorPayment.id } : null,
       typeof refs.orderId === "string" ? { type: "Order", label: refs.orderId, id: refs.orderId } : null,
       typeof refs.grnId === "string" ? { type: "GRN", label: refs.grnId, id: refs.grnId } : null,
+      // P0-2 (Money Desk 2.0 Final Gap Closure) — the invoice auto-issued for a named-customer sale
+      // (OFFLINE_SALE handler). invoiceNumber is the real, human-readable document number when
+      // available; invoiceId is always the real SeeraCommercialDocument id used for download.
+      typeof refs.invoiceId === "string" ? { type: "Invoice", label: typeof refs.invoiceNumber === "string" ? refs.invoiceNumber : refs.invoiceId, id: refs.invoiceId } : null,
+      // Honest, visible fallback for the one expected precondition failure (Company Profile not yet
+      // configured) — never silent, never a fabricated invoice number.
+      refs.invoiceSkippedReason === "COMPANY_PROFILE_NOT_CONFIGURED"
+        ? { type: "Invoice", label: "Not issued — configure Company Profile in Finance OS Settings", id: "" }
+        : null,
     ].filter((x): x is { type: string; label: string; id: string } => x !== null),
     ledgerLink,
     requiresApproval: txn.status === "PENDING_APPROVAL",
@@ -825,6 +870,45 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     canApprove: txn.status === "PENDING_APPROVAL" && txn.requestedById !== actorId && (permissions.has("money_desk:approve") || permissions.has("system:super_admin")),
     canVoid: txn.status === "POSTED" && (permissions.has("money_desk:reverse") || permissions.has("system:super_admin")) && (txn.requestedById !== actorId || permissions.has("system:super_admin")),
     canEdit: txn.requestedById === actorId && permissions.has("system:super_admin") && (txn.status === "POSTED" || txn.status === "PENDING_APPROVAL" || txn.status === "DRAFT"),
+  };
+}
+
+// P0-3 (Money Desk 2.0 Final Gap Closure) — Payment Receipt PDF for any POSTED Money-In (CASH_IN/
+// BANK_IN) transaction. Deliberately a PURE, read-only snapshot builder — no new SeeraCommercialDocument
+// row, no new numbering sequence, no new Financial Entry. A receipt is a printable proof of a
+// transaction ALREADY posted (recordMoneyIn already ran its own journal); re-issuing it through
+// issueSystemDocument would post a SECOND, duplicate Financial Entry for the same money movement —
+// exactly the "duplicate accounting engine" this mission's own rules forbid. Reuses
+// moneyDeskTransactionDetail for scope/permission/party/treasury resolution (never re-derives its
+// own, weaker access check), and the transaction's own real transactionNumber as the receipt number
+// (already unique, already governed by financeNumberFor).
+export async function moneyDeskReceiptSnapshot(db: PrismaClient, actorId: string, transactionId: string): Promise<IssuedDocumentSnapshot> {
+  const detail = await moneyDeskTransactionDetail(db, actorId, transactionId);
+  if (detail.direction !== "CASH_IN" && detail.direction !== "BANK_IN")
+    throw new FoundationError("NOT_A_RECEIPT", "A Payment Receipt can only be generated for a Money In (Cash/Bank received) transaction", 400);
+  if (detail.status !== "POSTED") throw new FoundationError("TRANSACTION_NOT_POSTED", "Only a posted transaction can have a receipt generated", 409);
+  const { getCompanyProfile } = await import("./company-profile-service");
+  const { formatAddress } = await import("@/lib/sales-distribution/document-lines");
+  const profile = await getCompanyProfile(db);
+  const issuer = profile
+    ? { legalName: profile.legalName, tradeName: profile.tradeName ?? undefined, gstin: profile.gstin ?? undefined, address: formatAddress(profile.registeredAddress), state: profile.state || undefined, stateCode: profile.stateCode || undefined, contactName: profile.signatoryName ?? undefined, mobile: profile.phone ?? undefined }
+    : { legalName: "SEERA", address: "" };
+  const amount = detail.amount;
+  return {
+    type: "PAYMENT_RECEIPT",
+    documentNumber: detail.transactionNumber,
+    issueDate: detail.date.toLocaleDateString("en-IN"),
+    issuer,
+    buyer: { legalName: detail.counterpartyName || "Cash Customer", address: "" },
+    lines: [{ description: `Payment received — ${detail.purposeLabel}${detail.reference ? ` (${detail.reference})` : ""}`, quantity: 1, unit: "-", rate: amount, taxableValue: amount, total: amount }],
+    subtotal: amount,
+    taxableTotal: amount,
+    cgstTotal: 0,
+    sgstTotal: 0,
+    igstTotal: 0,
+    grandTotal: amount,
+    paymentTerms: `Received via ${detail.direction === "CASH_IN" ? "Cash" : "Bank Transfer"}${detail.treasury ? ` — ${detail.treasury.name} (${detail.treasury.kind})` : ""}`,
+    notes: `Voucher / Reference: ${detail.transactionNumber}`,
   };
 }
 
