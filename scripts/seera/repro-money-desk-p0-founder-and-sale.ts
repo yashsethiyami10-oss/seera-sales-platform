@@ -69,12 +69,19 @@ async function main() {
     idempotencyKey: `p0-sale-existing-${suffix}`,
   });
   check("scenario A transaction POSTED", txnA.status === "POSTED");
-  const refsA = (txnA.downstreamRefs ?? {}) as { retailerId?: string; orderId?: string };
+  const refsA = (txnA.downstreamRefs ?? {}) as { retailerId?: string; orderId?: string; invoiceSkippedReason?: string };
   check("scenario A reused the SAME retailerId (no new retailer)", refsA.retailerId === preExisting.id);
   if (refsA.orderId) createdOrderIds.push(refsA.orderId);
   createdMoneyDeskIds.push(txnA.id);
   const retailerCountA = await prisma.seeraRetailer.count({ where: { businessName: preExisting.businessName } });
   check("exactly ONE retailer exists with this business name after the sale", retailerCountA === 1);
+  // Real bug found and fixed this pass: no Company Profile is configured in this script, so
+  // invoice issuance correctly degrades gracefully (invoiceSkippedReason set) — but
+  // createBillingDraft had already committed a real DRAFT document before that failure, and the
+  // old graceful-degrade code never cleaned it up. Confirms it's gone now.
+  check("invoice correctly skipped (no Company Profile configured in this script)", refsA.invoiceSkippedReason === "COMPANY_PROFILE_NOT_CONFIGURED");
+  const orphanedDraftA = await prisma.seeraCommercialDocument.findUnique({ where: { idempotencyKey: `p0-sale-existing-${suffix}:invoice` } });
+  check("no orphaned DRAFT invoice document was left behind (real cleanup-on-skip fix)", orphanedDraftA === null);
 
   // ---- Scenario B: new NAMED customer -> exactly one retailer created, inline ----
   console.log("\n=== Scenario B: new named customer created inline ===");
@@ -95,6 +102,8 @@ async function main() {
   if (refsB.retailerId) createdRetailerIds.push(refsB.retailerId);
   if (refsB.orderId) createdOrderIds.push(refsB.orderId);
   createdMoneyDeskIds.push(txnB.id);
+  const orphanedDraftB = await prisma.seeraCommercialDocument.findUnique({ where: { idempotencyKey: `p0-sale-new-${suffix}:invoice` } });
+  check("no orphaned DRAFT invoice document was left behind for scenario B either", orphanedDraftB === null);
   const newRetailer = refsB.retailerId ? await prisma.seeraRetailer.findUnique({ where: { id: refsB.retailerId } }) : null;
   check("the new retailer's businessName matches the typed customer name", newRetailer?.businessName === newName);
   const retailerCountB = await prisma.seeraRetailer.count({ where: { businessName: newName } });

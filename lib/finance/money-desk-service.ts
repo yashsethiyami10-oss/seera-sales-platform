@@ -720,6 +720,15 @@ const HANDLERS: Record<string, Handler> = {
       // processMoneyDeskTransaction's own existing catch, which records failureReason and leaves
       // the transaction in POSTING ("Needs Attention") for honest investigation.
       if (error instanceof FoundationError && error.code === "VERIFIED_BILLING_PROFILE_REQUIRED") {
+        // Real bug found and fixed this pass: createBillingDraft above ALREADY committed a real
+        // DRAFT SeeraCommercialDocument row before issueBillingDraft's profile check failed — every
+        // prior graceful-degrade here silently left that DRAFT behind forever (found via a TEST DB
+        // baseline sweep turning up recurring orphaned "DRAFT-..." documents all session). A never-
+        // issued, orphaned draft is safe to remove outright — nothing else references it (no
+        // FinancialEntry/journal was ever posted for it, LEDGER_TYPES posting only happens AFTER
+        // the profile check this branch failed on).
+        const orphanedDraft = await db.seeraCommercialDocument.findUnique({ where: { idempotencyKey: `${txn.idempotencyKey}:invoice` } });
+        if (orphanedDraft && orphanedDraft.status === "DRAFT") await db.seeraCommercialDocument.delete({ where: { id: orphanedDraft.id } }).catch(() => {});
         operationalLog("warn", "money_desk.sale.invoice_skipped_no_company_profile", { actorId, transactionId: txn.id, retailerId, orderId: order.id });
         return { retailerId, orderId: order.id, invoiceSkippedReason: "COMPANY_PROFILE_NOT_CONFIGURED" };
       }

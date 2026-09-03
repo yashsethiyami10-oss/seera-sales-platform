@@ -94,7 +94,7 @@ export async function createVendorBill(
     const posted = await tx.seeraVendorBill.update({ where: { id: bill.id }, data: { journalId: journal.id } });
     await recordAudit(tx, { actorId, action: "finance.vendor_bill.created", entityType: "SeeraVendorBill", entityId: bill.id, afterState: { vendorId: input.vendorId, grossAmount } });
     return posted;
-  });
+  }, { timeout: 15_000 }); // Same proven fix as recordVendorPayment/issueBillingDraft/reverseJournal/postJournal this pass — reproduced hitting Prisma's bare 5000ms default under real Neon latency.
 }
 
 // Money Desk 2.0 (Part 16) — Purchase Bill as a real professional document, reusing the SAME

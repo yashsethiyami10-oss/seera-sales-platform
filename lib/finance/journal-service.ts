@@ -97,7 +97,13 @@ export async function postJournal(db: PrismaClient, actorId: string, input: Post
   // vendor bill approval, etc.) whose own action already required its own
   // permission — it is not re-gated behind journal:post a second time.
   if (input.sourceType === "MANUAL") await authorize(db, { actorId, permission: "journal:post" });
-  return db.$transaction((tx) => postJournalInTx(tx, actorId, input));
+  // Widened timeout (same proven fix already applied to recordVendorPayment/issueBillingDraft/
+  // reverseJournal this pass) — this is the single most foundational, most widely-called journal-
+  // posting entry point in the whole system (recordMoneyIn, recordMoneyOut, the ADJUSTMENT
+  // handler, and more all route through it); reproduced hitting Prisma's bare 5000ms default under
+  // real Neon latency this session via one of its callers (Money Desk's editMoneyDeskTransaction ->
+  // createMoneyDeskTransaction -> recordMoneyIn -> postJournal chain).
+  return db.$transaction((tx) => postJournalInTx(tx, actorId, input), { timeout: 15_000 });
 }
 
 // Mirrors the existing party-ledger reverseLedgerEntry() segregation-of-duties
@@ -107,6 +113,11 @@ export async function postJournal(db: PrismaClient, actorId: string, input: Post
 export async function reverseJournal(db: PrismaClient, actorId: string, journalId: string, input: { reason: string; idempotencyKey: string; approverId: string }) {
   await authorize(db, { actorId, permission: "journal:reverse" });
   if (input.approverId !== actorId) throw new FoundationError("APPROVER_IDENTITY_MISMATCH", "The signed-in approver must own the decision", 403);
+  // Widened timeout (same proven fix already applied to recordVendorPayment and issueBillingDraft
+  // this pass) — this transaction does 5+ real round trips (original journal lookup with lines,
+  // idempotency check, two period lookups, reversal create with nested line inserts, original
+  // update, audit) and was reproduced hitting Prisma's bare 5000ms default 3 times in a row under
+  // real Neon latency this session, always at this exact call site.
   return db.$transaction(async (tx) => {
     const original = await tx.seeraJournalEntry.findUniqueOrThrow({ where: { id: journalId }, include: { lines: true } });
     // P0 Money Desk architecture correction: a genuine Founder (system:super_admin) is the same
@@ -146,7 +157,7 @@ export async function reverseJournal(db: PrismaClient, actorId: string, journalI
     await tx.seeraJournalEntry.update({ where: { id: original.id }, data: { status: "REVERSED", reversedAt: new Date() } });
     await recordAudit(tx, { actorId, action: "finance.journal.reversed", entityType: "SeeraJournalEntry", entityId: original.id, afterState: { reversalId: reversal.id, reason: input.reason } });
     return reversal;
-  });
+  }, { timeout: 15_000 });
 }
 
 export async function generalLedger(db: PrismaClient, actorId: string, input: { accountId: string; from?: Date; to?: Date }) {
