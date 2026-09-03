@@ -294,6 +294,38 @@ export async function voidMoneyDeskTransaction(db: PrismaClient, actorId: string
     );
   const { reverseJournal } = await import("./journal-service");
   await reverseJournal(db, actorId, refs.journalId, { reason: input.reason, idempotencyKey: `${txn.idempotencyKey}:void`, approverId: actorId });
+  // Mirror-reverse the P0-5 INSTITUTIONAL_RECEIPT SeeraFinancialEntry (retailer ledger rail) if this
+  // transaction created one — the journal reversal above only fixes the treasury/chart-of-accounts
+  // rail; without this, a voided receipt would still show as permanently received on the retailer's
+  // ledger. Same "original preserved + new offsetting entry" pattern as reverseJournal itself.
+  const originalEntry = await db.seeraFinancialEntry.findUnique({ where: { idempotencyKey: `${txn.idempotencyKey}:financial_entry` } });
+  if (originalEntry && !originalEntry.reversedAt) {
+    const reversalIdempotencyKey = `${txn.idempotencyKey}:financial_entry:void`;
+    const existingReversal = await db.seeraFinancialEntry.findUnique({ where: { idempotencyKey: reversalIdempotencyKey } });
+    if (!existingReversal) {
+      await db.$transaction([
+        db.seeraFinancialEntry.create({
+          data: {
+            entryNumber: `${originalEntry.entryNumber}-VOID`,
+            type: "REVERSAL",
+            status: "POSTED",
+            debitPartyType: originalEntry.creditPartyType,
+            debitPartyId: originalEntry.creditPartyId,
+            creditPartyType: originalEntry.debitPartyType,
+            creditPartyId: originalEntry.debitPartyId,
+            amount: originalEntry.amount,
+            reason: `Void — ${input.reason}`,
+            originalEntryId: originalEntry.id,
+            commercialSnapshot: { transactionNumber: txn.transactionNumber, voidedEntryId: originalEntry.id },
+            actorId,
+            idempotencyKey: reversalIdempotencyKey,
+            postedAt: new Date(),
+          },
+        }),
+        db.seeraFinancialEntry.update({ where: { id: originalEntry.id }, data: { reversedAt: new Date() } }),
+      ]);
+    }
+  }
   const voided = await db.seeraMoneyDeskTransaction.update({ where: { id: transactionId }, data: { status: "VOIDED", voidedById: actorId, voidedAt: new Date(), voidReason: input.reason } });
   await recordAudit(db, { actorId, action: "money_desk.transaction.voided", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, reason: input.reason });
   return voided;
@@ -361,7 +393,7 @@ export async function editMoneyDeskTransaction(
 type Handler = (
   db: PrismaClient,
   actorId: string,
-  txn: { id: string; idempotencyKey: string; amount: unknown; date: Date; treasuryAccountId: string | null; counterpartyId: string | null; counterpartyName: string | null; description: string | null; documentFileId: string | null; requestedById: string },
+  txn: { id: string; idempotencyKey: string; transactionNumber: string; amount: unknown; date: Date; treasuryAccountId: string | null; counterpartyId: string | null; counterpartyName: string | null; description: string | null; documentFileId: string | null; requestedById: string },
   formData: Record<string, unknown>,
   purposeCode: string,
 ) => Promise<Record<string, unknown>>;
@@ -443,6 +475,46 @@ const HANDLERS: Record<string, Handler> = {
       reference: txn.description ?? txn.counterpartyName ?? undefined,
       idempotencyKey: txn.idempotencyKey,
     });
+    // P0-5 (Money Desk 2.0 Final Gap Closure — E2E reconciliation) — closes a real, pre-existing
+    // gap discovered while proving the Customer Sale scenario end to end: recordMoneyIn above posts
+    // ONLY to the journal/chart-of-accounts rail (SeeraJournalEntry/Line), but partyLedgerStatement's
+    // retailerLedger() reads EXCLUSIVELY from SeeraFinancialEntry (the SAME rail issueBillingDraft
+    // posts a Sales Invoice's receivable to). Before this fix there was NO code path anywhere that
+    // ever created a "PAYMENT"-type SeeraFinancialEntry — a receipt against a named Retail Customer
+    // could never reduce their invoice-based ledger balance, no matter how it was recorded. Mirrors
+    // issueBillingDraft's own invoice posting exactly, just with debit/credit swapped (a receipt
+    // reduces what the retailer owes, instead of increasing it). Deliberately scoped to REAL,
+    // resolvable SeeraRetailer counterparties only — an unallocated advance (no known party) or a
+    // CUSTOMER counterparty that isn't actually a retailer master record posts to the journal only,
+    // exactly as before; nothing is ever fabricated.
+    if (hasKnownParty) {
+      const retailer = await db.seeraRetailer.findUnique({ where: { id: txn.counterpartyId! }, select: { id: true } });
+      if (retailer) {
+        // processMoneyDeskTransaction is documented as safe to call more than once on the same
+        // transaction (retry after a transient failure) — check-then-create rather than a bare
+        // .create() so a retry never throws on the idempotencyKey's unique constraint.
+        const existingEntry = await db.seeraFinancialEntry.findUnique({ where: { idempotencyKey: `${txn.idempotencyKey}:financial_entry` } });
+        if (!existingEntry) {
+          await db.seeraFinancialEntry.create({
+            data: {
+              entryNumber: `MD-PMT-${txn.transactionNumber.replace(/[^A-Z0-9]/gi, "")}`,
+              type: "PAYMENT",
+              status: "POSTED",
+              debitPartyType: "COMPANY",
+              debitPartyId: "COMPANY",
+              creditPartyType: "RETAILER",
+              creditPartyId: retailer.id,
+              amount: Number(txn.amount),
+              reason: `Money Desk receipt — ${txn.transactionNumber}`,
+              commercialSnapshot: { transactionNumber: txn.transactionNumber, journalId: journal.id },
+              actorId,
+              idempotencyKey: `${txn.idempotencyKey}:financial_entry`,
+              postedAt: new Date(),
+            },
+          });
+        }
+      }
+    }
     return { journalId: journal.id, unallocated: !hasKnownParty };
   },
 
