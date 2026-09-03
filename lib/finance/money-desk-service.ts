@@ -261,6 +261,25 @@ export async function processMoneyDeskTransaction(db: PrismaClient, actorId: str
   }
 }
 
+// P0-8 (Money Desk 2.0 Final Gap Closure) — closes a real gap found while re-testing production
+// for "Data Unavailable": 8 real production transactions were stuck in "Needs Attention" (root
+// cause: the Founder had not yet clicked the existing "BOOTSTRAP QUICK ENTRY CATEGORIES" button in
+// Finance OS Settings — a genuine configuration-missing state, not a code bug), but there was NO
+// way to actually retry them once the missing master data existed — the "Needs Attention" list was
+// purely informational. processMoneyDeskTransaction is already documented safe to call more than
+// once on the same transaction; this is a thin, explicitly-authorized entry point to that same
+// call, never a second posting path.
+export async function retryMoneyDeskTransaction(db: PrismaClient, actorId: string, transactionId: string) {
+  await authorize(db, { actorId, permission: "money_desk:create" });
+  const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
+  if (txn.status !== "POSTING" || !txn.failureReason)
+    throw new FoundationError("MONEY_DESK_NOT_RETRYABLE", "Only a transaction in Needs Attention (POSTING with a failure reason) can be retried", 409);
+  const permissions = await effectivePermissions(db, actorId);
+  if (txn.requestedById !== actorId && !permissions.has("money_desk:approve") && !permissions.has("system:super_admin"))
+    throw new FoundationError("MONEY_DESK_RETRY_NOT_AUTHORIZED", "Only the original requester or an approver may retry a stuck entry", 403);
+  return processMoneyDeskTransaction(db, actorId, transactionId);
+}
+
 // Void/reverse a POSTED transaction. V1 scope, deliberately: only purposes
 // whose handler produced exactly one journal directly (the journal-only
 // purposes — expenses, salary, institutional receipt, adjustment, fixed
@@ -942,6 +961,9 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     canApprove: txn.status === "PENDING_APPROVAL" && txn.requestedById !== actorId && (permissions.has("money_desk:approve") || permissions.has("system:super_admin")),
     canVoid: txn.status === "POSTED" && (permissions.has("money_desk:reverse") || permissions.has("system:super_admin")) && (txn.requestedById !== actorId || permissions.has("system:super_admin")),
     canEdit: txn.requestedById === actorId && permissions.has("system:super_admin") && (txn.status === "POSTED" || txn.status === "PENDING_APPROVAL" || txn.status === "DRAFT"),
+    // P0-8 — a stuck "Needs Attention" entry can be retried by whoever created it, or by anyone
+    // with approval-level authority (mirrors retryMoneyDeskTransaction's own real authorization).
+    canRetry: txn.status === "POSTING" && Boolean(txn.failureReason) && (txn.requestedById === actorId || permissions.has("money_desk:approve") || permissions.has("system:super_admin")),
   };
 }
 

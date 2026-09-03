@@ -219,6 +219,7 @@ export async function OperationalDetail({
           canApprove={detail.canApprove}
           canVoid={detail.canVoid}
           canEdit={detail.canEdit}
+          canRetry={detail.canRetry}
         />
       </>
     );

@@ -20,7 +20,7 @@ import { postOpeningBalances } from "@/lib/finance/opening-balance-service";
 import { lockPeriod, reopenPeriod } from "@/lib/finance/period-service";
 import { createPayrollEntry, accruePayrollEntry, paySalary } from "@/lib/finance/payroll-service";
 import { updateFinanceApprovalPolicy, seedDefaultFinanceApprovalPolicies, decideApproval } from "@/lib/finance/approval-policy-service";
-import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction, editMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
+import { createMoneyDeskTransaction, decideMoneyDeskApproval, voidMoneyDeskTransaction, editMoneyDeskTransaction, retryMoneyDeskTransaction } from "@/lib/finance/money-desk-service";
 import { MONEY_DESK_PURPOSE_CODES } from "@/lib/finance/money-desk-registry";
 import { interpretSmartFinance } from "@/lib/finance/smart-finance/service";
 import { treasuryContext } from "@/lib/finance/smart-finance/context";
@@ -51,7 +51,7 @@ const ACTIONS = [
   "lock-period", "reopen-period",
   "create-payroll-entry", "accrue-payroll-entry", "pay-salary",
   "update-finance-approval-policy", "decide-finance-approval",
-  "money-desk-create", "money-desk-decide-approval", "money-desk-void", "money-desk-edit", "money-desk-smart-interpret",
+  "money-desk-create", "money-desk-decide-approval", "money-desk-void", "money-desk-edit", "money-desk-retry", "money-desk-smart-interpret",
   "money-desk-treasury-context", "money-desk-confirm-other-party", "money-desk-update-other-party",
   "money-desk-set-other-party-active", "money-desk-settle-advance",
   "guided-receipt",
@@ -311,6 +311,11 @@ export async function POST(request: Request) {
       case "money-desk-void": {
         const v = z.object({ transactionId: z.string(), reason: z.string() }).parse(payload);
         result = await voidMoneyDeskTransaction(prisma, user.id, v.transactionId, v);
+        break;
+      }
+      case "money-desk-retry": {
+        const v = z.object({ transactionId: z.string() }).parse(payload);
+        result = await retryMoneyDeskTransaction(prisma, user.id, v.transactionId);
         break;
       }
       case "money-desk-edit": {

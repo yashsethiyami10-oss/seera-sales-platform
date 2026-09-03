@@ -25,6 +25,7 @@ export function MoneyDeskTransactionActions({
   canApprove,
   canVoid,
   canEdit,
+  canRetry,
 }: {
   language: "EN" | "HI";
   transactionId: string;
@@ -32,6 +33,7 @@ export function MoneyDeskTransactionActions({
   canApprove: boolean;
   canVoid: boolean;
   canEdit: boolean;
+  canRetry: boolean;
 }) {
   const hi = language === "HI";
   const router = useRouter();
@@ -64,6 +66,15 @@ export function MoneyDeskTransactionActions({
       .finally(() => setBusy(false));
   }
 
+  function retry() {
+    setBusy(true);
+    setMessage(null);
+    post("money-desk-retry", { transactionId })
+      .then(() => { setMessage({ ok: true, text: hi ? "पुनः प्रयास सफल — पोस्ट किया गया।" : "Retry succeeded — POSTED." }); router.refresh(); })
+      .catch((e) => setMessage({ ok: false, text: e instanceof Error ? e.message : "Retry failed — the underlying issue may still need fixing" }))
+      .finally(() => setBusy(false));
+  }
+
   function submitEdit() {
     if (!editReason.trim()) { setMessage({ ok: false, text: hi ? "कारण आवश्यक है" : "A reason is required" }); return; }
     setBusy(true);
@@ -78,7 +89,7 @@ export function MoneyDeskTransactionActions({
       .finally(() => setBusy(false));
   }
 
-  if (!canApprove && !canVoid && !canEdit) return null;
+  if (!canApprove && !canVoid && !canEdit && !canRetry) return null;
 
   return (
     <section className={styles.panel}>
@@ -95,6 +106,7 @@ export function MoneyDeskTransactionActions({
           </>
         )}
         {canVoid && <button type="button" className={styles.secondaryBig} disabled={busy} onClick={voidTransaction}>{hi ? "रद्द करें (वॉइड)" : "VOID"}</button>}
+        {canRetry && <button type="button" className={styles.primaryBig} disabled={busy} onClick={retry}>{busy ? (hi ? "पुनः प्रयास हो रहा है…" : "Retrying…") : (hi ? "पुनः प्रयास करें" : "RETRY")}</button>}
         {canEdit && !editing && <button type="button" className={styles.secondaryBig} disabled={busy} onClick={() => setEditing(true)}>{hi ? "संपादित / सुधार करें" : "EDIT / CORRECT"}</button>}
       </div>
       {canEdit && editing && (
