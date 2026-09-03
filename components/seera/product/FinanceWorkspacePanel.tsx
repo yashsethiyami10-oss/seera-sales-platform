@@ -1791,9 +1791,13 @@ function CompanyProfileSection() {
       <button type="button" disabled={busy} onClick={save} style={{ marginTop: "0.5rem" }}>{busy ? "SAVING…" : "SAVE COMPANY PROFILE"}</button>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "0.5rem", marginTop: "1rem" }}>
-        <label>Logo{profile?.logoFileId ? " (configured)" : ""}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("LOGO", f); }} /></label>
-        <label>Authorized signature{profile?.signatureFileId ? " (configured)" : ""}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("SIGNATURE", f); }} /></label>
-        <label>Company seal{profile?.sealFileId ? " (configured)" : ""}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("SEAL", f); }} /></label>
+        {/* Part I (Final 100% Completion Execution Contract) — a real image preview, not just a
+            "(configured)" text label. The preview <img> hits company-branding-asset directly
+            (a governed, settings:manage-gated read of the real uploaded bytes) — never a second
+            copy of the file, and it degrades to nothing (no broken-image icon) when unconfigured. */}
+        <label>Logo{profile?.logoFileId && <img src="/api/finance/company-branding-asset?kind=LOGO" alt="Company logo" style={{ display: "block", maxHeight: 60, marginTop: 4 }} />}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("LOGO", f); }} /></label>
+        <label>Authorized signature{profile?.signatureFileId && <img src="/api/finance/company-branding-asset?kind=SIGNATURE" alt="Authorized signature" style={{ display: "block", maxHeight: 60, marginTop: 4 }} />}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("SIGNATURE", f); }} /></label>
+        <label>Company seal{profile?.sealFileId && <img src="/api/finance/company-branding-asset?kind=SEAL" alt="Company seal" style={{ display: "block", maxHeight: 60, marginTop: 4 }} />}<input type="file" accept="image/png,image/jpeg" disabled={busy || !profile} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAsset("SEAL", f); }} /></label>
       </div>
       {!profile && <p className={styles.emptyHint}>Save the legal details above first — signature/seal upload needs a saved profile to attach to.</p>}
     </div>
