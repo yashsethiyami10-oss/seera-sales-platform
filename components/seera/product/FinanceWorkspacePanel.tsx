@@ -5,8 +5,8 @@ import styles from "./WorkflowActions.module.css";
 import type { FinanceWorkspaceData } from "@/lib/finance/founder-workspace-data";
 import { PartyLedgerStatement } from "./PartyLedgerStatement";
 
-async function post(action: string, payload: unknown) {
-  const r = await fetch("/api/finance/company-operations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) });
+async function post(action: string, payload: unknown, url = "/api/finance/company-operations") {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d?.error?.message ?? d?.error?.code ?? "Action failed");
   return d;
@@ -109,6 +109,11 @@ type Ctx = {
   data: FinanceWorkspaceData;
   busy: boolean;
   run: (action: string, payload: unknown, successText: string, next?: () => void) => void;
+  // Founder Approval Hub (Part A) needs to decide Manufacturing Production Orders, which live
+  // behind a different route (/api/manufacturing/operations) than every other action this panel
+  // posts to (/api/finance/company-operations). Same busy/message state, different URL — never a
+  // second decision engine, just a second endpoint for the one existing runMfg action to reach.
+  runMfg: (action: string, payload: unknown, successText: string, next?: () => void) => void;
   router: ReturnType<typeof useRouter>;
 };
 
@@ -117,13 +122,17 @@ type Ctx = {
 // Genuinely administrative/setup functions (Quick Entry, Categories, Employees, Treasury account
 // management, Control, Documents, Search, Settings) live under one "More" overflow instead of
 // competing for primary-pill space — max 6 primary pills, always.
-const PRIMARY_GROUPS = ["overview", "money", "sales", "purchases", "parties", "reports"] as const;
+// Founder Approval Hub (Final Integration mission, Part A/§14) — "the obvious place", not buried
+// under Control. One extra primary pill is accepted specifically for this, per the mission's own
+// explicit emphasis that Approvals deserves prime real estate, not because every group earns one.
+const PRIMARY_GROUPS = ["overview", "approvals", "money", "sales", "purchases", "parties", "reports"] as const;
 const MORE_GROUPS = ["quickentry", "categories", "employees", "treasury", "control", "documents", "search", "settings"] as const;
 const GROUPS = [...PRIMARY_GROUPS, ...MORE_GROUPS] as const;
 type Group = (typeof GROUPS)[number];
-const GROUP_LABEL: Record<Group, string> = { overview: "Overview", money: "Money", sales: "Sales", purchases: "Purchases", parties: "Parties", reports: "Reports", quickentry: "+ Quick Entry", categories: "Categories", employees: "Employees", treasury: "Treasury Accounts", control: "Control", documents: "Documents", search: "Search", settings: "Settings" };
+const GROUP_LABEL: Record<Group, string> = { overview: "Overview", approvals: "Approvals", money: "Money", sales: "Sales", purchases: "Purchases", parties: "Parties", reports: "Reports", quickentry: "+ Quick Entry", categories: "Categories", employees: "Employees", treasury: "Treasury Accounts", control: "Control", documents: "Documents", search: "Search", settings: "Settings" };
 const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
   overview: [],
+  approvals: [],
   money: [{ key: "moneyin", label: "Money In" }, { key: "moneyout", label: "Money Out" }, { key: "transfer", label: "Transfer" }, { key: "statement", label: "Statement Import" }, { key: "reconcile", label: "Reconciliation" }, { key: "journals", label: "Recent Journals" }],
   sales: [{ key: "invoices", label: "Invoices" }, { key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledgers" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
   purchases: [{ key: "vendors", label: "Purchase Bills & Vendors" }, { key: "expenses", label: "Expenses" }, { key: "recurring", label: "Recurring Expenses" }, { key: "payroll", label: "Payroll" }, { key: "marketing", label: "Marketing Spend" }],
@@ -133,7 +142,7 @@ const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
   categories: [],
   employees: [],
   treasury: [],
-  control: [{ key: "budgets", label: "Budgets" }, { key: "approvals", label: "Approvals" }, { key: "capital", label: "Capital & Drawings" }, { key: "loans", label: "Loans" }, { key: "assets", label: "Fixed Assets" }, { key: "period", label: "Period Close" }],
+  control: [{ key: "budgets", label: "Budgets" }, { key: "capital", label: "Capital & Drawings" }, { key: "loans", label: "Loans" }, { key: "assets", label: "Fixed Assets" }, { key: "period", label: "Period Close" }],
   documents: [],
   search: [],
   settings: [],
@@ -164,7 +173,15 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
       .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Action failed" }))
       .finally(() => setBusy(false));
   }
-  const ctx: Ctx = { portal, isFounder, data, busy, run, router };
+  function runMfg(action: string, payload: unknown, successText: string, next?: () => void) {
+    setBusy(true);
+    setMessage(null);
+    post(action, payload, "/api/manufacturing/operations")
+      .then(() => { setMessage({ ok: true, text: successText }); router.refresh(); next?.(); })
+      .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Action failed" }))
+      .finally(() => setBusy(false));
+  }
+  const ctx: Ctx = { portal, isFounder, data, busy, run, runMfg, router };
 
   function jump(g: Group, s: string) { setGroup(g); setSection(s); setMoreOpen(false); }
 
@@ -233,8 +250,8 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
         {group === "purchases" && section === "payroll" && <PayrollSection ctx={ctx} />}
         {group === "purchases" && section === "marketing" && <MarketingSection />}
         {group === "parties" && <PartiesSection portal={portal} jump={jump} />}
+        {group === "approvals" && <ApprovalsSection ctx={ctx} />}
         {group === "control" && section === "budgets" && <BudgetsSection ctx={ctx} />}
-        {group === "control" && section === "approvals" && <ApprovalsSection ctx={ctx} />}
         {group === "control" && section === "capital" && <CapitalSection ctx={ctx} />}
         {group === "control" && section === "loans" && <LoansSection ctx={ctx} />}
         {group === "control" && section === "assets" && <AssetsSection ctx={ctx} />}
@@ -1544,31 +1561,112 @@ function BudgetsSection({ ctx }: { ctx: Ctx }) {
   );
 }
 
+// Founder Approval Hub (Final Integration mission, Part A) — ONE screen consolidating every
+// pending-approval queue that already exists across the business, never a second approval engine:
+// Finance/Expense approvals post through SeeraApprovalItem + decideApproval (unchanged), Money Desk
+// approvals through decideMoneyDeskApproval (unchanged), Manufacturing Production Orders through
+// approveProductionOrder (unchanged). Payroll and Vendor Bills have no approval-gate concept in this
+// codebase at all (confirmed by trace — straight-line, permission-gated actions with no PENDING
+// status), so they are correctly absent here rather than shown as a fake category.
 function ApprovalsSection({ ctx }: { ctx: Ctx }) {
-  const { data, run, busy } = ctx;
+  const { data, run, runMfg, busy } = ctx;
+  const expenseItems = data.approvalQueue ?? [];
+  const moneyDeskItems = data.moneyDeskPendingApprovals ?? [];
+  const productionItems = data.productionOrdersPendingApproval ?? [];
+  const totalPending = expenseItems.length + moneyDeskItems.length + productionItems.length;
   return (
     <div>
-      <div className={styles.tableWrap}>
-        <table>
-          <thead><tr><th>Type</th><th>Requested by</th><th>Amount</th><th>Reason</th><th>Action</th></tr></thead>
-          <tbody>
-            {(data.approvalQueue ?? []).length === 0 && <tr><td colSpan={5}>No pending Finance approvals.</td></tr>}
-            {(data.approvalQueue ?? []).map((a) => {
-              const req = a.request as { amount?: number; reason?: string };
-              return (
-                <tr key={a.id}>
-                  <td>{a.type.replace("FINANCE_", "")}</td><td>{a.requestedById}</td><td>{req.amount ? money(req.amount) : "—"}</td><td>{req.reason ?? "—"}</td>
+      <p>
+        {totalPending === 0
+          ? "No pending approvals across Finance, Money Desk or Manufacturing."
+          : `${totalPending} item(s) awaiting your decision, across Finance, Money Desk and Manufacturing.`}
+      </p>
+
+      <div className={styles.financeSection}>
+        <div className={styles.financeSectionHeader}><h3>Finance — Expenses</h3><span className={styles.statusPill}>{expenseItems.length} pending</span></div>
+        <div className={styles.tableWrap}>
+          <table>
+            <thead><tr><th>Type</th><th>Requested by</th><th>Amount</th><th>Reason</th><th>Action</th></tr></thead>
+            <tbody>
+              {expenseItems.length === 0 && <tr><td colSpan={5}>No pending Finance approvals.</td></tr>}
+              {expenseItems.map((a) => {
+                const req = a.request as { amount?: number; reason?: string };
+                return (
+                  <tr key={a.id}>
+                    <td>{a.type.replace("FINANCE_", "")}</td>
+                    <td>{(a as unknown as { requestedByName?: string }).requestedByName ?? a.requestedById}</td>
+                    <td>{req.amount ? money(req.amount) : "—"}</td>
+                    <td>{req.reason ?? "—"}</td>
+                    <td>
+                      <button type="button" disabled={busy} onClick={() => run("decide-finance-approval", { approvalId: a.id, decision: "APPROVED", reason: "Approved" }, "Approved.")}>APPROVE</button>{" "}
+                      <button type="button" disabled={busy} onClick={() => run("decide-finance-approval", { approvalId: a.id, decision: "REJECTED", reason: "Rejected" }, "Rejected.")}>REJECT</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p>Expense approvals can also be decided directly from Purchases → Expenses; this is the same queue, just consolidated here.</p>
+      </div>
+
+      <div className={styles.financeSection}>
+        <div className={styles.financeSectionHeader}><h3>Money Desk</h3><span className={styles.statusPill}>{moneyDeskItems.length} pending</span></div>
+        <div className={styles.tableWrap}>
+          <table>
+            <thead><tr><th>Reference</th><th>Purpose</th><th>Party</th><th>Requested by</th><th>Amount</th><th>Action</th></tr></thead>
+            <tbody>
+              {moneyDeskItems.length === 0 && <tr><td colSpan={6}>No pending Money Desk approvals.</td></tr>}
+              {moneyDeskItems.map((t) => (
+                <tr key={t.id}>
+                  <td>{t.transactionNumber}</td>
+                  <td>{t.purposeCode}</td>
+                  <td>{t.counterpartyName ?? "—"}</td>
+                  <td>{(t as unknown as { requestedByName?: string }).requestedByName ?? t.requestedById}</td>
+                  <td>{money(t.amount)}</td>
                   <td>
-                    <button type="button" disabled={busy} onClick={() => run("decide-finance-approval", { approvalId: a.id, decision: "APPROVED", reason: "Approved" }, "Approved.")}>APPROVE</button>{" "}
-                    <button type="button" disabled={busy} onClick={() => run("decide-finance-approval", { approvalId: a.id, decision: "REJECTED", reason: "Rejected" }, "Rejected.")}>REJECT</button>
+                    {t.isSelf ? (
+                      <span title="You requested this entry — a different approver must decide it.">Requires independent approver</span>
+                    ) : (
+                      <>
+                        <button type="button" disabled={busy} onClick={() => run("money-desk-decide-approval", { transactionId: t.id, decision: "APPROVED", reason: "Approved" }, "Approved.")}>APPROVE</button>{" "}
+                        <button type="button" disabled={busy} onClick={() => run("money-desk-decide-approval", { transactionId: t.id, decision: "REJECTED", reason: "Rejected" }, "Rejected.")}>REJECT</button>
+                      </>
+                    )}
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p>Full detail, ledger impact and void/edit actions live in Money Desk itself; this queue is for the approve/reject decision only.</p>
       </div>
-      <p>Expense approvals are usually decided directly from Purchases → Expenses; this queue also covers other Finance approval categories as they're configured to require approval.</p>
+
+      <div className={styles.financeSection}>
+        <div className={styles.financeSectionHeader}><h3>Manufacturing — Production Orders</h3><span className={styles.statusPill}>{productionItems.length} pending</span></div>
+        <div className={styles.tableWrap}>
+          <table>
+            <thead><tr><th>Order</th><th>Product</th><th>Planned batches</th><th>Planned output</th><th>Production date</th><th>Created by</th><th>Action</th></tr></thead>
+            <tbody>
+              {productionItems.length === 0 && <tr><td colSpan={7}>No pending Production Order approvals.</td></tr>}
+              {productionItems.map((o) => (
+                <tr key={o.id}>
+                  <td>{o.orderNumber}</td>
+                  <td>{(o as unknown as { productName?: string }).productName ?? o.productSkuId}</td>
+                  <td>{o.plannedBatches}</td>
+                  <td>{Number(o.plannedOutput)}</td>
+                  <td>{fmtDate(o.productionDate)}</td>
+                  <td>{(o as unknown as { createdByName?: string }).createdByName ?? o.createdById}</td>
+                  <td>
+                    <button type="button" disabled={busy} onClick={() => runMfg("approve-production-order", { orderId: o.id }, "Production order approved.")}>APPROVE</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p>A rejected/held Production Order is cancelled from Manufacturing → Production directly, with a reason — not from this summary view.</p>
+      </div>
     </div>
   );
 }

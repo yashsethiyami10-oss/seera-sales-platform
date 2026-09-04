@@ -16,6 +16,8 @@ import { profitAndLoss, balanceSheet, cashFlow, cashForecast, gstControlCenter }
 import { listRecurringExpensesDue, listRecurringTemplates } from "./expense-service";
 import { financeApprovalQueue } from "./approval-policy-service";
 import { financialIntelligenceFeed } from "./intelligence-service";
+import { moneyDeskHome } from "./money-desk-service";
+import { listProductionOrders } from "@/lib/manufacturing/production-order-service";
 
 // Every capability this feeds a UI tab is independently permission-gated
 // (each underlying service call still calls its own authorize()) — this just
@@ -86,6 +88,8 @@ export async function financeWorkspaceData(db: PrismaClient, actorId: string) {
     recurringTemplates,
     approvalQueue,
     intelligence,
+    moneyDeskPendingApprovals,
+    productionOrdersPendingApproval,
   ] = await Promise.all([
     tryOrNull(() => listAccounts(db, actorId)),
     tryOrNull(() => listDimensions(db, actorId)),
@@ -114,6 +118,14 @@ export async function financeWorkspaceData(db: PrismaClient, actorId: string) {
     tryOrNull(() => listRecurringTemplates(db, actorId)),
     tryOrNull(() => financeApprovalQueue(db, actorId)),
     tryOrNull(() => financialIntelligenceFeed(db, actorId)),
+    // Founder Approval Hub (Final Integration mission, Part A) — reuses the SAME canonical reads
+    // Money Desk's own Approvals tab and Manufacturing's own order list already use; never a second
+    // approval engine. moneyDeskPendingApprovals pulls the full moneyDeskHome() result (a real,
+    // known cost, accepted here since this is a Founder-only, low-traffic screen) purely for its
+    // .pendingApprovals slice — the KPIs/recent-transactions it also computes are simply unused by
+    // this caller, not recomputed differently.
+    tryOrNull(() => moneyDeskHome(db, actorId).then((h) => h.pendingApprovals)),
+    tryOrNull(() => listProductionOrders(db, actorId, { status: "DRAFT" })),
   ]);
 
   // §6/§7 — the real, canonical current balance per Treasury Account (POSTED journal lines only,
@@ -125,7 +137,37 @@ export async function financeWorkspaceData(db: PrismaClient, actorId: string) {
     ? Object.fromEntries(await treasuryCurrentBalances(db, allTreasuryAccounts.map((a) => a.id)))
     : {};
 
-  return serializeDecimals({ chartOfAccounts, dimensions, treasuryAccounts, allTreasuryAccounts, treasuryBalances, vendors, payables, expenseCategories, pendingExpenseApprovals, recentExpenses, budgets, loans, fixedAssets, capital, openingBalances, approvalPolicies, periods, periodChecklist, trial, pnl, bs, cf, forecast30, gst, periodCode, recurringDue, recurringTemplates, approvalQueue, intelligence });
+  // Same "never show a raw id as the primary label" rule, applied to Money Desk's own pending-
+  // approvals list — moneyDeskHome() itself never resolves requestedById to a name for this list
+  // (only its single-transaction detail view does), so the Approval Hub would otherwise show a bare
+  // cuid here too.
+  const moneyDeskPendingApprovalsWithNames = moneyDeskPendingApprovals
+    ? await (async () => {
+        const requesterIds = [...new Set(moneyDeskPendingApprovals.map((t) => t.requestedById))];
+        const requesters = requesterIds.length ? await db.user.findMany({ where: { id: { in: requesterIds } }, select: { id: true, name: true, email: true } }) : [];
+        const nameById = new Map(requesters.map((u) => [u.id, u.name ?? u.email]));
+        return moneyDeskPendingApprovals.map((t) => ({ ...t, requestedByName: nameById.get(t.requestedById) ?? t.requestedById }));
+      })()
+    : null;
+
+  // Part A/§9 (same "never show a raw id as the primary label" rule applied to requestedByName
+  // above) — resolve each pending Production Order's SKU id to its real product name/code for the
+  // Approval Hub, instead of the hub showing a bare cuid.
+  const productionOrdersWithProductNames = productionOrdersPendingApproval
+    ? await (async () => {
+        const skuIds = [...new Set(productionOrdersPendingApproval.map((o) => o.productSkuId))];
+        const creatorIds = [...new Set(productionOrdersPendingApproval.map((o) => o.createdById))];
+        const [skus, creators] = await Promise.all([
+          skuIds.length ? db.seeraSku.findMany({ where: { id: { in: skuIds } }, select: { id: true, productName: true, code: true } }) : Promise.resolve([]),
+          creatorIds.length ? db.user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, name: true, email: true } }) : Promise.resolve([]),
+        ]);
+        const skuById = new Map(skus.map((s) => [s.id, s]));
+        const creatorById = new Map(creators.map((u) => [u.id, u.name ?? u.email]));
+        return productionOrdersPendingApproval.map((o) => ({ ...o, productName: skuById.get(o.productSkuId)?.productName ?? o.productSkuId, productCode: skuById.get(o.productSkuId)?.code ?? null, createdByName: creatorById.get(o.createdById) ?? o.createdById }));
+      })()
+    : null;
+
+  return serializeDecimals({ chartOfAccounts, dimensions, treasuryAccounts, allTreasuryAccounts, treasuryBalances, vendors, payables, expenseCategories, pendingExpenseApprovals, recentExpenses, budgets, loans, fixedAssets, capital, openingBalances, approvalPolicies, periods, periodChecklist, trial, pnl, bs, cf, forecast30, gst, periodCode, recurringDue, recurringTemplates, approvalQueue, intelligence, moneyDeskPendingApprovals: moneyDeskPendingApprovalsWithNames, productionOrdersPendingApproval: productionOrdersWithProductNames });
 }
 
 export type FinanceWorkspaceData = Awaited<ReturnType<typeof financeWorkspaceData>>;

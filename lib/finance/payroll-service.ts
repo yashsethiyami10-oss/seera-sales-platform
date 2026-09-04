@@ -48,6 +48,9 @@ export async function accruePayrollEntry(db: PrismaClient, actorId: string, entr
   const entry = await db.seeraPayrollEntry.findUniqueOrThrow({ where: { id: entryId } });
   if (entry.journalId) throw new FoundationError("PAYROLL_ALREADY_ACCRUED", "This payroll entry was already accrued", 409);
   const [year, monthNum] = parseMonth(entry.month);
+  // Final Integration mission, Part W — same real bare-5000ms-timeout bug class found and fixed
+  // three times already this session (postExpense, createBeatPlan/publishBeatPlan): real multi-
+  // step work (journal post + entry update + audit) inside one transaction, no explicit timeout.
   return db.$transaction(async (tx) => {
     const journal = await postJournalInTx(tx, actorId, {
       date: new Date(Date.UTC(year, monthNum - 1, 28)),
@@ -63,7 +66,7 @@ export async function accruePayrollEntry(db: PrismaClient, actorId: string, entr
     const updated = await tx.seeraPayrollEntry.update({ where: { id: entryId }, data: { journalId: journal.id } });
     await recordAudit(tx, { actorId, action: "finance.payroll.accrued", entityType: "SeeraPayrollEntry", entityId: entryId, afterState: { journalId: journal.id } });
     return updated;
-  });
+  }, { timeout: 15_000 });
 }
 
 export async function paySalary(db: PrismaClient, actorId: string, entryId: string, input: { treasuryAccountId: string; treasuryAccountCoaCode: string; paymentDate: Date; idempotencyKey: string }) {
@@ -86,7 +89,7 @@ export async function paySalary(db: PrismaClient, actorId: string, entryId: stri
     const updated = await tx.seeraPayrollEntry.update({ where: { id: entryId }, data: { status: "PAID", paymentDate: input.paymentDate, treasuryAccountId: input.treasuryAccountId } });
     await recordAudit(tx, { actorId, action: "finance.payroll.paid", entityType: "SeeraPayrollEntry", entityId: entryId, afterState: { paymentDate: input.paymentDate } });
     return updated;
-  });
+  }, { timeout: 15_000 });
 }
 
 export const payrollNumber = financeNumberFor;

@@ -57,6 +57,10 @@ export async function recordDailyProduction(
   const bom = await db.seeraBom.findUniqueOrThrow({ where: { id: order.bomId }, include: { lines: true } });
   const packagingBom = order.packagingBomId ? await db.seeraPackagingBom.findUnique({ where: { id: order.packagingBomId }, include: { lines: true } }) : null;
 
+  // Final Integration mission, Part W — the single riskiest bare-5000ms-timeout candidate found
+  // this pass: loops over every BOM line (2 movements + 1 event each) AND every packaging BOM
+  // line, plus batch/FG-receipt/order writes, all in one transaction — genuinely scales with
+  // recipe size. Same fix already applied 6 times this session at other real call sites.
   return db.$transaction(async (tx) => {
     const batch = await tx.seeraProductionBatch.create({
       data: { batchNumber: mfgNumberFor("BATCH", input.idempotencyKey), productionOrderId: order.id, productSkuId: order.productSkuId, bomId: order.bomId, bomVersion: order.bomVersion, sopId: order.sopId, date: input.date, shiftId: input.shiftId, machineId: input.machineId, supervisorId: input.supervisorId, operatorIds: input.operatorIds ?? [], plannedQuantity: Number(bom.standardBatchSize) * input.batchCount, actualOutputQuantity: input.actualOutputQuantity, status: "AWAITING_QC", qcStatus: "PENDING", idempotencyKey: input.idempotencyKey },
@@ -97,7 +101,7 @@ export async function recordDailyProduction(
 
     await recordAudit(tx, { actorId, action: "mfg.batch.recorded", entityType: "SeeraProductionBatch", entityId: batch.id, afterState: { batchNumber: batch.batchNumber, actualOutputQuantity: input.actualOutputQuantity, yieldPct } });
     return { ...updatedBatch, fgReceiptId: fgReceipt.id };
-  });
+  }, { timeout: 15_000 });
 }
 
 // Correction path (spec §20): record what was ACTUALLY measured for one

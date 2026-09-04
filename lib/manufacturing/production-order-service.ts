@@ -58,6 +58,10 @@ export async function reserveOrderMaterials(db: PrismaClient, actorId: string, o
   const gate = await materialAvailabilityGate(db, orderId);
   if (!gate.ready) throw new FoundationError("MATERIAL_SHORTAGE", "Insufficient material to reserve this order", 409, { rows: gate.rows });
   const bom = await db.seeraBom.findUniqueOrThrow({ where: { id: order.bomId }, include: { lines: true } });
+  // Final Integration mission, Part W — same bare-5000ms-timeout bug class found (and fixed) 5
+  // times already this session: a loop posting one material movement per BOM line, real work
+  // that scales with recipe size and can legitimately exceed 5s. Production is currently unused
+  // in real production (0 rows) — hardening this before real usage begins.
   return db.$transaction(async (tx) => {
     for (const bl of bom.lines) {
       const quantity = Number(bl.canonicalQuantity) * order.plannedBatches;
@@ -66,7 +70,7 @@ export async function reserveOrderMaterials(db: PrismaClient, actorId: string, o
     const updated = await tx.seeraProductionOrder.update({ where: { id: orderId }, data: { status: "READY" } });
     await recordAudit(tx, { actorId, action: "mfg.production_order.reserved", entityType: "SeeraProductionOrder", entityId: orderId, afterState: { lines: bom.lines.length } });
     return updated;
-  });
+  }, { timeout: 15_000 });
 }
 
 async function releaseOrderReservations(db: PrismaClient, actorId: string, orderId: string) {
@@ -80,7 +84,7 @@ async function releaseOrderReservations(db: PrismaClient, actorId: string, order
       if (releasedKeys.has(reserveKey)) continue;
       await postMaterialMovementInTx(tx, actorId, { materialId: m.materialId, movementType: m.movementType, direction: "RELEASE", quantity: Number(m.quantity), unit: m.unit, canonicalQuantity: Number(m.canonicalQuantity), sourceType: "SeeraProductionOrder", sourceId: order.id, reason: `Reservation released for order ${order.orderNumber}`, idempotencyKey: `${reserveKey}:release` });
     }
-  });
+  }, { timeout: 15_000 });
 }
 
 // Cancellation (spec §63) — releases reservations, never deletes history;

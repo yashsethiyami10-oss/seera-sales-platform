@@ -50,9 +50,17 @@ export async function requestFinanceApproval(db: PrismaClient, requestedById: st
   return true;
 }
 
+// Final Integration mission, Part I/§9 — requestedById was a raw user id with no display name
+// resolution anywhere downstream; enriched here (once, canonically) rather than in every caller,
+// so this and the new Founder Approval Hub both get a real name, never a technical id as the
+// primary label.
 export async function financeApprovalQueue(db: PrismaClient, actorId: string) {
   await authorize(db, { actorId, permission: "expense:approve" });
-  return db.seeraApprovalItem.findMany({ where: { type: { startsWith: "FINANCE_" }, status: "PENDING" }, orderBy: { createdAt: "asc" } });
+  const items = await db.seeraApprovalItem.findMany({ where: { type: { startsWith: "FINANCE_" }, status: "PENDING" }, orderBy: { createdAt: "asc" } });
+  const requesterIds = [...new Set(items.map((i) => i.requestedById))];
+  const requesters = requesterIds.length ? await db.user.findMany({ where: { id: { in: requesterIds } }, select: { id: true, name: true, email: true } }) : [];
+  const nameById = new Map(requesters.map((u) => [u.id, u.name ?? u.email]));
+  return items.map((i) => ({ ...i, requestedByName: nameById.get(i.requestedById) ?? i.requestedById }));
 }
 
 export { decideApproval };
