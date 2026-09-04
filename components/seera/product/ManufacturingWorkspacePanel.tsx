@@ -94,9 +94,17 @@ function DocAttach({ entityType, entityId }: { entityType: string; entityId: str
 
 type Ctx = { portal: string; data: ManufacturingWorkspaceData; busy: boolean; run: (action: string, payload: unknown, successText: string, next?: () => void) => void; router: ReturnType<typeof useRouter>; focusId: string | null; setFocusId: (id: string | null) => void; jump: (g: Group, s: string, focusId?: string) => void };
 
-const GROUPS = ["overview", "production", "formulations", "materials", "quality", "warehouse", "cost", "masters", "search", "reports"] as const;
+// Money Desk + Founder Approvals Integration mission, §15/§29 — same IA principle as the Finance
+// restructure: a compact primary set (max ~6) answering "what do I want to do?", with genuinely
+// administrative/setup functions (Formulations/BOM setup, Cost & Control, Masters, Search) under
+// one "More" overflow — reusing the SAME groupNav/sectionNav/moreMenu CSS built for Finance, for
+// visual consistency across the two workspaces (§29's explicit ask). No section removed, no
+// underlying data/action changed — purely which GROUP a section renders under.
+const PRIMARY_GROUPS = ["overview", "materials", "production", "warehouse", "quality", "reports"] as const;
+const MORE_GROUPS = ["formulations", "cost", "masters", "search"] as const;
+const GROUPS = [...PRIMARY_GROUPS, ...MORE_GROUPS] as const;
 type Group = (typeof GROUPS)[number];
-const GROUP_LABEL: Record<Group, string> = { overview: "Overview", production: "Production", formulations: "Formulations", materials: "Materials", quality: "Quality", warehouse: "Warehouse", cost: "Cost & Control", masters: "Masters", search: "Search", reports: "Reports Center" };
+const GROUP_LABEL: Record<Group, string> = { overview: "Overview", production: "Production", formulations: "Formulations", materials: "Materials", quality: "Quality", warehouse: "Warehouse / Stock", cost: "Cost & Control", masters: "Masters", search: "Search", reports: "Reports" };
 const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
   overview: [],
   production: [{ key: "orders", label: "Production Orders" }, { key: "daily", label: "Daily Production" }, { key: "batches", label: "Batch Traceability" }],
@@ -117,6 +125,7 @@ export function ManufacturingWorkspacePanel({ portal, data }: { portal: string; 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   function run(action: string, payload: unknown, successText: string, next?: () => void) {
     setBusy(true);
@@ -126,7 +135,7 @@ export function ManufacturingWorkspacePanel({ portal, data }: { portal: string; 
   // Shared next-action jump — every "success -> go do the next real thing"
   // link in this panel routes through here, so switching group/section and
   // (optionally) pre-filling a Batch 360 lookup always stays consistent.
-  function jump(g: Group, s: string, jumpFocusId?: string) { if (jumpFocusId) setFocusId(jumpFocusId); setGroup(g); setSection(s); }
+  function jump(g: Group, s: string, jumpFocusId?: string) { if (jumpFocusId) setFocusId(jumpFocusId); setGroup(g); setSection(s); setMoreOpen(false); }
   const ctx: Ctx = { portal, data, busy, run, router, focusId, setFocusId, jump };
   useEffect(() => { setSection(GROUP_SECTIONS[group][0]?.key ?? ""); }, [group]);
 
@@ -141,13 +150,26 @@ export function ManufacturingWorkspacePanel({ portal, data }: { portal: string; 
 
   return (
     <section className={styles.panel}>
-      <div><small>MANUFACTURING</small><h2>Manufacturing OS</h2></div>
-      <div className={styles.inlineActions} role="tablist" aria-label="Manufacturing groups">
-        {GROUPS.map((g) => <button key={g} type="button" onClick={() => setGroup(g)} aria-pressed={group === g} style={{ fontWeight: group === g ? 700 : 400 }}>{GROUP_LABEL[g]}</button>)}
+      <header className={styles.workspaceHeader}>
+        <div>
+          <span className={styles.workspaceEyebrow}>MANUFACTURING</span>
+          <h2>Manufacturing OS</h2>
+        </div>
+      </header>
+      <div className={styles.groupNav} role="tablist" aria-label="Manufacturing groups">
+        {PRIMARY_GROUPS.map((g) => <button key={g} type="button" onClick={() => jump(g, "")} aria-pressed={group === g}>{GROUP_LABEL[g]}</button>)}
+        <div className={styles.moreMenu}>
+          <button type="button" className={styles.moreMenuButton} aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>More {moreOpen ? "▴" : "▾"}</button>
+          {moreOpen && (
+            <div className={styles.moreMenuPanel} role="menu">
+              {MORE_GROUPS.map((g) => <button key={g} type="button" role="menuitem" aria-pressed={group === g} onClick={() => jump(g, "")}>{GROUP_LABEL[g]}</button>)}
+            </div>
+          )}
+        </div>
       </div>
       {GROUP_SECTIONS[group].length > 0 && (
-        <div className={styles.inlineActions} role="tablist" aria-label="Manufacturing sections">
-          {GROUP_SECTIONS[group].map((s) => <button key={s.key} type="button" onClick={() => setSection(s.key)} aria-pressed={section === s.key} style={{ fontWeight: section === s.key ? 700 : 400 }}>{s.label}</button>)}
+        <div className={styles.sectionNav} role="tablist" aria-label="Manufacturing sections">
+          {GROUP_SECTIONS[group].map((s) => <button key={s.key} type="button" onClick={() => setSection(s.key)} aria-pressed={section === s.key}>{s.label}</button>)}
         </div>
       )}
       {message && <p role="status" data-ok={message.ok}>{message.text}</p>}
@@ -161,7 +183,7 @@ export function ManufacturingWorkspacePanel({ portal, data }: { portal: string; 
         {group === "formulations" && section === "sop" && <SopSection ctx={ctx} />}
         {group === "formulations" && section === "product-360" && <Product360Section />}
         {group === "materials" && section === "master" && <MaterialMasterSection ctx={ctx} />}
-        {group === "materials" && section === "stock" && <MaterialStockSection />}
+        {group === "materials" && section === "stock" && <MaterialStockSection ctx={ctx} />}
         {group === "materials" && section === "alerts" && <MaterialAlertsSection ctx={ctx} setGroup={setGroup} />}
         {group === "quality" && section === "queue" && <QcQueueSection ctx={ctx} />}
         {group === "quality" && section === "grn-qc" && <GrnQcSection ctx={ctx} />}
@@ -566,12 +588,21 @@ function MaterialMasterSection({ ctx }: { ctx: Ctx }) {
   );
 }
 
-function MaterialStockSection() {
+function MaterialStockSection({ ctx }: { ctx: Ctx }) {
   const [materialId, setMaterialId] = useState("");
+  const materials = (ctx.data.materials ?? []) as { id: string; name: string; code: string }[];
   const { data: mat360, loading, err } = useReportOnDemand<{ material: { name: string; code: string }; position: { physical: number; reserved: number; qcHold: number; available: number }; lots: { lotNumber: string; expiryDate: string | null }[]; belowReorder: boolean }>("material-360", { materialId }, [materialId], !!materialId);
   return (
     <div>
-      <label>Material ID<input value={materialId} onChange={(e) => setMaterialId(e.target.value)} placeholder="Paste a material ID (from Material Master)" /></label>
+      {/* §16/§29 — a real name-based picker (reusing the SAME material list Material Master
+          already loads), not a raw ID paste field — "technical IDs as primary labels" is exactly
+          what this mission asked to stop doing. */}
+      <label>Material
+        <select value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
+          <option value="">Choose a product / material…</option>
+          {materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}
+        </select>
+      </label>
       {materialId && loading && <p>Loading…</p>}
       {materialId && err && <p role="status" data-ok="false">{err}</p>}
       {materialId && mat360 && (
@@ -1282,7 +1313,7 @@ function StoreWorkspace({ ctx, message }: { ctx: Ctx; message: { ok: boolean; te
       {tab === "issue" && <StoreIssueForm ctx={ctx} />}
       {tab === "return" && <StoreReturnForm ctx={ctx} />}
       {tab === "transfer" && <StoreTransferForm ctx={ctx} />}
-      {tab === "stock" && <MaterialStockSection />}
+      {tab === "stock" && <MaterialStockSection ctx={ctx} />}
       {tab === "lots" && <StoreLotsView ctx={ctx} />}
       {tab === "count" && <StockCountsSection ctx={ctx} />}
     </section>
