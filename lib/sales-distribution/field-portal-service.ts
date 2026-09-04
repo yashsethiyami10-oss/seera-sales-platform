@@ -1148,10 +1148,15 @@ export async function executiveBeat(
       },
       select: { retailerId: true, outcome: true },
     }),
-    // No lifecycle/scope re-check here on purpose — a stop is authoritative published membership;
-    // the retailer's CURRENT record is fetched purely for fresh display fields (name/mobile/
-    // address), never to decide whether it still belongs on this plan.
-    stopRetailerIds.length ? db.seeraRetailer.findMany({ where: { id: { in: stopRetailerIds } } }) : Promise.resolve([]),
+    // A stop's BEAT/TERRITORY/MARKET membership is authoritative and frozen on purpose — the
+    // retailer's CURRENT record is fetched purely for fresh display fields (name/mobile/address),
+    // never to re-derive whether it still belongs on THIS plan by geography. lifecycle is a
+    // different, more foundational concern (§28, Money Desk + Founder Approvals Integration
+    // mission — a real production bug traced to exactly this query): a retailer that has since
+    // been DEACTIVATED/CLOSED/SUSPENDED (data cleanup, or any other real business reason) must
+    // never remain visitable/orderable just because an old plan's stop snapshot still names them —
+    // that's not "the beat changed", it's "this retailer no longer legitimately exists".
+    stopRetailerIds.length ? db.seeraRetailer.findMany({ where: { id: { in: stopRetailerIds }, lifecycle: "ACTIVE" } }) : Promise.resolve([]),
     hasLegacyGeographyMatch
       ? db.seeraRetailer.findMany({
           where: {

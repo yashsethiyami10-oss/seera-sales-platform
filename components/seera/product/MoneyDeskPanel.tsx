@@ -57,8 +57,8 @@ type SupportingData = {
 type TxnRow = { id: string; transactionNumber: string; purposeCode: string; direction: Direction; status: string; amount: string | number; date: string; requestedById: string; counterpartyName: string | null; failureReason: string | null; employeeName?: string | null; territoryName?: string | null; treasuryName?: string | null; source?: string | null };
 type HomeData = {
   recentTransactions: TxnRow[];
-  pendingApprovals: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; requestedById: string; isSelf?: boolean }[];
-  needsAttention: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; failureReason: string | null }[];
+  pendingApprovals: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; requestedById: string; isSelf?: boolean; counterpartyName?: string | null }[];
+  needsAttention: { id: string; transactionNumber: string; purposeCode: string; amount: string | number; failureReason: string | null; counterpartyName?: string | null }[];
   cashBankToday: { treasuryAccountId: string; name: string; kind: string; balance: number; movedToday: number }[];
   kpis?: { cashBalance: number; bankBalance: number; totalCashBank: number; todayInflow: number; todayOutflow: number; receivablesTotal: number; payablesTotal: number; revenueMtd: number | null; expensesMtd: number | null; operatingProfitMtd: number | null };
   canApprove: boolean;
@@ -491,11 +491,11 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
           <strong>{hi ? "अनुमोदन प्रतीक्षित" : "Pending approvals"}</strong>
           <table>
-            <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "राशि" : "Amount"}</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "पार्टी" : "Party"}</th><th>{hi ? "राशि" : "Amount"}</th><th></th></tr></thead>
             <tbody>
               {home.pendingApprovals.map((t) => (
                 <tr key={t.id}>
-                  <td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td>
+                  <td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td><td>{purposeLabel(t.purposeCode)}</td><td>{t.counterpartyName ?? "—"}</td><td>{money(t.amount)}</td>
                   <td>
                     {t.isSelf ? (
                       <span className={styles.emptyHint}>{hi ? "स्वतंत्र अनुमोदन आवश्यक — आपने यह लेनदेन बनाया" : "Requires Independent Approval — you created this transaction"}</span>
@@ -517,9 +517,9 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
           <strong>{hi ? "ध्यान देने योग्य" : "Needs attention"}</strong>
           <table>
-            <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "कारण" : "Reason"}</th></tr></thead>
+            <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "पार्टी" : "Party"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "कारण" : "Reason"}</th></tr></thead>
             <tbody>
-              {home.needsAttention.map((t) => <tr key={t.id}><td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td><td>{purposeLabel(t.purposeCode)}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
+              {home.needsAttention.map((t) => <tr key={t.id}><td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td><td>{purposeLabel(t.purposeCode)}</td><td>{t.counterpartyName ?? "—"}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
             </tbody>
           </table>
         </div>
@@ -572,13 +572,14 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
       <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
         <strong>{hi ? "हाल के लेनदेन" : "Recent transactions"}</strong>
         <table>
-          <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "क्षेत्र" : "Territory"}</th><th>{hi ? "ट्रेजरी" : "Treasury"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "स्थिति" : "Status"}</th></tr></thead>
+          <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "पार्टी" : "Party"}</th><th>{hi ? "कर्मचारी" : "Employee"}</th><th>{hi ? "क्षेत्र" : "Territory"}</th><th>{hi ? "ट्रेजरी" : "Treasury"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "स्थिति" : "Status"}</th></tr></thead>
           <tbody>
-            {home.recentTransactions.length === 0 && <tr><td colSpan={7}>{hi ? "कोई लेनदेन नहीं।" : "No transactions yet."}</td></tr>}
+            {home.recentTransactions.length === 0 && <tr><td colSpan={8}>{hi ? "कोई लेनदेन नहीं।" : "No transactions yet."}</td></tr>}
             {home.recentTransactions.map((t) => (
               <tr key={t.id}>
                 <td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a>{t.source === "SMART_FINANCE" && <span title={hi ? "स्मार्ट फाइनेंस से" : "via Smart Finance"} style={{ marginLeft: 6, fontSize: "0.7rem", fontWeight: 800, color: "#4338ca" }}>⚡</span>}</td>
                 <td>{purposeLabel(t.purposeCode)}</td>
+                <td>{t.counterpartyName ?? "—"}</td>
                 <td>{t.employeeName ?? "—"}</td>
                 <td>{t.territoryName ?? "—"}</td>
                 <td>{t.treasuryName ?? "—"}</td>

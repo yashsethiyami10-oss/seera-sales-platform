@@ -71,6 +71,12 @@ export async function postExpense(db: PrismaClient, actorId: string, expenseId: 
   if (expense.status !== "APPROVED") throw new FoundationError("EXPENSE_NOT_APPROVED", "Only an approved expense can be posted", 409);
   const category = await db.seeraExpenseCategory.findUniqueOrThrow({ where: { id: expense.categoryId } });
 
+  // Money Desk + Founder Approvals Integration mission, §4/§26 — real, reproduced bare-5000ms-
+  // timeout bug (found via repeated failure at this exact call site, same class as postJournal/
+  // reverseJournal/recordVendorPayment/issueBillingDraft/createVendorBill earlier this session):
+  // this transaction posts a journal via postJournalInTx AND updates the expense row, real work
+  // that can legitimately exceed Prisma's 5s default under normal Neon latency — directly blocking
+  // the mission's own "Approve -> Accounting/Treasury posting" expense-approval flow.
   return db.$transaction(async (tx) => {
     const lines = input.paidNow
       ? [
@@ -85,7 +91,7 @@ export async function postExpense(db: PrismaClient, actorId: string, expenseId: 
     const updated = await tx.seeraExpense.update({ where: { id: expenseId }, data: { status: "POSTED", journalId: journal.id, treasuryAccountId: input.paidNow ? input.treasuryAccountId : expense.treasuryAccountId } });
     await recordAudit(tx, { actorId, action: "finance.expense.posted", entityType: "SeeraExpense", entityId: expenseId, afterState: { paidNow: input.paidNow, journalId: journal.id } });
     return updated;
-  });
+  }, { timeout: 15_000 });
 }
 
 // Settles an unpaid (Expense Payable) expense once cash actually moves —

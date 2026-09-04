@@ -43,7 +43,7 @@ const fmtDate = (v: string | Date | null | undefined) => (v ? new Date(v).toLoca
 const isoDate = (v: string | Date) => new Date(v).toISOString().slice(0, 10);
 
 // --- Accounting Impact Panel (read-only) -----------------------------------
-type JournalDetail = { id: string; journalNumber: string; date: string; sourceType: string; status: string; narration: string; originalJournalId: string | null; lines: { id: string; accountId: string; accountName: string; debit: number; credit: number; description: string | null }[] };
+type JournalDetail = { id: string; journalNumber: string; date: string; sourceType: string; status: string; narration: string; originalJournalId: string | null; lines: { id: string; accountId: string; accountName: string; debit: number; credit: number; description: string | null; partyName?: string | null }[] };
 function AccountingImpactPanel({ journalId }: { journalId: string }) {
   const [detail, setDetail] = useState<JournalDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -53,9 +53,11 @@ function AccountingImpactPanel({ journalId }: { journalId: string }) {
   return (
     <div className={styles.tableWrap}>
       <p><strong>{detail.journalNumber}</strong> — {detail.sourceType} — {fmtDate(detail.date)} — {detail.status}{detail.originalJournalId ? " (reversal)" : ""}</p>
+      {/* §10 — Party column: the canonical partyType/partyId relation each journal line already
+          carries, resolved to a real name server-side (resolveJournalPartyName), never a raw id. */}
       <table>
-        <thead><tr><th>Account</th><th>Debit</th><th>Credit</th></tr></thead>
-        <tbody>{detail.lines.map((l) => <tr key={l.id}><td>{l.accountId} — {l.accountName}</td><td>{l.debit ? money(l.debit) : ""}</td><td>{l.credit ? money(l.credit) : ""}</td></tr>)}</tbody>
+        <thead><tr><th>Account</th><th>Party</th><th>Debit</th><th>Credit</th></tr></thead>
+        <tbody>{detail.lines.map((l) => <tr key={l.id}><td>{l.accountId} — {l.accountName}</td><td>{l.partyName ?? "—"}</td><td>{l.debit ? money(l.debit) : ""}</td><td>{l.credit ? money(l.credit) : ""}</td></tr>)}</tbody>
       </table>
     </div>
   );
@@ -1999,8 +2001,12 @@ function TreasuryAccountsSection({ ctx }: { ctx: Ctx }) {
                 <div><strong>{a.name}</strong><div className={styles.treasuryMeta}>{a.kind} · {a.code}{a.bankName ? " · "+a.bankName : ""}</div></div>
                 <span className={styles.statusPill} data-inactive={!a.isActive}>{a.isActive ? "ACTIVE" : "INACTIVE"}</span>
               </div>
-              <div className={styles.treasuryBalance}>₹{Number(a.openingBalance ?? 0).toLocaleString("en-IN")}</div>
-              <div className={styles.treasuryMeta}>Opening/reference balance · GL account {coa?.code ?? "—"}{a.ifsc ? " · IFSC "+a.ifsc : ""}</div>
+              {/* §6/§7 — the real, live, computed balance (POSTED journal lines, the exact same
+                  source moneyDeskHome's own cashBankToday uses), not the static opening-balance
+                  reference field. This is the field a Founder posting Money In/Out expects to
+                  actually move. */}
+              <div className={styles.treasuryBalance}>₹{Math.round(data.treasuryBalances?.[a.id] ?? 0).toLocaleString("en-IN")}</div>
+              <div className={styles.treasuryMeta}>Current balance (live) · Opening reference ₹{Number(a.openingBalance ?? 0).toLocaleString("en-IN")} · GL account {coa?.code ?? "—"}{a.ifsc ? " · IFSC "+a.ifsc : ""}</div>
               <button type="button" disabled={busy} onClick={() => run("set-treasury-account-active", { treasuryAccountId: a.id, isActive: !a.isActive }, a.isActive ? "Treasury account deactivated." : "Treasury account activated.")}>{a.isActive ? "DEACTIVATE" : "ACTIVATE"}</button>
             </article>
           );

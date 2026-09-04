@@ -224,8 +224,21 @@ export async function decideMoneyDeskApproval(db: PrismaClient, actorId: string,
   const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
   if (txn.status !== "PENDING_APPROVAL") throw new FoundationError("MONEY_DESK_NOT_PENDING_APPROVAL", "This transaction is not awaiting approval", 409);
   // Maker-checker (same convention as journal reversal / claim settlement elsewhere in this
-  // codebase): the person who entered the transaction cannot also be the one who approves it.
-  if (txn.requestedById === actorId) throw new FoundationError("MONEY_DESK_SELF_APPROVAL_DENIED", "Independent approval is required", 403);
+  // codebase): the person who entered the transaction cannot also be the one who approves it —
+  // UNLESS they are a genuine Founder (system:super_admin), the SAME final-authority bypass
+  // voidMoneyDeskTransaction's own self-void check already grants (P0 architecture correction,
+  // Rule 4). Money Desk + Founder Approvals Integration mission, §1/§3 — found via two real
+  // production entries (both requestedById = the Founder's own account) stuck in PENDING_APPROVAL
+  // with literally no way to ever clear them: createMoneyDeskTransaction's own requiresApproval
+  // logic already treats a FOUNDER_PORTAL-sourced entry as auto-cleared going forward (never
+  // enters PENDING_APPROVAL at all for a NEW entry), so these two are pre-fix residue from before
+  // that bypass existed — this closes the gap for any transaction that reaches this state,
+  // however it got there, rather than leaving a genuine dead end.
+  if (txn.requestedById === actorId) {
+    const permissions = await effectivePermissions(db, actorId);
+    if (!permissions.has("system:super_admin"))
+      throw new FoundationError("MONEY_DESK_SELF_APPROVAL_DENIED", "Independent approval is required", 403);
+  }
 
   if (input.decision === "REJECTED") {
     const rejected = await db.seeraMoneyDeskTransaction.update({ where: { id: transactionId }, data: { status: "REJECTED", failureReason: input.reason } });
@@ -982,7 +995,9 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     ledgerLink,
     requiresApproval: txn.status === "PENDING_APPROVAL",
     requestedBy: requestedBy?.name ?? requestedBy?.email ?? "Unknown user",
-    isSelf: txn.requestedById === actorId,
+    // Same "self-approval would actually be blocked" semantics as moneyDeskHome's pendingApprovals
+    // mapping — a Founder is not actually blocked from approving their own entry (§1/§3).
+    isSelf: txn.requestedById === actorId && !permissions.has("system:super_admin"),
     approvedBy: approvedBy?.name ?? approvedBy?.email ?? null,
     approvedAt: txn.approvedAt,
     voidedBy: voidedBy?.name ?? voidedBy?.email ?? null,
@@ -994,7 +1009,10 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     // authorize()/permission checks inside decideMoneyDeskApproval/voidMoneyDeskTransaction/
     // editMoneyDeskTransaction remain the real boundary; these only decide which buttons render, so
     // a user is never shown an action they'd immediately be denied for.
-    canApprove: txn.status === "PENDING_APPROVAL" && txn.requestedById !== actorId && (permissions.has("money_desk:approve") || permissions.has("system:super_admin")),
+    // Money Desk + Founder Approvals Integration mission, §1/§3 — mirrors canVoid's own Founder-
+    // final-authority bypass just below: a genuine Founder (system:super_admin) can approve their
+    // OWN entry, matching decideMoneyDeskApproval's now-identical bypass.
+    canApprove: txn.status === "PENDING_APPROVAL" && (permissions.has("money_desk:approve") || permissions.has("system:super_admin")) && (txn.requestedById !== actorId || permissions.has("system:super_admin")),
     canVoid: txn.status === "POSTED" && (permissions.has("money_desk:reverse") || permissions.has("system:super_admin")) && (txn.requestedById !== actorId || permissions.has("system:super_admin")),
     // Part L — a "Needs Attention" entry (POSTING + failureReason) is now editable too, not just
     // retryable: RETRY alone can never fix a failure caused by bad/missing data on the entry itself
@@ -1064,15 +1082,19 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
         source: true, correctionOfId: true,
       },
     })),
+    // §8/9 — counterpartyName/Type/Id added to both selects: Approvals and Needs Attention were
+    // never fetching the party at all, so no rendering fix alone could have shown it — the row
+    // literally didn't carry it. Every Finance/Money Desk surface should identify the party using
+    // the canonical relation already on the row, never a second free-text store.
     resilientList(db, actorId, "pendingApprovals", db.seeraMoneyDeskTransaction.findMany({
       where: { ...scope, status: "PENDING_APPROVAL" },
       orderBy: { createdAt: "asc" },
-      select: { id: true, transactionNumber: true, purposeCode: true, amount: true, requestedById: true },
+      select: { id: true, transactionNumber: true, purposeCode: true, amount: true, requestedById: true, counterpartyName: true, counterpartyType: true, counterpartyId: true },
     })),
     resilientList(db, actorId, "needsAttention", db.seeraMoneyDeskTransaction.findMany({
       where: { ...scope, status: "POSTING", failureReason: { not: null } },
       orderBy: { createdAt: "asc" },
-      select: { id: true, transactionNumber: true, purposeCode: true, amount: true, failureReason: true },
+      select: { id: true, transactionNumber: true, purposeCode: true, amount: true, failureReason: true, counterpartyName: true, counterpartyType: true, counterpartyId: true },
     })),
     resilientList(db, actorId, "cashBankToday.accounts", db.seeraTreasuryAccount.findMany({ where: { isActive: true } })),
     resilientList(db, actorId, "cashBankToday.todayLines", db.seeraJournalLine.groupBy({
@@ -1179,8 +1201,12 @@ export async function moneyDeskHome(db: PrismaClient, actorId: string) {
 
   return {
     recentTransactions: recent.map(enrichRow),
-    pendingApprovals: pendingApproval.map((t) => ({ ...t, amount: Number(t.amount), isSelf: t.requestedById === actorId })),
-    needsAttention: stuckPosting.map((t) => ({ id: t.id, transactionNumber: t.transactionNumber, purposeCode: t.purposeCode, amount: Number(t.amount), failureReason: t.failureReason })),
+    // isSelf here means "self-approval would actually be blocked" (drives the list's own
+    // Approve/Reject-vs-'Requires Independent Approval' choice) — a Founder (system:super_admin)
+    // is NOT blocked from approving their own entry (§1/§3), so isSelf is false for them even
+    // though requestedById === actorId, matching decideMoneyDeskApproval's real bypass exactly.
+    pendingApprovals: pendingApproval.map((t) => ({ ...t, amount: Number(t.amount), isSelf: t.requestedById === actorId && !permissions.has("system:super_admin") })),
+    needsAttention: stuckPosting.map((t) => ({ id: t.id, transactionNumber: t.transactionNumber, purposeCode: t.purposeCode, amount: Number(t.amount), failureReason: t.failureReason, counterpartyName: t.counterpartyName })),
     cashBankToday,
     kpis,
     canApprove: permissions.has("money_desk:approve") || permissions.has("system:super_admin"),

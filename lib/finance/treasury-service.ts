@@ -60,6 +60,26 @@ export async function listAllTreasuryAccounts(db: PrismaClient, actorId: string)
   return db.seeraTreasuryAccount.findMany({ orderBy: [{ isActive: "desc" }, { name: "asc" }] });
 }
 
+// Money Desk + Founder Approvals Integration mission, §6/§7 — real Treasury balance root cause: a
+// Money In/Out entry updates the ACCOUNTING truth (SeeraJournalLine, via postJournal) correctly and
+// immediately once POSTED — money-desk-service.ts's moneyDeskHome already computed this correctly
+// (POSTED-only, never counting PENDING_APPROVAL). The bug was that the Treasury Accounts management
+// screen (Settings -> Treasury Accounts, where a Founder would naturally go to check "does my Cash
+// account show the right amount") only ever displayed SeeraTreasuryAccount.openingBalance — a
+// static reference field the Opening Balance Wizard posts as ONE journal line and never touches
+// again — with no live/current balance shown anywhere on that screen at all. This is the ONE
+// canonical current-balance computation (POSTED journal lines only, per account) — extracted here
+// so moneyDeskHome and the Treasury Accounts screen share the exact same source, never two.
+export async function treasuryCurrentBalances(db: PrismaClient, treasuryAccountIds: string[]) {
+  if (!treasuryAccountIds.length) return new Map<string, number>();
+  const lines = await db.seeraJournalLine.groupBy({
+    by: ["treasuryAccountId"],
+    where: { treasuryAccountId: { in: treasuryAccountIds }, journal: { status: "POSTED" } },
+    _sum: { debit: true, credit: true },
+  });
+  return new Map(lines.map((l) => [l.treasuryAccountId as string, Number(l._sum.debit ?? 0) - Number(l._sum.credit ?? 0)]));
+}
+
 export async function setTreasuryAccountActive(db: PrismaClient, actorId: string, input: { treasuryAccountId: string; isActive: boolean }) {
   await authorize(db, { actorId, permission: "treasury_account:manage" });
   const before = await db.seeraTreasuryAccount.findUniqueOrThrow({ where: { id: input.treasuryAccountId } });

@@ -178,12 +178,76 @@ export async function generalLedger(db: PrismaClient, actorId: string, input: { 
 // Accounting Impact Panel (spec §22) — the full debit/credit breakdown of one
 // journal, with Chart of Accounts names resolved, for a transaction detail
 // screen to render read-only under an "ACCOUNTING IMPACT" heading.
+// §9/§10 (Money Desk + Founder Approvals Integration mission) — resolves a journal line's
+// partyType/partyId (already the canonical relation every posting function sets — never a second
+// free-text party store) into the same real, human-readable name every other Finance surface shows.
+// Deliberately defensive: an unresolvable id (stale/deleted party, or a partyType this hasn't seen
+// before) falls back to a plain "TYPE" label rather than throwing and breaking the whole journal
+// detail view over one line.
+async function resolveJournalPartyName(db: PrismaClient, partyType: string | null, partyId: string | null): Promise<string | null> {
+  if (!partyType || !partyId) return null;
+  try {
+    switch (partyType) {
+      case "RETAILER": {
+        const r = await db.seeraRetailer.findUnique({ where: { id: partyId }, select: { businessName: true } });
+        return r?.businessName ?? null;
+      }
+      // "CUSTOMER" (money-desk-service.ts's INSTITUTIONAL_RECEIPT/REC-INS handler always stores
+      // this generic label on the journal line's partyType regardless of whether the real
+      // counterparty is a Retailer or a Distributor/Super Stockist SeeraPartner — the specific
+      // type lives only on the Money Desk transaction row's own counterpartyType, not the journal
+      // line) — try Retailer first (the common case), then fall back to Partner rather than
+      // guessing wrong and showing nothing.
+      case "CUSTOMER": {
+        const r = await db.seeraRetailer.findUnique({ where: { id: partyId }, select: { businessName: true } });
+        if (r) return r.businessName;
+        const p = await db.seeraPartner.findUnique({ where: { id: partyId }, select: { tradeName: true, legalName: true } });
+        return p ? (p.tradeName ?? p.legalName) : null;
+      }
+      case "VENDOR": {
+        const v = await db.seeraVendor.findUnique({ where: { id: partyId }, select: { tradeName: true, legalName: true } });
+        return v ? (v.tradeName ?? v.legalName) : null;
+      }
+      case "EMPLOYEE": {
+        const u = await db.user.findUnique({ where: { id: partyId }, select: { name: true, email: true } });
+        return u ? (u.name ?? u.email) : null;
+      }
+      case "OTHER_PARTY": {
+        const d = await db.seeraFinancialDimension.findUnique({ where: { id: partyId }, select: { name: true } });
+        return d?.name ?? null;
+      }
+      case "COMPANY": {
+        const { getCompanyProfile } = await import("./company-profile-service");
+        const profile = await getCompanyProfile(db);
+        return profile?.legalName ?? "Company";
+      }
+      case "DISTRIBUTOR":
+      case "SUPER_STOCKIST":
+      default: {
+        const p = await db.seeraPartner.findUnique({ where: { id: partyId }, select: { tradeName: true, legalName: true } });
+        return p ? (p.tradeName ?? p.legalName) : null;
+      }
+    }
+  } catch {
+    return null;
+  }
+}
+
 export async function journalDetail(db: PrismaClient, actorId: string, journalId: string) {
   await authorize(db, { actorId, permission: "gl:view" });
   const journal = await db.seeraJournalEntry.findUniqueOrThrow({ where: { id: journalId }, include: { lines: true } });
   const accounts = await db.seeraChartOfAccount.findMany({ where: { code: { in: journal.lines.map((l) => l.accountId) } } });
   const nameByCode = new Map(accounts.map((a) => [a.code, a.name]));
-  return { ...journal, lines: journal.lines.map((l) => ({ ...l, accountName: nameByCode.get(l.accountId) ?? l.accountId, debit: Number(l.debit), credit: Number(l.credit) })) };
+  const lines = await Promise.all(
+    journal.lines.map(async (l) => ({
+      ...l,
+      accountName: nameByCode.get(l.accountId) ?? l.accountId,
+      debit: Number(l.debit),
+      credit: Number(l.credit),
+      partyName: await resolveJournalPartyName(db, l.partyType, l.partyId),
+    })),
+  );
+  return { ...journal, lines };
 }
 
 // Recent Journals feed (spec's Accounting Impact Panel §4) — a single,

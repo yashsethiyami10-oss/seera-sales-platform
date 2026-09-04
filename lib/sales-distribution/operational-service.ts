@@ -569,6 +569,13 @@ export async function createBeatPlan(
   // freely and a scoped Manager gets rejected before any write happens.
   const managerScope = await resolveManagerOperationalScope(prisma, actorId);
   try {
+    // Money Desk + Founder Approvals Integration mission — real, reproduced bare-5000ms-timeout
+    // bug (found via master E2E suite failure: "Transaction already closed... 6162ms passed"),
+    // same class as postExpense/postJournal/reverseJournal/recordVendorPayment/issueBillingDraft/
+    // createVendorBill fixed earlier this session. This transaction resolves up to 3 geography
+    // nodes, a distributor lookup, a retailer count, the plan create, AND (when publishing) the
+    // full immutable stop snapshot — real work that can legitimately exceed 5s under normal Neon
+    // latency, directly blocking Beat/Route creation.
     return await prisma.$transaction(async (tx) => {
       const territory = await resolveOrCreateGeography(tx, { name: input.territoryName, level: "TERRITORY" });
       if (!managerScope.unrestricted && !managerScope.territoryIds.includes(territory.id))
@@ -626,7 +633,7 @@ export async function createBeatPlan(
         afterState: { employeeId: input.employeeId, territory: territory.name, beat: beat.name, geography: geography.name, dayOfWeek: input.dayOfWeek, retailerCount },
       });
       return { ...plan, retailerCount };
-    });
+    }, { timeout: 15_000 });
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002")
       throw new FoundationError("BEAT_PLAN_ALREADY_EXISTS", "A plan for this Executive, day and place already exists from this start date", 409);
@@ -710,7 +717,7 @@ export async function publishBeatPlan(prisma: PrismaClient, actorId: string, pla
     });
     await recordAudit(tx, { actorId, action: "journey_plan.published", entityType: "SeeraJourneyPlan", entityId: plan.id, afterState: { retailerCount } });
     return { ...updated, retailerCount };
-  });
+  }, { timeout: 15_000 });
 }
 
 export async function duplicateBeatPlan(

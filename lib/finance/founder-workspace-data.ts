@@ -3,7 +3,7 @@ import { FoundationError } from "@/lib/foundation/errors";
 import { listAccounts } from "./chart-of-accounts";
 import { listDimensions } from "./dimension-service";
 import { trialBalance } from "./journal-service";
-import { listTreasuryAccounts, listAllTreasuryAccounts } from "./treasury-service";
+import { listTreasuryAccounts, listAllTreasuryAccounts, treasuryCurrentBalances } from "./treasury-service";
 import { listVendors, payablesView } from "./vendor-service";
 import { listExpenseCategories, expensesPendingApproval, listRecentExpenses } from "./expense-service";
 import { listBudgets } from "./budget-service";
@@ -116,7 +116,16 @@ export async function financeWorkspaceData(db: PrismaClient, actorId: string) {
     tryOrNull(() => financialIntelligenceFeed(db, actorId)),
   ]);
 
-  return serializeDecimals({ chartOfAccounts, dimensions, treasuryAccounts, allTreasuryAccounts, vendors, payables, expenseCategories, pendingExpenseApprovals, recentExpenses, budgets, loans, fixedAssets, capital, openingBalances, approvalPolicies, periods, periodChecklist, trial, pnl, bs, cf, forecast30, gst, periodCode, recurringDue, recurringTemplates, approvalQueue, intelligence });
+  // §6/§7 — the real, canonical current balance per Treasury Account (POSTED journal lines only,
+  // the exact same computation moneyDeskHome's own cashBankToday already uses), so the Treasury
+  // Accounts management screen can show a real Current Balance next to the static Opening Balance
+  // reference field, instead of only ever showing the opening figure. A second round trip because
+  // it genuinely depends on allTreasuryAccounts having resolved first (needs the real id list).
+  const treasuryBalances = allTreasuryAccounts
+    ? Object.fromEntries(await treasuryCurrentBalances(db, allTreasuryAccounts.map((a) => a.id)))
+    : {};
+
+  return serializeDecimals({ chartOfAccounts, dimensions, treasuryAccounts, allTreasuryAccounts, treasuryBalances, vendors, payables, expenseCategories, pendingExpenseApprovals, recentExpenses, budgets, loans, fixedAssets, capital, openingBalances, approvalPolicies, periods, periodChecklist, trial, pnl, bs, cf, forecast30, gst, periodCode, recurringDue, recurringTemplates, approvalQueue, intelligence });
 }
 
 export type FinanceWorkspaceData = Awaited<ReturnType<typeof financeWorkspaceData>>;
