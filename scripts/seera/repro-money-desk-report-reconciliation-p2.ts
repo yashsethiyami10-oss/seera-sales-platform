@@ -82,12 +82,17 @@ async function main() {
   check("GST Control Center correctly does NOT source Input GST from the journal rail (reads SeeraVendorBill directly, unaffected by the documented dual-ledger gap)", gst.inputCgst + gst.inputSgst > 0);
 
   console.log(`\n=== ${fail === 0 ? "ALL PASSED" : `${fail} FAILURE(S)`} (${pass} passed, ${fail} failed) ===`);
-  console.log("\n--- Honest scope note (P0-7) ---");
-  console.log("Balance Sheet and Cash Flow (like P&L, already documented in the P0-5 commit) read ONLY the");
-  console.log("journal rail — a Company/Distributor/SS invoice's receivable never appears as a Balance Sheet");
-  console.log("Trade Receivables asset, since issueBillingDraft posts only to SeeraFinancialEntry, never to");
-  console.log("SeeraJournalLine. GST Control Center is UNAFFECTED by this gap — it reads Output GST directly");
-  console.log("from SeeraCommercialDocument and Input GST directly from SeeraVendorBill, never the journal.");
+  console.log("\n--- Honest scope note (P0-7, UPDATED post-Gap-1) ---");
+  console.log("Balance Sheet/Cash Flow/P&L read ONLY the journal rail — this was a real, previously-open gap");
+  console.log("for Company-issued invoices (issueBillingDraft posted only to SeeraFinancialEntry, never to");
+  console.log("SeeraJournalLine), CLOSED by the Money Desk 2.0 Final 100% Gap Closure mission's Gap 1 fix");
+  console.log("(see repro-dual-ledger-reconciliation.ts, 31 checks) — issueBillingDraft now ALSO posts a");
+  console.log("real journal entry for issuerType==='COMPANY' documents, so a Company invoice's receivable");
+  console.log("DOES now appear in Balance Sheet Trade Receivables/P&L revenue. Distributor/S.S.-issued");
+  console.log("invoices remain DELIBERATELY excluded from this bridge — those are arm's-length resales");
+  console.log("already recognized through SeeraCompanyDispatchAllocation/COGS, not a gap. GST Control Center");
+  console.log("was never affected either way — it reads Output GST directly from SeeraCommercialDocument and");
+  console.log("Input GST directly from SeeraVendorBill, never the journal rail.");
 
   console.log("\n=== Cleanup ===");
   if (cleanup.journalIds.length) {
