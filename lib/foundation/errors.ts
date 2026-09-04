@@ -69,6 +69,27 @@ function classifyPrismaError(code: string): { code: string; status: number; user
   }
 }
 
+// Priority 16 (Final Remaining System Completion Mission) — a companion to safeError() below for
+// the different class of call site that persists an error MESSAGE directly into a plain-text DB
+// field a user later reads verbatim (e.g. SeeraMoneyDeskTransaction.failureReason, rendered as-is
+// in the Transaction Detail UI's Audit section) rather than returning a governed HTTP error body.
+// Found via a real production incident (Part L, MD-60817C2372D198DD): a raw Prisma
+// "Argument `id` must not be null" internal error had been stored and shown verbatim. That one call
+// site got its own targeted guard (requireTreasuryAccountId), but the underlying catch-all
+// (processMoneyDeskTransaction) could still store ANY OTHER raw error's .message the same way —
+// this closes that generally, reusing the exact same Prisma-code allowlist safeError already uses
+// so the two never drift apart. The original error is still re-thrown by every caller of this
+// (unchanged) — this only governs what gets PERSISTED for later display, never suppresses the real
+// error from server-side logs/stack traces.
+export function safeStoredErrorMessage(error: unknown): string {
+  if (error instanceof FoundationError) return `${error.code}: ${error.message}`;
+  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+    const prisma = classifyPrismaError(error.code);
+    if (prisma) return `${prisma.code}: ${prisma.userMessage}`;
+  }
+  return "INTERNAL_ERROR: An unexpected error occurred while processing this. Contact support with this transaction's reference number if this persists.";
+}
+
 export function safeError(error: unknown, requestId: string) {
   if (error instanceof FoundationError) {
     const info = classifyError(error.code, error.status, error.message);

@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
-import { FoundationError } from "@/lib/foundation/errors";
+import { FoundationError, safeStoredErrorMessage } from "@/lib/foundation/errors";
 import { financeNumberFor } from "./numbering";
 import { purposeDefinition, type MoneyDeskDirection } from "./money-desk-registry";
 import { recordMoneyIn, recordMoneyOut } from "./treasury-service";
@@ -256,7 +256,10 @@ export async function processMoneyDeskTransaction(db: PrismaClient, actorId: str
     await recordAudit(db, { actorId, action: "money_desk.transaction.posted", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, afterState: downstreamRefs as never });
     return posted;
   } catch (error) {
-    const message = error instanceof FoundationError ? `${error.code}: ${error.message}` : error instanceof Error ? error.message : "Unknown error";
+    // Priority 16 — safeStoredErrorMessage (never the raw error.message) is what gets persisted and
+    // later shown verbatim in the Transaction Detail UI; the original error is still re-thrown below
+    // unchanged, so nothing is lost from server-side logs/stack traces.
+    const message = safeStoredErrorMessage(error);
     await db.seeraMoneyDeskTransaction.update({ where: { id: transactionId }, data: { failureReason: message } });
     await recordAudit(db, { actorId, action: "money_desk.transaction.posting_failed", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, reason: message });
     throw error;
