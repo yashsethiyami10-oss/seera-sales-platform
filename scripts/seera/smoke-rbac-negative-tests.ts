@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
@@ -40,18 +41,32 @@ async function main() {
 
   console.log("[1] Manager cannot act on an Executive outside their team");
   const manager1 = await db.user.findUniqueOrThrow({ where: { normalizedEmail: "review-sales-manager-1@seera.test" } });
-  // A real SALES_EXECUTIVE user with NO team assignment anywhere (the ZZ TEST FIXTURE cold-start
-  // executive from smoke-executive-distributor-assignment.ts) — outside manager1's team by
-  // definition, proving the same "not in my active team" boundary without depending on a second
-  // manager's own team existing in TEST.
-  const outsideExecutive = await db.user.findUniqueOrThrow({ where: { normalizedEmail: "zz-test-fixture-cold-start-executive@seera.test" } });
+  // A fresh, self-contained SALES_EXECUTIVE user with NO team assignment anywhere — created and
+  // torn down entirely within this script, so this check never depends on another script's
+  // fixture (zz-test-fixture-cold-start-executive@seera.test) having been run first and left its
+  // data in place. Outside manager1's team by construction, proving the same "not in my active
+  // team" boundary without depending on external TEST DB state.
+  const rbacSuffix = randomUUID().slice(0, 8);
+  const outsideExecutive = await db.user.create({
+    data: {
+      email: `rbac-probe-outside-exec-${rbacSuffix}@seera.test`,
+      normalizedEmail: `rbac-probe-outside-exec-${rbacSuffix}@seera.test`,
+      name: `RBAC Probe Outside Executive ${rbacSuffix}`,
+      passwordHash: "not-a-real-login",
+    },
+  });
+  const executiveRole = await db.role.findFirstOrThrow({ where: { code: "SALES_EXECUTIVE" } });
+  await db.userRoleAssignment.create({ data: { userId: outsideExecutive.id, roleId: executiveRole.id, status: "ACTIVE" } });
   const outsideExecutiveId = outsideExecutive.id;
   try {
     await createManagerInstruction(db, manager1.id, { assignedEmployeeId: outsideExecutiveId, title: "RBAC probe", body: "should be denied" });
-    throw new Error("ASSERTION FAILED: expected EMPLOYEE_SCOPE_DENIED but manager1 could instruct manager2's executive");
+    throw new Error("ASSERTION FAILED: expected EMPLOYEE_SCOPE_DENIED but manager1 could instruct an Executive outside their team");
   } catch (err) {
     assert(err instanceof FoundationError && err.code === "EMPLOYEE_SCOPE_DENIED", `Expected EMPLOYEE_SCOPE_DENIED, got ${err}`);
     console.log(`  OK (rejected as expected: ${err.code}) — Manager 1 cannot instruct an Executive outside their own team`);
+  } finally {
+    await db.userRoleAssignment.deleteMany({ where: { userId: outsideExecutive.id } });
+    await db.user.delete({ where: { id: outsideExecutive.id } });
   }
 
   console.log("\n[2] Super Stockist cannot see another Super Stockist's downstream data");

@@ -43,6 +43,88 @@ async function send(body: unknown) {
   return result;
 }
 
+// Priority 5 (Final Remaining System Completion Mission) — Manager Retailing's photo save
+// previously POSTed the raw camera/gallery bytes as base64 straight into capture-photo-manager
+// (a legacy path that stores the full-resolution image directly in Postgres — see the comment on
+// capturePhoto in field-portal-service.ts). This is the real "Camera -> resize -> upload ->
+// Cloudinary -> saved photo reference" pipeline instead, deliberately NOT importing FieldJourney's
+// own equivalent (uploadFieldPhotoDirect/preparePhotoDerivatives) — that file's version is tuned
+// for the Executive's live multi-shot capture flow with its own telemetry and fallback tiers, and
+// is explicitly out of scope to touch here. This reuses the SAME server-side contract those
+// functions talk to (/api/field/photos/upload-signature + /api/field/photos/finalize, backed by
+// createFieldPhotoUploadSignature/finalizeFieldPhotoUpload — the actual security/signing engine,
+// widened in field-photo-cloudinary-service.ts to also recognize a Manager's own owned visit) —
+// so there is exactly one Cloudinary-signing implementation, just two independent, appropriately
+// simple client callers.
+const PHOTO_MAX_DIMENSION = 1280;
+const PHOTO_UPLOAD_QUALITY = 0.82;
+
+async function resizePhotoDataUrlToJpegBlob(dataUrl: string): Promise<Blob> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Could not read the captured photo"));
+    el.src = dataUrl;
+  });
+  const scale = Math.min(1, PHOTO_MAX_DIMENSION / Math.max(img.naturalWidth, img.naturalHeight));
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not process the captured photo");
+  ctx.drawImage(img, 0, 0, width, height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", PHOTO_UPLOAD_QUALITY));
+  if (!blob) throw new Error("Could not process the captured photo");
+  return blob;
+}
+
+type ManagerSignedPhotoUpload = {
+  cloudName: string; apiKey: string; signature: string; timestamp: number; expiresAt: number;
+  folder: string; public_id: string; overwrite: false; resource_type: "image"; type: "upload";
+  unique_filename: false;
+};
+
+async function uploadManagerFieldPhoto(visitId: string, photoType: string, dataUrl: string) {
+  const blob = await resizePhotoDataUrlToJpegBlob(dataUrl);
+  const sigResponse = await fetch("/api/field/photos/upload-signature", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ visitId }),
+  });
+  const signed = (await sigResponse.json().catch(() => ({}))) as ManagerSignedPhotoUpload & { error?: { message?: string } };
+  if (!sigResponse.ok) throw new Error(signed?.error?.message ?? "Photo upload authorization failed");
+
+  const form = new FormData();
+  form.set("file", blob, "field-visit.jpg");
+  for (const [name, value] of Object.entries({ api_key: signed.apiKey, timestamp: signed.timestamp, signature: signed.signature, folder: signed.folder, public_id: signed.public_id, overwrite: signed.overwrite, type: signed.type, unique_filename: signed.unique_filename }))
+    form.set(name, String(value));
+  const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/${signed.resource_type}/upload`, { method: "POST", body: form });
+  const uploaded = await cloudinaryResponse.json().catch(() => ({}));
+  if (!cloudinaryResponse.ok || typeof uploaded.public_id !== "string") throw new Error("Photo upload failed. Please retry.");
+
+  const finalizeResponse = await fetch("/api/field/photos/finalize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      visitId,
+      photoType,
+      publicId: uploaded.public_id,
+      version: Number(uploaded.version),
+      signature: String(uploaded.signature),
+      secureUrl: String(uploaded.secure_url),
+      bytes: Number(uploaded.bytes),
+      width: Number(uploaded.width),
+      height: Number(uploaded.height),
+      format: String(uploaded.format),
+    }),
+  });
+  const finalized = await finalizeResponse.json().catch(() => ({}));
+  if (!finalizeResponse.ok) throw new Error(finalized?.error?.message ?? "Could not save the uploaded photo");
+  return finalized;
+}
+
 const PARTNER_PURPOSES: [string, string, string][] = [
   ["STOCK_REVIEW", "Stock review", "स्टॉक समीक्षा"],
   ["PAYMENT_FOLLOW_UP", "Payment follow-up", "भुगतान फॉलो-अप"],
@@ -226,16 +308,12 @@ export function ManagerFieldActions({
               setBusy(true);
               // Save reads directly from photoPreview now (a data: URL either way) instead of
               // fileRef.current.files - the native camera path (takeNativePhoto above) never
-              // populates the file input at all, only this state.
+              // populates the file input at all, only this state. Resize -> Cloudinary -> finalize
+              // (uploadManagerFieldPhoto above) — no fabricated success: a thrown error here means
+              // no SeeraVisitPhoto row was created and the preview stays on screen for retry.
               void (async () => {
                 try {
-                  const match = /^data:([^;]+);base64,(.*)$/.exec(photoPreview);
-                  if (!match) throw new Error("Invalid photo data");
-                  const [, mimeType, base64] = match;
-                  await send({
-                    action: "capture-photo-manager",
-                    payload: { visitId, photoType: "SHOPFRONT", fileBase64: base64, mimeType, originalName: "photo.jpg", idempotencyKey: crypto.randomUUID() },
-                  });
+                  await uploadManagerFieldPhoto(visitId, "SHOPFRONT", photoPreview);
                   setPhotoPreview(null);
                   setMessage(hi ? "फ़ोटो जोड़ी गई।" : "Photo added.");
                   router.refresh();

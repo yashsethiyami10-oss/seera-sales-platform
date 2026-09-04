@@ -23,13 +23,22 @@ function cloudinaryConfig() {
   return { cloudName, apiKey, apiSecret };
 }
 
+// Priority 5 (Final Remaining System Completion Mission) — was hard-scoped to SALES_EXECUTIVE
+// only, so Manager Retailing's own photo capture (ManagerFieldActions.tsx) could never use this
+// pipeline and fell back to a legacy DATABASE-blob path (capturePhoto in field-portal-service.ts:
+// no resize, no CDN, full-resolution bytes stored directly in Postgres) — a real, honestly-flagged
+// divergence from "Camera -> resize -> upload -> Cloudinary" for that one portal. Widened to also
+// accept a Manager's own owned visit; the actual security boundary is unchanged
+// (workSession.employeeId: actorId already restricts this to the caller's OWN session — the
+// employeeRole value only ever reflects which Start Day flow THIS SAME actor used, never another
+// user's identity), so this is a real capability gap closed, not a scope relaxation.
 async function requireActiveOwnedVisit(db: PrismaClient, actorId: string, visitId: string) {
   await authorize(db, { actorId, permission: "retailer:visit" });
   const visit = await db.seeraVisit.findFirst({
     where: {
       id: visitId,
       checkedOutAt: null,
-      workSession: { employeeId: actorId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
+      workSession: { employeeId: actorId, employeeRole: { in: ["SALES_EXECUTIVE", "SALES_MANAGER"] }, status: "ACTIVE" },
     },
     select: { id: true, retailerId: true, workSessionId: true },
   });
