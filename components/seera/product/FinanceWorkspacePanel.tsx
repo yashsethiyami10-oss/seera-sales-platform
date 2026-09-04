@@ -110,20 +110,31 @@ type Ctx = {
   router: ReturnType<typeof useRouter>;
 };
 
-const GROUPS = ["overview", "quickentry", "categories", "employees", "money", "sales", "purchases", "control", "statements", "tools"] as const;
+// Information Architecture Restructure — PRIMARY nav answers "what do I want to do?"
+// (Overview / Money / Sales / Purchases / Parties / Reports), never "which internal module?".
+// Genuinely administrative/setup functions (Quick Entry, Categories, Employees, Treasury account
+// management, Control, Documents, Search, Settings) live under one "More" overflow instead of
+// competing for primary-pill space — max 6 primary pills, always.
+const PRIMARY_GROUPS = ["overview", "money", "sales", "purchases", "parties", "reports"] as const;
+const MORE_GROUPS = ["quickentry", "categories", "employees", "treasury", "control", "documents", "search", "settings"] as const;
+const GROUPS = [...PRIMARY_GROUPS, ...MORE_GROUPS] as const;
 type Group = (typeof GROUPS)[number];
-const GROUP_LABEL: Record<Group, string> = { overview: "Overview", quickentry: "+ Quick Entry", categories: "Categories", employees: "Employees", money: "Money", sales: "Sales Finance", purchases: "Purchases & Costs", control: "Control", statements: "Statements", tools: "Tools" };
+const GROUP_LABEL: Record<Group, string> = { overview: "Overview", money: "Money", sales: "Sales", purchases: "Purchases", parties: "Parties", reports: "Reports", quickentry: "+ Quick Entry", categories: "Categories", employees: "Employees", treasury: "Treasury Accounts", control: "Control", documents: "Documents", search: "Search", settings: "Settings" };
 const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
   overview: [],
+  money: [{ key: "moneyin", label: "Money In" }, { key: "moneyout", label: "Money Out" }, { key: "transfer", label: "Transfer" }, { key: "statement", label: "Statement Import" }, { key: "reconcile", label: "Reconciliation" }, { key: "journals", label: "Recent Journals" }],
+  sales: [{ key: "invoices", label: "Invoices" }, { key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledgers" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
+  purchases: [{ key: "vendors", label: "Purchase Bills & Vendors" }, { key: "expenses", label: "Expenses" }, { key: "recurring", label: "Recurring Expenses" }, { key: "payroll", label: "Payroll" }, { key: "marketing", label: "Marketing Spend" }],
+  parties: [],
+  reports: [{ key: "pl", label: "P&L" }, { key: "bs", label: "Balance Sheet" }, { key: "cf", label: "Cash Flow" }, { key: "trial", label: "Trial Balance" }, { key: "forecast", label: "Forecast" }, { key: "gst", label: "GST Control" }, { key: "sales-reports", label: "Sales Reports" }, { key: "purchase-reports", label: "Purchase Reports" }],
   quickentry: [],
   categories: [],
   employees: [],
-  money: [{ key: "bank", label: "Bank & Cash" }, { key: "moneyin", label: "Money In" }, { key: "moneyout", label: "Money Out" }, { key: "transfer", label: "Transfer" }, { key: "statement", label: "Statement Import" }, { key: "reconcile", label: "Reconciliation" }, { key: "journals", label: "Recent Journals" }],
-  sales: [{ key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledgers" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
-  purchases: [{ key: "vendors", label: "Vendors & Bills" }, { key: "expenses", label: "Expenses" }, { key: "recurring", label: "Recurring Expenses" }, { key: "payroll", label: "Payroll" }, { key: "marketing", label: "Marketing Spend" }],
+  treasury: [],
   control: [{ key: "budgets", label: "Budgets" }, { key: "approvals", label: "Approvals" }, { key: "capital", label: "Capital & Drawings" }, { key: "loans", label: "Loans" }, { key: "assets", label: "Fixed Assets" }, { key: "period", label: "Period Close" }],
-  statements: [{ key: "trial", label: "Trial Balance" }, { key: "pl", label: "P&L" }, { key: "bs", label: "Balance Sheet" }, { key: "cf", label: "Cash Flow" }, { key: "forecast", label: "Forecast" }, { key: "gst", label: "GST Control" }],
-  tools: [{ key: "documents", label: "Documents" }, { key: "search", label: "Search" }, { key: "reports", label: "Reports Center" }, { key: "settings", label: "Settings" }],
+  documents: [],
+  search: [],
+  settings: [],
 };
 
 export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: FinanceWorkspaceData }) {
@@ -138,8 +149,10 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
   const [section, setSection] = useState<string>(searchParams.get("section") ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [showInvoiceWizard, setShowInvoiceWizard] = useState(false);
   const isFounder = portal === "founder-admin" || portal === "company-admin";
-  const visibleGroups = GROUPS.filter((g) => g !== "tools" || isFounder || true).filter((g) => g !== "control" || data.budgets !== null || data.loans !== null);
+  const visibleMoreGroups = MORE_GROUPS.filter((g) => g !== "control" || data.budgets !== null || data.loans !== null).filter((g) => g !== "settings" || isFounder);
 
   function run(action: string, payload: unknown, successText: string, next?: () => void) {
     setBusy(true);
@@ -150,6 +163,8 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
       .finally(() => setBusy(false));
   }
   const ctx: Ctx = { portal, isFounder, data, busy, run, router };
+
+  function jump(g: Group, s: string) { setGroup(g); setSection(s); setMoreOpen(false); }
 
   const mountedWithDeepLink = useRef(Boolean(searchParams.get("section")));
   useEffect(() => {
@@ -162,40 +177,50 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
       <header className={styles.workspaceHeader}>
         <div>
           <span className={styles.workspaceEyebrow}>{isFounder ? "FOUNDER FINANCE" : "ACCOUNTS"}</span>
-          <h2>Company Finance</h2>
-          <p className={styles.workspaceSubtitle}>One control centre for cash, parties, invoices, purchases, ledgers and financial statements.</p>
+          <h2>Finance</h2>
+          <p className={styles.workspaceSubtitle}>Founder Finance Control Centre — cash, parties, invoices, purchases and financial statements, one place.</p>
         </div>
         <div className={styles.workspaceHeaderActions}>
           <a className={styles.accent} href={"/portal/"+portal+"/money-desk"}>Money Desk</a>
-          {isFounder && <a href={"/portal/"+portal+"/finance-os?group=tools&section=settings"}>Settings</a>}
         </div>
       </header>
       <div className={styles.groupNav} role="tablist" aria-label="Finance groups">
-        {visibleGroups.map((g) => (
-          <button key={g} type="button" onClick={() => setGroup(g)} aria-pressed={group === g} style={{ fontWeight: group === g ? 700 : 400 }}>{GROUP_LABEL[g]}</button>
+        {PRIMARY_GROUPS.map((g) => (
+          <button key={g} type="button" onClick={() => jump(g, "")} aria-pressed={group === g}>{GROUP_LABEL[g]}</button>
         ))}
+        <div className={styles.moreMenu}>
+          <button type="button" className={styles.moreMenuButton} aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>More {moreOpen ? "▴" : "▾"}</button>
+          {moreOpen && (
+            <div className={styles.moreMenuPanel} role="menu">
+              {visibleMoreGroups.map((g) => (
+                <button key={g} type="button" role="menuitem" aria-pressed={group === g} onClick={() => jump(g, "")}>{GROUP_LABEL[g]}</button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       {GROUP_SECTIONS[group].length > 0 && (
         <div className={styles.sectionNav} role="tablist" aria-label="Finance sections">
-          {GROUP_SECTIONS[group].filter((s) => !(group === "tools" && s.key === "settings" && !isFounder)).map((s) => (
-            <button key={s.key} type="button" onClick={() => setSection(s.key)} aria-pressed={section === s.key} style={{ fontWeight: section === s.key ? 700 : 400 }}>{s.label}</button>
+          {GROUP_SECTIONS[group].map((s) => (
+            <button key={s.key} type="button" onClick={() => setSection(s.key)} aria-pressed={section === s.key}>{s.label}</button>
           ))}
         </div>
       )}
       {message && <p role="status" data-ok={message.ok}>{message.text}</p>}
 
       <div style={{ gridColumn: "1/-1" }}>
-        {group === "overview" && <OverviewSection ctx={ctx} setGroup={setGroup} setSection={setSection} />}
+        {group === "overview" && <OverviewSection ctx={ctx} jump={jump} onCreateInvoice={() => setShowInvoiceWizard(true)} />}
         {group === "quickentry" && <QuickEntrySection ctx={ctx} />}
         {group === "categories" && <CategoriesSection ctx={ctx} />}
         {group === "employees" && <EmployeesSection />}
-        {group === "money" && section === "bank" && <BankSection ctx={ctx} />}
+        {group === "treasury" && <TreasuryAccountsSection ctx={ctx} />}
         {group === "money" && section === "moneyin" && <MoneyInSection ctx={ctx} />}
         {group === "money" && section === "moneyout" && <MoneyOutSection ctx={ctx} />}
         {group === "money" && section === "transfer" && <TransferSection ctx={ctx} />}
         {group === "money" && section === "statement" && <StatementImportSection ctx={ctx} />}
         {group === "money" && section === "reconcile" && <ReconciliationSection ctx={ctx} />}
         {group === "money" && section === "journals" && <RecentJournalsSection />}
+        {group === "sales" && section === "invoices" && <InvoicesSection portal={portal} onCreateInvoice={() => setShowInvoiceWizard(true)} />}
         {group === "sales" && section === "register" && <SalesRegisterSection />}
         {group === "sales" && section === "ledger" && <PartyLedgerStatement portal={portal} />}
         {group === "sales" && section === "advances" && <CustomerAdvancesSection />}
@@ -205,18 +230,20 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
         {group === "purchases" && section === "recurring" && <RecurringSection ctx={ctx} />}
         {group === "purchases" && section === "payroll" && <PayrollSection ctx={ctx} />}
         {group === "purchases" && section === "marketing" && <MarketingSection />}
+        {group === "parties" && <PartiesSection portal={portal} jump={jump} />}
         {group === "control" && section === "budgets" && <BudgetsSection ctx={ctx} />}
         {group === "control" && section === "approvals" && <ApprovalsSection ctx={ctx} />}
         {group === "control" && section === "capital" && <CapitalSection ctx={ctx} />}
         {group === "control" && section === "loans" && <LoansSection ctx={ctx} />}
         {group === "control" && section === "assets" && <AssetsSection ctx={ctx} />}
         {group === "control" && section === "period" && <PeriodSection ctx={ctx} />}
-        {group === "statements" && <StatementsSection ctx={ctx} section={section} />}
-        {group === "tools" && section === "documents" && <DocumentsSection />}
-        {group === "tools" && section === "search" && <SearchSection />}
-        {group === "tools" && section === "reports" && <ReportsCenterSection />}
-        {group === "tools" && section === "settings" && isFounder && <SettingsSection ctx={ctx} />}
+        {group === "reports" && ["pl", "bs", "cf", "trial", "forecast", "gst"].includes(section) && <StatementsSection ctx={ctx} section={section} />}
+        {group === "reports" && (section === "sales-reports" || section === "purchase-reports") && <ReportsCenterSection scope={section === "sales-reports" ? "sales" : "purchases"} />}
+        {group === "documents" && <DocumentsSection />}
+        {group === "search" && <SearchSection />}
+        {group === "settings" && isFounder && <SettingsSection ctx={ctx} />}
       </div>
+      {showInvoiceWizard && <CreateInvoiceWizard portal={portal} onClose={() => setShowInvoiceWizard(false)} onIssued={() => { setShowInvoiceWizard(false); router.refresh(); }} />}
     </section>
   );
 }
@@ -224,11 +251,17 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
 // ---------------------------------------------------------------------------
 // OVERVIEW
 // ---------------------------------------------------------------------------
-function OverviewSection({ ctx, setGroup, setSection }: { ctx: Ctx; setGroup: (g: Group) => void; setSection: (s: string) => void }) {
+function OverviewSection({ ctx, jump, onCreateInvoice }: { ctx: Ctx; jump: (g: Group, s: string) => void; onCreateInvoice: () => void }) {
   const { data } = ctx;
-  const jump = (g: Group, s: string) => { setGroup(g); setSection(s); };
   return (
     <div className={styles.notice} data-ok="true">
+      {/* Section 4/15 — Overview leads with the primary business actions, not a link dump.
+          Create Invoice must be reachable in ONE click from here (the discoverability test). */}
+      <div className={styles.ctaRow}>
+        <button type="button" className={styles.ctaPrimary} onClick={onCreateInvoice}>+ CREATE INVOICE</button>
+        <button type="button" className={styles.ctaSecondary} onClick={() => jump("money", "moneyin")}>+ MONEY IN</button>
+        <button type="button" className={styles.ctaSecondary} onClick={() => jump("money", "moneyout")}>+ MONEY OUT</button>
+      </div>
       <div className={styles.inlineActions}>
         <button type="button" onClick={() => jump("quickentry", "")} style={{ fontWeight: 700 }}>+ QUICK ENTRY</button>
         <button type="button" onClick={() => jump("categories", "")}>CATEGORIES →</button>
@@ -252,7 +285,7 @@ function OverviewSection({ ctx, setGroup, setSection }: { ctx: Ctx; setGroup: (g
           <button type="button" onClick={() => jump("purchases", "vendors")}>{(data.payables ?? []).filter((b) => b.due > 0 && new Date(b.dueDate) < new Date()).length} overdue payable(s) →</button>
         )}
         {(data.recurringDue?.length ?? 0) > 0 && <button type="button" onClick={() => jump("purchases", "recurring")}>{data.recurringDue!.length} recurring expense(s) due →</button>}
-        {data.openingBalances && !data.openingBalances.posted && ctx.isFounder && <button type="button" onClick={() => jump("tools", "settings")}>Opening balances not yet posted →</button>}
+        {data.openingBalances && !data.openingBalances.posted && ctx.isFounder && <button type="button" onClick={() => jump("settings", "")}>Opening balances not yet posted →</button>}
       </div>
       {(data.intelligence?.length ?? 0) > 0 && (
         <>
@@ -884,6 +917,319 @@ function SalesRegisterSection() {
   );
 }
 
+// Sales §6/15 — Invoices is now a first-class destination: Create Invoice front and center, then
+// the real, already-issued Company documents beneath it. Reuses the SAME "sales-register" report
+// SalesRegisterSection already reads (no second report engine) — this view frames it around the
+// invoice workflow (a PDF link per row, Create Invoice CTA) rather than as a bare accounting table.
+function InvoicesSection({ portal, onCreateInvoice }: { portal: string; onCreateInvoice: () => void }) {
+  const [from, setFrom] = useState(isoDate(new Date(new Date().getFullYear(), 0, 1)));
+  const [to, setTo] = useState(isoDate(new Date()));
+  const { data, loading, err } = useReportOnDemand<{ id: string; documentNumber: string; type: string; issueDate: string; buyerName: string; gross: number; balance: number; status: string }[]>("sales-register", { from, to }, [from, to]);
+  return (
+    <div>
+      <div className={styles.ctaRow}>
+        <button type="button" className={styles.ctaPrimary} onClick={onCreateInvoice}>+ CREATE INVOICE</button>
+      </div>
+      <div className={styles.inlineActions}>
+        <label>From <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label>To <input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      </div>
+      {loading && <p>Loading…</p>}
+      {err && <p role="status" data-ok="false">{err}</p>}
+      <div className={styles.tableWrap}>
+        <table>
+          <thead><tr><th>Invoice</th><th>Type</th><th>Date</th><th>Party</th><th>Amount</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {data && data.length === 0 && <tr><td colSpan={8}>No invoices in this period yet — create your first one above.</td></tr>}
+            {data?.map((d) => (
+              <tr key={d.id}>
+                <td>{d.documentNumber}</td><td>{d.type}</td><td>{fmtDate(d.issueDate)}</td><td>{d.buyerName}</td><td>{money(d.gross)}</td><td>{money(d.balance)}</td><td><span className={styles.statusPill}>{d.status}</span></td>
+                <td>{d.status !== "DRAFT" && <a href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">PDF</a>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Parties §10 — one unified directory across every party type the existing architecture already
+// supports (Retail/Institutional Customer, Distributor, Super Stockist, Vendor), reusing the SAME
+// ledger-parties report PartyLedgerStatement's own picker uses. Clicking a party deep-links into
+// that SAME mature ledger screen (outstanding/transactions/invoices/receipts) — no new party or
+// ledger read model invented here.
+const PARTY_DIRECTORY_TYPES: { value: string; label: string; ledgerType?: string }[] = [
+  { value: "RETAILER", label: "Customers" },
+  { value: "DISTRIBUTOR", label: "Distributors" },
+  { value: "SUPER_STOCKIST", label: "Super Stockists" },
+  { value: "VENDOR", label: "Vendors" },
+];
+function PartiesSection({ portal, jump }: { portal: string; jump: (g: Group, s: string) => void }) {
+  const [partyType, setPartyType] = useState(PARTY_DIRECTORY_TYPES[0]!.value);
+  const [q, setQ] = useState("");
+  const [parties, setParties] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setLoading(true);
+    getReport("ledger-parties", { partyType }).then(setParties).catch(() => setParties([])).finally(() => setLoading(false));
+  }, [partyType]);
+  const filtered = parties.filter((p) => !q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase()));
+  function openLedger(partyId: string) {
+    // Vendors don't have a "Party Ledger" tab of their own in this codebase yet — a Vendor's real
+    // ledger is Purchases -> Vendors & Bills (VendorsSection), the same mature screen it already
+    // has; every other party type deep-links into the existing PartyLedgerStatement via the URL
+    // params it already supports.
+    if (partyType === "VENDOR") { jump("purchases", "vendors"); return; }
+    window.location.href = `/portal/${portal}/finance-os?group=sales&section=ledger&partyType=${partyType}&partyId=${partyId}`;
+  }
+  return (
+    <div className={styles.financeSection}>
+      <div className={styles.financeSectionHeader}>
+        <div><h3>Parties</h3><p>Search across every customer, distributor, super stockist and vendor. Select one to see outstanding, transactions and ledger.</p></div>
+      </div>
+      <div className={styles.sectionNav} role="tablist" aria-label="Party type">
+        {PARTY_DIRECTORY_TYPES.map((t) => (
+          <button key={t.value} type="button" onClick={() => setPartyType(t.value)} aria-pressed={partyType === t.value}>{t.label}</button>
+        ))}
+      </div>
+      <input placeholder="Search by name…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minHeight: 44, padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: 9, font: "inherit" }} />
+      {loading && <p>Loading…</p>}
+      {!loading && filtered.length === 0 && <p className={styles.emptyHint}>No {PARTY_DIRECTORY_TYPES.find((t) => t.value === partyType)?.label.toLowerCase()} found.</p>}
+      <div className={styles.partyGrid}>
+        {filtered.map((p) => (
+          <button key={p.id} type="button" className={styles.partyCard} onClick={() => openLedger(p.id)}>
+            <strong>{p.name}</strong>
+            <small>View outstanding, transactions & ledger →</small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Sales §6 — Create Invoice wizard. Reuses the EXISTING billing engine end to end
+// (createBillingDraft/updateBillingDraft/issueBillingDraft via the new but thin
+// create-company-invoice-draft/update-company-invoice-draft/issue-company-invoice actions —
+// same functions Distributor/S.S. self-billing already calls, just with issuerType:"COMPANY",
+// already a first-class, already-governed value in that engine). No new numbering, GST, ledger or
+// PDF logic — the server computes all of it exactly as it does for every other billing document.
+type InvoiceLine = { skuId: string; skuLabel: string; brand: string; quantity: string; rate: string; taxRate: number | null };
+type InvoiceSku = { value: string; label: string; brand: string; meta?: string; taxRate: number | null; hsn: string | null };
+function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; onClose: () => void; onIssued: () => void }) {
+  const [step, setStep] = useState(0); // 0 party, 1 items, 2 tax/total, 3 terms, 4 review
+  const STEP_LABEL = ["Party", "Items", "Tax & Total", "Terms", "Review"];
+  const [partyType, setPartyType] = useState("RETAILER");
+  const [parties, setParties] = useState<{ id: string; name: string }[]>([]);
+  const [buyerId, setBuyerId] = useState("");
+  const [skus, setSkus] = useState<InvoiceSku[]>([]);
+  const [lines, setLines] = useState<InvoiceLine[]>([{ skuId: "", skuLabel: "", brand: "", quantity: "1", rate: "", taxRate: null }]);
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [notes, setNotes] = useState("");
+  const [documentId, setDocumentId] = useState<string | null>(null);
+  const [issuedDocumentNumber, setIssuedDocumentNumber] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
+
+  useEffect(() => {
+    getReport("ledger-parties", { partyType }).then(setParties).catch(() => setParties([]));
+  }, [partyType]);
+  useEffect(() => {
+    getReport("invoice-wizard-skus", {}).then((rows: InvoiceSku[]) => setSkus(rows)).catch(() => setSkus([]));
+  }, []);
+
+  const buyerName = parties.find((p) => p.id === buyerId)?.name ?? "";
+  function updateLine(i: number, patch: Partial<InvoiceLine>) {
+    setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  }
+  function addLine() { setLines((prev) => [...prev, { skuId: "", skuLabel: "", brand: "", quantity: "1", rate: "", taxRate: null }]); }
+  function removeLine(i: number) { setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)); }
+
+  const validLines = lines.filter((l) => l.skuId && Number(l.quantity) > 0 && l.rate !== "");
+  // Client-side preview only, purely for the Review step's "what will this look like" table —
+  // the SAME priceModeForBrand/deriveInclusiveTax|ExclusiveTax math the server authoritatively
+  // uses (document-lines.ts) is intentionally re-derived here just for display; the server
+  // recomputes everything itself from the real SKU record when the draft is actually created —
+  // this preview can never be what gets posted, only a preview of it.
+  const preview = validLines.map((l) => {
+    const qty = Number(l.quantity), rate = Number(l.rate), taxRate = l.taxRate ?? 0;
+    const gross = qty * rate;
+    const isMuv = /^muv$/i.test(l.brand.trim());
+    const taxable = isMuv ? gross / (1 + taxRate / 100) : gross;
+    const tax = isMuv ? gross - taxable : gross * (taxRate / 100);
+    const total = isMuv ? gross : taxable + tax;
+    return { ...l, gross, taxable, tax, total };
+  });
+  const subtotal = preview.reduce((s, l) => s + l.gross, 0);
+  const taxableTotal = preview.reduce((s, l) => s + l.taxable, 0);
+  const taxTotal = preview.reduce((s, l) => s + l.tax, 0);
+  const grandTotal = preview.reduce((s, l) => s + l.total, 0);
+  const anyUnconfiguredTax = validLines.some((l) => l.taxRate == null);
+
+  function buildLinesPayload() {
+    return validLines.map((l) => ({ skuId: l.skuId, quantity: Number(l.quantity), rate: Number(l.rate), taxRate: l.taxRate }));
+  }
+
+  async function saveDraft() {
+    setBusy(true); setErr(null);
+    try {
+      const result = await post("create-company-invoice-draft", {
+        type: "TAX_INVOICE",
+        buyerType: partyType,
+        buyerId,
+        sourcePortal: portal,
+        paymentTerms: paymentTerms || undefined,
+        notes: notes || undefined,
+        lines: buildLinesPayload(),
+        idempotencyKey: idempotencyKeyRef.current,
+      });
+      setDocumentId(result.id);
+      return result.id as string;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save draft");
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function issueInvoice() {
+    setBusy(true); setErr(null);
+    try {
+      const id = documentId ?? (await saveDraft());
+      const result = await post("issue-company-invoice", { documentId: id });
+      setIssuedDocumentNumber(result.documentNumber);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not issue invoice");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (issuedDocumentNumber) {
+    return (
+      <div className={styles.wizardOverlay} onClick={onClose}>
+        <div className={styles.wizardCard} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.wizardHeader}><h2>Invoice Issued</h2><button type="button" className={styles.wizardClose} onClick={onIssued}>×</button></div>
+          <p><strong>{issuedDocumentNumber}</strong> has been issued to {buyerName}.</p>
+          <div className={styles.ctaRow}>
+            <a className={styles.ctaPrimary} href={`/api/documents/${documentId}/download`} target="_blank" rel="noreferrer">GENERATE PDF / PRINT</a>
+            <button type="button" className={styles.ctaSecondary} onClick={onIssued}>DONE</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.wizardOverlay} onClick={onClose}>
+      <div className={styles.wizardCard} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.wizardHeader}>
+          <div><span className={styles.workspaceEyebrow}>SALES</span><h2>Create Invoice</h2></div>
+          <button type="button" className={styles.wizardClose} onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className={styles.wizardSteps}>
+          {STEP_LABEL.map((label, i) => (
+            <span key={label} className={styles.wizardStep} data-active={step === i} data-done={step > i}>{i + 1}. {label}</span>
+          ))}
+        </div>
+        {err && <p role="status" data-ok="false">{err}</p>}
+
+        {step === 0 && (
+          <div className={styles.list}>
+            <label>Party type
+              <select value={partyType} onChange={(e) => { setPartyType(e.target.value); setBuyerId(""); }}>
+                {PARTY_DIRECTORY_TYPES.filter((t) => t.value !== "VENDOR").map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+            <label>{PARTY_DIRECTORY_TYPES.find((t) => t.value === partyType)?.label ?? "Party"}
+              <select value={buyerId} onChange={(e) => setBuyerId(e.target.value)}>
+                <option value="">{parties.length === 0 ? "No parties found for this type" : "Choose…"}</option>
+                {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={onClose}>Cancel</button>
+              <button type="button" className={styles.ctaPrimary} disabled={!buyerId} onClick={() => setStep(1)}>Next: Items</button>
+            </div>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className={styles.list}>
+            {lines.map((line, i) => (
+              <div key={i} className={styles.wizardLineRow}>
+                <select value={line.skuId} onChange={(e) => { const sku = skus.find((s) => s.value === e.target.value); updateLine(i, { skuId: e.target.value, skuLabel: sku?.label ?? "", brand: sku?.brand ?? "", taxRate: sku?.taxRate ?? null }); }}>
+                  <option value="">Choose product…</option>
+                  {skus.map((s) => <option key={s.value} value={s.value}>{s.label}{s.taxRate == null ? " — GST not configured" : ""}</option>)}
+                </select>
+                <input type="number" min="1" step="1" placeholder="Qty" value={line.quantity} onChange={(e) => updateLine(i, { quantity: e.target.value })} />
+                <input type="number" min="0" step="0.01" placeholder="Rate" value={line.rate} onChange={(e) => updateLine(i, { rate: e.target.value })} />
+                <span>{line.taxRate != null ? `${line.taxRate}% GST` : "—"}</span>
+                <button type="button" onClick={() => removeLine(i)} aria-label="Remove line">×</button>
+              </div>
+            ))}
+            <button type="button" className={styles.ctaSecondary} onClick={addLine}>+ Add item</button>
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={() => setStep(0)}>Back</button>
+              <button type="button" className={styles.ctaPrimary} disabled={validLines.length === 0} onClick={() => setStep(2)}>Next: Tax &amp; Total</button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className={styles.list}>
+            {anyUnconfiguredTax && <p className={styles.emptyHint}>One or more items has no governed GST rate configured yet — Founder/Admin must set it under Masters before this invoice can be ISSUED (it can still be saved as a Draft).</p>}
+            <div className={styles.wizardTotals}>
+              <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
+              <div><span>Taxable Amount</span><span>{money(taxableTotal)}</span></div>
+              <div><span>GST</span><span>{money(taxTotal)}</span></div>
+              <div data-total="true"><span>Grand Total</span><span>{money(grandTotal)}</span></div>
+            </div>
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={() => setStep(1)}>Back</button>
+              <button type="button" className={styles.ctaPrimary} onClick={() => setStep(3)}>Next: Terms</button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className={styles.list}>
+            <label>Payment terms (optional)<input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. Net 15 days" /></label>
+            <label>Notes (optional)<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={() => setStep(2)}>Back</button>
+              <button type="button" className={styles.ctaPrimary} onClick={() => setStep(4)}>Review</button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className={styles.list}>
+            <p><strong>Bill to:</strong> {buyerName}</p>
+            <div className={styles.tableWrap}>
+              <table>
+                <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>GST</th><th>Total</th></tr></thead>
+                <tbody>{preview.map((l, i) => <tr key={i}><td>{l.skuLabel}</td><td>{l.quantity}</td><td>{money(Number(l.rate))}</td><td>{money(l.tax)}</td><td>{money(l.total)}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <div className={styles.wizardTotals}>
+              <div data-total="true"><span>Grand Total</span><span>{money(grandTotal)}</span></div>
+            </div>
+            {paymentTerms && <p><strong>Terms:</strong> {paymentTerms}</p>}
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={() => setStep(3)}>Back</button>
+              <button type="button" className={styles.ctaSecondary} disabled={busy} onClick={() => void saveDraft()}>{busy ? "Saving…" : "SAVE DRAFT"}</button>
+              <button type="button" className={styles.ctaPrimary} disabled={busy || anyUnconfiguredTax} onClick={() => void issueInvoice()}>{busy ? "Issuing…" : "ISSUE INVOICE"}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CustomerAdvancesSection() {
   const { data, loading, err } = useReportOnDemand<{ id: string; paymentNumber: string; payerId: string; date: string; amountMatched: number; applied: number; unapplied: number }[]>("customer-advances", {}, []);
   return (
@@ -931,7 +1277,10 @@ function VendorsSection({ ctx }: { ctx: Ctx }) {
   const coaByCode = new Map((data.chartOfAccounts ?? []).map((a) => [a.code, a]));
   return (
     <div>
-      <h3>Payables</h3>
+      <div className={styles.financeSectionHeader}>
+        <div><h3>Purchases &amp; Vendors</h3><p>Payables at a glance, then create a Purchase Bill or add a Vendor below.</p></div>
+      </div>
+      {(data.vendors ?? []).length === 0 && <p className={styles.emptyHint}>Add a Vendor first (below), then Create Purchase Bill becomes available.</p>}
       <div className={styles.tableWrap}>
         <table>
           <thead><tr><th>Vendor</th><th>Invoice</th><th>Due date</th><th>Gross</th><th>Due</th><th>Status</th><th></th><th></th><th></th></tr></thead>
@@ -953,7 +1302,7 @@ function VendorsSection({ ctx }: { ctx: Ctx }) {
         </form>
       </details>
       {(data.vendors ?? []).length > 0 && (
-        <details><summary>+ RECORD VENDOR BILL</summary>
+        <details open><summary>+ CREATE PURCHASE BILL</summary>
           <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); run("create-vendor-bill", { vendorId: f.get("vendorId"), vendorInvoiceNumber: String(f.get("vendorInvoiceNumber")), invoiceDate: f.get("invoiceDate"), dueDate: f.get("dueDate"), category: f.get("category"), taxable: Number(f.get("taxable")), cgst: f.get("cgst") ? Number(f.get("cgst")) : undefined, sgst: f.get("sgst") ? Number(f.get("sgst")) : undefined, igst: f.get("igst") ? Number(f.get("igst")) : undefined, idempotencyKey: key() }, "Vendor bill posted. Next: record payment when ready."); }}>
             <label>Vendor<select name="vendorId" required>{(data.vendors ?? []).map((v) => <option key={v.id} value={v.id}>{v.legalName}</option>)}</select></label>
             <label>Vendor invoice #<input name="vendorInvoiceNumber" required /></label>
@@ -1439,7 +1788,11 @@ function SearchSection() {
   );
 }
 
-function ReportsCenterSection() {
+// Reports IA regroup (mission §11: Sales reports vs Purchase reports as distinct groups under
+// Reports). Kept as ONE component with all its existing fetches unchanged (every hook here already
+// existed and worked) — only which already-fetched section RENDERS is scope-gated, so nothing about
+// the underlying report engines/queries changes, just which subset is visible on which tab.
+function ReportsCenterSection({ scope }: { scope: "sales" | "purchases" }) {
   const [from, setFrom] = useState(isoDate(new Date(new Date().getFullYear(), 0, 1)));
   const [to, setTo] = useState(isoDate(new Date()));
   const { data: byCategory } = useReportOnDemand<{ categoryId: string; categoryName: string; total: number }[]>("expense-by-category", { from, to }, [from, to]);
@@ -1457,24 +1810,32 @@ function ReportsCenterSection() {
         <label>From <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label>To <input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
       </div>
-      <h4>Expense by Category <button type="button" disabled={!byCategory?.length} onClick={() => exportCsv("expense-by-category", byCategory ?? [])}>EXPORT CSV</button></h4>
-      <div className={styles.tableWrap}><table><tbody>{byCategory?.map((c) => <tr key={c.categoryId}><td>{c.categoryName}</td><td>{money(c.total)}</td></tr>)}</tbody></table></div>
-      <h4>Expense by Department <button type="button" disabled={!byDept?.length} onClick={() => exportCsv("expense-by-department", byDept ?? [])}>EXPORT CSV</button></h4>
-      <div className={styles.tableWrap}><table><tbody>{byDept?.map((d) => <tr key={d.dimensionId ?? "none"}><td>{d.name}</td><td>{money(d.total)}</td></tr>)}</tbody></table></div>
-      <h4>Territory Expense Summary <button type="button" disabled={!byTerritory?.length} onClick={() => exportCsv("expense-by-territory", byTerritory ?? [])}>EXPORT CSV</button></h4>
-      <div className={styles.tableWrap}><table><tbody>{byTerritory?.map((t) => <tr key={t.territoryId ?? "corporate"}><td>{t.name}</td><td>{money(t.total)}</td></tr>)}</tbody></table></div>
-      <h4>Cost Centre Summary (Territory-less expenses only) <button type="button" disabled={!byCostCentre?.length} onClick={() => exportCsv("cost-centre-summary", byCostCentre ?? [])}>EXPORT CSV</button></h4>
-      <div className={styles.tableWrap}><table><tbody>{byCostCentre?.map((c) => <tr key={c.costCentre}><td>{c.costCentre}</td><td>{money(c.total)}</td></tr>)}</tbody></table></div>
-      <h4>Receivables Ageing <button type="button" disabled={!ageing?.rows.length} onClick={() => exportCsv("receivables-ageing", ageing?.rows ?? [])}>EXPORT CSV</button></h4>
-      {ageing && <p>Not due {money(ageing.buckets.NOT_DUE)} · 1-30d {money(ageing.buckets["1_30"])} · 31-60d {money(ageing.buckets["31_60"])} · 61-90d {money(ageing.buckets["61_90"])} · 90+d {money(ageing.buckets["90_PLUS"])}</p>}
-      <h4>Company Sales by S.S. <button type="button" disabled={!bySS?.length} onClick={() => exportCsv("sales-by-ss", bySS ?? [])}>EXPORT CSV</button></h4>
-      <div className={styles.tableWrap}><table><tbody>{bySS?.map((s) => <tr key={s.partyId}><td>{s.name}</td><td>{money(s.total)}</td></tr>)}</tbody></table></div>
-      <h4>Company Sales by Product <button type="button" disabled={!byProduct?.length} onClick={() => exportCsv("sales-by-product", byProduct ?? [])}>EXPORT CSV</button></h4>
-      <div className={styles.tableWrap}><table><tbody>{byProduct?.slice(0, 15).map((p) => <tr key={p.product}><td>{p.product}</td><td>{money(p.total)}</td></tr>)}</tbody></table></div>
-      <h4>Purchase Register <button type="button" disabled={!purchases?.length} onClick={() => exportCsv("purchase-register", purchases ?? [])}>EXPORT CSV</button></h4>
-      <div className={styles.tableWrap}><table><thead><tr><th>Bill #</th><th>Vendor</th><th>Date</th><th>Gross</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{purchases?.map((p) => <tr key={p.id}><td>{p.billNumber}</td><td>{p.vendorName}</td><td>{new Date(p.invoiceDate).toLocaleDateString("en-IN")}</td><td>{money(p.gross)}</td><td>{money(p.paid)}</td><td>{money(p.balance)}</td><td>{p.status}</td></tr>)}</tbody></table></div>
-      <h4>Payables Ageing <button type="button" disabled={!payablesAgeing?.rows.length} onClick={() => exportCsv("payables-ageing", payablesAgeing?.rows ?? [])}>EXPORT CSV</button></h4>
-      {payablesAgeing && <p>Not due {money(payablesAgeing.buckets.NOT_DUE)} · 1-30d {money(payablesAgeing.buckets["1_30"])} · 31-60d {money(payablesAgeing.buckets["31_60"])} · 61-90d {money(payablesAgeing.buckets["61_90"])} · 90+d {money(payablesAgeing.buckets["90_PLUS"])}</p>}
+      {scope === "sales" && (
+        <>
+          <h4>Receivables Ageing <button type="button" disabled={!ageing?.rows.length} onClick={() => exportCsv("receivables-ageing", ageing?.rows ?? [])}>EXPORT CSV</button></h4>
+          {ageing && <p>Not due {money(ageing.buckets.NOT_DUE)} · 1-30d {money(ageing.buckets["1_30"])} · 31-60d {money(ageing.buckets["31_60"])} · 61-90d {money(ageing.buckets["61_90"])} · 90+d {money(ageing.buckets["90_PLUS"])}</p>}
+          <h4>Company Sales by S.S. <button type="button" disabled={!bySS?.length} onClick={() => exportCsv("sales-by-ss", bySS ?? [])}>EXPORT CSV</button></h4>
+          <div className={styles.tableWrap}><table><tbody>{bySS?.map((s) => <tr key={s.partyId}><td>{s.name}</td><td>{money(s.total)}</td></tr>)}</tbody></table></div>
+          <h4>Company Sales by Product <button type="button" disabled={!byProduct?.length} onClick={() => exportCsv("sales-by-product", byProduct ?? [])}>EXPORT CSV</button></h4>
+          <div className={styles.tableWrap}><table><tbody>{byProduct?.slice(0, 15).map((p) => <tr key={p.product}><td>{p.product}</td><td>{money(p.total)}</td></tr>)}</tbody></table></div>
+          <h4>Territory Sales Summary <button type="button" disabled={!byTerritory?.length} onClick={() => exportCsv("expense-by-territory", byTerritory ?? [])}>EXPORT CSV</button></h4>
+          <div className={styles.tableWrap}><table><tbody>{byTerritory?.map((t) => <tr key={t.territoryId ?? "corporate"}><td>{t.name}</td><td>{money(t.total)}</td></tr>)}</tbody></table></div>
+        </>
+      )}
+      {scope === "purchases" && (
+        <>
+          <h4>Purchase Register <button type="button" disabled={!purchases?.length} onClick={() => exportCsv("purchase-register", purchases ?? [])}>EXPORT CSV</button></h4>
+          <div className={styles.tableWrap}><table><thead><tr><th>Bill #</th><th>Vendor</th><th>Date</th><th>Gross</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{purchases?.map((p) => <tr key={p.id}><td>{p.billNumber}</td><td>{p.vendorName}</td><td>{new Date(p.invoiceDate).toLocaleDateString("en-IN")}</td><td>{money(p.gross)}</td><td>{money(p.paid)}</td><td>{money(p.balance)}</td><td>{p.status}</td></tr>)}</tbody></table></div>
+          <h4>Payables Ageing <button type="button" disabled={!payablesAgeing?.rows.length} onClick={() => exportCsv("payables-ageing", payablesAgeing?.rows ?? [])}>EXPORT CSV</button></h4>
+          {payablesAgeing && <p>Not due {money(payablesAgeing.buckets.NOT_DUE)} · 1-30d {money(payablesAgeing.buckets["1_30"])} · 31-60d {money(payablesAgeing.buckets["31_60"])} · 61-90d {money(payablesAgeing.buckets["61_90"])} · 90+d {money(payablesAgeing.buckets["90_PLUS"])}</p>}
+          <h4>Expense by Category <button type="button" disabled={!byCategory?.length} onClick={() => exportCsv("expense-by-category", byCategory ?? [])}>EXPORT CSV</button></h4>
+          <div className={styles.tableWrap}><table><tbody>{byCategory?.map((c) => <tr key={c.categoryId}><td>{c.categoryName}</td><td>{money(c.total)}</td></tr>)}</tbody></table></div>
+          <h4>Expense by Department <button type="button" disabled={!byDept?.length} onClick={() => exportCsv("expense-by-department", byDept ?? [])}>EXPORT CSV</button></h4>
+          <div className={styles.tableWrap}><table><tbody>{byDept?.map((d) => <tr key={d.dimensionId ?? "none"}><td>{d.name}</td><td>{money(d.total)}</td></tr>)}</tbody></table></div>
+          <h4>Cost Centre Summary (Territory-less expenses only) <button type="button" disabled={!byCostCentre?.length} onClick={() => exportCsv("cost-centre-summary", byCostCentre ?? [])}>EXPORT CSV</button></h4>
+          <div className={styles.tableWrap}><table><tbody>{byCostCentre?.map((c) => <tr key={c.costCentre}><td>{c.costCentre}</td><td>{money(c.total)}</td></tr>)}</tbody></table></div>
+        </>
+      )}
     </div>
   );
 }
@@ -1650,14 +2011,13 @@ function TreasuryAccountsSection({ ctx }: { ctx: Ctx }) {
 }
 
 function SettingsSection({ ctx }: { ctx: Ctx }) {
-  const { data, run, busy } = ctx;
+  const { data, run, busy, portal } = ctx;
   const coaByCode = new Map((data.chartOfAccounts ?? []).map((a) => [a.code, a]));
   return (
     <div className={styles.financeSection}>
       <div className={styles.financeSectionHeader}>
-        <div><h3>Finance Settings & Masters</h3><p>All accounting configuration used by Money Desk lives here.</p></div>
+        <div><h3>Finance Settings & Masters</h3><p>All accounting configuration used by Money Desk lives here. Treasury Accounts moved to its own screen — <a href={`/portal/${portal}/finance-os?group=treasury`}>Manage Treasury Accounts →</a></p></div>
       </div>
-      <TreasuryAccountsSection ctx={ctx} />
       <p>Chart of Accounts: {data.chartOfAccounts?.length ?? 0} accounts configured.</p>
       {(data.chartOfAccounts?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-coa", {}, "Chart of Accounts seeded.")}>BOOTSTRAP CHART OF ACCOUNTS</button>}
       {(data.dimensions?.length ?? 0) === 0 && <button type="button" disabled={busy} onClick={() => run("bootstrap-dimensions", {}, "Dimensions seeded.")}>BOOTSTRAP DEPARTMENTS</button>}

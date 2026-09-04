@@ -27,3 +27,132 @@
 .productCard strong{font-size:14px;color:#172033}.productCard small{color:#64748b;font-size:11px}.productCard .rate{font-weight:900;color:#177245;font-size:15px}.productCard .scheme{color:#a61f2a;font-size:11px;font-weight:800}
 .productCard .addRow{display:flex;gap:6px;align-items:center;margin-top:4px}.productCard .addRow input{width:60px;min-height:38px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font:inherit}.productCard .addRow button{min-height:38px;padding:0 12px;border:0;border-radius:8px;background:#172033;color:#fff;font-weight:800;cursor:pointer;transition:background-color .15s ease}.productCard .addRow button:disabled{opacity:.5;cursor:default}.productCard .addRow button[data-added=true]{background:#177245}
 .errorCard{grid-column:2;display:grid;gap:4px;padding:12px 14px;border-radius:10px;background:#fff5f5;border:1px solid #f3c9c9}.errorTitle{margin:0;font-weight:850;color:#b4232d;font-size:13px}.errorReason{margin:0;color:#475569;font-size:13px}.errorNextAction{margin:0;color:#172033;font-size:13px;font-weight:700}.errorHint{margin:0;color:#9a3412;font-size:12px}.errorReference{margin:0;color:#94a3b8;font-size:11px;font-family:monospace}@media(max-width:800px){.errorCard{grid-column:1}}
+
+/* ===========================================================================
+   FINANCE / MONEY DESK — Information Architecture Restructure
+   (SEERA — Finance + Money Desk Complete UI/UX Restructure, Final Execution
+   Contract). Root cause of the "wall of red pill buttons": every class below
+   was referenced in FinanceWorkspacePanel.tsx/MoneyDeskPanel.tsx but never
+   actually defined in this file — a bare <button> with no matching class
+   still sits inside .panel (the outer wrapper both components render into),
+   so it silently inherited THAT selector's `.panel button{background:#b4232d}`
+   rule (meant for form submit buttons), with none of .panel's own layout
+   rules (a 2-column sidebar grid) suited to a nav bar — hence unstyled,
+   ungrouped, wrapping red buttons with no hierarchy. Defining these properly
+   is most of the actual fix; the rest is the IA regrouping in the .tsx files.
+   =========================================================================== */
+
+/* Section/page header — title + subtitle + trailing secondary links. */
+.workspaceHeader{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px;padding-bottom:4px;border-bottom:1px solid #ead8d2}
+.workspaceHeader h2{margin:2px 0;font-size:22px;color:#172033}
+.workspaceEyebrow{display:block;font-size:11px;font-weight:900;letter-spacing:.1em;color:#a61f2a;text-transform:uppercase}
+.workspaceSubtitle{margin:2px 0 0;color:#64748b;font-size:13px;max-width:52ch}
+.workspaceHeaderActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.workspaceHeaderActions a{min-height:38px;display:inline-flex;align-items:center;padding:0 14px;border-radius:9px;border:1px solid #ead8d2;background:#fff;color:#172033;font-weight:800;font-size:13px;text-decoration:none}
+.accent{min-height:38px;display:inline-flex;align-items:center;padding:0 16px;border-radius:9px;background:#172033;color:#fff!important;font-weight:800;font-size:13px;text-decoration:none;border:0}
+
+/* Primary navigation (max ~6 items, per screen) — compact tabs, not buttons.
+   Wraps on tablet width; on narrow phones it scrolls horizontally as ONE row
+   instead of stacking into many rows of oversized pills. */
+.groupNav{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;padding:4px;background:#f6ece8;border-radius:12px}
+.groupNav button{min-height:38px;padding:0 16px;border:0;border-radius:9px;background:transparent;color:#475569;font-weight:800;font-size:13px;cursor:pointer;white-space:nowrap}
+.groupNav button[aria-pressed=true]{background:#fff;color:#a61f2a;box-shadow:0 1px 3px #17203314}
+@media(max-width:640px){.groupNav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.groupNav::-webkit-scrollbar{display:none}}
+
+/* Secondary navigation (sub-sections within a primary group) — visually
+   subordinate to groupNav: an underlined tab strip, not a second row of
+   equal-weight pills. */
+.sectionNav{grid-column:1/-1;display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid #ead8d2;margin-top:-6px}
+.sectionNav button{min-height:34px;padding:0 4px;margin-right:14px;border:0;border-bottom:2px solid transparent;background:transparent;color:#64748b;font-weight:800;font-size:12px;cursor:pointer;text-transform:uppercase;letter-spacing:.03em}
+.sectionNav button[aria-pressed=true]{color:#172033;border-bottom-color:#b4232d}
+@media(max-width:640px){.sectionNav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.sectionNav::-webkit-scrollbar{display:none}}
+
+/* "More" overflow menu — secondary/administrative functions that don't
+   deserve a primary nav slot (Quick Entry, Categories, Employees, Treasury
+   accounts, Control, Documents, Search, Settings). */
+.moreMenu{position:relative;display:inline-block}
+.moreMenuButton{min-height:38px;padding:0 16px;border:1px solid #ead8d2;border-radius:9px;background:#fff;color:#475569;font-weight:800;font-size:13px;cursor:pointer}
+.moreMenuButton[aria-expanded=true]{background:#f6ece8;color:#172033}
+.moreMenuPanel{position:absolute;right:0;top:44px;z-index:30;min-width:220px;display:grid;gap:2px;padding:8px;background:#fff;border:1px solid #ead8d2;border-radius:12px;box-shadow:0 18px 45px #17203324}
+.moreMenuPanel button{width:100%;text-align:left;min-height:38px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#172033;font-weight:700;font-size:13px;cursor:pointer}
+.moreMenuPanel button[aria-pressed=true]{background:#f6ece8;color:#a61f2a}
+.moreMenuPanel button:hover{background:#fafafa}
+
+/* Primary business-action CTAs — Create Invoice / Money In / Money Out /
+   Create Purchase Bill. Deliberately the SAME visual language as the
+   existing .primaryBig (green) so a CTA always reads as "the one obvious
+   next action", never confused with a navigation link. */
+.ctaRow{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px}
+.ctaPrimary{min-height:52px;padding:0 22px;border:0;border-radius:12px;background:#177245;color:#fff;font-weight:850;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.ctaPrimary:disabled{opacity:.55;cursor:default}
+.ctaSecondary{min-height:52px;padding:0 22px;border:1px solid #ead8d2;border-radius:12px;background:#fff;color:#172033;font-weight:850;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+@media(max-width:480px){.ctaRow{flex-direction:column}.ctaPrimary,.ctaSecondary{width:100%;justify-content:center}}
+
+/* Generic full-bleed section wrapper (Parties, Reports groups, Treasury,
+   Settings) — a labeled card, not a bare list dumped into the page. */
+.financeSection{grid-column:1/-1;display:grid;gap:14px;padding:18px;background:#fff;border:1px solid #ead8d2;border-radius:14px}
+.financeSectionHeader{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px}
+.financeSectionHeader h3{margin:0;font-size:16px;color:#172033}
+.financeSectionHeader p{margin:4px 0 0;color:#64748b;font-size:13px}
+.wide{grid-column:1/-1}
+.statusPill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;background:#f2fbf6;color:#177245;font-size:11px;font-weight:800;letter-spacing:.02em}
+.statusPill[data-inactive=true]{background:#f1e3df;color:#64748b}
+
+/* Treasury Accounts (Create/View/Activate) cards. */
+.treasuryForm{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;padding:14px;background:#fffaf8;border:1px solid #ead8d2;border-radius:12px}
+.treasuryForm label{display:grid;gap:5px;font-size:12px;font-weight:800;color:#475569}
+.treasuryForm input,.treasuryForm select{min-height:44px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;font:inherit}
+.treasuryForm button{min-height:48px;padding:0 20px;border:0;border-radius:10px;background:#177245;color:#fff;font-weight:850;cursor:pointer}
+.treasuryNote{grid-column:1/-1;margin:0;color:#94a3b8;font-size:11px}
+.treasuryGrid{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.treasuryCard{display:grid;gap:8px;padding:14px;background:#fff;border:1px solid #ead8d2;border-radius:12px}
+.treasuryCard[data-inactive=true]{opacity:.65;background:#fafafa}
+.treasuryCard button{min-height:38px;border:1px solid #ead8d2;border-radius:8px;background:#fff;color:#172033;font-weight:800;cursor:pointer}
+.treasuryCardTop{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.treasuryMeta{color:#64748b;font-size:12px}
+.treasuryBalance{font-size:22px;font-weight:900;color:#172033}
+
+/* Money Desk hero — header + KPI grid + primary nav, replacing the old
+   unstyled stack. KPI cards summarize; detailed tables live on their own
+   screens (see moneyDeskActions below and MoneyDeskPanel.tsx's routing). */
+.moneyDeskHero{grid-column:1/-1;display:grid;gap:14px}
+.moneyDeskHeroHeader{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
+.moneyDeskHeroHeader h2{margin:2px 0;font-size:22px;color:#172033}
+.moneyDeskKpis{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.moneyDeskKpi{padding:12px 14px;background:#fff;border:1px solid #ead8d2;border-radius:12px;display:grid;gap:4px}
+.moneyDeskKpi small{font-size:10px;font-weight:900;letter-spacing:.06em;color:#94a3b8;text-transform:uppercase}
+.moneyDeskKpi strong{font-size:18px;color:#172033}
+.moneyDeskNav{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;padding:4px;background:#f6ece8;border-radius:12px}
+.moneyDeskNav a{min-height:38px;padding:0 16px;display:inline-flex;align-items:center;border-radius:9px;color:#475569;font-weight:800;font-size:13px;text-decoration:none;white-space:nowrap}
+.moneyDeskNav a[data-primary=true]{background:#fff;color:#a61f2a;box-shadow:0 1px 3px #17203314}
+@media(max-width:640px){.moneyDeskNav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.moneyDeskNav::-webkit-scrollbar{display:none}}
+.moneyDeskActions{display:flex;flex-wrap:wrap;gap:10px}
+.moneyDeskAction{min-height:56px;padding:0 24px;border:0;border-radius:12px;font-weight:850;font-size:15px;cursor:pointer;flex:1;min-width:200px}
+.moneyDeskActionIn{background:#177245;color:#fff}
+.moneyDeskActionOut{background:#172033;color:#fff}
+@media(max-width:480px){.moneyDeskActions{flex-direction:column}.moneyDeskAction{width:100%}}
+
+/* Party directory (Parties tab) — search + party-type tabs + result cards,
+   linking into the existing PartyLedgerStatement for ledger/outstanding. */
+.partyGrid{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.partyCard{display:block;padding:14px;background:#fff;border:1px solid #ead8d2;border-radius:12px;text-decoration:none;color:inherit;cursor:pointer}
+.partyCard strong{display:block;font-size:14px;color:#172033}
+.partyCard small{display:block;margin-top:4px;color:#64748b;font-size:12px}
+
+/* Create Invoice wizard — full-screen overlay, step indicator, review table. */
+.wizardOverlay{position:fixed;inset:0;z-index:50;background:#02061788;display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto}
+.wizardCard{width:100%;max-width:760px;background:#fff;border-radius:16px;padding:24px;display:grid;gap:16px;box-shadow:0 30px 80px #02061740}
+.wizardHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.wizardHeader h2{margin:0;font-size:20px;color:#172033}
+.wizardClose{min-height:36px;min-width:36px;border:0;border-radius:9px;background:#f1e3df;color:#172033;font-weight:900;cursor:pointer}
+.wizardSteps{display:flex;flex-wrap:wrap;gap:6px}
+.wizardStep{min-height:30px;padding:0 12px;border-radius:999px;background:#f6ece8;color:#94a3b8;font-size:11px;font-weight:800;display:inline-flex;align-items:center}
+.wizardStep[data-active=true]{background:#a61f2a;color:#fff}
+.wizardStep[data-done=true]{background:#f2fbf6;color:#177245}
+.wizardLineRow{display:grid;grid-template-columns:2fr 90px 110px 90px auto;gap:8px;align-items:center;padding:8px;border:1px solid #ead8d2;border-radius:9px;background:#fffaf8}
+.wizardLineRow input,.wizardLineRow select{min-height:40px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit}
+.wizardLineRow button{min-height:36px;min-width:36px;border:0;border-radius:8px;background:#fff5f5;color:#b4232d;font-weight:900;cursor:pointer}
+@media(max-width:640px){.wizardLineRow{grid-template-columns:1fr 1fr;grid-template-areas:"sku sku" "qty rate" "tax remove"}.wizardCard{padding:16px}}
+.wizardTotals{display:grid;gap:4px;padding:14px;background:#fffaf8;border:1px solid #ead8d2;border-radius:12px}
+.wizardTotals div{display:flex;justify-content:space-between;font-size:13px;color:#475569}
+.wizardTotals div[data-total=true]{font-size:17px;font-weight:900;color:#172033;padding-top:8px;border-top:1px solid #ead8d2}

@@ -4,7 +4,7 @@ import { apiFailure } from "@/lib/foundation/api-response";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
 import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { FoundationError } from "@/lib/foundation/errors";
-import { salesRegister, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, costCentreSummary, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct, purchaseRegister, payablesAgeing } from "@/lib/finance/reports-service";
+import { salesRegister, customerAdvanceRegister, receiptsRegister, receivablesAgeing, expenseByCategory, expenseByDepartment, expenseByTerritory, costCentreSummary, monthlyExpenseTrend, marketingSpendReport, companySalesBySS, companySalesByProduct, purchaseRegister, payablesAgeing, invoiceWizardSkuCatalog } from "@/lib/finance/reports-service";
 import { financeGlobalSearch } from "@/lib/finance/search-service";
 import { financialIntelligenceFeed } from "@/lib/finance/intelligence-service";
 import { journalDetail, recentJournals } from "@/lib/finance/journal-service";
@@ -137,6 +137,9 @@ export async function GET(request: Request) {
         result = await employeeFinancial360(prisma, user.id, employeeId);
         break;
       }
+      case "invoice-wizard-skus":
+        result = await invoiceWizardSkuCatalog(prisma, user.id);
+        break;
       case "ledger-parties": {
         const partyType = assertKnownPartyType(url.searchParams.get("partyType"));
         result = await ledgerPartyOptions(prisma, user.id, partyType);

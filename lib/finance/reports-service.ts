@@ -4,6 +4,32 @@ import { ageingBucket } from "@/lib/sales-distribution/phase6-9-rules";
 import { partyOutstanding } from "@/lib/sales-distribution/financial-service";
 import { deriveCostCentre } from "./cost-centre";
 
+// Create Invoice wizard (Finance + Money Desk UI/UX Restructure, §6) — a lightweight, read-only
+// SKU catalog for the wizard's Items step. Deliberately no price-tier filter (unlike the
+// Distributor/Retailer catalog readers elsewhere): a Company-issued invoice's rate is typed
+// manually by the Founder, same "never invent a price" convention QuickEntry/Manager Retailing
+// already use, so this never assumes a specific price tier applies. taxRate/hsn are surfaced (not
+// silently defaulted) so the wizard can show — before the user gets to Review — exactly which
+// products have no governed GST configured yet (assertTaxConfigured in document-lines.ts is still
+// the real, server-side enforcement at issue time; this is purely an earlier, friendlier warning).
+export async function invoiceWizardSkuCatalog(db: PrismaClient, actorId: string) {
+  await authorize(db, { actorId, permission: "money_desk:create" });
+  const skus = await db.seeraSku.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true, code: true, productName: true, brand: true, packSize: true, unitType: true, taxRate: true, hsn: true },
+    orderBy: [{ brand: "asc" }, { productName: "asc" }],
+    take: 500,
+  });
+  return skus.map((s) => ({
+    value: s.id,
+    label: `${s.productName} — ${s.packSize} ${s.unitType}`,
+    brand: s.brand,
+    meta: s.code,
+    taxRate: s.taxRate != null ? Number(s.taxRate) : null,
+    hsn: s.hsn,
+  }));
+}
+
 // Sales Register (spec §9/§10C) — reads the SAME authoritative Company
 // commercial documents Sales V1 already issues; never a parallel sales table.
 export async function salesRegister(db: PrismaClient, actorId: string, input: { from: Date; to: Date }) {

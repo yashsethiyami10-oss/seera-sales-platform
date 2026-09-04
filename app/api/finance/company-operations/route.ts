@@ -30,6 +30,8 @@ import { recordAndPostReceipt } from "@/lib/sales-distribution/financial-service
 import { createFactoryCashSale } from "@/lib/finance/factory-cash-sale-service";
 import { createRetailer, CUSTOMER_TYPES } from "@/lib/sales-distribution/field-portal-service";
 import { getCompanyProfileForSettings, upsertCompanyProfile, uploadCompanyBrandingAsset } from "@/lib/finance/company-profile-service";
+import { createBillingDraft, updateBillingDraft, issueBillingDraft } from "@/lib/sales-distribution/billing-service";
+import { commercialLineInputSchema } from "@/lib/sales-distribution/document-lines";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
 
@@ -58,6 +60,7 @@ const ACTIONS = [
   "record-factory-cash-sale",
   "create-retail-customer",
   "get-company-profile", "update-company-profile", "upload-company-branding-asset",
+  "create-company-invoice-draft", "update-company-invoice-draft", "issue-company-invoice",
 ] as const;
 
 const body = z.object({ action: z.enum(ACTIONS), payload: z.record(z.unknown()) });
@@ -469,6 +472,43 @@ export async function POST(request: Request) {
       case "upload-company-branding-asset": {
         const v = z.object({ kind: z.enum(["LOGO", "SIGNATURE", "SEAL"]), originalName: z.string(), mimeType: z.string(), bytesBase64: z.string() }).parse(payload);
         result = await uploadCompanyBrandingAsset(prisma, user.id, { kind: v.kind, originalName: v.originalName, mimeType: v.mimeType, bytes: new Uint8Array(Buffer.from(v.bytesBase64, "base64")) });
+        break;
+      }
+      // Sales §6 (Finance + Money Desk UI/UX Restructure) — Create Invoice, reusing the EXACT
+      // SAME canonical billing engine Distributor/S.S. self-billing already calls
+      // (app/api/distribution/operations/route.ts's create-billing-draft/issue-billing-draft), just
+      // fixed to issuerType/issuerId "COMPANY" (a first-class, already-governed value —
+      // requireIssuerScope in billing-service.ts gates it on money_desk:create/system:super_admin,
+      // narrower than the base document:issue permission every other issuer needs, since issuing AS
+      // the Company is more sensitive). No new invoice/GST/ledger/numbering engine — zero duplicated
+      // logic, only a thin, Finance-side-appropriate action name and buyerType allowlist.
+      case "create-company-invoice-draft": {
+        const v = z
+          .object({
+            type: z.enum(["TAX_INVOICE", "NON_TAX_INVOICE", "PRO_FORMA_INVOICE", "CREDIT_NOTE", "DEBIT_NOTE"]),
+            buyerType: z.enum(["RETAILER", "DISTRIBUTOR", "SUPER_STOCKIST"]),
+            buyerId: z.string(),
+            sourcePortal: z.string(),
+            originalDocumentId: z.string().optional(),
+            paymentTerms: z.string().optional(),
+            notes: z.string().optional(),
+            lines: z.array(commercialLineInputSchema).min(1),
+            idempotencyKey: z.string(),
+          })
+          .parse(payload);
+        result = await createBillingDraft(prisma, user.id, { ...v, issuerType: "COMPANY", issuerId: "COMPANY" });
+        break;
+      }
+      case "update-company-invoice-draft": {
+        const v = z
+          .object({ documentId: z.string(), paymentTerms: z.string().optional(), notes: z.string().optional(), lines: z.array(commercialLineInputSchema).min(1) })
+          .parse(payload);
+        result = await updateBillingDraft(prisma, user.id, v.documentId, v);
+        break;
+      }
+      case "issue-company-invoice": {
+        const v = z.object({ documentId: z.string() }).parse(payload);
+        result = await issueBillingDraft(prisma, user.id, v.documentId);
         break;
       }
     }

@@ -122,9 +122,26 @@ function OutFieldControl({ field, value, onChange, supporting, hi, required }: {
   return <input value={value} onChange={(e) => onChange(e.target.value)} type={meta.type === "date" ? "date" : meta.type === "number" ? "number" : "text"} step={meta.type === "number" ? "0.01" : undefined} required={required} />;
 }
 
+// Money Desk §7/8 (Finance + Money Desk UI/UX Restructure) — Overview now summarizes; detailed
+// transaction workflows (the 5 tables the old screen dumped one after another — pending approvals,
+// needs attention, recent transactions, cash & bank, sales & distribution pending actions) each get
+// their own reachable tab instead. Purely a client-side view split — `home`/`supporting` already
+// carry every row needed (loaded once, server-side); no new fetch, no data removed, just less shown
+// at once.
+type MoneyDeskView = "overview" | "cashbank" | "approvals" | "attention" | "transactions" | "salesdist";
+const VIEW_LABEL: Record<MoneyDeskView, { en: string; hi: string }> = {
+  overview: { en: "Overview", hi: "ओवरव्यू" },
+  cashbank: { en: "Cash & Bank", hi: "नकद और बैंक" },
+  approvals: { en: "Approvals", hi: "अनुमोदन" },
+  attention: { en: "Needs Attention", hi: "ध्यान देने योग्य" },
+  transactions: { en: "Transactions", hi: "लेनदेन" },
+  salesdist: { en: "Sales & Distribution", hi: "बिक्री एवं वितरण" },
+};
+
 export function MoneyDeskPanel({ language, portal, purposes, supporting, home }: { language: "EN" | "HI"; portal: string; purposes: PurposeDef[]; supporting: SupportingData; home: HomeData }) {
   const hi = language === "HI";
   const router = useRouter();
+  const [view, setView] = useState<MoneyDeskView>("overview");
   const [openDirection, setOpenDirection] = useState<"IN" | "OUT" | null>(null);
   const [purposeCode, setPurposeCode] = useState<string>("");
   const [outStep, setOutStep] = useState(0); // 0=business context, 1=treasury/payment, 2=territory/cost centre, 3=review
@@ -245,7 +262,8 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
             <p className={styles.workspaceSubtitle}>Track every rupee across Cash, Bank, Customers, Vendors, Expenses and Ledgers.</p>
           </div>
           <div className={styles.workspaceHeaderActions}>
-            <a className={styles.accent} href={"/portal/"+portal+"/finance-os?group=tools&section=settings"}>{hi ? "सेटिंग्स" : "Settings"}</a>
+            <a href={"/portal/"+portal+"/finance-os"}>{hi ? "पूर्ण फाइनेंस" : "Full Finance"}</a>
+            <a className={styles.accent} href={"/portal/"+portal+"/finance-os?group=settings"}>{hi ? "सेटिंग्स" : "Settings"}</a>
           </div>
         </div>
         <div className={styles.moneyDeskKpis}>
@@ -269,35 +287,58 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
           <div className={styles.moneyDeskKpi}><small>{hi ? "कुल सक्रिय खाते" : "ACTIVE TREASURY"}</small><strong>{supporting.treasuryAccounts.length}</strong></div>
         </div>
         <nav className={styles.moneyDeskNav} aria-label={hi ? "मनी डेस्क नेविगेशन" : "Money Desk navigation"}>
-          <a data-primary="true" href={"/portal/"+portal+"/money-desk"}>{hi ? "ओवरव्यू" : "Overview"}</a>
-          <a href={"/portal/"+portal+"/finance-os?group=sales&section=ledger"}>{hi ? "पार्टी लेजर" : "Party Ledgers"}</a>
-          <a href={"/portal/"+portal+"/finance-os?group=sales&section=register"}>{hi ? "इनवॉइस" : "Invoices"}</a>
-          <a href={"/portal/"+portal+"/finance-os?group=purchases&section=vendors"}>{hi ? "बिल / विक्रेता" : "Bills / Vendors"}</a>
-          <a href={"/portal/"+portal+"/finance-os?group=tools&section=reports"}>{hi ? "रिपोर्ट" : "Reports"}</a>
-          <a href={"/portal/"+portal+"/finance-os?group=statements&section=pl"}>P&amp;L</a>
+          {(Object.keys(VIEW_LABEL) as MoneyDeskView[])
+            .filter((v) => v !== "salesdist" || home.salesDistribution.pendingPaymentProofs.length > 0 || home.salesDistribution.pendingTaClaims.length > 0 || home.salesDistribution.recentEntries.length > 0)
+            .filter((v) => v !== "approvals" || home.canApprove)
+            .map((v) => (
+              <a key={v} data-primary={view === v} href="#" onClick={(e) => { e.preventDefault(); setView(v); setOpenDirection(null); }}>
+                {hi ? VIEW_LABEL[v].hi : VIEW_LABEL[v].en}
+                {v === "approvals" && home.pendingApprovals.length > 0 ? ` (${home.pendingApprovals.length})` : ""}
+                {v === "attention" && home.needsAttention.length > 0 ? ` (${home.needsAttention.length})` : ""}
+              </a>
+            ))}
         </nav>
       </div>
 
-      <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
-        <strong>{hi ? "आज नकद / बैंक (वास्तविक बहीखाता)" : "Today's Cash / Bank (real ledger)"}</strong>
-        <table>
-          <thead><tr><th>{hi ? "खाता" : "Account"}</th><th>{hi ? "शेष" : "Balance"}</th><th>{hi ? "आज की गतिविधि" : "Moved today"}</th></tr></thead>
-          <tbody>
-            {home.cashBankToday.map((a) => (
-              <tr key={a.treasuryAccountId}><td>{a.name} ({a.kind})</td><td>{money(a.balance)}</td><td>{money(a.movedToday)}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {view === "cashbank" && (
+        <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
+          <strong>{hi ? "आज नकद / बैंक (वास्तविक बहीखाता)" : "Today's Cash / Bank (real ledger)"}</strong>
+          <table>
+            <thead><tr><th>{hi ? "खाता" : "Account"}</th><th>{hi ? "शेष" : "Balance"}</th><th>{hi ? "आज की गतिविधि" : "Moved today"}</th></tr></thead>
+            <tbody>
+              {home.cashBankToday.map((a) => (
+                <tr key={a.treasuryAccountId}><td>{a.name} ({a.kind})</td><td>{money(a.balance)}</td><td>{money(a.movedToday)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {!openDirection && (
+      {view === "overview" && !openDirection && (
         <>
-          <SmartFinanceEntry language={language} portal={portal} territories={supporting.territories} purposes={purposes.map((p) => ({ code: p.code, label: p.label, hindiLabel: p.hindiLabel }))} />
+          {/* §7 — Money In / Money Out are the dominant primary actions; Smart Finance is a
+              secondary, optional tool below them (never the first thing the eye lands on). */}
           <div className={styles.moneyDeskActions} style={{ gridColumn: "1/-1" }}>
-            <button type="button" className={styles.primaryBig+" "+styles.moneyDeskAction+" "+styles.moneyDeskActionIn} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ RECORD MONEY IN"}</button>
-            <button type="button" className={styles.primaryBig+" "+styles.moneyDeskAction+" "+styles.moneyDeskActionOut} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ RECORD MONEY OUT"}</button>
+            <button type="button" className={styles.moneyDeskAction+" "+styles.moneyDeskActionIn} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ MONEY IN"}</button>
+            <button type="button" className={styles.moneyDeskAction+" "+styles.moneyDeskActionOut} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ MONEY OUT"}</button>
           </div>
+          <details style={{ gridColumn: "1/-1" }}>
+            <summary>{hi ? "स्मार्ट फाइनेंस — जो हुआ उसे लिखें, सीरा उसे संरचित करेगा" : "SMART FINANCE — describe what happened and let SEERA structure the transaction"}</summary>
+            <SmartFinanceEntry language={language} portal={portal} territories={supporting.territories} purposes={purposes.map((p) => ({ code: p.code, label: p.label, hindiLabel: p.hindiLabel }))} />
+          </details>
+          {(home.pendingApprovals.length > 0 || home.needsAttention.length > 0) && (
+            <div className={styles.inlineActions} style={{ gridColumn: "1/-1" }}>
+              {home.canApprove && home.pendingApprovals.length > 0 && <button type="button" onClick={() => setView("approvals")}>{home.pendingApprovals.length} {hi ? "अनुमोदन प्रतीक्षित" : "pending approval(s)"} →</button>}
+              {home.needsAttention.length > 0 && <button type="button" onClick={() => setView("attention")}>{home.needsAttention.length} {hi ? "ध्यान देने योग्य" : "needing attention"} →</button>}
+            </div>
+          )}
         </>
+      )}
+      {view !== "overview" && !openDirection && (
+        <div className={styles.moneyDeskActions} style={{ gridColumn: "1/-1" }}>
+          <button type="button" className={styles.moneyDeskAction+" "+styles.moneyDeskActionIn} onClick={() => setOpenDirection("IN")}>{hi ? "+ पैसा प्राप्त" : "+ MONEY IN"}</button>
+          <button type="button" className={styles.moneyDeskAction+" "+styles.moneyDeskActionOut} onClick={() => setOpenDirection("OUT")}>{hi ? "+ पैसा भुगतान" : "+ MONEY OUT"}</button>
+        </div>
       )}
 
       {openDirection === "IN" && (
@@ -446,7 +487,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
 
       {message && message.ok && <p role="status" data-ok={message.ok} style={{ gridColumn: "1/-1" }}>{message.text}</p>}
 
-      {home.canApprove && home.pendingApprovals.length > 0 && (
+      {view === "approvals" && home.canApprove && home.pendingApprovals.length > 0 && (
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
           <strong>{hi ? "अनुमोदन प्रतीक्षित" : "Pending approvals"}</strong>
           <table>
@@ -472,7 +513,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
         </div>
       )}
 
-      {home.needsAttention.length > 0 && (
+      {view === "attention" && home.needsAttention.length > 0 && (
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
           <strong>{hi ? "ध्यान देने योग्य" : "Needs attention"}</strong>
           <table>
@@ -484,7 +525,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
         </div>
       )}
 
-      {(home.salesDistribution.pendingPaymentProofs.length > 0 || home.salesDistribution.pendingTaClaims.length > 0) && (
+      {view === "salesdist" && (home.salesDistribution.pendingPaymentProofs.length > 0 || home.salesDistribution.pendingTaClaims.length > 0) && (
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
           <strong>{hi ? "बिक्री एवं वितरण — लंबित कार्य" : "Sales & Distribution — pending actions"}</strong>
           <table>
@@ -513,7 +554,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
         </div>
       )}
 
-      {home.salesDistribution.recentEntries.length > 0 && (
+      {view === "salesdist" && home.salesDistribution.recentEntries.length > 0 && (
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
           <strong>{hi ? "हाल की बिक्री एवं वितरण गतिविधि" : "Recent Sales & Distribution activity"}</strong>
           <table>
@@ -527,6 +568,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
         </div>
       )}
 
+      {view === "transactions" && (
       <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
         <strong>{hi ? "हाल के लेनदेन" : "Recent transactions"}</strong>
         <table>
@@ -547,6 +589,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
           </tbody>
         </table>
       </div>
+      )}
     </section>
   );
 }
