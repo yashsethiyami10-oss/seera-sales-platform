@@ -218,6 +218,14 @@ function OverviewSection({ ctx, setGroup, setSection }: { ctx: Ctx; setGroup: (g
   const outputToday = today?.reduce((s, b) => s + (b.actualOutputQuantity ?? 0), 0) ?? 0;
   return (
     <div className={styles.notice} data-ok="true">
+      {/* Final Integration mission, Part G — Overview leads with STATUS + PRIMARY ACTIONS, not a
+          wall of tables. These three CTAs jump straight into the existing create flows already
+          built under Production/Warehouse — no new engine, just the obvious front door. */}
+      <div className={styles.ctaRow}>
+        <button type="button" className={styles.ctaPrimary} onClick={() => jump("production", "orders")}>+ NEW PRODUCTION</button>
+        <button type="button" className={styles.ctaSecondary} onClick={() => jump("warehouse", "transfers")}>+ STOCK ADJUSTMENT</button>
+        <button type="button" className={styles.ctaSecondary} onClick={() => jump("warehouse", "grn")}>+ MATERIAL ENTRY</button>
+      </div>
       <h3>Today</h3>
       <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
         <div><dt>Batches started today</dt><dd>{today ? startedToday : "DATA REQUIRED"}</dd></div>
