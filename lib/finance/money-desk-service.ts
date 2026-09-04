@@ -363,7 +363,7 @@ export async function editMoneyDeskTransaction(
   db: PrismaClient,
   actorId: string,
   transactionId: string,
-  input: { amount?: number; date?: Date; counterpartyName?: string; description?: string; formData?: Record<string, unknown>; reason: string; idempotencyKey: string },
+  input: { amount?: number; date?: Date; counterpartyName?: string; description?: string; treasuryAccountId?: string; formData?: Record<string, unknown>; reason: string; idempotencyKey: string },
 ) {
   if (!input.reason.trim()) throw new FoundationError("MONEY_DESK_EDIT_REASON_REQUIRED", "A reason is required", 400);
   const txn = await db.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: transactionId } });
@@ -372,7 +372,12 @@ export async function editMoneyDeskTransaction(
   if (!permissions.has("system:super_admin"))
     throw new FoundationError("MONEY_DESK_EDIT_FOUNDER_ONLY", "Direct edit is a Founder-Portal capability — void and re-enter, or ask a Founder to correct it", 403);
 
-  if (txn.status === "DRAFT" || txn.status === "PENDING_APPROVAL") {
+  // Part L — a POSTING transaction with a failureReason ("Needs Attention") is treated the same as
+  // DRAFT/PENDING_APPROVAL here: nothing has ever been durably POSTED for it, so an in-place update
+  // (including treasuryAccountId, the one field this branch didn't previously accept, and the one
+  // that was missing on the real production entry this fix was reproduced against) is safe — RETRY
+  // afterward re-reads this same row fresh (processMoneyDeskTransaction) and picks up the correction.
+  if (txn.status === "DRAFT" || txn.status === "PENDING_APPROVAL" || (txn.status === "POSTING" && txn.failureReason)) {
     const updated = await db.seeraMoneyDeskTransaction.update({
       where: { id: transactionId },
       data: {
@@ -380,10 +385,11 @@ export async function editMoneyDeskTransaction(
         date: input.date ?? undefined,
         counterpartyName: input.counterpartyName ?? undefined,
         description: input.description ?? undefined,
+        treasuryAccountId: input.treasuryAccountId ?? undefined,
         formData: input.formData ? (input.formData as never) : undefined,
       },
     });
-    await recordAudit(db, { actorId, action: "money_desk.transaction.edited_pre_post", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, reason: input.reason, afterState: { amount: updated.amount.toString(), date: updated.date.toISOString() } });
+    await recordAudit(db, { actorId, action: "money_desk.transaction.edited_pre_post", entityType: "SeeraMoneyDeskTransaction", entityId: transactionId, reason: input.reason, afterState: { amount: updated.amount.toString(), date: updated.date.toISOString(), treasuryAccountId: updated.treasuryAccountId ?? undefined } });
     return updated;
   }
 
@@ -409,6 +415,22 @@ export async function editMoneyDeskTransaction(
   }
 
   throw new FoundationError("MONEY_DESK_EDIT_NOT_ALLOWED", `Cannot edit a transaction in ${txn.status} status`, 409);
+}
+
+// Part L (Final 100% Production Completion Execution Contract) — found while diagnosing a real
+// production "Needs Attention" entry (MD-60817C2372D198DD): a Money Desk transaction can genuinely
+// be created with no treasuryAccountId (it's optional at createMoneyDeskTransaction — e.g. when no
+// active Cash/Bank account existed yet at submission time), but 5 handlers below blindly asserted
+// `txn.treasuryAccountId!` and let a null id fall straight into Prisma's findUniqueOrThrow, leaking
+// a raw "Argument `id` must not be null" internal error as the failureReason — a genuine Part W
+// (no raw Prisma errors) violation, and a PERMANENTLY stuck entry: retryMoneyDeskTransaction just
+// re-reads the same null id and fails identically forever, with no edit path to correct it (see
+// editMoneyDeskTransaction's new POSTING+failureReason branch below, which is the actual fix for
+// getting such an entry unstuck). This guard turns the crash into one clean, actionable message.
+function requireTreasuryAccountId(txn: { treasuryAccountId: string | null }): string {
+  if (!txn.treasuryAccountId)
+    throw new FoundationError("MONEY_DESK_TREASURY_ACCOUNT_REQUIRED", "A Cash/Bank account is required to post this entry — use EDIT / CORRECT to select one, then RETRY", 400);
+  return txn.treasuryAccountId;
 }
 
 type Handler = (
@@ -470,7 +492,7 @@ const HANDLERS: Record<string, Handler> = {
       vendorId: txn.counterpartyId!,
       billId: formData.billId as string,
       amount: Number(txn.amount),
-      treasuryAccountId: txn.treasuryAccountId!,
+      treasuryAccountId: requireTreasuryAccountId(txn),
       treasuryAccountCoaCode: formData.treasuryAccountCoaCode as string,
       paymentMode: (formData.paymentMode as string) ?? "BANK",
       reference: txn.description ?? undefined,
@@ -489,7 +511,7 @@ const HANDLERS: Record<string, Handler> = {
       type: hasKnownParty ? "INVOICE_RECEIPT" : "CUSTOMER_ADVANCE",
       date: txn.date,
       amount: Number(txn.amount),
-      treasuryAccountId: txn.treasuryAccountId!,
+      treasuryAccountId: requireTreasuryAccountId(txn),
       partyType: hasKnownParty ? "CUSTOMER" : undefined,
       partyId: txn.counterpartyId ?? undefined,
       mode: (formData.paymentMode as string) ?? "BANK",
@@ -549,7 +571,7 @@ const HANDLERS: Record<string, Handler> = {
       documentFileId: txn.documentFileId ?? undefined,
       usefulLifeMonths: formData.usefulLifeMonths ? Number(formData.usefulLifeMonths) : undefined,
       residualValue: formData.residualValue ? Number(formData.residualValue) : undefined,
-      treasuryAccountId: txn.treasuryAccountId!,
+      treasuryAccountId: requireTreasuryAccountId(txn),
       treasuryAccountCoaCode: formData.treasuryAccountCoaCode as string,
       idempotencyKey: txn.idempotencyKey,
     });
@@ -566,7 +588,7 @@ const HANDLERS: Record<string, Handler> = {
       type: "REFUND",
       date: txn.date,
       amount: Number(txn.amount),
-      treasuryAccountId: txn.treasuryAccountId!,
+      treasuryAccountId: requireTreasuryAccountId(txn),
       partyType: "CUSTOMER",
       partyId: returnRequest.retailerId ?? undefined,
       mode: (formData.paymentMode as string) ?? "BANK",
@@ -652,7 +674,7 @@ const HANDLERS: Record<string, Handler> = {
           vendorId,
           billId: bill.id,
           amount: Number(bill.grossAmount) - Number(bill.paidAmount),
-          treasuryAccountId: txn.treasuryAccountId!,
+          treasuryAccountId: requireTreasuryAccountId(txn),
           treasuryAccountCoaCode: formData.treasuryAccountCoaCode as string,
           paymentMode: (formData.paymentMode as string) ?? "BANK",
           reference: `Raw material purchase ${bill.billNumber}`,
@@ -971,7 +993,11 @@ export async function moneyDeskTransactionDetail(db: PrismaClient, actorId: stri
     // a user is never shown an action they'd immediately be denied for.
     canApprove: txn.status === "PENDING_APPROVAL" && txn.requestedById !== actorId && (permissions.has("money_desk:approve") || permissions.has("system:super_admin")),
     canVoid: txn.status === "POSTED" && (permissions.has("money_desk:reverse") || permissions.has("system:super_admin")) && (txn.requestedById !== actorId || permissions.has("system:super_admin")),
-    canEdit: txn.requestedById === actorId && permissions.has("system:super_admin") && (txn.status === "POSTED" || txn.status === "PENDING_APPROVAL" || txn.status === "DRAFT"),
+    // Part L — a "Needs Attention" entry (POSTING + failureReason) is now editable too, not just
+    // retryable: RETRY alone can never fix a failure caused by bad/missing data on the entry itself
+    // (e.g. no treasuryAccountId selected — see requireTreasuryAccountId above), only one caused by
+    // external state now being fixed (e.g. a missing SeeraExpenseCategory since created).
+    canEdit: txn.requestedById === actorId && permissions.has("system:super_admin") && (txn.status === "POSTED" || txn.status === "PENDING_APPROVAL" || txn.status === "DRAFT" || (txn.status === "POSTING" && Boolean(txn.failureReason))),
     // P0-8 — a stuck "Needs Attention" entry can be retried by whoever created it, or by anyone
     // with approval-level authority (mirrors retryMoneyDeskTransaction's own real authorization).
     canRetry: txn.status === "POSTING" && Boolean(txn.failureReason) && (txn.requestedById === actorId || permissions.has("money_desk:approve") || permissions.has("system:super_admin")),

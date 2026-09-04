@@ -326,6 +326,7 @@ export async function POST(request: Request) {
             date: z.coerce.date().optional(),
             counterpartyName: z.string().optional(),
             description: z.string().optional(),
+            treasuryAccountId: z.string().optional(),
             formData: z.record(z.unknown()).optional(),
             reason: z.string(),
             idempotencyKey: z.string(),

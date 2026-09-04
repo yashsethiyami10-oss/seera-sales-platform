@@ -23,6 +23,7 @@ import { companyOrderNextStep } from "@/lib/sales-distribution/business-rules";
 import { partnerObligationsPreview } from "@/lib/sales-distribution/travel-lifecycle-service";
 import { distributorClosureStockPosition } from "@/lib/sales-distribution/distributor-management-service";
 import { moneyDeskTransactionDetail } from "@/lib/finance/money-desk-service";
+import { listTreasuryAccounts } from "@/lib/finance/treasury-service";
 
 type Field = { label: string; value: string };
 const money = (v: unknown) =>
@@ -220,6 +221,11 @@ export async function OperationalDetail({
           canVoid={detail.canVoid}
           canEdit={detail.canEdit}
           canRetry={detail.canRetry}
+          // Part L — only fetched when an edit is actually possible for this row (avoids a needless
+          // query on the common view-only path); lets EDIT / CORRECT offer a treasury-account picker
+          // so a "Needs Attention" entry stuck for want of one (requireTreasuryAccountId in
+          // money-desk-service.ts) can actually be corrected, not just endlessly retried.
+          treasuryAccounts={detail.canEdit ? (await listTreasuryAccounts(db, userId)).map((a) => ({ id: a.id, name: a.name, kind: a.kind })) : []}
         />
       </>
     );

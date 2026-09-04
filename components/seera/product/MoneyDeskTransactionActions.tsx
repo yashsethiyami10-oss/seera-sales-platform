@@ -26,6 +26,7 @@ export function MoneyDeskTransactionActions({
   canVoid,
   canEdit,
   canRetry,
+  treasuryAccounts = [],
 }: {
   language: "EN" | "HI";
   transactionId: string;
@@ -34,6 +35,9 @@ export function MoneyDeskTransactionActions({
   canVoid: boolean;
   canEdit: boolean;
   canRetry: boolean;
+  // Part L — populated only when canEdit; lets a "Needs Attention" entry stuck for want of a
+  // treasury account (requireTreasuryAccountId) actually be corrected, not just endlessly retried.
+  treasuryAccounts?: { id: string; name: string; kind: string }[];
 }) {
   const hi = language === "HI";
   const router = useRouter();
@@ -42,6 +46,7 @@ export function MoneyDeskTransactionActions({
   const [editing, setEditing] = useState(false);
   const [editAmount, setEditAmount] = useState(String(amount));
   const [editReason, setEditReason] = useState("");
+  const [editTreasuryAccountId, setEditTreasuryAccountId] = useState("");
 
   function decide(decision: "APPROVED" | "REJECTED") {
     const reason = window.prompt(hi ? "कारण दर्ज करें" : "Enter a reason") ?? "";
@@ -79,7 +84,7 @@ export function MoneyDeskTransactionActions({
     if (!editReason.trim()) { setMessage({ ok: false, text: hi ? "कारण आवश्यक है" : "A reason is required" }); return; }
     setBusy(true);
     setMessage(null);
-    post("money-desk-edit", { transactionId, amount: Number(editAmount) || undefined, reason: editReason, idempotencyKey: crypto.randomUUID() })
+    post("money-desk-edit", { transactionId, amount: Number(editAmount) || undefined, treasuryAccountId: editTreasuryAccountId || undefined, reason: editReason, idempotencyKey: crypto.randomUUID() })
       .then((result: { id: string; correctionOfId?: string }) => {
         setMessage({ ok: true, text: result.correctionOfId ? (hi ? "सुधार दर्ज किया गया — मूल को रद्द कर नया लेनदेन बनाया गया।" : "Correction recorded — the original was voided and a new corrected transaction created.") : (hi ? "अपडेट किया गया।" : "Updated.") });
         setEditing(false);
@@ -113,6 +118,14 @@ export function MoneyDeskTransactionActions({
         <div className={styles.list} style={{ marginTop: "0.75rem" }}>
           <p><small>{hi ? "यदि यह लेनदेन पहले से पोस्ट हो चुका है, तो यह मूल को रद्द कर एक नया सुधारित लेनदेन बनाएगा (मूल हमेशा सुरक्षित रहता है)।" : "If this transaction is already posted, this will void the original and create a new, corrected transaction (the original is always preserved)."}</small></p>
           <label>{hi ? "नई राशि" : "New amount"}<input type="number" step="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} /></label>
+          {treasuryAccounts.length > 0 && (
+            <label>{hi ? "कैश/बैंक खाता" : "Cash/Bank account"}
+              <select value={editTreasuryAccountId} onChange={(e) => setEditTreasuryAccountId(e.target.value)}>
+                <option value="">{hi ? "अपरिवर्तित छोड़ें" : "Leave unchanged"}</option>
+                {treasuryAccounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.kind})</option>)}
+              </select>
+            </label>
+          )}
           <label>{hi ? "सुधार का कारण *" : "Reason for correction *"}<input value={editReason} onChange={(e) => setEditReason(e.target.value)} required /></label>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button type="button" className={styles.secondaryBig} disabled={busy} onClick={() => setEditing(false)}>{hi ? "रद्द करें" : "Cancel"}</button>
