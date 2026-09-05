@@ -106,9 +106,17 @@ read as genuine, small, real operational entries tied to the real active field t
 statuses (`READY_FOR_REVIEW`, `SENT_TO_ACCOUNTS`, one `MANAGER_REJECTED`). **Recommendation: keep**
 — this is the real team's real TA/DA workflow being used, not test fixtures.
 
-## 7. Users / Treasury Accounts / Documents
+## 7. Users / Treasury Accounts / Documents / RBAC / Product & Material Masters / System Configuration
 
-Untouched, per Part K's explicit preserve list. Not included in any script here.
+Untouched, per Part K/L's explicit preserve list — not included in any script here, and none of
+these tables share a foreign key with `delete-zero-dependency-proof-retailers.ts`'s two target
+`SeeraRetailer` rows (confirmed by that script's own re-verified `_count` on `orders`/`visits` only).
+Concretely, out of scope for any script in this playbook: `User`/`Role`/`RolePermission`/
+`SeeraAssignment` (RBAC — separately, exhaustively verified zero-drift against `rbac-catalog.ts`
+in `rbac-full-matrix-drift-check-readonly.ts`), `SeeraTreasuryAccount`, every document/`StoredFile`
+table, `SeeraSku`/`SeeraManufacturingMaterial`/`SeeraBom`/`SeeraChartOfAccount` and every other
+master/config table. Trial *business activity* (test orders, receipts, TA claims, money-desk
+entries) is what Part K/L target — never the masters or configuration those transactions reference.
 
 ## Summary of what this playbook actually recommends doing right now
 
