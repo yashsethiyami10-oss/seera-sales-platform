@@ -38,7 +38,10 @@ type ActorContext = {
   actorId: string;
   sourcePortal: string;
   commercialPartyType: string;
-  commercialPartyId: string;
+  // Optional (Executive Save Order performance fix) — only a caller replaying a client-queued,
+  // possibly-stale value (offline-sync-service.ts) has a real independent value to pass here; the
+  // live field-operations route has none (see placeRetailerOrder's own FORGED_ASSIGNMENT check).
+  commercialPartyId?: string;
   onBehalfOfPartyId?: string;
   financialAcceptance?: boolean;
   assistedReason?: string;
@@ -709,10 +712,24 @@ export async function placeRetailerOrder(
   // everything below is a synchronous check against its already-resolved scope query, not a new
   // round trip.
   if (context.sourcePortal === "sales-executive") {
+    // Executive Save Order performance fix — this scope+lifecycle check used to live in the caller
+    // (app/api/field/operations/route.ts), which fetched this SAME retailer row via its own
+    // `findFirst({ salespersonId, lifecycle })` BEFORE calling this function, purely to enforce this
+    // one check and to read back `distributorId` for the FORGED_ASSIGNMENT comparison below — a
+    // genuine duplicate round trip on the Executive's hottest write path, sequential and blocking
+    // before the Promise.all above even starts. `retailer` here is already the full row (fetched
+    // once, inside that same Promise.all), so the check is free to run here instead. The route no
+    // longer pre-fetches; see its own comment.
+    if (retailer.salespersonId !== context.actorId || retailer.lifecycle !== "ACTIVE")
+      throw new FoundationError("RETAILER_SCOPE_DENIED", "Retailer is outside your scope", 403);
     // Only a retailer that ALREADY had a known distributorId can be tampered with — comparing
     // against a null/unresolved assignment would reject the very "book as unassigned" case this
-    // routing foundation exists to support.
-    if (retailer.distributorId && retailer.distributorId !== context.commercialPartyId)
+    // routing foundation exists to support. commercialPartyId is only ever supplied by a caller
+    // replaying a client-queued value that could have gone stale before sync (offline-sync-service.ts)
+    // — the live route above has no such value to validate (it would just be this same retailer's
+    // own distributorId, fetched moments earlier by the very check this comment is attached to), so
+    // this comparison is skipped entirely when the caller passes none.
+    if (context.commercialPartyId !== undefined && retailer.distributorId && retailer.distributorId !== context.commercialPartyId)
       throw new FoundationError(
         "FORGED_ASSIGNMENT",
         "Retailer assignment mismatch",

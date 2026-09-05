@@ -176,26 +176,20 @@ export async function POST(request: Request) {
             source: z.enum(["FIELD_VISIT", "PHONE_CALL", "WHATSAPP", "OTHER"]).optional(),
             visitId: z.string().optional(),
           })
-          .parse(payload),
-        retailer = await prisma.seeraRetailer.findFirst({
-          where: {
-            id: v.retailerId,
-            salespersonId: user.id,
-            lifecycle: "ACTIVE",
-          },
-        });
-      if (!retailer) throw new Error("Retailer is outside your scope");
-      // placeRetailerOrder itself now resolves an unmapped retailer's Distributor (territory
-      // auto-route, or books unassigned for Manager to resolve) — this route no longer hard-blocks
-      // on a missing distributorId; commercialPartyId here is only the pre-resolution value used
-      // for the FORGED_ASSIGNMENT tamper check when a distributor was already assigned.
+          .parse(payload);
+      // Executive Save Order performance fix: this route used to fetch the retailer here (scoped to
+      // salespersonId/lifecycle) purely to enforce ownership and to read back distributorId for
+      // placeRetailerOrder's FORGED_ASSIGNMENT check — a full extra round trip, sequential and
+      // blocking, before placeRetailerOrder's own Promise.all (which fetches this exact same row)
+      // even starts. placeRetailerOrder now enforces the identical ownership/lifecycle check itself
+      // using the row it already fetches — see its sales-executive branch — so this route no longer
+      // pre-fetches at all.
       result = await placeRetailerOrder(
         prisma,
         {
           actorId: user.id,
           sourcePortal: "sales-executive",
           commercialPartyType: "DISTRIBUTOR",
-          commercialPartyId: retailer.distributorId ?? "",
         },
         v,
       );
