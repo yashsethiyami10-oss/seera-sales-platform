@@ -77,10 +77,15 @@ async function main() {
   check("partySnapshot(COMPANY) carries a formatted address", companySnapshot.address.includes("Jhansi"));
 
   console.log("\n=== Part G/N: render an actual Sales Invoice PDF and inspect it ===");
+  // Test-script hygiene fix: a fixed mobile number here collided with whatever earlier run of this
+  // same script had already left in the (persistent, never-cleaned) TEST DB, tripping the real and
+  // correctly-working SIMILAR_RETAILER_EXISTS duplicate check — not a product bug. Derive a mobile
+  // that's unique per run, same as businessName's suffix already is.
+  const uniqueMobile = "9" + suffix.replace(/\D/g, "").padEnd(9, "1").slice(0, 9);
   const buyerRetailer = await createRetailer(prisma, founder.id, {
     businessName: `PDF Test Customer ${suffix}`,
     address: { line: "Shop 4, Main Bazaar", city: "Jhansi", state: "Uttar Pradesh", pincode: "284001" },
-    mobile: "9123456780",
+    mobile: uniqueMobile,
     idempotencyKey: `pdf-buyer-${suffix}`,
   });
   const buyerSnapshot = await partySnapshot(prisma, "RETAILER", buyerRetailer.id);
