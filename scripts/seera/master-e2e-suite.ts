@@ -92,7 +92,17 @@ function parseSummary(stdout: string, exitCode: number): { passed: number; faile
 async function main() {
   console.log(`Master E2E Suite — ${SUITE.length} regression scripts, run sequentially against TEST DB\n`);
   const results: Result[] = [];
+  let first = true;
   for (const { area, script } of SUITE) {
+    // Final Acceptance mission — this session repeatedly observed the pattern "script 1 passes
+    // (sometimes slowly), then nearly everything after it fails within ~9-10s" against this exact
+    // TEST DB endpoint, even right after a freshly-confirmed-healthy multi-round ping. Zero delay
+    // previously existed between one script's process exit and the next spawn firing — a plausible
+    // trigger for a serverless-Postgres connection/compute cooldown this rapid a cadence doesn't
+    // give room to settle. A short pause here is a harness-only change (no product/test-assertion
+    // code touched) to test that theory; it does not affect what "clean" means for any script.
+    if (!first) await new Promise((r) => setTimeout(r, 5_000));
+    first = false;
     process.stdout.write(`-> ${area} (${script}) ... `);
     const start = Date.now();
     const { code, stdout } = await runScript(script);
