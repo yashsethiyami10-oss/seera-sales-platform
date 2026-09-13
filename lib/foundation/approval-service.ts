@@ -29,13 +29,24 @@ export async function decideApproval(
         "Approval unavailable",
         404,
       );
-    // Section-12 fix: maker-checker was not actually enforced here - nothing stopped the same
-    // actor who requested this item from also deciding it, and system:super_admin's role-scope
-    // bypass just below made this concretely reachable (a super_admin whose own request landed in
-    // this queue could approve/reject their own transaction). Founder-final-authority actions
-    // (Money Desk's finalizeForFounder) are unaffected - those never enter this generic approval
-    // queue at all, by design.
-    if (item.requestedById === actorId)
+    // Section-12 fix (original): maker-checker was not actually enforced here - nothing stopped
+    // the same actor who requested this item from also deciding it, and system:super_admin's
+    // role-scope bypass just below made this concretely reachable for ANY super_admin holder.
+    //
+    // UI Implementation & Visual Gap Closure update: that blanket block created the exact same
+    // "genuine dead end" money-desk-service.ts's decideMoneyDeskApproval comment already describes
+    // fixing for Money Desk — found here via two real production FINANCE_EXPENSE approval items
+    // (both requestedById = the Founder's own account, created 2026-09-04, ~10 days before
+    // requestFinanceApproval's own Founder-bypass shipped) with literally no way to ever clear
+    // them: the Founder holds system:super_admin, so the role-scope check below would pass, but
+    // this check ran first and blocked them unconditionally regardless. Money Desk's own
+    // decideMoneyDeskApproval already resolved the identical situation with a Founder-only
+    // (system:super_admin) bypass; applying the SAME precedent here — the final-authority signal
+    // this codebase already treats as authoritative everywhere else — rather than leaving a
+    // second, sibling dead end for any future edge case that lands a Founder-originated item in
+    // this queue despite the creation-time bypass (a stale pre-fix row, or any path that doesn't
+    // go through requestFinanceApproval). Every non-Founder actor is still unconditionally denied.
+    if (item.requestedById === actorId && !permissions.has("system:super_admin"))
       throw new FoundationError(
         "SELF_APPROVAL_DENIED",
         "You cannot decide your own request",
