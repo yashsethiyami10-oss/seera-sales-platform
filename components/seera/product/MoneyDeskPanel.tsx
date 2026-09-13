@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import { GuidedMoneyIn } from "./GuidedMoneyIn";
@@ -27,7 +27,14 @@ type PurposeDef = {
   optionalFields: string[];
   documentPolicy: "REQUIRED" | "OPTIONAL" | "NONE";
   description: string;
+  handler: string;
 };
+
+// Mirrors TREASURY_REQUIRED_HANDLERS in lib/finance/money-desk-service.ts — kept in sync manually
+// since this is presentation-layer-only (the server enforces the real rule regardless of this UI
+// hint; this only drives the `required` attribute + a visible "*" so the operator sees it before
+// Save instead of discovering it later as a stuck Needs Attention entry).
+const TREASURY_REQUIRED_HANDLERS = new Set(["VENDOR_PAYMENT", "INSTITUTIONAL_RECEIPT", "FIXED_ASSET", "REFUND", "ADJUSTMENT"]);
 
 // Founder-visual-review fix (§6): the Money Out picker used to be one long flat vertical list of
 // technical purpose codes. Grouped into the same business categories the Founder actually asked
@@ -141,8 +148,13 @@ const VIEW_LABEL: Record<MoneyDeskView, { en: string; hi: string }> = {
 export function MoneyDeskPanel({ language, portal, purposes, supporting, home }: { language: "EN" | "HI"; portal: string; purposes: PurposeDef[]; supporting: SupportingData; home: HomeData }) {
   const hi = language === "HI";
   const router = useRouter();
+  // Founder Home §1 deep-link: "+MONEY IN"/"−MONEY OUT" there link here with ?open=in / ?open=out
+  // so the button actually opens the flow instead of just landing on the section requiring another
+  // click. Read once on mount (a user closing the flow via Cancel shouldn't have it reopen).
+  const searchParams = useSearchParams();
+  const initialOpen = searchParams.get("open");
   const [view, setView] = useState<MoneyDeskView>("overview");
-  const [openDirection, setOpenDirection] = useState<"IN" | "OUT" | null>(null);
+  const [openDirection, setOpenDirection] = useState<"IN" | "OUT" | null>(initialOpen === "in" ? "IN" : initialOpen === "out" ? "OUT" : null);
   const [purposeCode, setPurposeCode] = useState<string>("");
   const [outStep, setOutStep] = useState(0); // 0=business context, 1=treasury/payment, 2=territory/cost centre, 3=review
   const [direction, setDirection] = useState<Direction | "">("");
@@ -248,6 +260,29 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
       .then(() => router.refresh())
       .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not decide" }))
       .finally(() => setDecisionBusyId(null));
+  }
+
+  function retry(transactionId: string) {
+    setDecisionBusyId(transactionId);
+    void post("money-desk-retry", { transactionId })
+      .then(() => router.refresh())
+      .catch((err) => setMessage({ ok: false, text: err instanceof Error ? err.message : "Could not retry" }))
+      .finally(() => setDecisionBusyId(null));
+  }
+
+  // MASTER UX mission §15/22 — "Never make raw Prisma errors the primary UI." Maps the small,
+  // known set of failureReason patterns this codebase actually produces to a plain-English WHY +
+  // WHAT TO DO; the raw failureReason is still shown, but only inside an expandable technical
+  // details toggle, never as the headline. An unrecognized pattern falls back to a generic, still
+  // honest message rather than either fabricating a wrong explanation or leaking the raw error.
+  function attentionExplain(failureReason: string): { why: { en: string; hi: string }; canRetryDirectly: boolean } {
+    if (/SeeraExpenseCategory/i.test(failureReason))
+      return { why: { en: "An expense category master record was missing when this was first posted.", hi: "पोस्ट करते समय एक व्यय श्रेणी मास्टर रिकॉर्ड गायब था।" }, canRetryDirectly: true };
+    if (/treasuryAccount|Treasury Account/i.test(failureReason))
+      return { why: { en: "No Cash/Bank account is linked to this entry.", hi: "इस प्रविष्टि से कोई नकद/बैंक खाता जुड़ा नहीं है।" }, canRetryDirectly: false };
+    if (/SeeraChartOfAccount/i.test(failureReason))
+      return { why: { en: "A required accounting reference isn't configured yet.", hi: "एक आवश्यक लेखा संदर्भ अभी कॉन्फ़िगर नहीं है।" }, canRetryDirectly: false };
+    return { why: { en: "This entry could not be posted.", hi: "यह प्रविष्टि पोस्ट नहीं की जा सकी।" }, canRetryDirectly: false };
   }
 
   const OUT_STEP_LABEL = hi ? ["व्यवसाय विवरण", "ट्रेजरी / भुगतान", "क्षेत्र / कॉस्ट सेंटर", "समीक्षा"] : ["Business Context", "Treasury / Payment", "Territory / Cost Centre", "Review"];
@@ -402,11 +437,11 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
 
               {outStep === 1 && (
                 <div className={styles.list}>
-                  <label>{hi ? "खाता" : "Treasury account"}
+                  <label>{`${hi ? "खाता" : "Treasury account"}${TREASURY_REQUIRED_HANDLERS.has(selectedPurpose.handler) ? " *" : ""}`}
                     {supporting.treasuryAccounts.length === 0 ? (
                       <span className={styles.emptyHint}>{hi ? "कोई ट्रेजरी खाता कॉन्फ़िगर नहीं है।" : "No Treasury Accounts configured."}</span>
                     ) : (
-                      <select value={treasuryAccountId} onChange={(e) => setTreasuryAccountId(e.target.value)}>
+                      <select value={treasuryAccountId} required={TREASURY_REQUIRED_HANDLERS.has(selectedPurpose.handler)} onChange={(e) => setTreasuryAccountId(e.target.value)}>
                         <option value="">{hi ? "चुनें" : "Choose"}</option>
                         {supporting.treasuryAccounts.map((t) => {
                           const bal = home.cashBankToday.find((c) => c.treasuryAccountId === t.id)?.balance;
@@ -434,7 +469,7 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
                   )}
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     <button type="button" className={styles.secondaryBig} onClick={() => setOutStep(0)}>{hi ? "पीछे" : "Back"}</button>
-                    <button type="button" className={styles.primaryBig} disabled={selectedPurpose.documentPolicy === "REQUIRED" && !documentFileId} onClick={() => setOutStep(2)}>{hi ? "आगे" : "Next"}</button>
+                    <button type="button" className={styles.primaryBig} disabled={(selectedPurpose.documentPolicy === "REQUIRED" && !documentFileId) || (TREASURY_REQUIRED_HANDLERS.has(selectedPurpose.handler) && !treasuryAccountId)} onClick={() => setOutStep(2)}>{hi ? "आगे" : "Next"}</button>
                   </div>
                 </div>
               )}
@@ -513,15 +548,42 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
         </div>
       )}
 
-      {view === "attention" && home.needsAttention.length > 0 && (
+      {view === "attention" && (
         <div className={styles.tableWrap} style={{ gridColumn: "1/-1" }}>
           <strong>{hi ? "ध्यान देने योग्य" : "Needs attention"}</strong>
-          <table>
-            <thead><tr><th>#</th><th>{hi ? "उद्देश्य" : "Purpose"}</th><th>{hi ? "पार्टी" : "Party"}</th><th>{hi ? "राशि" : "Amount"}</th><th>{hi ? "कारण" : "Reason"}</th></tr></thead>
-            <tbody>
-              {home.needsAttention.map((t) => <tr key={t.id}><td><a href={`/portal/${portal}/money-desk/${t.id}`}>{t.transactionNumber}</a></td><td>{purposeLabel(t.purposeCode)}</td><td>{t.counterpartyName ?? "—"}</td><td>{money(t.amount)}</td><td>{t.failureReason}</td></tr>)}
-            </tbody>
-          </table>
+          {home.needsAttention.length === 0 ? (
+            <p className={styles.emptyHint} data-tone="success">{hi ? "सब कुछ ठीक दिख रहा है।" : "Everything looks healthy."}</p>
+          ) : (
+            <ul className={styles.attentionList}>
+              {home.needsAttention.map((t) => {
+                const explain = attentionExplain(t.failureReason ?? "");
+                return (
+                  <li key={t.id} className={styles.attentionCard}>
+                    <div className={styles.attentionCardHead}>
+                      <span className={styles.pillWarning}>{hi ? "ध्यान देने योग्य" : "NEEDS ATTENTION"}</span>
+                      <strong>{money(t.amount)}</strong>
+                    </div>
+                    <div>{purposeLabel(t.purposeCode)} — {t.counterpartyName ?? (hi ? "पार्टी नहीं" : "No party")}</div>
+                    <div className={styles.attentionWhy}>{hi ? explain.why.hi : explain.why.en}</div>
+                    <details>
+                      <summary>{hi ? "तकनीकी विवरण" : "Technical details"}</summary>
+                      <code>{t.failureReason}</code>
+                    </details>
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                      {explain.canRetryDirectly && (
+                        <button type="button" className={styles.primaryBig} disabled={decisionBusyId === t.id} onClick={() => retry(t.id)}>
+                          {decisionBusyId === t.id ? (hi ? "पुनः प्रयास…" : "Retrying…") : (hi ? "पुनः प्रयास करें" : "RETRY")}
+                        </button>
+                      )}
+                      <a href={`/portal/${portal}/money-desk/${t.id}`} className={styles.secondaryBig}>
+                        {explain.canRetryDirectly ? (hi ? "देखें" : "VIEW") : (hi ? "सुधारें" : "CORRECT")}
+                      </a>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 

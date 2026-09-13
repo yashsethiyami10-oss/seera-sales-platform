@@ -1,0 +1,48 @@
+/* SEERA design system — shared tokens for the Founder OS / Finance OS / Money Desk redesign.
+   Existing, untouched screens keep their own hardcoded colors; these tokens are additive and are
+   consumed only by components being redesigned in this pass (see MASTER UX mission). Colors below
+   were chosen to match brand values already in use elsewhere in the app (crimson #b91c1c is the
+   existing viewport themeColor; ink #172554 is AppShell's existing text color) rather than
+   inventing an unrelated palette. */
+:root {
+  /* Surfaces */
+  --seera-bg: #faf7f2;               /* warm ivory app background */
+  --seera-surface: #ffffff;          /* card surface */
+  --seera-surface-cool: #f4f6fb;     /* cool-tinted secondary surface (existing AppShell bg) */
+  --seera-border: #e7e2d8;           /* warm-neutral border on ivory */
+  --seera-border-cool: #dbe3f0;      /* cool border for surface-cool contexts */
+
+  /* Text */
+  --seera-ink: #172554;              /* primary text / headings (existing AppShell ink) */
+  --seera-ink-soft: #475569;         /* secondary text */
+  --seera-ink-muted: #94a3b8;        /* tertiary / placeholder text */
+
+  /* Brand primary */
+  --seera-primary: #b91c1c;          /* SEERA crimson */
+  --seera-primary-dark: #7f1414;
+  --seera-primary-bright: #f87171;   /* legible red accent against dark surfaces (nav highlight) */
+  --seera-primary-soft: #fdeaea;     /* tint for badges/backgrounds */
+
+  /* Status — colors carry fixed meaning across the whole product */
+  --seera-success: #059669;          /* posted / completed / healthy */
+  --seera-success-soft: #e7f7f0;
+  --seera-warning: #b45309;          /* attention / pending */
+  --seera-warning-soft: #fdf2e0;
+  --seera-danger: #dc2626;           /* blocked / failed / urgent */
+  --seera-danger-soft: #fdeaea;
+  --seera-info: #0369a1;             /* information / neutral activity */
+  --seera-info-soft: #e6f3fb;
+  --seera-analytical: #6d28d9;       /* insight / smart finance */
+  --seera-analytical-soft: #f1eafb;
+
+  /* Shape */
+  --seera-radius-sm: 8px;
+  --seera-radius-md: 14px;
+  --seera-radius-lg: 20px;
+  --seera-shadow-card: 0 1px 2px #17255408, 0 8px 24px #17255412;
+  --seera-shadow-pop: 0 18px 45px #17255424;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

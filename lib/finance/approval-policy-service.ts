@@ -1,5 +1,5 @@
 import type { FinanceApprovalCategory, PrismaClient } from "@prisma/client";
-import { authorize } from "@/lib/foundation/authorization-service";
+import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { decideApproval } from "@/lib/foundation/approval-service";
 
@@ -44,6 +44,16 @@ export async function requestFinanceApproval(db: PrismaClient, requestedById: st
   const policy = await db.seeraFinanceApprovalPolicy.findUnique({ where: { category: input.category } });
   const requiresApproval = policy ? policy.requiresApproval && input.amount >= Number(policy.thresholdAmount) : true;
   if (!requiresApproval) return false;
+  // MASTER UX mission §10/31 — Founder-final-authority bypass, mirroring the SAME FOUNDER_PORTAL
+  // pattern money-desk-service.ts's createMoneyDeskTransaction already uses (requiresApproval false
+  // for a Founder-originated entry): a genuine Founder (system:super_admin) is the final authority
+  // and must never be routed into this generic queue's own PENDING_APPROVAL state, because
+  // decideApproval's self-approval guard (approval-service.ts) correctly and deliberately has NO
+  // bypass — that guard was itself a P0 fix for a real self-approval bug, and weakening it here
+  // would reopen that bug. The fix belongs at creation time, not at decision time: skip creating the
+  // approval item entirely for a Founder requester, exactly as Money Desk already does.
+  const requesterPermissions = await effectivePermissions(db, requestedById);
+  if (requesterPermissions.has("system:super_admin")) return false;
   await db.seeraApprovalItem.create({
     data: { type: `FINANCE_${input.category}`, entityType: input.entityType, entityId: input.entityId, requestedById, assignedRoleCode: "ACCOUNTS_MANAGER", status: "PENDING", request: { amount: input.amount, reason: input.reason } },
   });

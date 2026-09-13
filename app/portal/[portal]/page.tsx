@@ -14,6 +14,8 @@ import { AccountsDashboardSummary } from "@/components/seera/product/AccountsDas
 import { accountsDashboardSummary } from "@/lib/sales-distribution/financial-service";
 import { FounderAttentionDashboard } from "@/components/seera/product/FounderAttentionDashboard";
 import { founderAttentionDashboard } from "@/lib/sales-distribution/founder-service";
+import { FounderHomeToday } from "@/components/seera/product/FounderHomeToday";
+import { moneyDeskHome } from "@/lib/finance/money-desk-service";
 import { prisma } from "@/lib/database/client";
 import {
   authorize,
@@ -229,6 +231,19 @@ export default async function PortalShell({
           errorName: error instanceof Error ? error.name : "UnknownError",
         });
       }
+    // MASTER UX mission §1 — Founder Home's financial "what's happening today" section. Reuses
+    // moneyDeskHome() (the SAME read model MoneyDeskPanel itself renders) rather than a second
+    // Finance truth; degrades gracefully (section just doesn't render) if unavailable, matching
+    // every other summary widget on this page.
+    let founderMoneyToday: Awaited<ReturnType<typeof moneyDeskHome>> | null = null;
+    if (portal === "founder-admin" && permissions.has("money_desk:view"))
+      try {
+        founderMoneyToday = await moneyDeskHome(prisma, user.id);
+      } catch (error) {
+        console.error("[SEERA] founder home money-today unavailable", {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
     const title = experience?.title ?? messages[portal]?.[language] ?? "Seera";
     return (
       <main
@@ -288,6 +303,9 @@ export default async function PortalShell({
           )}
           {accountsSummary && (
             <AccountsDashboardSummary language={language} summary={accountsSummary} portal={portal} />
+          )}
+          {founderMoneyToday && (
+            <FounderHomeToday language={language} home={founderMoneyToday} portal={portal} />
           )}
           {founderSummary && (
             <FounderAttentionDashboard language={language} summary={founderSummary} portal={portal} />

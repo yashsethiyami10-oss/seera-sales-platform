@@ -161,7 +161,9 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [showInvoiceWizard, setShowInvoiceWizard] = useState(false);
+  // Founder Home §8 deep-link: "+CREATE INVOICE" links here with ?open=invoice so the button
+  // actually opens the wizard instead of just landing on the section requiring another click.
+  const [showInvoiceWizard, setShowInvoiceWizard] = useState(searchParams.get("open") === "invoice");
   const isFounder = portal === "founder-admin" || portal === "company-admin";
   const visibleMoreGroups = MORE_GROUPS.filter((g) => g !== "control" || data.budgets !== null || data.loans !== null).filter((g) => g !== "settings" || isFounder);
 

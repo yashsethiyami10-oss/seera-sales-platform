@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
+import { financeNumberFor } from "../../lib/finance/numbering";
 import {
   createMoneyDeskTransaction,
   editMoneyDeskTransaction,
@@ -18,6 +19,14 @@ import {
 // This proves both halves of the fix: (1) the failure is now a clean, actionable message instead of
 // a raw Prisma leak, and (2) EDIT / CORRECT can now supply the missing treasuryAccountId, after
 // which RETRY genuinely succeeds — a real, permanent recovery path, not just a friendlier crash.
+//
+// MASTER UX mission §17 update — createMoneyDeskTransaction now rejects a treasury-requiring
+// purpose with no treasuryAccountId BEFORE creating any row at all (Step 1 below proves that). That
+// closes the root cause for NEW entries, but production still has real rows created before this fix
+// existed (MD-60817C2372D198DD itself). Steps 2-5 now simulate that pre-existing legacy state via a
+// direct forced update (same pattern repro-money-desk-retry.ts already uses to simulate a stuck
+// row), rather than through createMoneyDeskTransaction, since the governed path can no longer
+// produce it — recovery for already-stuck legacy rows must still work regardless.
 function envFile(file: string) {
   const values: Record<string, string> = {};
   for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
@@ -41,16 +50,11 @@ async function main() {
   const suffix = randomUUID().slice(0, 8);
   const founder = await prisma.user.findFirstOrThrow({ where: { normalizedEmail: "review-founder@seera.test" } });
 
-  console.log("=== Step 1: create a REC-INS entry with NO treasuryAccountId (matches the real production entry) ===");
+  console.log("=== Step 1a: createMoneyDeskTransaction now rejects a treasury-less REC-INS UPFRONT (create-time guard) ===");
   const key = `md-stuck-treasury-${suffix}`;
-  // createMoneyDeskTransaction chains straight into processMoneyDeskTransaction (STEP 1 + STEP 2 in
-  // one call for an auto-cleared Founder entry) and processMoneyDeskTransaction re-throws on failure
-  // after durably recording failureReason on the row — exactly like the real production incident,
-  // where the ORIGINAL create call itself is what failed and left the entry sitting in Needs
-  // Attention. Catch it here the same way the real money-desk-create API route already does.
-  let createdId: string;
+  let rejectedCleanly = false;
   try {
-    const created = await createMoneyDeskTransaction(prisma, founder.id, {
+    await createMoneyDeskTransaction(prisma, founder.id, {
       purposeCode: "REC-INS",
       direction: "CASH_IN",
       amount: 250,
@@ -60,19 +64,35 @@ async function main() {
       formData: {},
       idempotencyKey: key,
     });
-    createdId = created.id;
     check("entry should have thrown (unexpected success)", false);
   } catch (e) {
-    check("create call itself throws the SAME clean error (matches real production: failure happens on original submit)", e instanceof Error && "code" in e && (e as { code: unknown }).code === "MONEY_DESK_TREASURY_ACCOUNT_REQUIRED");
-    const row = await prisma.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { idempotencyKey: key } });
-    createdId = row.id;
+    rejectedCleanly = e instanceof Error && "code" in e && (e as { code: unknown }).code === "MONEY_DESK_TREASURY_ACCOUNT_REQUIRED";
+    check("create call throws MONEY_DESK_TREASURY_ACCOUNT_REQUIRED immediately, before any row exists", rejectedCleanly);
   }
+  const noRowCreated = await prisma.seeraMoneyDeskTransaction.findUnique({ where: { idempotencyKey: key } });
+  check("NO row was left behind — the fix prevents the stuck state from ever being created, not just from crashing raw", noRowCreated === null);
 
-  const stuck = await prisma.seeraMoneyDeskTransaction.findUniqueOrThrow({ where: { id: createdId } });
-  check("entry landed in POSTING (Founder auto-clears approval) despite the create-time throw", stuck.status === "POSTING");
-  console.log(`  [info] failureReason: ${stuck.failureReason}`);
-  check("BEFORE FIX would have leaked a raw Prisma error — now a clean, actionable message", stuck.failureReason === "MONEY_DESK_TREASURY_ACCOUNT_REQUIRED: A Cash/Bank account is required to post this entry — use EDIT / CORRECT to select one, then RETRY");
-  check("failureReason contains NO raw Prisma internals", !/prisma\.|findUniqueOrThrow|Argument `/.test(stuck.failureReason ?? ""));
+  console.log("\n=== Step 1b: simulate a PRE-EXISTING legacy row in this exact state (production has one: MD-60817C2372D198DD, created before this fix) ===");
+  const legacyKey = `md-stuck-treasury-legacy-${suffix}`;
+  const legacy = await prisma.seeraMoneyDeskTransaction.create({
+    data: {
+      transactionNumber: financeNumberFor("MD", legacyKey),
+      purposeCode: "REC-INS",
+      direction: "CASH_IN",
+      status: "POSTING",
+      source: "FOUNDER_PORTAL",
+      amount: 250,
+      date: new Date(),
+      treasuryAccountId: null,
+      counterpartyName: `Unallocated Advance ${suffix}`,
+      formData: {},
+      requestedById: founder.id,
+      idempotencyKey: legacyKey,
+      failureReason: "MONEY_DESK_TREASURY_ACCOUNT_REQUIRED: A Cash/Bank account is required to post this entry — use EDIT / CORRECT to select one, then RETRY",
+    },
+  });
+  const createdId = legacy.id;
+  check("legacy row simulated: POSTING with a clean, actionable failureReason (matches production post-fix, no raw Prisma internals)", !/prisma\.|findUniqueOrThrow|Argument `/.test(legacy.failureReason ?? ""));
 
   console.log("\n=== Step 2: BEFORE the fix, this was a dead end — confirm canEdit/canRetry now both allow recovery ===");
   const detail = await moneyDeskTransactionDetail(prisma, founder.id, createdId);

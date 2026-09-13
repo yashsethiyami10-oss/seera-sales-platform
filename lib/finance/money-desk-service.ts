@@ -48,6 +48,16 @@ import { profitAndLoss } from "./statements-service";
 // fallback the spec allows when true single-transaction atomicity isn't
 // possible across module boundaries.
 
+// MASTER UX mission §17 / Post-Audit Gap Closure Gap-3 — the handlers below call
+// requireTreasuryAccountId() at POSTING time (money_desk-service.ts's HANDLERS), but nothing
+// stopped a transaction from being CREATED without one — the UI's treasury <select> had no
+// `required`, and createMoneyDeskTransaction never checked it either, so the failure only ever
+// surfaced later as a stuck "Needs Attention" row with a raw Prisma crash (the exact root cause
+// traced for production transaction MD-60817C2372D198DD). Validating here, before the row is even
+// created, turns that into an honest 400 the operator sees immediately instead of a silent future
+// stuck posting.
+const TREASURY_REQUIRED_HANDLERS = new Set(["VENDOR_PAYMENT", "INSTITUTIONAL_RECEIPT", "FIXED_ASSET", "REFUND", "ADJUSTMENT"]);
+
 function requireDirectionAllowed(direction: MoneyDeskDirection, allowed: MoneyDeskDirection[]) {
   if (!allowed.includes(direction)) throw new FoundationError("MONEY_DESK_DIRECTION_NOT_ALLOWED", `${direction} is not valid for this purpose`, 400);
 }
@@ -166,6 +176,11 @@ export async function createMoneyDeskTransaction(db: PrismaClient, actorId: stri
   }
   if (def.documentPolicy === "REQUIRED" && !input.documentFileId)
     throw new FoundationError("MONEY_DESK_DOCUMENT_REQUIRED", `${def.label} requires a supporting document`, 400);
+  // RAW_MATERIAL_PURCHASE only needs a treasury account when the Founder/operator chose "paid now"
+  // (formData.paidNow) — an on-credit purchase legitimately has no treasury movement yet.
+  const treasuryRequiredNow = TREASURY_REQUIRED_HANDLERS.has(def.handler) || (def.handler === "RAW_MATERIAL_PURCHASE" && Boolean(input.formData.paidNow));
+  if (treasuryRequiredNow && !input.treasuryAccountId)
+    throw new FoundationError("MONEY_DESK_TREASURY_ACCOUNT_REQUIRED", `A Cash/Bank account is required for ${def.label}`, 400);
 
   // QUICK_ENTRY_EXPENSE purposes (Salary/Fuel/Rent/.../Other) reuse quickEntryCreate, which already
   // runs its OWN threshold-based approval gate internally via submitExpense — checking
@@ -619,6 +634,14 @@ const HANDLERS: Record<string, Handler> = {
     const accountCode = formData.adjustmentAccountCode as string;
     const treasuryCoaCode = formData.treasuryAccountCoaCode as string;
     const isCredit = txn.description?.startsWith("CREDIT:") ?? false;
+    // MASTER UX mission §17 — this handler always builds a treasury-side journal line
+    // (treasuryCoaCode), but previously passed `txn.treasuryAccountId ?? undefined` straight through
+    // unchecked: a null id would silently POST a cash/bank-side journal line with no Treasury
+    // Account cross-reference at all — an incomplete accounting record, not a stuck Needs Attention
+    // entry, which is worse (it looks done but isn't reconcilable). Guarded the same way the other
+    // 5 treasury-requiring handlers already are, so this now fails into Needs Attention honestly
+    // instead of posting silently incomplete.
+    const treasuryAccountId = requireTreasuryAccountId(txn);
     const journal = await postJournal(db, actorId, {
       date: txn.date,
       sourceType: "MANUAL",
@@ -626,12 +649,12 @@ const HANDLERS: Record<string, Handler> = {
       idempotencyKey: txn.idempotencyKey,
       lines: isCredit
         ? [
-            { accountId: treasuryCoaCode, debit: Number(txn.amount), treasuryAccountId: txn.treasuryAccountId ?? undefined },
+            { accountId: treasuryCoaCode, debit: Number(txn.amount), treasuryAccountId },
             { accountId: accountCode, credit: Number(txn.amount) },
           ]
         : [
             { accountId: accountCode, debit: Number(txn.amount) },
-            { accountId: treasuryCoaCode, credit: Number(txn.amount), treasuryAccountId: txn.treasuryAccountId ?? undefined },
+            { accountId: treasuryCoaCode, credit: Number(txn.amount), treasuryAccountId },
           ],
     });
     return { journalId: journal.id };

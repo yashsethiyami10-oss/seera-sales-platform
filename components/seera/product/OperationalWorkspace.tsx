@@ -4260,7 +4260,7 @@ export async function OperationalWorkspace({
       const [home, supporting] = await Promise.all([moneyDeskHome(db, userId), moneyDeskSupportingData(db, userId)]);
       const purposes = MONEY_DESK_PURPOSE_CODES.map((code) => {
         const def = purposeDefinition(code);
-        return { code: def.code, label: def.label, hindiLabel: def.hindiLabel, group: def.group, allowedDirections: def.allowedDirections, requiredFields: def.requiredFields, optionalFields: def.optionalFields, documentPolicy: def.documentPolicy, description: def.description };
+        return { code: def.code, label: def.label, hindiLabel: def.hindiLabel, group: def.group, allowedDirections: def.allowedDirections, requiredFields: def.requiredFields, optionalFields: def.optionalFields, documentPolicy: def.documentPolicy, description: def.description, handler: def.handler };
       });
       workflow = <MoneyDeskPanel language={language} portal={portal} purposes={purposes} supporting={supporting} home={home as never} />;
     } catch (error) {
@@ -5453,12 +5453,19 @@ export async function OperationalWorkspace({
   // wasted query on every action (every action ends in router.refresh()). Every other slug keeps
   // its existing behavior unchanged.
   const isExecutiveTodayPage = portal === "sales-executive" && item.slug === "today";
-  if (!isExecutiveTodayPage) rows = await rowsFor(db, userId, portal, item, q, (page - 1) * 30);
+  // MASTER UX mission §18/44 — Money Desk and Finance OS are fully self-contained panels
+  // (MoneyDeskPanel/FinanceWorkspacePanel each own their own Needs Attention/transaction tables),
+  // so the generic Search/Apply-filter toolbar + `rows` table rendered below `workflow` was always
+  // dead weight for them too — same wasted-query + confusing-duplicate-UI pattern already fixed
+  // once for isExecutiveTodayPage above, never generalized to these two. Scoped narrowly to exactly
+  // the two slugs the mission named; every other slug's existing generic-rows behavior is untouched.
+  const isSelfContainedPanel = isExecutiveTodayPage || ((portal === "founder-admin" || portal === "accounts") && (item.slug === "money-desk" || item.slug === "finance-os"));
+  if (!isSelfContainedPanel) rows = await rowsFor(db, userId, portal, item, q, (page - 1) * 30);
   return (
     <>
       <PageHeading title={surfaceLabel(item, language)} description={description} action={headerAction || undefined} />
       {workflow}
-      {!isExecutiveTodayPage && (
+      {!isSelfContainedPanel && (
       <>
       <section className={styles.toolbar}>
         <form method="get">

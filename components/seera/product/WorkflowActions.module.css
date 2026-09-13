@@ -156,3 +156,18 @@
 .wizardTotals{display:grid;gap:4px;padding:14px;background:#fffaf8;border:1px solid #ead8d2;border-radius:12px}
 .wizardTotals div{display:flex;justify-content:space-between;font-size:13px;color:#475569}
 .wizardTotals div[data-total=true]{font-size:17px;font-weight:900;color:#172033;padding-top:8px;border-top:1px solid #ead8d2}
+
+/* MASTER UX mission §15/22 — Needs Attention rebuilt as friendly cards (WHY + WHAT TO DO), not a
+   raw-error table. Uses the shared design tokens (app/globals.css) since this is one of the
+   screens actually being redesigned this pass. */
+.attentionList{grid-column:1/-1;display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.attentionCard{display:grid;gap:8px;padding:14px 16px;border-radius:var(--seera-radius-md,14px);background:var(--seera-warning-soft,#fdf2e0);border:1px solid #f3ddb0}
+.attentionCardHead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.attentionCardHead strong{font-size:16px;color:var(--seera-ink,#172033)}
+.attentionWhy{color:var(--seera-ink-soft,#475569);font-size:13px}
+.attentionCard details{font-size:12px;color:var(--seera-ink-muted,#94a3b8)}
+.attentionCard details summary{cursor:pointer;font-weight:700}
+.attentionCard details code{display:block;white-space:pre-wrap;word-break:break-word;margin-top:6px;padding:8px;background:#fff;border-radius:8px;font-size:11px}
+.pillWarning{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;background:var(--seera-warning,#b45309);color:#fff;font-size:11px;font-weight:800;letter-spacing:.03em}
+.emptyHint[data-tone="success"]{background:var(--seera-success-soft,#e7f7f0);color:var(--seera-success,#059669)}
+a.primaryBig,a.secondaryBig{display:inline-flex;align-items:center;justify-content:center;padding:0 18px;text-decoration:none}
