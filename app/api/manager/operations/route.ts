@@ -24,6 +24,14 @@ import {
   assignDistributorToOrder,
   assignRetailerCommercialParty,
 } from "@/lib/sales-distribution/manager-service";
+import {
+  correctAttendanceRecord,
+  runDailyAttendanceMarking,
+  createHoliday,
+  setHolidayActive,
+  createLeaveRequest,
+  decideLeaveRequest,
+} from "@/lib/sales-distribution/attendance-service";
 import { capturePhoto, CUSTOMER_TYPES } from "@/lib/sales-distribution/field-portal-service";
 import { assistedDistributorOperation, endFieldDay, startFieldDay, recordPaymentPromise } from "@/lib/sales-distribution/workflow-service";
 import {
@@ -69,6 +77,12 @@ const requestBody = z.object({
     "record-payment-promise",
     "create-instruction",
     "correct-attendance",
+    "correct-attendance-record",
+    "run-attendance-marking",
+    "create-holiday",
+    "set-holiday-active",
+    "create-leave-request",
+    "decide-leave-request",
     "partner-check-in",
     "partner-check-out",
     "submit-ta-claim",
@@ -328,6 +342,35 @@ export async function POST(request: Request) {
         })
         .parse(payload);
       result = await correctAttendance(prisma, user.id, v.workSessionId, v);
+    } else if (action === "correct-attendance-record") {
+      // Attendance Intelligence add-on — distinct from correctAttendance above (that edits a raw
+      // SeeraWorkSession's fields; this sets the decided PRESENT/LATE/ABSENT/ON_LEAVE/WEEK_OFF/
+      // EXCEPTION status a Founder/Manager actually wants to see). Both stay, neither replaces the
+      // other.
+      const v = z
+        .object({
+          employeeId: z.string(),
+          date: z.coerce.date(),
+          status: z.enum(["PRESENT", "LATE", "ABSENT", "ON_LEAVE", "WEEK_OFF", "HOLIDAY", "EXCEPTION"]),
+          reason: z.string().min(3),
+        })
+        .parse(payload);
+      result = await correctAttendanceRecord(prisma, user.id, v);
+    } else if (action === "run-attendance-marking") {
+      const v = z.object({ date: z.coerce.date().optional(), force: z.boolean().optional() }).parse(payload);
+      result = await runDailyAttendanceMarking(prisma, { ...v, actorId: user.id });
+    } else if (action === "create-holiday") {
+      const v = z.object({ date: z.coerce.date(), name: z.string().min(1), description: z.string().optional() }).parse(payload);
+      result = await createHoliday(prisma, user.id, v);
+    } else if (action === "set-holiday-active") {
+      const v = z.object({ id: z.string(), isActive: z.boolean() }).parse(payload);
+      result = await setHolidayActive(prisma, user.id, v.id, v.isActive);
+    } else if (action === "create-leave-request") {
+      const v = z.object({ employeeId: z.string(), startDate: z.coerce.date(), endDate: z.coerce.date(), reason: z.string().min(3) }).parse(payload);
+      result = await createLeaveRequest(prisma, user.id, v);
+    } else if (action === "decide-leave-request") {
+      const v = z.object({ id: z.string(), status: z.enum(["APPROVED", "REJECTED"]) }).parse(payload);
+      result = await decideLeaveRequest(prisma, user.id, v);
     } else if (action === "partner-check-in")
       result = await managerPartnerCheckIn(
         prisma,

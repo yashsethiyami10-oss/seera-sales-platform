@@ -30,6 +30,19 @@ import { CreateSuperStockistPanel } from "./CreateSuperStockistPanel";
 import { CreateCompanyDirectPartnerPanel } from "./CreateCompanyDirectPartnerPanel";
 import { CompanyDirectEligibilityPanel } from "./CompanyDirectEligibilityPanel";
 import { MoneyDeskPanel } from "./MoneyDeskPanel";
+import { OrdersOverviewPanel } from "./OrdersOverviewPanel";
+import { ordersOverview, type OrderBucket } from "@/lib/sales-distribution/orders-overview-service";
+import { AttendancePanel } from "./AttendancePanel";
+import { MonthlyAttendancePanel } from "./MonthlyAttendancePanel";
+import {
+  founderAttendanceSummary,
+  founderMonthlyAttendanceSheet,
+  founderAttendanceMonthKpis,
+  eligibleAttendanceEmployees,
+  listLeaveRequests,
+  dailyActivityTimeline,
+} from "@/lib/sales-distribution/attendance-service";
+import { managerTeamEmployeeIds } from "@/lib/sales-distribution/manager-service";
 import { TerritoryBeatManagementPanel } from "./TerritoryBeatManagementPanel";
 import { CreditPolicyPanel } from "./CreditPolicyPanel";
 import { CompanyOrderDispatchPanel } from "./CompanyOrderDispatchPanel";
@@ -826,7 +839,14 @@ function ManagerDsrRollupPanel({
                   <td>
                     <Link href={`${base}?${qs({ session: row.workSessionId })}`}>{row.employeeName}</Link>
                   </td>
-                  <td>{row.date.toLocaleDateString(hi ? "hi-IN" : "en-IN")}</td>
+                  <td>
+                    {row.date.toLocaleDateString(hi ? "hi-IN" : "en-IN")}
+                    {row.attendanceStatus && (
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", marginTop: 2 }} title="Attendance status for this business day">
+                        {row.attendanceStatus}{row.attendanceOffDayWorked ? " *" : ""}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     {time(row.startedAt)} – {time(row.endedAt)}
                   </td>
@@ -1433,6 +1453,7 @@ function TaDaSummaryPanel({
               <th>{hi ? "डीए" : "DA"}</th>
               <th>{hi ? "HQ प्रारंभ / वापसी" : "HQ start / return"}</th>
               <th>{hi ? "अपवाद" : "Exceptions"}</th>
+              <th>{hi ? "विश्वसनीयता" : "Confidence"}</th>
               <th>{hi ? "स्थिति" : "Status"}</th>
             </tr>
           </thead>
@@ -1454,6 +1475,11 @@ function TaDaSummaryPanel({
                   {row.hqReturn == null ? "—" : row.hqReturn ? "✓" : "!"}
                 </td>
                 <td>{row.exceptions.length ? row.exceptions.join(", ") : "—"}</td>
+                <td>
+                  {row.gpsConfidence === "ESTIMATED_FROM_CHECKPOINTS"
+                    ? (hi ? "GPS चेकपॉइंट अनुमान" : "GPS checkpoint estimate")
+                    : (hi ? "कोई GPS सैंपल नहीं" : "No GPS samples")}
+                </td>
                 <td>{row.status}{row.gpsReviewRequired ? " · GPS REVIEW" : ""}</td>
               </tr>
             ))}
@@ -2038,56 +2064,73 @@ async function rowsFor(
         date: x.checkedInAt,
       }));
     }
-    if (["visits", "retailing", "joint-working"].includes(item.slug))
-      return (
-        await db.seeraVisit.findMany({
-          where: {
-            retailerId: { not: null },
-            ...(employees
-              ? { workSession: { employeeId: { in: employees } } }
-              : {}),
-            ...(q
-              ? {
-                  OR: [
-                    { notes: { contains: q, mode: "insensitive" } },
-                    {
-                      retailer: {
-                        businessName: { contains: q, mode: "insensitive" },
-                      },
+    if (["visits", "retailing", "joint-working"].includes(item.slug)) {
+      const visits = await db.seeraVisit.findMany({
+        where: {
+          retailerId: { not: null },
+          ...(employees
+            ? { workSession: { employeeId: { in: employees } } }
+            : {}),
+          ...(q
+            ? {
+                OR: [
+                  { notes: { contains: q, mode: "insensitive" } },
+                  {
+                    retailer: {
+                      businessName: { contains: q, mode: "insensitive" },
                     },
-                  ],
-                }
-              : {}),
-          },
-          include: {
-            retailer: { select: { businessName: true } },
-            workSession: { select: { employeeRole: true } },
-          },
-          orderBy: { checkedInAt: "desc" },
-          skip,
-          take,
-        })
-      ).map((x) => ({
+                  },
+                ],
+              }
+            : {}),
+        },
+        include: {
+          retailer: { select: { businessName: true } },
+          workSession: { select: { employeeRole: true, employeeId: true } },
+        },
+        orderBy: { checkedInAt: "desc" },
+        skip,
+        take,
+      });
+      // Founder/Admin field-visibility fix: this generic row only ever showed the employee's
+      // ROLE ("SALES_EXECUTIVE"), never their NAME — a Founder/Auditor looking at company-wide
+      // Visits had no way to tell WHO made a visit without opening each row. Executive/Manager
+      // portals never hit this branch (they have their own dedicated visit panels), so this is
+      // low-risk: additive name resolution, no behavior change for any other kind/field.
+      const employeeIds = [...new Set(visits.map((v) => v.workSession.employeeId))];
+      const names = employeeIds.length
+        ? await db.user.findMany({ where: { id: { in: employeeIds } }, select: { id: true, name: true, email: true } })
+        : [];
+      const nameById = new Map(names.map((u) => [u.id, u.name ?? u.email]));
+      return visits.map((x) => ({
         id: x.id,
-        primary: x.retailer?.businessName ?? "Retailer visit",
-        secondary: x.workSession.employeeRole,
+        primary: nameById.get(x.workSession.employeeId) ?? x.workSession.employeeRole.replaceAll("_", " "),
+        secondary: `${x.retailer?.businessName ?? "Retailer visit"} · ${x.workSession.employeeRole.replaceAll("_", " ")}`,
         status: x.outcome,
         date: x.checkedInAt,
       }));
-    return (
-      await db.seeraWorkSession.findMany({
-        where: {
-          ...(employees ? { employeeId: { in: employees } } : {}),
-          ...(q ? { remarks: { contains: q, mode: "insensitive" } } : {}),
-        },
-        orderBy: { startedAt: "desc" },
-        skip,
-        take,
-      })
-    ).map((x) => ({
+    }
+    const sessions = await db.seeraWorkSession.findMany({
+      where: {
+        ...(employees ? { employeeId: { in: employees } } : {}),
+        ...(q ? { remarks: { contains: q, mode: "insensitive" } } : {}),
+      },
+      include: { _count: { select: { visits: true } } },
+      orderBy: { startedAt: "desc" },
+      skip,
+      take,
+    });
+    // Same Founder/Admin field-visibility fix as the visits branch above, plus a visit count so
+    // "Daily working"/"Attendance" aren't just a bare role+status+timestamp row.
+    const sessionEmployeeIds = [...new Set(sessions.map((s) => s.employeeId))];
+    const sessionNames = sessionEmployeeIds.length
+      ? await db.user.findMany({ where: { id: { in: sessionEmployeeIds } }, select: { id: true, name: true, email: true } })
+      : [];
+    const sessionNameById = new Map(sessionNames.map((u) => [u.id, u.name ?? u.email]));
+    return sessions.map((x) => ({
       id: x.id,
-      primary: x.employeeRole.replaceAll("_", " "),
-      secondary: x.workingType,
+      primary: sessionNameById.get(x.employeeId) ?? x.employeeRole.replaceAll("_", " "),
+      secondary: `${x.workingType.replaceAll("_", " ")} · ${x._count.visits} visit${x._count.visits === 1 ? "" : "s"}${x.endedAt ? "" : " · in progress"}`,
       status: x.status,
       date: x.startedAt,
     }));
@@ -2464,6 +2507,12 @@ export async function OperationalWorkspace({
       resolveExecutiveOperationalScope(db, userId),
     ]);
     const session = dashboardData.session;
+    // Golden Journey gap closure — Post-End-Day Daily Summary + timeline. Only fetched once the day
+    // has actually ended (not on every action while the day is still active) since it's a real DB
+    // read; field_reports:view_self (already granted to SALES_EXECUTIVE) lets an Executive read
+    // their OWN day here without the network:manage a Founder/Manager needs for anyone else's.
+    const todayTimeline =
+      dashboardData.dayStatus === "ENDED" ? await dailyActivityTimeline(db, userId, userId, now).catch(() => null) : null;
     // Final Retailer Cleanup + Handover (22-Aug), scoped by P0-12: real, existing, ACTIVE Beat
     // nodes WITHIN this Executive's own authorized Territory scope only.
     const beatNodes = executiveScope.unrestricted
@@ -2528,6 +2577,7 @@ export async function OperationalWorkspace({
         }}
         distributorOptions={distributorOptions}
         beatOptions={beatOptions}
+        todayTimeline={todayTimeline}
         session={
           session
             ? {
@@ -2843,7 +2893,13 @@ export async function OperationalWorkspace({
         executives={executives.map((x) => ({ value: x.id, label: x.name ?? x.email }))}
       />
     );
-  } else if (portal === "sales-manager" && item.slug === "attendance" && permissions.has("network:manage")) {
+  } else if (portal === "sales-manager" && item.slug === "attendance" && permissions.has("network:manage") && query.view === "sessions") {
+    // Raw work-session correction tool (start/end GPS, status) — a secondary/advanced view now
+    // reached via ?view=sessions. The default "attendance" view for sales-manager is the same
+    // business-level Present/Late/Absent/Leave screen founder-admin gets (see the shared branch
+    // below) — previously this branch always matched first and made that screen unreachable for
+    // sales-manager entirely; gating it behind an explicit view param restores parity without
+    // touching this tool's own behavior.
     const team = await db.seeraAssignment.findMany({
       where: {
         assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
@@ -2885,6 +2941,14 @@ export async function OperationalWorkspace({
           alreadyCorrected: correctedIds.has(s.id),
         }))}
       />
+    );
+    workflow = (
+      <div style={{ display: "grid", gap: 12 }}>
+        <a href={base} style={{ fontWeight: 800, fontSize: 13, color: "#b91c1c", textDecoration: "none" }}>
+          ← Back to Attendance overview
+        </a>
+        {workflow}
+      </div>
     );
   } else if (portal === "sales-executive" && item.slug === "instructions") {
     const instructions = await db.seeraManagerInstruction.findMany({
@@ -3914,6 +3978,7 @@ export async function OperationalWorkspace({
           domain: x.type,
           label: `${x.entityType} — ${requesterName.get(x.requestedById) ?? "Unknown"} · ${x.createdAt.toLocaleDateString("en-IN")}`,
           meta: x.reason ?? undefined,
+          isOwn: x.requestedById === userId,
         }))}
       />
     );
@@ -4281,6 +4346,90 @@ export async function OperationalWorkspace({
       workflow = (
         <EmptyState
           title="Money Desk data is temporarily unavailable"
+          description={`Something went wrong loading this screen. Please try again. If this keeps happening, share Error ID ${incidentId} with your Admin.`}
+        />
+      );
+    }
+  } else if (portal === "founder-admin" && (item.slug === "sales" || item.slug === "orders")) {
+    // UI Implementation & Visual Gap Closure mission — replaces the generic Search/Apply-filter +
+    // "Record/Details/Status/Value-Qty/Date/Action" table (the exact database-operator UX the
+    // Founder flagged) with a real business view over the SAME canonical SeeraSalesOrder rows.
+    try {
+      const status = (["PENDING", "PROCESSING", "DISPATCHED", "DELIVERED", "CANCELLED"] as const).includes(query.status as OrderBucket) ? (query.status as OrderBucket) : undefined;
+      const overview = await ordersOverview(db, userId, "founder-admin", { q, status, page });
+      workflow = <OrdersOverviewPanel language={language} base={base} q={q} activeBucket={status} showCreateInvoice={item.slug === "sales"} data={overview} />;
+    } catch (error) {
+      const incidentId = crypto.randomUUID();
+      operationalLog("error", "orders_overview.load_failed", { incidentId, actorId: userId, errorName: error instanceof Error ? error.name : "unknown" });
+      workflow = (
+        <EmptyState
+          title="Orders data is temporarily unavailable"
+          description={`Something went wrong loading this screen. Please try again. If this keeps happening, share Error ID ${incidentId} with your Admin.`}
+        />
+      );
+    }
+  } else if (
+    (portal === "founder-admin" || (portal === "sales-manager" && permissions.has("network:manage")))
+    && item.slug === "attendance"
+  ) {
+    // Attendance Intelligence add-on — replaces the generic SeeraWorkSession list this slug
+    // previously fell through to with the real SeeraAttendanceRecord-backed view. sales-manager now
+    // reaches this branch by default (the raw-session correction tool moved behind ?view=sessions
+    // above), so both portals share this business-level Present/Late/Absent/Leave screen, scoped to
+    // the manager's own team via managerTeamEmployeeIds for sales-manager. The network:manage gate
+    // is preserved from the pre-existing raw-session branch — a sales-manager without it sees no
+    // attendance data at all, same as before this fix.
+    try {
+      const scopeIds = portal === "sales-manager" ? await managerTeamEmployeeIds(db, userId) : undefined;
+      if (query.view === "monthly") {
+        const now = new Date();
+        const year = Number(query.year) || now.getFullYear();
+        const month = Number(query.month) || now.getMonth() + 1;
+        const statusFilter = (["PRESENT", "LATE", "ABSENT", "ON_LEAVE", "WEEK_OFF", "HOLIDAY", "EXCEPTION"] as const).includes(query.status as never)
+          ? (query.status as "PRESENT" | "LATE" | "ABSENT" | "ON_LEAVE" | "WEEK_OFF" | "HOLIDAY" | "EXCEPTION")
+          : undefined;
+        const sheet = await founderMonthlyAttendanceSheet(db, userId, { year, month, employeeIds: scopeIds, statusFilter });
+        workflow = <MonthlyAttendancePanel base={base} data={sheet} statusFilter={statusFilter} />;
+      } else {
+        const [summary, monthKpis, eligible, pendingLeave] = await Promise.all([
+          founderAttendanceSummary(db, userId, new Date(), scopeIds),
+          founderAttendanceMonthKpis(db, userId, new Date(), scopeIds),
+          eligibleAttendanceEmployees(db, scopeIds),
+          listLeaveRequests(db, userId, { employeeIds: scopeIds, status: "PENDING" }),
+        ]);
+        const nameFor = new Map(eligible.map((e) => [e.id, e.name ?? e.email]));
+        workflow = (
+          <div style={{ display: "grid", gap: 12 }}>
+            {portal === "sales-manager" && permissions.has("network:manage") && (
+              <a href={`${base}?view=sessions`} style={{ fontWeight: 800, fontSize: 13, color: "#b91c1c", textDecoration: "none", justifySelf: "end" }}>
+                Manage raw sessions →
+              </a>
+            )}
+            <AttendancePanel
+              base={base}
+              data={summary}
+              monthKpis={monthKpis}
+              leave={{
+                employees: eligible.map((e) => ({ id: e.id, name: e.name ?? e.email })),
+                pending: pendingLeave.map((p) => ({
+                  id: p.id,
+                  employeeId: p.employeeId,
+                  employeeName: nameFor.get(p.employeeId) ?? "Employee",
+                  startDate: p.startDate.toISOString(),
+                  endDate: p.endDate.toISOString(),
+                  reason: p.reason,
+                })),
+              }}
+            />
+          </div>
+        );
+      }
+    } catch (error) {
+      const incidentId = crypto.randomUUID();
+      operationalLog("error", "attendance_summary.load_failed", { incidentId, actorId: userId, errorName: error instanceof Error ? error.name : "unknown" });
+      workflow = (
+        <EmptyState
+          title="Attendance data is temporarily unavailable"
           description={`Something went wrong loading this screen. Please try again. If this keeps happening, share Error ID ${incidentId} with your Admin.`}
         />
       );
@@ -5434,12 +5583,21 @@ export async function OperationalWorkspace({
     approvals: ["Requests waiting on your decision, with full context.", "आपके निर्णय की प्रतीक्षा कर रहे अनुरोध, पूर्ण संदर्भ के साथ।"],
     alerts: ["Exceptions that need your attention.", "अपवाद जिन पर आपका ध्यान चाहिए।"],
   };
+  const founderDescriptions: Record<string, [string, string]> = {
+    sales: ["Today's orders and sales, searchable by customer, order number or status.", "आज के ऑर्डर और बिक्री, ग्राहक, ऑर्डर नंबर या स्थिति से खोजने योग्य।"],
+    orders: ["Every order, its status and value — search or filter to find one.", "हर ऑर्डर, उसकी स्थिति और मूल्य — एक खोजने के लिए खोजें या फ़िल्टर करें।"],
+    "money-desk": ["Cash and bank movement, approvals, and anything needing your attention.", "नकद और बैंक की गतिविधि, अनुमोदन, और जिस पर आपका ध्यान चाहिए।"],
+    "finance-os": ["Company accounts, approvals, sales, purchases and reports in one place.", "कंपनी के खाते, अनुमोदन, बिक्री, खरीद और रिपोर्ट एक ही स्थान पर।"],
+    approvals: ["Requests waiting on your decision, with full context.", "आपके निर्णय की प्रतीक्षा कर रहे अनुरोध, पूर्ण संदर्भ के साथ।"],
+  };
   const contextual =
     portal === "sales-executive"
       ? executiveDescriptions[item.slug]
       : portal === "sales-manager"
         ? managerDescriptions[item.slug]
-        : undefined;
+        : portal === "founder-admin"
+          ? founderDescriptions[item.slug]
+          : undefined;
   const description = contextual
     ? hi
       ? contextual[1]
@@ -5459,7 +5617,10 @@ export async function OperationalWorkspace({
   // dead weight for them too — same wasted-query + confusing-duplicate-UI pattern already fixed
   // once for isExecutiveTodayPage above, never generalized to these two. Scoped narrowly to exactly
   // the two slugs the mission named; every other slug's existing generic-rows behavior is untouched.
-  const isSelfContainedPanel = isExecutiveTodayPage || ((portal === "founder-admin" || portal === "accounts") && (item.slug === "money-desk" || item.slug === "finance-os"));
+  const isSelfContainedPanel = isExecutiveTodayPage
+    || ((portal === "founder-admin" || portal === "accounts") && (item.slug === "money-desk" || item.slug === "finance-os"))
+    || (portal === "founder-admin" && (item.slug === "sales" || item.slug === "orders" || item.slug === "approvals"))
+    || ((portal === "founder-admin" || portal === "sales-manager") && item.slug === "attendance");
   if (!isSelfContainedPanel) rows = await rowsFor(db, userId, portal, item, q, (page - 1) * 30);
   return (
     <>

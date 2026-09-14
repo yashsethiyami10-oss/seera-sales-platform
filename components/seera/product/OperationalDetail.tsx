@@ -24,6 +24,9 @@ import { partnerObligationsPreview } from "@/lib/sales-distribution/travel-lifec
 import { distributorClosureStockPosition } from "@/lib/sales-distribution/distributor-management-service";
 import { moneyDeskTransactionDetail } from "@/lib/finance/money-desk-service";
 import { listTreasuryAccounts } from "@/lib/finance/treasury-service";
+import { STATUS_BUCKET, STATUS_LABEL, ORDER_TYPE_LABEL, BUCKET_TONE } from "@/lib/sales-distribution/orders-overview-service";
+import { attendanceRecordDetail, employeeMonthlySummary, dailyActivityTimeline } from "@/lib/sales-distribution/attendance-service";
+import { AttendanceStatusCorrectionActions } from "./AttendanceStatusCorrectionActions";
 
 type Field = { label: string; value: string };
 const money = (v: unknown) =>
@@ -51,6 +54,7 @@ export async function OperationalDetail({
   item,
   id,
   language,
+  query = {},
   canManageLifecycle = false,
   canExecuteDelivery = false,
   canManageFollowUp = false,
@@ -65,6 +69,7 @@ export async function OperationalDetail({
   item: SurfaceItem;
   id: string;
   language: UiLanguage;
+  query?: Record<string, string | string[] | undefined>;
   canManageLifecycle?: boolean;
   canExecuteDelivery?: boolean;
   canManageFollowUp?: boolean;
@@ -98,6 +103,170 @@ export async function OperationalDetail({
         }
       />
     );
+  if (item.slug === "attendance") {
+    const qYear = Number(Array.isArray(query.year) ? query.year[0] : query.year) || undefined;
+    const qMonth = Number(Array.isArray(query.month) ? query.month[0] : query.month) || undefined;
+    const qDay = Number(Array.isArray(query.day) ? query.day[0] : query.day) || undefined;
+    const statusLabelAll: Record<string, string> = { PRESENT: "Present", LATE: "Late", ABSENT: "Absent", ON_LEAVE: "On Leave", WEEK_OFF: "Week Off", HOLIDAY: "Holiday", EXCEPTION: "Exception" };
+
+    if (qYear && qMonth && qDay) {
+      // Section 9 — Daily Activity Detail drill-down from the monthly summary.
+      const dayDate = new Date(Date.UTC(qYear, qMonth - 1, qDay));
+      const [dayDetail, timeline] = await Promise.all([
+        attendanceRecordDetail(db, userId, id, dayDate),
+        dailyActivityTimeline(db, userId, id, dayDate),
+      ]);
+      return (
+        <>
+          {head(`${dayDetail.employee.name} — ${dayDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`)}
+          <div className={styles.detail}>
+            <div><dt>Status</dt><dd>{dayDetail.status ? statusLabelAll[dayDetail.status] : "Not evaluated"}</dd></div>
+            <div><dt>Reason</dt><dd>{dayDetail.reason}</dd></div>
+          </div>
+          <section className={styles.timeline}>
+            <h2>Activity timeline</h2>
+            {!timeline.hasAnyData ? (
+              <p>No recorded activity for this day. This is not a fabricated gap — the underlying session/visit/order data simply doesn't exist for this date.</p>
+            ) : (
+              timeline.events.map((e, i) => (
+                <article key={i}>
+                  <time>{new Date(e.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</time>
+                  <p>{e.label}</p>
+                </article>
+              ))
+            )}
+          </section>
+          <p><Link className={styles.back} href={`${back}/${id}?year=${qYear}&month=${qMonth}`}>← Back to monthly summary</Link></p>
+        </>
+      );
+    }
+
+    if (qYear && qMonth) {
+      // Section 6/7 — Employee Monthly Summary, reached from the Monthly Attendance sheet.
+      const summary = await employeeMonthlySummary(db, userId, id, qYear, qMonth);
+      const monthLabel = new Date(Date.UTC(qYear, qMonth - 1, 1)).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+      return (
+        <>
+          {head(`${summary.employee.name} — ${monthLabel}`)}
+          <p className="meta">{summary.roleLabel}</p>
+          {summary.attendance && (
+            <section className={styles.card}>
+              <h3>Attendance</h3>
+              <Fields
+                items={[
+                  { label: "Present", value: String(summary.attendance.present) },
+                  { label: "Absent", value: String(summary.attendance.absent) },
+                  { label: "Late", value: String(summary.attendance.late) },
+                  { label: "Leave", value: String(summary.attendance.onLeave) },
+                  { label: "Weekly Off", value: String(summary.attendance.weekOff) },
+                  { label: "Holiday", value: String(summary.attendance.holiday) },
+                  { label: "Sunday Worked", value: String(summary.attendance.sundayWorked) },
+                  { label: "Holiday Worked", value: String(summary.attendance.holidayWorked) },
+                  { label: "Not Evaluated", value: String(summary.attendance.notEvaluated) },
+                ]}
+              />
+            </section>
+          )}
+          <section className={styles.card}>
+            <h3>Work Performance</h3>
+            <p className="meta">Answers "what work was performed" — a separate reporting layer from attendance above, per design.</p>
+            <Fields
+              items={[
+                { label: "Field Working Days", value: String(summary.performance.fieldWorkingDays) },
+                { label: "Customer Visits", value: String(summary.performance.customerVisits) },
+                { label: "Productive Visits", value: String(summary.performance.productiveVisits) },
+                { label: "No-Order Visits", value: String(summary.performance.noOrderVisits) },
+                { label: "Orders", value: String(summary.performance.orders) },
+                { label: "Sales Value", value: money(summary.performance.salesValue) },
+                { label: "New Customers", value: String(summary.performance.newCustomers) },
+                { label: "Reorders", value: summary.performance.reorders == null ? "Not available" : String(summary.performance.reorders) },
+                { label: "Photos", value: String(summary.performance.photos) },
+                { label: "Working Sessions", value: String(summary.performance.workingSessions) },
+                { label: "Travel Distance", value: summary.taDa ? `${summary.taDa.totalKm.toFixed(1)} km` : "Not available" },
+                { label: "TA/DA", value: summary.taDa && summary.taDa.totalTaDa != null ? money(summary.taDa.totalTaDa) : "Not available" },
+              ]}
+            />
+          </section>
+          <section className={styles.card}>
+            <h3>Daily details</h3>
+            <div className={styles.tableWrap}>
+              <table>
+                <thead><tr><th>Date</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  {summary.days.map((d) => (
+                    <tr key={d.day}>
+                      <td>{qYear}-{String(qMonth).padStart(2, "0")}-{String(d.day).padStart(2, "0")}</td>
+                      <td>{d.status ? statusLabelAll[d.status] : "Not evaluated"}{d.offDayWorked ? ` (${d.offDayWorked === "SUNDAY_WORKED" ? "Sunday Worked" : "Holiday Worked"})` : ""}</td>
+                      <td>{d.status && <Link href={`${back}/${id}?year=${qYear}&month=${qMonth}&day=${d.day}`}>View daily details →</Link>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <p><Link className={styles.back} href={`${back}?view=monthly&year=${qYear}&month=${qMonth}`}>← Back to monthly sheet</Link></p>
+        </>
+      );
+    }
+
+    const detail = await attendanceRecordDetail(db, userId, id, new Date());
+    const statusLabel = statusLabelAll;
+    return (
+      <>
+        {head(detail.employee.name)}
+        <div className={styles.detail}>
+          <div><dt>Date</dt><dd>{new Date(detail.businessDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</dd></div>
+          <div><dt>Attendance status</dt><dd>{detail.status ? statusLabel[detail.status] : "Not yet evaluated"}</dd></div>
+          <div><dt>Source</dt><dd>{detail.source === "SYSTEM" ? "System auto-marked" : detail.source === "MANUAL" ? "Manually corrected" : "—"}</dd></div>
+          <div><dt>First activity</dt><dd>{text(detail.firstActivityAt)}</dd></div>
+          <div><dt>Last activity</dt><dd>{text(detail.lastActivityAt)}</dd></div>
+          <div><dt>Visits</dt><dd>{detail.visitCount}</dd></div>
+          <div><dt>Orders</dt><dd>{detail.orderCount} ({money(detail.orderValue)})</dd></div>
+        </div>
+        <section className={styles.card}>
+          <h3>Why</h3>
+          <p>{detail.reason}</p>
+        </section>
+        {detail.sessions.length > 0 && (
+          <section className={styles.card}>
+            <h3>Field sessions this day</h3>
+            <Fields
+              items={detail.sessions.map((s, i) => ({
+                label: `Session ${i + 1}`,
+                value: `${text(s.startedAt)} → ${s.endedAt ? text(s.endedAt) : "still open"} · ${s.workingType.replaceAll("_", " ")} · ${s.visitCount} visit${s.visitCount === 1 ? "" : "s"}`,
+              }))}
+            />
+          </section>
+        )}
+        <section className={styles.card}>
+          <h3>Correct attendance</h3>
+          {/* attendanceRecordDetail() above already required network:manage to load this page at
+              all, so no further gate is needed here — same reasoning as every other detail branch
+              in this file that renders an action panel unconditionally once the page itself loaded. */}
+          <AttendanceStatusCorrectionActions employeeId={detail.employee.id} date={detail.businessDate} currentStatus={detail.status} />
+        </section>
+        <section className={styles.timeline}>
+          <h2>Audit history</h2>
+          {detail.auditHistory.length === 0 ? (
+            <p>No changes recorded yet.</p>
+          ) : (
+            detail.auditHistory.map((a) => (
+              <article key={a.id}>
+                <time>{text(a.occurredAt)}</time>
+                <strong>{a.isSystem ? "SYSTEM" : a.actorName}</strong>
+                <p>
+                  {a.action}
+                  {a.afterState && typeof a.afterState === "object" && "status" in (a.afterState as Record<string, unknown>)
+                    ? ` — ${(a.afterState as Record<string, unknown>).status}${a.beforeState && typeof a.beforeState === "object" && "status" in (a.beforeState as Record<string, unknown>) ? ` (was ${(a.beforeState as Record<string, unknown>).status})` : ""}`
+                    : ""}
+                </p>
+              </article>
+            ))
+          )}
+        </section>
+      </>
+    );
+  }
   if (item.slug === "money-desk") {
     const detail = await moneyDeskTransactionDetail(db, userId, id);
     const ledgerHref = detail.ledgerLink ? `/portal/${portal}/finance-os?group=sales&section=ledger&partyType=${detail.ledgerLink.partyType}&partyId=${detail.ledgerLink.partyId}` : null;
@@ -187,10 +356,12 @@ export async function OperationalDetail({
         {detail.lineItems.length > 0 && (
           <section className={styles.card}>
             <h3>{hi ? "उत्पाद / आइटम" : "Products / Items"}</h3>
-            <table className={styles.detail}>
-              <thead><tr><th>SKU</th><th>{hi ? "मात्रा" : "Qty"}</th><th>{hi ? "दर" : "Rate"}</th></tr></thead>
-              <tbody>{detail.lineItems.map((l, i) => <tr key={i}><td>{l.skuId}</td><td>{l.quantity}</td><td>{l.rate != null ? money(l.rate) : "—"}</td></tr>)}</tbody>
-            </table>
+            <div className={styles.tableWrap}>
+              <table>
+                <thead><tr><th>SKU</th><th>{hi ? "मात्रा" : "Qty"}</th><th>{hi ? "दर" : "Rate"}</th></tr></thead>
+                <tbody>{detail.lineItems.map((l, i) => <tr key={i}><td>{l.skuId}</td><td>{l.quantity}</td><td>{l.rate != null ? money(l.rate) : "—"}</td></tr>)}</tbody>
+              </table>
+            </div>
           </section>
         )}
         <section className={styles.card}>
@@ -248,7 +419,7 @@ export async function OperationalDetail({
       include: {
         buyerPartner: { select: { legalName: true } },
         sellerPartner: { select: { legalName: true } },
-        retailer: { select: { businessName: true } },
+        retailer: { select: { businessName: true, mobile: true } },
         lines: true,
         deliveries: { orderBy: { createdAt: "desc" } },
         promises: { orderBy: { createdAt: "desc" } },
@@ -257,6 +428,144 @@ export async function OperationalDetail({
     });
     if (!x) notFound();
     const nextStep = x.type === "COMPANY_REPLENISHMENT" ? companyOrderNextStep(x, x.paymentProofs[0]?.status) : null;
+    if (portal === "founder-admin") {
+      // Founder UI Implementation & Visual Gap Closure mission — replaces the raw
+      // SKU/Ordered/Accepted/Cancelled/Remaining/Dispatched/Delivered database matrix as the PRIMARY
+      // view with readable order items ("SEERA CAKE-WHITE · 80 PCS · ₹20/unit · ₹1,600"); the same
+      // matrix is kept (nothing removed), just moved into a collapsed "Fulfilment details" section —
+      // secondary, not the first thing a Founder sees. Scoped to founder-admin only: every other
+      // portal's order-detail view below is completely untouched.
+      const customerName = x.retailer?.businessName ?? x.buyerPartner?.legalName ?? "Retailer / party";
+      const customerMobile = x.retailer?.mobile ?? null;
+      const bucket = STATUS_BUCKET[x.status];
+      const latestProof = x.paymentProofs[0];
+      return (
+        <>
+          {head(x.orderNumber)}
+          <div className={styles.orderHeader}>
+            <div>
+              <strong style={{ fontSize: 18 }}>{customerName}</strong>
+              {customerMobile && <span className={styles.itemSub}>{customerMobile}</span>}
+            </div>
+            <span className={styles.statusPillLg} data-tone={BUCKET_TONE[bucket]}>
+              {STATUS_LABEL[x.status] ?? x.status}
+            </span>
+            <span className={styles.orderHeaderTotal}>{money(x.total)}</span>
+          </div>
+          {nextStep === "PAYMENT VERIFIED — READY FOR DISPATCH" && (
+            <p className={styles.notice}>
+              <Link href={`/portal/accounts/company-order-dispatch`}>PREPARE COMPANY DISPATCH →</Link>
+            </p>
+          )}
+          <section className={styles.card}>
+            <h3>Order</h3>
+            <Fields
+              items={[
+                { label: "Order type", value: ORDER_TYPE_LABEL[x.type] ?? x.type },
+                ...(nextStep ? [{ label: "Next step", value: nextStep }] : []),
+                { label: "Seller", value: x.sellerPartner?.legalName ?? "Company / party" },
+                { label: "Order date", value: text(x.createdAt) },
+                { label: "Original due date", value: text(x.originalDueDate) },
+                { label: "Grace until", value: text(x.graceUntil) },
+              ]}
+            />
+          </section>
+          <section className={styles.card}>
+            <h3>Order Items</h3>
+            {x.lines.map((l) => (
+              <div key={l.id} className={styles.itemRow}>
+                <div>
+                  <span className={styles.itemName}>{l.productNameSnapshot}</span>
+                  <span className={styles.itemSub}>{l.skuCodeSnapshot}</span>
+                </div>
+                <span className={styles.itemMeta}>
+                  {text(l.orderedQuantity)} {l.packSnapshot} · {money(l.priceSnapshot)}/unit
+                </span>
+                <span className={styles.itemTotal}>{money(l.lineTotal)}</span>
+              </div>
+            ))}
+            <details className={styles.fulfilmentDetails}>
+              <summary>Fulfilment details (accepted, dispatched, delivered, cancelled, returned)</summary>
+              <div className={styles.tableWrap}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>SKU</th><th>Ordered</th><th>Accepted</th><th>Cancelled</th><th>Remaining</th>
+                      <th>Dispatched</th><th>Delivered</th><th>Refused</th><th>Returned</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {x.lines.map((l) => (
+                      <tr key={l.id}>
+                        <td>{l.skuCodeSnapshot}</td>
+                        <td>{text(l.orderedQuantity)}</td>
+                        <td>{text(l.acceptedQuantity)}</td>
+                        <td>{text(l.cancelledQuantity)}</td>
+                        <td>
+                          {text(
+                            Math.max(
+                              0,
+                              Number(l.orderedQuantity) - Number(l.acceptedQuantity) - Number(l.cancelledQuantity),
+                            ),
+                          )}
+                        </td>
+                        <td>{text(l.dispatchedQuantity)}</td>
+                        <td>{text(l.deliveredQuantity)}</td>
+                        <td>{text(l.refusedQuantity)}</td>
+                        <td>{text(l.returnedQuantity)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </section>
+          {latestProof && (
+            <section className={styles.card}>
+              <h3>Payment</h3>
+              <Fields
+                items={[
+                  { label: "Payment type", value: text(x.commercialPaymentType) },
+                  { label: "Payment proof status", value: latestProof.status },
+                  { label: "Submitted", value: text(latestProof.submittedAt) },
+                ]}
+              />
+            </section>
+          )}
+          <section className={styles.timeline}>
+            <h2>Timeline</h2>
+            {x.deliveries.length === 0 && x.promises.length === 0 ? (
+              <p>No fulfilment or payment events recorded yet.</p>
+            ) : (
+              <>
+                {x.deliveries.map((d) => (
+                  <article key={d.id}>
+                    <time>{text(d.occurredAt ?? d.createdAt)}</time>
+                    <strong>{d.status}</strong>
+                    <p>{d.receiverName ?? d.reason ?? "Recorded delivery event"}</p>
+                  </article>
+                ))}
+                {x.promises.map((p) => (
+                  <article key={p.id}>
+                    <time>{text(p.createdAt)}</time>
+                    <strong>Payment promise</strong>
+                    <p>
+                      {text(p.promisedPaymentDate)} · original due {text(p.originalDueDate)}
+                    </p>
+                  </article>
+                ))}
+              </>
+            )}
+          </section>
+          {x.notes && (
+            <section className={styles.card}>
+              <h3>Notes</h3>
+              <p>{x.notes}</p>
+            </section>
+          )}
+        </>
+      );
+    }
     return (
       <>
         {head(x.orderNumber)}

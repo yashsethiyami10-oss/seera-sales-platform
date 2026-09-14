@@ -133,7 +133,13 @@
 .detail dd { margin: 7px 0 0; color: #172033; font-weight: 750; }
 .panel,
 .timeline,
+.card,
 .readOnly { margin-top: 18px; padding: 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; }
+.card { box-shadow: 0 8px 30px #0f172a0a; }
+.card:first-child { margin-top: 0; }
+.card h3 { margin: 0 0 12px; font-size: 15px; font-weight: 800; color: #172033; }
+.card p { margin: 0; color: #475569; }
+.card + .card { margin-top: 14px; }
 .panel { display: grid; gap: 10px; }
 .panel > a { color: #a61f2a; font-weight: 800; }
 .timeline article { display: grid; grid-template-columns: 150px minmax(180px, 1fr) 2fr; gap: 14px; padding: 14px 0; border-top: 1px solid #edf0f4; }
@@ -160,6 +166,28 @@
 }
 .cardListItem[data-active="true"] { border-color: #a61f2a; }
 .cardListItem p { margin: 0; color: #475569; font-size: 13px; }
+
+/* Founder-admin Order Detail — readable item rows (primary) + collapsed raw fulfilment matrix
+   (secondary). Operational fulfilment data stays available, just no longer the first thing shown. */
+.itemRow {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px;
+  padding: 12px 0; border-bottom: 1px solid #eef2f6;
+}
+.itemRow:last-child { border-bottom: 0; }
+.itemName { font-weight: 800; color: #172033; }
+.itemSub { font-size: 12px; color: #94a3b8; margin-left: 8px; }
+.itemMeta { color: #475569; font-size: 13px; }
+.itemTotal { font-weight: 800; color: #172033; min-width: 90px; text-align: right; }
+.fulfilmentDetails { margin-top: 8px; }
+.fulfilmentDetails summary { cursor: pointer; font-weight: 800; color: #64748b; font-size: 13px; padding: 8px 0; }
+.fulfilmentDetails[open] summary { color: #172033; }
+.statusPillLg { display: inline-flex; padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #e6f3fb; color: #0369a1; }
+.statusPillLg[data-tone="success"] { background: #e7f7f0; color: #059669; }
+.statusPillLg[data-tone="warning"] { background: #fdf2e0; color: #b45309; }
+.statusPillLg[data-tone="danger"] { background: #fdeaea; color: #dc2626; }
+.statusPillLg[data-tone="analytical"] { background: #f1eafb; color: #6d28d9; }
+.orderHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 16px; }
+.orderHeaderTotal { margin-left: auto; font-size: 22px; font-weight: 800; color: #172033; }
 .cardListItem a { color: #a61f2a; text-decoration: none; font-weight: 800; }
 @media (max-width: 700px) {
   .toolbar {

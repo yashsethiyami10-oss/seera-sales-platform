@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./WorkflowActions.module.css";
+import { PartySearchPicker } from "./PartySearchPicker";
 
 const key = () => crypto.randomUUID();
 const money = (v: number | string | null | undefined) => `₹${Math.round(Number(v ?? 0)).toLocaleString("en-IN")}`;
@@ -219,10 +220,12 @@ export function GuidedMoneyIn({ language, treasuryAccounts, onDone, onCancel }: 
           <strong>{hi ? "किससे प्राप्त हुआ?" : "From whom?"}</strong>
           {isPartnerFlow ? (
             <label>{KIND_LABEL[kind].en}
-              <select value={partyId} onChange={(e) => { setPartyId(e.target.value); setDocumentId(""); loadOutstanding(e.target.value); }}>
-                <option value="">{parties.length === 0 ? (hi ? "कोई पार्टी नहीं मिली" : "No parties found") : (hi ? "चुनें" : "Select…")}</option>
-                {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <PartySearchPicker
+                parties={parties}
+                value={partyId}
+                onChange={(id) => { setPartyId(id); setDocumentId(""); if (id) loadOutstanding(id); }}
+                hi={hi}
+              />
             </label>
           ) : (
             <label>{hi ? "नाम / विवरण" : "Name / description"}<input value={counterpartyName} onChange={(e) => setCounterpartyName(e.target.value)} placeholder={hi ? "ग्राहक का नाम" : "Customer name"} /></label>

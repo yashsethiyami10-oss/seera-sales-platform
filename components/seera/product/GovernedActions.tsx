@@ -52,72 +52,124 @@ export function ApprovalActions({
   approvals,
 }: {
   language: "EN" | "HI";
-  approvals: (Option & { domain: string })[];
+  approvals: (Option & { domain: string; isOwn?: boolean })[];
 }) {
   const hi = language === "HI";
-  const state = useAction(language);
-  // Section-12 fix: group by approval domain (Money Desk / TA / Credit / etc.) via <optgroup>
-  // instead of one flat mixed list, and show a real empty state instead of a disabled selector
-  // pretending to be the primary experience when there's nothing to decide.
-  const domains = [...new Set(approvals.map((a) => a.domain))];
+  const router = useRouter();
+  // Founder UI Implementation & Visual Gap Closure mission — replaces the old single hidden
+  // dropdown + one shared "Save decision" button (no context beyond a truncated option label, one
+  // raw error line for every outcome) with a per-request card: requester/date/reason always
+  // visible, an explicit "Your own request" note when isOwn (informational only — the backend,
+  // not this UI, decides whether self-approval is allowed), and a friendly WHAT/WHY message with
+  // the raw error kept under "Technical details" rather than shown bare.
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [results, setResults] = useState<
+    Record<string, { ok: boolean; message: string; technical?: string }>
+  >({});
+
+  const decide = async (id: string, decision: "APPROVED" | "REJECTED") => {
+    const reason = (reasons[id] ?? "").trim();
+    if (reason.length < 3) {
+      setResults((r) => ({
+        ...r,
+        [id]: {
+          ok: false,
+          message: hi
+            ? "कृपया कम से कम 3 अक्षरों का कारण लिखें।"
+            : "Please enter a reason (at least 3 characters) before deciding.",
+        },
+      }));
+      return;
+    }
+    setBusyId(id);
+    try {
+      const result = await post(`/api/approvals/${id}`, { decision, reason });
+      void result;
+      setResults((r) => ({
+        ...r,
+        [id]: { ok: true, message: hi ? "निर्णय सुरक्षित किया गया।" : "Decision saved." },
+      }));
+      router.refresh();
+    } catch (error) {
+      setResults((r) => ({
+        ...r,
+        [id]: {
+          ok: false,
+          message: hi
+            ? "यह निर्णय सुरक्षित नहीं किया जा सका। कृपया पुनः प्रयास करें।"
+            : "Couldn't save this decision. Please try again.",
+          technical: error instanceof Error ? error.message : "Action failed",
+        },
+      }));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <section className={styles.panel}>
       <div>
         <small>{hi ? "अनुमोदन कतार" : "APPROVAL QUEUE"}</small>
-        <h2>{hi ? "लंबित अनुरोध पर निर्णय" : "Decide a pending request"}</h2>
+        <h2>{hi ? "लंबित अनुरोध" : "Pending requests"}</h2>
       </div>
       {!approvals.length ? (
         <p role="status">{hi ? "कोई लंबित अनुमोदन नहीं।" : "No pending approvals."}</p>
       ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            void state.run(() =>
-              post(`/api/approvals/${String(form.get("approvalId"))}`, {
-                decision: String(form.get("decision")),
-                reason: String(form.get("reason")),
-              }),
+        <ul className={styles.list}>
+          {approvals.map((a) => {
+            const result = results[a.value];
+            return (
+              <li key={a.value}>
+                <div className={styles.approvalHead}>
+                  <span className={styles.approvalDomain}>{a.domain}</span>
+                  {a.isOwn && (
+                    <span className={styles.approvalOwnBadge}>
+                      {hi ? "आपका अपना अनुरोध" : "Your own request"}
+                    </span>
+                  )}
+                </div>
+                <strong>{a.label}</strong>
+                {a.meta && <p>{a.meta}</p>}
+                <label>
+                  {hi ? "निर्णय का कारण" : "Decision reason"}
+                  <input
+                    value={reasons[a.value] ?? ""}
+                    onChange={(e) =>
+                      setReasons((r) => ({ ...r, [a.value]: e.target.value }))
+                    }
+                    minLength={3}
+                    placeholder={hi ? "जैसे: सत्यापित और सही" : "e.g. Verified and correct"}
+                  />
+                </label>
+                <div className={styles.inlineActions}>
+                  <button disabled={busyId === a.value} onClick={() => decide(a.value, "APPROVED")}>
+                    {hi ? "स्वीकृत करें" : "Approve"}
+                  </button>
+                  <button
+                    disabled={busyId === a.value}
+                    data-tone="reject"
+                    onClick={() => decide(a.value, "REJECTED")}
+                  >
+                    {hi ? "अस्वीकृत करें" : "Reject"}
+                  </button>
+                </div>
+                {result && (
+                  <p role="status" data-ok={result.ok}>
+                    {result.message}
+                    {result.technical && (
+                      <details className={styles.technicalDetails}>
+                        <summary>{hi ? "तकनीकी विवरण" : "Technical details"}</summary>
+                        {result.technical}
+                      </details>
+                    )}
+                  </p>
+                )}
+              </li>
             );
-          }}
-        >
-          <label>
-            {hi ? "अनुरोध" : "Request"}
-            <select name="approvalId" required>
-              <option value="">
-                {hi ? "लंबित अनुरोध चुनें" : "Choose pending request"}
-              </option>
-              {domains.map((domain) => (
-                <optgroup key={domain} label={domain}>
-                  {approvals
-                    .filter((a) => a.domain === domain)
-                    .map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                        {option.meta ? ` · ${option.meta}` : ""}
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <label>
-            {hi ? "निर्णय" : "Decision"}
-            <select name="decision">
-              <option value="APPROVED">{hi ? "स्वीकृत" : "Approve"}</option>
-              <option value="REJECTED">{hi ? "अस्वीकृत" : "Reject"}</option>
-            </select>
-          </label>
-          <label>
-            {hi ? "निर्णय का कारण" : "Decision reason"}
-            <input name="reason" minLength={3} required />
-          </label>
-          <button disabled={state.busy}>
-            {hi ? "निर्णय सुरक्षित करें" : "Save decision"}
-          </button>
-        </form>
+          })}
+        </ul>
       )}
-      {state.message && <p role="status">{state.message}</p>}
     </section>
   );
 }

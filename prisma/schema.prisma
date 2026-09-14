@@ -1173,6 +1173,109 @@ model SeeraProspect {
   @@map("seera_prospects")
 }
 
+// Attendance Intelligence add-on — this is a NEW, distinct concept from SeeraWorkSession.
+// SeeraWorkSession is a raw field-day record (start/end, GPS, working type); it already existed
+// and is untouched. Nothing in this codebase previously derived a business-meaningful attendance
+// STATUS (Present/Late/Absent/...) from it — the founder-admin/sales-manager "Attendance" screens
+// both just listed raw SeeraWorkSession rows relabeled. This model is that missing layer: one row
+// per employee per business day, holding the DECIDED status, never a second engine for sessions/
+// visits/orders themselves (those stay canonical, read-only inputs to the decision here).
+enum SeeraAttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  ON_LEAVE
+  WEEK_OFF
+  HOLIDAY
+  EXCEPTION
+}
+
+enum SeeraAttendanceSource {
+  SYSTEM
+  MANUAL
+}
+
+// Deliberately NOT a new status (Founder directive: "do not create unnecessary duplicate statuses
+// if existing schema can represent this cleanly") — Sunday/Holiday worked is still status=PRESENT,
+// this is just the structured "why", queryable for the monthly sheet's Sunday-Worked/Holiday-Worked
+// columns without parsing the free-text `reason` string.
+enum SeeraOffDayWorkType {
+  SUNDAY_WORKED
+  HOLIDAY_WORKED
+}
+
+model SeeraAttendanceRecord {
+  id              String                @id @default(cuid())
+  employeeId      String
+  // Business-date at 00:00 IST (see attendance-service.ts's istBusinessDayStart) — NOT a raw
+  // server-local midnight, which would misalign by up to 5.5h if the server runs in UTC.
+  date            DateTime
+  status          SeeraAttendanceStatus
+  source          SeeraAttendanceSource
+  reason          String
+  offDayWorked    SeeraOffDayWorkType?
+  firstActivityAt DateTime?
+  lastActivityAt  DateTime?
+  // Set only when source=MANUAL — who made/last changed this decision. The auto-mark job never
+  // sets this; full before/after history for every change (auto or manual) lives in AuditLog via
+  // recordAudit, keyed to this row's id — this column is just "who to ask", not the audit trail.
+  decidedById     String?
+  generatedAt     DateTime              @default(now())
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date, status])
+  @@map("seera_attendance_records")
+}
+
+// Minimal canonical holiday calendar — Founder directive: "Do NOT create a full HRMS." One row per
+// company holiday date; the attendance engine reads this, nothing else does or should.
+model SeeraHoliday {
+  id          String   @id @default(cuid())
+  // Business-date at 00:00 IST, same convention as SeeraAttendanceRecord.date.
+  date        DateTime
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date])
+  @@map("seera_holidays")
+}
+
+enum SeeraLeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Minimal governed leave record — Founder directive: "create only the minimum governed structure
+// required." No leave-type taxonomy, no balance/accrual tracking, no self-service request UI in
+// this pass — just enough for the attendance engine to know "is this employee on APPROVED leave for
+// this date," with a real approver/audit trail. A PENDING or REJECTED row never affects attendance.
+model SeeraLeaveRequest {
+  id           String           @id @default(cuid())
+  employeeId   String
+  // Inclusive date range, both at 00:00 IST (same convention as SeeraAttendanceRecord.date) —
+  // querying "does date X fall in an approved leave" is `startDate <= X <= endDate`.
+  startDate    DateTime
+  endDate      DateTime
+  reason       String
+  status       SeeraLeaveStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+  createdById  String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([employeeId, startDate, endDate])
+  @@index([status])
+  @@map("seera_leave_requests")
+}
+
 model SeeraWorkSession {
   id                  String            @id @default(cuid())
   employeeId          String

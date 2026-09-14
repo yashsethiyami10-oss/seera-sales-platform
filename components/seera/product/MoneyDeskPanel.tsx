@@ -270,19 +270,77 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
       .finally(() => setDecisionBusyId(null));
   }
 
-  // MASTER UX mission §15/22 — "Never make raw Prisma errors the primary UI." Maps the small,
-  // known set of failureReason patterns this codebase actually produces to a plain-English WHY +
-  // WHAT TO DO; the raw failureReason is still shown, but only inside an expandable technical
-  // details toggle, never as the headline. An unrecognized pattern falls back to a generic, still
-  // honest message rather than either fabricating a wrong explanation or leaking the raw error.
-  function attentionExplain(failureReason: string): { why: { en: string; hi: string }; canRetryDirectly: boolean } {
+  // MASTER UX mission §15/22, Priority-1 follow-up — "Never make raw Prisma errors the primary
+  // UI." Checked the LIVE TEST DB's actual needsAttention rows (2026-09-14): 6 of 8 real failures
+  // fell through to the old generic fallback below, including a confirmed bug — the treasury-
+  // account pattern was `/treasuryAccount|Treasury Account/i`, which never matches the real code
+  // `MONEY_DESK_TREASURY_ACCOUNT_REQUIRED` (underscore, not camelCase or a space) despite that
+  // being exactly the case it was written for. Also added the two other real codes seen live
+  // (OPERATION_TIMED_OUT — 4 of 8 rows; MONEY_DESK_UNDERLYING_EXPENSE_NOT_POSTED). Every code this
+  // service actually throws is `CODE_LIKE_THIS: a plain-English sentence` (see money-desk-service.ts),
+  // so the fallback now uses that sentence instead of a content-free "could not be posted" — still
+  // honest (never fabricates a wrong reason), just no longer throwing away a perfectly good
+  // message the backend already wrote. The raw code prefix stays hidden in Technical details.
+  function attentionExplain(failureReason: string): {
+    what: { en: string; hi: string };
+    why: { en: string; hi: string };
+    action: { en: string; hi: string };
+    canRetryDirectly: boolean;
+  } {
+    const what = { en: "This payment could not be posted.", hi: "यह भुगतान पोस्ट नहीं किया जा सका।" };
     if (/SeeraExpenseCategory/i.test(failureReason))
-      return { why: { en: "An expense category master record was missing when this was first posted.", hi: "पोस्ट करते समय एक व्यय श्रेणी मास्टर रिकॉर्ड गायब था।" }, canRetryDirectly: true };
-    if (/treasuryAccount|Treasury Account/i.test(failureReason))
-      return { why: { en: "No Cash/Bank account is linked to this entry.", hi: "इस प्रविष्टि से कोई नकद/बैंक खाता जुड़ा नहीं है।" }, canRetryDirectly: false };
+      return {
+        what,
+        why: { en: "An expense category master record was missing when this was first posted.", hi: "पोस्ट करते समय एक व्यय श्रेणी मास्टर रिकॉर्ड गायब था।" },
+        action: { en: "Retry now — the category has since been fixed.", hi: "अभी पुनः प्रयास करें — श्रेणी अब ठीक कर दी गई है।" },
+        canRetryDirectly: true,
+      };
+    if (/TREASURY_ACCOUNT|treasuryAccount|Treasury Account/i.test(failureReason))
+      return {
+        what,
+        why: { en: "No Cash/Bank account is linked to this entry.", hi: "इस प्रविष्टि से कोई नकद/बैंक खाता जुड़ा नहीं है।" },
+        action: { en: "Select a Treasury Account (CORRECT below), then retry.", hi: "एक ट्रेजरी खाता चुनें (नीचे CORRECT), फिर पुनः प्रयास करें।" },
+        canRetryDirectly: false,
+      };
     if (/SeeraChartOfAccount/i.test(failureReason))
-      return { why: { en: "A required accounting reference isn't configured yet.", hi: "एक आवश्यक लेखा संदर्भ अभी कॉन्फ़िगर नहीं है।" }, canRetryDirectly: false };
-    return { why: { en: "This entry could not be posted.", hi: "यह प्रविष्टि पोस्ट नहीं की जा सकी।" }, canRetryDirectly: false };
+      return {
+        what,
+        why: { en: "A required accounting reference isn't configured yet.", hi: "एक आवश्यक लेखा संदर्भ अभी कॉन्फ़िगर नहीं है।" },
+        action: { en: "Ask Accounts to configure it, then retry.", hi: "अकाउंट्स से इसे कॉन्फ़िगर करने को कहें, फिर पुनः प्रयास करें।" },
+        canRetryDirectly: false,
+      };
+    if (/OPERATION_TIMED_OUT/i.test(failureReason))
+      return {
+        what,
+        why: { en: "The system took too long to respond — likely a temporary slowdown, not a data problem.", hi: "सिस्टम को जवाब देने में बहुत समय लगा — संभवतः अस्थायी धीमापन, डेटा की समस्या नहीं।" },
+        action: { en: "Retry now — if it keeps failing, share Technical details with Accounts/IT.", hi: "अभी पुनः प्रयास करें — यदि यह बार-बार विफल हो तो तकनीकी विवरण अकाउंट्स/आईटी को दें।" },
+        canRetryDirectly: true,
+      };
+    if (/MONEY_DESK_UNDERLYING_EXPENSE_NOT_POSTED/i.test(failureReason))
+      return {
+        what,
+        why: { en: "The linked expense hasn't been posted in Finance OS yet.", hi: "जुड़ा हुआ व्यय अभी तक फाइनेंस ओएस में पोस्ट नहीं हुआ है।" },
+        action: { en: "Post the expense in Finance OS first, then retry here.", hi: "पहले फाइनेंस ओएस में व्यय पोस्ट करें, फिर यहां पुनः प्रयास करें।" },
+        canRetryDirectly: false,
+      };
+    // Every governed failureReason this codebase throws is "CODE_IN_CAPS: a plain sentence" — an
+    // unrecognized code still has a real, backend-written explanation worth showing rather than
+    // discarding for a content-free fallback. Only truly unstructured text falls all the way back.
+    const structured = /^[A-Z][A-Z0-9_]+:\s*(.+)$/.exec(failureReason);
+    const structuredSentence = structured?.[1];
+    if (structuredSentence)
+      return {
+        what,
+        why: { en: structuredSentence, hi: structuredSentence },
+        action: { en: "Correct the issue described above, then retry.", hi: "ऊपर बताई गई समस्या ठीक करें, फिर पुनः प्रयास करें।" },
+        canRetryDirectly: false,
+      };
+    return {
+      what,
+      why: { en: "This entry could not be posted for an unrecognized reason.", hi: "एक अपरिचित कारण से यह प्रविष्टि पोस्ट नहीं की जा सकी।" },
+      action: { en: "Open Technical details, or contact Accounts/IT.", hi: "तकनीकी विवरण खोलें, या अकाउंट्स/आईटी से संपर्क करें।" },
+      canRetryDirectly: false,
+    };
   }
 
   const OUT_STEP_LABEL = hi ? ["व्यवसाय विवरण", "ट्रेजरी / भुगतान", "क्षेत्र / कॉस्ट सेंटर", "समीक्षा"] : ["Business Context", "Treasury / Payment", "Territory / Cost Centre", "Review"];
@@ -564,7 +622,13 @@ export function MoneyDeskPanel({ language, portal, purposes, supporting, home }:
                       <strong>{money(t.amount)}</strong>
                     </div>
                     <div>{purposeLabel(t.purposeCode)} — {t.counterpartyName ?? (hi ? "पार्टी नहीं" : "No party")}</div>
-                    <div className={styles.attentionWhy}>{hi ? explain.why.hi : explain.why.en}</div>
+                    <strong className={styles.attentionWhat}>{hi ? explain.what.hi : explain.what.en}</strong>
+                    <div className={styles.attentionWhy}>
+                      <b>{hi ? "कारण: " : "Reason: "}</b>{hi ? explain.why.hi : explain.why.en}
+                    </div>
+                    <div className={styles.attentionAction}>
+                      <b>{hi ? "करें: " : "Action: "}</b>{hi ? explain.action.hi : explain.action.en}
+                    </div>
                     <details>
                       <summary>{hi ? "तकनीकी विवरण" : "Technical details"}</summary>
                       <code>{t.failureReason}</code>

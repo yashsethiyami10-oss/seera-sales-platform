@@ -76,6 +76,33 @@ type Dashboard = {
 type OrderLine = { key: string; skuId: string; quantity: number; rate: number; brandFilter: string; search: string; uom: string; freeQuantity: number; freeUom: string };
 type WorkingType = "RETAILING" | "DISTRIBUTOR_SEARCH" | "DISTRIBUTOR_VISIT" | "WHOLESALE_MARKET" | "OTHER";
 
+// Golden Journey — Customer Profile. Mirrors retailer360()'s return shape (field-portal-service.ts)
+// over the JSON boundary (Prisma Decimal/Date become string on the wire). This is the ONLY new
+// backend read this feature needed — retailer360 already existed, fully authorized and scoped, but
+// had never been wired to any route or UI before this.
+type RetailerProfile = {
+  retailer: {
+    id: string;
+    businessName: string;
+    ownerName: string | null;
+    mobile: string | null;
+    whatsapp: string | null;
+    code: string;
+    distributorId: string | null;
+  };
+  lastVisit: { checkedInAt: string; checkedOutAt: string | null; outcome: string | null } | null;
+  recentOrders: {
+    id: string;
+    orderNumber: string;
+    status: string;
+    total: string;
+    createdAt: string;
+    lines: { skuId: string; skuCodeSnapshot: string; productNameSnapshot: string; orderedQuantity: string; priceSnapshot: string }[];
+  }[];
+  followUps: { id: string; dueDate: string; type: string }[];
+  photos: { id: string; capturedAt: string }[];
+};
+
 // Normalized action outcome — business/validation failures (photo required, duplicate customer,
 // permission denied, network failure) are DATA, never a thrown exception. An uncaught throw from a
 // fetch callback that nobody awaits/`.catch()`s becomes an unhandled promise rejection, which
@@ -897,6 +924,7 @@ export function FieldJourney({
   skus,
   distributorOptions,
   beatOptions,
+  todayTimeline,
 }: {
   language: "EN" | "HI";
   dashboard: Dashboard;
@@ -906,6 +934,11 @@ export function FieldJourney({
   hasPublishedPlan: boolean;
   skus: Sku[];
   distributorOptions: { value: string; label: string }[];
+  // Golden Journey gap closure — Post-End-Day Daily Summary. Only ever populated for a day that has
+  // already ended (see OperationalWorkspace.tsx); null otherwise, including when the read failed —
+  // the summary card below degrades to just the stat grid rather than block the whole "day ended"
+  // screen on a timeline fetch issue.
+  todayTimeline?: { businessDate: string; hasAnyData: boolean; events: { at: string; label: string }[] } | null;
   // Final Retailer Cleanup + Handover (22-Aug): real, existing Beat nodes (never freshly typed/
   // guessed) the Executive can optionally assign at Add Customer time, so a real retailer created
   // going forward has proper geography from the start — governed the same way Beat Planner's own
@@ -943,6 +976,13 @@ export function FieldJourney({
     [capturePhotoType, setCapturePhotoType] = useState("SHOPFRONT"),
     [showEndDayPreview, setShowEndDayPreview] = useState(false),
     [showAddCustomer, setShowAddCustomer] = useState(false),
+    // Golden Journey gap closure — Open Visit Recovery card. Lazy initializer runs exactly once, on
+    // this component's FIRST render, so it captures whether a visit was ALREADY open when the page
+    // loaded (app reopened after being killed, a stale tab, etc.) as distinct from a visit the
+    // Executive just checked into during this same session (which sets rawVisit only after mount).
+    // Only the recovery-worth case shows the explicit "open visit found" card below.
+    [hadOpenVisitOnLoad] = useState(() => Boolean(rawVisit)),
+    [recoveryCardDismissed, setRecoveryCardDismissed] = useState(false),
     // Section-1 fix: idempotencyKey/checkInIdempotencyKey were previously generated fresh via
     // key() (crypto.randomUUID()) on EVERY call to submitAddCustomer — including a manual retry
     // after the user sees an error. If the first attempt's mutation had actually already
@@ -998,7 +1038,24 @@ export function FieldJourney({
     [noVisitPaymentType, setNoVisitPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
     [retailerSearchOpen, setRetailerSearchOpen] = useState(false),
     [retailerSearchQuery, setRetailerSearchQuery] = useState(""),
-    [retailerSearchResults, setRetailerSearchResults] = useState<{ id: string; businessName: string; mobile: string | null; code: string }[]>([]);
+    [retailerSearchResults, setRetailerSearchResults] = useState<{ id: string; businessName: string; mobile: string | null; code: string }[]>([]),
+    // Golden Journey — Customer Profile / Reorder Last. `customerProfile` is the lightweight
+    // identity of the selected retailer (known instantly from the search result); `profileData` is
+    // the full retailer360 read, fetched separately so opening a profile is never blocked on it.
+    [customerProfile, setCustomerProfile] = useState<{ id: string; businessName: string; mobile: string | null; code: string } | null>(null),
+    [profileData, setProfileData] = useState<RetailerProfile | null>(null),
+    [profileLoading, setProfileLoading] = useState(false),
+    // Set just before a check-in this same action intends to immediately follow with Reorder
+    // Last's prefilled lines. Read by the visit-reset effect below, matched by retailerId (not
+    // just "is there a pending ref") because that effect provably fires more than once for the
+    // SAME logical check-in — visit?.id genuinely goes undefined -> X -> undefined (rawVisit still
+    // stale) -> X again (rawVisit catches up) as localOptimisticVisit and rawVisit hand off, each
+    // transition re-triggering the effect. A ref consumed (nulled) on the first firing would be
+    // gone by the third, silently reverting the prefilled lines back to blank right after they
+    // appeared. Left in place across firings; only cleared at well-defined points where the
+    // reorder intent is genuinely done (order submitted) or abandoned (profile closed, a
+    // different visit started) — see clearPendingReorder below.
+    pendingReorderLinesRef = useRef<{ retailerId: string; lines: OrderLine[] } | null>(null);
 
   const visit = optimisticVisitCleared ? undefined : (rawVisit ?? localOptimisticVisit ?? undefined);
   const effectivePhotos = visit ? [...visit.photos, ...localAddedPhotos].filter((p) => !locallyDeletedPhotoIds.has(p.id)) : [];
@@ -1033,14 +1090,17 @@ export function FieldJourney({
     setMessage(null);
     const storageKey = visit ? `seera:field-visit:${visit.id}:mode` : null;
     const storedMode = storageKey ? sessionStorage.getItem(storageKey) : null;
+    const pending = visit && pendingReorderLinesRef.current?.retailerId === visit.retailerId ? pendingReorderLinesRef.current : null;
     setMode(
-      visit && (visit.orderCount > 0 || visit.photos.length > 0)
-        ? "PHOTO"
-        : storedMode === "PHOTO" || storedMode === "FOLLOW_UP"
-          ? storedMode
-          : "ORDER",
+      pending
+        ? "ORDER"
+        : visit && (visit.orderCount > 0 || visit.photos.length > 0)
+          ? "PHOTO"
+          : storedMode === "PHOTO" || storedMode === "FOLLOW_UP"
+            ? storedMode
+            : "ORDER",
     );
-    setOrderLines([blankOrderLine()]);
+    setOrderLines(pending ? pending.lines : [blankOrderLine()]);
     setPaymentType("CREDIT");
     revokePhotoPreview();
     setPhotoPreview(null);
@@ -1134,9 +1194,22 @@ export function FieldJourney({
         });
         router.refresh();
       } else {
+        // Golden Journey Step 6/7 — "RECONCILE STATE. Never leave an employee trapped." This
+        // client only knows about an open visit through its own state (rawVisit prop or a
+        // check-in it just performed itself) — if the SERVER already has a different visit open
+        // (another tab/device, or a stale page), the generic OPEN_VISIT_EXISTS banner alone left
+        // the Executive stuck looking at a beat list with no way forward. Refetching now means the
+        // next render shows that real open visit's own "ACTIVE VISIT" workspace (same screen a
+        // normal check-in lands on) instead of a dead end.
+        if (result.code === "OPEN_VISIT_EXISTS") router.refresh();
         setMessage({
           ok: false,
-          text: result.userMessage ?? result.message,
+          text:
+            result.code === "OPEN_VISIT_EXISTS"
+              ? hi
+                ? "आपकी पहले से एक खुली विज़िट है — उसे लोड किया जा रहा है…"
+                : "You already have an open visit — loading it now…"
+              : (result.userMessage ?? result.message),
           nextAction: result.nextAction,
           requestId: result.requestId,
           retryable: result.retryable,
@@ -1380,7 +1453,7 @@ export function FieldJourney({
   // idempotencyKey (key()) on every call means a same-day revisit always creates a genuinely
   // new, independent SeeraVisit row — the earlier completed visit is never reopened or touched.
   const startVisitFor = async (retailer: BeatRetailer) => {
-    if (!session) return;
+    if (!session) return { success: false as const, code: "NO_ACTIVE_SESSION", message: "Start your day first." };
     setBusy(true);
     setGpsStatus("LOCATING");
     await yieldToPaint();
@@ -1391,7 +1464,7 @@ export function FieldJourney({
       gpsExceptionReason = window.prompt(hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason") ?? undefined;
       if (!gpsExceptionReason) {
         setBusy(false);
-        return;
+        return { success: false as const, code: "GPS_REASON_REQUIRED", message: "GPS reason was not provided." };
       }
     }
     const result = await run(
@@ -1428,6 +1501,84 @@ export function FieldJourney({
         orderCount: 0,
       });
     }
+    return result;
+  };
+
+  // Golden Journey — Search Customer / Customer Profile. Fetches the retailer360() read for
+  // whichever retailer the search box's result the Executive tapped — works for ANY retailer in
+  // their own book, not just today's published beat (executiveRetailerSearch already had this
+  // property; retailer360 shares the same actor-scoping).
+  const openCustomerProfile = (r: { id: string; businessName: string; mobile: string | null; code: string }) => {
+    setCustomerProfile(r);
+    setProfileData(null);
+    setProfileLoading(true);
+    setRetailerSearchOpen(false);
+    void send("retailer-profile", { retailerId: r.id }).then((outcome) => {
+      setProfileLoading(false);
+      if (outcome.success) setProfileData(outcome.data as RetailerProfile);
+      else setMessage({ ok: false, text: outcome.userMessage ?? outcome.message, nextAction: outcome.nextAction });
+    });
+  };
+
+  const closeCustomerProfile = () => {
+    setCustomerProfile(null);
+    setProfileData(null);
+  };
+
+  const clearPendingReorder = () => {
+    pendingReorderLinesRef.current = null;
+  };
+
+  // Golden Journey Step 9 — Reorder Last. Copies the most recent finalized order's lines into a
+  // NEW editable draft; the historical order row itself is never read back into afterward, only
+  // read from — placeRetailerOrder (the canonical order engine, unchanged) always creates a fresh
+  // SeeraSalesOrder on save, so the original stays exactly as it was.
+  const reorderLast = async (target: RetailerProfile) => {
+    const lastOrder = target.recentOrders[0];
+    if (!lastOrder) return;
+    const lines: OrderLine[] = lastOrder.lines.map((l) => ({
+      key: key(),
+      skuId: l.skuId,
+      quantity: Number(l.orderedQuantity),
+      rate: Number(l.priceSnapshot),
+      brandFilter: "ALL",
+      search: "",
+      uom: "PC",
+      freeQuantity: 0,
+      freeUom: "PC",
+    }));
+    if (visit && visit.retailerId === target.retailer.id) {
+      // Already checked in here — visit.id won't change, so the reset effect won't fire; apply
+      // directly.
+      setOrderLines(lines);
+      setMode("ORDER");
+      closeCustomerProfile();
+      scrollToJourneyTop();
+      return;
+    }
+    if (visit) {
+      // A DIFFERENT visit is currently open — Step 6/7's rule: never silently abandon or
+      // double-open a visit. Same governed OPEN_VISIT_EXISTS message the backend would give.
+      setMessage({
+        ok: false,
+        text: hi
+          ? `आप अभी ${visit.retailerName} पर विज़िट में हैं। पहले वह विज़िट पूरी करें।`
+          : `You're currently checked in at ${visit.retailerName}. Complete that visit first.`,
+      });
+      return;
+    }
+    pendingReorderLinesRef.current = { retailerId: target.retailer.id, lines };
+    const result = await startVisitFor({
+      id: target.retailer.id,
+      businessName: target.retailer.businessName,
+      ownerName: target.retailer.ownerName,
+      mobile: target.retailer.mobile,
+      distributorId: target.retailer.distributorId,
+      followUpAt: null,
+      visitStatus: null,
+    });
+    if (!result || !("success" in result) || !result.success) clearPendingReorder();
+    else closeCustomerProfile();
   };
 
   const header = <DashboardHeader language={language} dashboard={dashboard} />;
@@ -1437,6 +1588,72 @@ export function FieldJourney({
     return (
       <>
         {header}
+        {dashboard.dayStatus === "ENDED" && (
+          <section className={styles.journey}>
+            <header>
+              <span>✓</span>
+              <div>
+                <small>{hi ? "दिन समाप्त" : "DAY ENDED"}</small>
+                <h2>{hi ? "आज का सारांश" : "Today's summary"}</h2>
+              </div>
+            </header>
+            <dl className={styles.statGrid}>
+              <div>
+                <dt>{hi ? "देखे गए" : "Visited"}</dt>
+                <dd>{dashboard.today.visited}</dd>
+              </div>
+              <div>
+                <dt>{hi ? "उत्पादक" : "Productive"}</dt>
+                <dd>{dashboard.today.productive}</dd>
+              </div>
+              <div>
+                <dt>{hi ? "छोड़े गए" : "Skipped"}</dt>
+                <dd>{dashboard.today.skipped}</dd>
+              </div>
+              <div>
+                <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
+                <dd>{dashboard.today.orders}</dd>
+              </div>
+              <div>
+                <dt>{hi ? "बुक मूल्य" : "Booked value"}</dt>
+                <dd>₹{dashboard.today.bookedValue.toLocaleString("en-IN")}</dd>
+              </div>
+              <div>
+                <dt>{hi ? "नए ग्राहक" : "New customers"}</dt>
+                <dd>{dashboard.today.newRetailers}</dd>
+              </div>
+              <div>
+                <dt>{hi ? "फ़ोटो" : "Photos"}</dt>
+                <dd>{dashboard.today.photos}</dd>
+              </div>
+              <div>
+                <dt>{hi ? "फॉलो-अप देय" : "Follow-ups due"}</dt>
+                <dd>{dashboard.today.followUpsDue}</dd>
+              </div>
+            </dl>
+            {todayTimeline && todayTimeline.hasAnyData ? (
+              <div>
+                <strong>{hi ? "आज की समयरेखा" : "Today's timeline"}</strong>
+                <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+                  {todayTimeline.events.map((e, i) => (
+                    <li key={i} style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid #f0ece3", fontSize: 13 }}>
+                      <span style={{ color: "#94a3b8", minWidth: 64 }}>
+                        {new Date(e.at).toLocaleTimeString(hi ? "hi-IN" : "en-IN", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span style={{ color: "#172033" }}>{e.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className={styles.note}>
+                {hi
+                  ? "आज के लिए कोई विस्तृत समयरेखा घटना उपलब्ध नहीं है।"
+                  : "No detailed timeline events recorded for today."}
+              </p>
+            )}
+          </section>
+        )}
         <section className={styles.journey}>
           <header>
             <span>1</span>
@@ -1829,7 +2046,7 @@ export function FieldJourney({
         source: noVisitSource,
       },
       null,
-      hi ? "ऑर्डर सहेजा गया।" : "Order saved.",
+      hi ? "ऑर्डर सहेजा गया। व्हाट्सएप सूचना कतार में है।" : "Order saved. WhatsApp notification queued.",
       hi ? "ऑर्डर सहेजा जा रहा है…" : "Saving order…",
     );
     if ("queued" in outcome || outcome.success) {
@@ -1886,14 +2103,30 @@ export function FieldJourney({
               <Link href="/portal/sales-executive/prospects">
                 {hi ? "+ वितरक / संभावना विज़िट" : "+ Distributor / prospect visit"}
               </Link>
-              {/* Part A4 (phone/WhatsApp order): existing retailer, no fake check-in. Opens a
-                  typeahead scoped to the Executive's own retailer book (executiveRetailerSearch) —
-                  works for ANY existing retailer, not only today's planned beat. */}
+              {/* Golden Journey — general customer search, not limited to today's published beat.
+                  Reuses the exact same typeahead (executiveRetailerSearch) Part A4 already built;
+                  a result now opens the Customer Profile (Search → Profile → Check In / Reorder
+                  Last), with the old direct phone/WhatsApp no-visit order still one tap away from
+                  inside that profile — nothing removed, just given a real front door. */}
+              <button
+                type="button"
+                className={styles.addCustomerCta}
+                onClick={() => {
+                  setMessage(null);
+                  setNoVisitOrder(null);
+                  closeCustomerProfile();
+                  setRetailerSearchOpen(true);
+                  scrollToJourneyTop();
+                }}
+              >
+                {hi ? "🔍 ग्राहक खोजें" : "🔍 Search customer"}
+              </button>
               <button
                 type="button"
                 onClick={() => {
                   setMessage(null);
                   setNoVisitOrder(null);
+                  closeCustomerProfile();
                   setRetailerSearchOpen(true);
                   scrollToJourneyTop();
                 }}
@@ -1908,9 +2141,9 @@ export function FieldJourney({
                   : "Today's work type is Distributor Search/Visit. Open “Distributor / prospect visit” above, or Add customer if you stop at an actual shop."}
               </p>
             )}
-            {retailerSearchOpen && !noVisitOrder && (
+            {retailerSearchOpen && !noVisitOrder && !customerProfile && (
               <div className={styles.note}>
-                <strong>{hi ? "मौजूदा रिटेलर खोजें" : "Search an existing retailer"}</strong>
+                <strong>{hi ? "मौजूदा ग्राहक खोजें" : "Search an existing customer"}</strong>
                 <input
                   autoFocus
                   type="search"
@@ -1918,20 +2151,126 @@ export function FieldJourney({
                   placeholder={hi ? "दुकान का नाम, कोड या मोबाइल" : "Shop name, code, or mobile"}
                   onChange={(e) => setRetailerSearchQuery(e.target.value)}
                 />
+                {retailerSearchQuery.trim().length >= 2 && retailerSearchResults.length === 0 && (
+                  <p className={styles.note}>{hi ? "कोई मेल नहीं मिला।" : "No matches found."}</p>
+                )}
                 {retailerSearchResults.map((r) => (
-                  <button
-                    type="button"
-                    key={r.id}
-                    onClick={() => {
-                      setNoVisitOrder({ retailerId: r.id, retailerName: r.businessName });
-                      setNoVisitOrderLines([blankOrderLine()]);
-                    }}
-                  >
+                  <button type="button" key={r.id} onClick={() => openCustomerProfile(r)}>
                     {r.businessName} · {r.code} · {r.mobile ?? (hi ? "मोबाइल नहीं" : "no mobile")}
                   </button>
                 ))}
                 <button type="button" className={styles.secondary} onClick={() => { setRetailerSearchOpen(false); setRetailerSearchQuery(""); }}>
                   {hi ? "रद्द करें" : "Cancel"}
+                </button>
+              </div>
+            )}
+            {customerProfile && (
+              <div className={styles.note}>
+                <strong>{customerProfile.businessName}</strong>
+                <p className="meta">
+                  {customerProfile.code} · {customerProfile.mobile ?? (hi ? "मोबाइल नहीं" : "No mobile")}
+                </p>
+                <div className={styles.quickActions}>
+                  {customerProfile.mobile && (
+                    <a href={`tel:${customerProfile.mobile}`}>{hi ? "☎ कॉल करें" : "☎ Call"}</a>
+                  )}
+                  {customerProfile.mobile && (
+                    <a href={`https://wa.me/${customerProfile.mobile.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">
+                      {hi ? "💬 व्हाट्सएप" : "💬 WhatsApp"}
+                    </a>
+                  )}
+                </div>
+                {profileLoading && <p className={styles.note}>{hi ? "लोड हो रहा है…" : "Loading…"}</p>}
+                {profileData && (
+                  <>
+                    <dl className={styles.statGrid}>
+                      <div>
+                        <dt>{hi ? "अंतिम विज़िट" : "Last visit"}</dt>
+                        <dd>{profileData.lastVisit ? new Date(profileData.lastVisit.checkedInAt).toLocaleDateString(hi ? "hi-IN" : "en-IN") : "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>{hi ? "अंतिम ऑर्डर" : "Last order"}</dt>
+                        <dd>
+                          {profileData.recentOrders[0]
+                            ? `${new Date(profileData.recentOrders[0].createdAt).toLocaleDateString(hi ? "hi-IN" : "en-IN")} · ₹${Number(profileData.recentOrders[0].total).toLocaleString("en-IN")}`
+                            : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{hi ? "कुल ऑर्डर" : "Total orders"}</dt>
+                        <dd>{profileData.recentOrders.length}</dd>
+                      </div>
+                      <div>
+                        <dt>{hi ? "फॉलो-अप देय" : "Follow-ups due"}</dt>
+                        <dd>{profileData.followUps.length}</dd>
+                      </div>
+                    </dl>
+                    <div className={styles.quickActions}>
+                      <button
+                        type="button"
+                        data-primary="true"
+                        disabled={busy}
+                        onClick={() =>
+                          void startVisitFor({
+                            id: profileData.retailer.id,
+                            businessName: profileData.retailer.businessName,
+                            ownerName: profileData.retailer.ownerName,
+                            mobile: profileData.retailer.mobile,
+                            distributorId: profileData.retailer.distributorId,
+                            followUpAt: null,
+                            visitStatus: null,
+                          }).then((r) => {
+                            if (r && "success" in r && r.success) closeCustomerProfile();
+                          })
+                        }
+                      >
+                        {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "चेक इन करें" : "Check in"}
+                      </button>
+                      {profileData.recentOrders.length > 0 && (
+                        <button type="button" disabled={busy} onClick={() => void reorderLast(profileData)}>
+                          {hi ? "पिछला ऑर्डर दोहराएं" : "Reorder last"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNoVisitOrder({ retailerId: profileData.retailer.id, retailerName: profileData.retailer.businessName });
+                          setNoVisitOrderLines([blankOrderLine()]);
+                          setCustomerProfile(null);
+                        }}
+                      >
+                        {hi ? "बिना विज़िट ऑर्डर" : "Order without visit"}
+                      </button>
+                    </div>
+                    {profileData.recentOrders.length > 0 && (
+                      <div className={styles.tableWrap}>
+                        <strong>{hi ? "हाल के ऑर्डर" : "Recent orders"}</strong>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>{hi ? "दिनांक" : "Date"}</th>
+                              <th>{hi ? "ऑर्डर #" : "Order #"}</th>
+                              <th>{hi ? "स्थिति" : "Status"}</th>
+                              <th>{hi ? "राशि" : "Amount"}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {profileData.recentOrders.map((o) => (
+                              <tr key={o.id}>
+                                <td>{new Date(o.createdAt).toLocaleDateString(hi ? "hi-IN" : "en-IN")}</td>
+                                <td>{o.orderNumber}</td>
+                                <td>{o.status}</td>
+                                <td>₹{Number(o.total).toLocaleString("en-IN")}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+                <button type="button" className={styles.secondary} onClick={closeCustomerProfile}>
+                  {hi ? "बंद करें" : "Close"}
                 </button>
               </div>
             )}
@@ -2254,6 +2593,42 @@ export function FieldJourney({
             </p>
           </div>
         </header>
+        {hadOpenVisitOnLoad && !recoveryCardDismissed && (
+          <div
+            style={{
+              display: "grid", gap: 10, padding: 14, margin: "0 0 4px", borderRadius: 12,
+              background: "#e6f3fb", border: "1px solid #b6e0f5",
+            }}
+          >
+            <strong style={{ fontSize: 14, color: "#172033" }}>
+              {hi ? "पहले से खुली विज़िट मिली" : "Open visit found"}
+            </strong>
+            <p style={{ margin: 0, fontSize: 13, color: "#475569" }}>
+              {hi
+                ? `${visit.retailerName} के साथ आपकी एक विज़िट पहले से खुली है, जो ${new Date(visit.checkedInAt).toLocaleTimeString("hi-IN", { hour: "2-digit", minute: "2-digit" })} बजे शुरू हुई थी। आप इसे जारी रख सकते हैं या अभी पूरी कर सकते हैं।`
+                : `You have an open visit with ${visit.retailerName}, started at ${new Date(visit.checkedInAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}. Continue it, or complete it now.`}
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setRecoveryCardDismissed(true)}
+                style={{ minHeight: 40, padding: "0 16px", border: 0, borderRadius: 9, background: "#177245", color: "#fff", fontWeight: 800, cursor: "pointer" }}
+              >
+                {hi ? "जारी रखें" : "Continue"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecoveryCardDismissed(true);
+                  document.getElementById("visit-checkout-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                style={{ minHeight: 40, padding: "0 16px", border: "1px solid #b6e0f5", borderRadius: 9, background: "#fff", color: "#172033", fontWeight: 800, cursor: "pointer" }}
+              >
+                {hi ? "अभी पूरी करें" : "Complete now"}
+              </button>
+            </div>
+          </div>
+        )}
         <div className={styles.tabs}>
           {(["ORDER", "COLLECTION", "PHOTO", "FOLLOW_UP"] as const).map((x) => (
             <button type="button" key={x} data-active={mode === x} onClick={() => setMode(x)}>
@@ -2316,7 +2691,16 @@ export function FieldJourney({
                     entityType: "SeeraSalesOrder",
                     actionType: "ORDER_DRAFT",
                   },
-                  hi ? "ऑर्डर सहेजा गया।" : "Order saved.",
+                  // Golden Journey Step 11 — the order and its WhatsApp notification are two
+                  // independent outcomes (placeRetailerOrder queues the WhatsApp outbox event in
+                  // the SAME transaction as the order itself — proven live: a real OutboxEvent row
+                  // with the order's own number always exists the instant this response lands,
+                  // whatever happens to it after). "Queued" is accurate at this exact moment for
+                  // every order, new customer or existing, first order or a reorder — never a
+                  // promise about actual delivery, which happens later via the background
+                  // dispatcher and can genuinely fail (wrong number, provider outage) without that
+                  // ever meaning the order itself failed.
+                  hi ? "ऑर्डर सहेजा गया। व्हाट्सएप सूचना कतार में है।" : "Order saved. WhatsApp notification queued.",
                   hi ? "ऑर्डर सहेजा जा रहा है…" : "Saving order…",
                 );
                 // Save Order should flow straight into Photo, not leave the Executive on the
@@ -2326,6 +2710,7 @@ export function FieldJourney({
                 // for this same visit gets its own key instead of resolving to this one's result.
                 if ("queued" in outcome || outcome.success) {
                   orderKeyRef.current = null;
+                  clearPendingReorder();
                   setMode("PHOTO");
                 }
               })();
@@ -2651,6 +3036,7 @@ export function FieldJourney({
           )}
         </div>
         <form
+          id="visit-checkout-section"
           className={styles.checkout}
           onSubmit={(e) => {
             e.preventDefault();
@@ -2713,6 +3099,7 @@ export function FieldJourney({
                 // reset effect below, keyed on visit?.id).
                 sessionStorage.removeItem(`seera:field-visit:${visit.id}:mode`);
                 setOptimisticVisitCleared(true);
+                clearPendingReorder();
               } else {
                 // Only a genuine failure re-arms the guard — a legitimate retry (same
                 // checkoutIdempotencyKey) must be allowed to reach the server again.

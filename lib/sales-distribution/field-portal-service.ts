@@ -827,10 +827,16 @@ export async function retailer360(db: PrismaClient, actorId: string, retailerId:
       where: { retailerId, ownerId: actorId, status: "OPEN" },
       orderBy: { dueDate: "asc" },
     }),
+    // Golden Journey fix: this was previously a bare findMany() (no `select`), which included
+    // `sizeBytes` (BigInt) — harmless as long as nothing serialized the result to JSON, which is
+    // exactly why this went unnoticed: retailer360 had never been wired to any route before this
+    // feature. `JSON.stringify`/`NextResponse.json` both throw on a raw BigInt, so this API is
+    // scoped to the fields a profile view actually needs instead of returning every column.
     db.seeraVisitPhoto.findMany({
       where: { retailerId, deletedAt: null },
       orderBy: { capturedAt: "desc" },
       take: 12,
+      select: { id: true, photoType: true, capturedAt: true, secureUrl: true },
     }),
   ]);
   return { retailer, lastVisit, recentOrders, followUps, photos };

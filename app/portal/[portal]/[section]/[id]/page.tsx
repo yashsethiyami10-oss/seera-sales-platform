@@ -16,10 +16,13 @@ import { surfaceItem } from "@/lib/foundation/product-surface";
 import { OperationalDetail } from "@/components/seera/product/OperationalDetail";
 export default async function WorkspaceDetail({
   params,
+  searchParams,
 }: {
   params: Promise<{ portal: string; section: string; id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { portal, section, id } = await params,
+    query = await searchParams,
     { user: actor } = await resolveRequestIdentity(),
     permissions = await effectivePermissions(prisma, actor.id),
     language = actor.preferredLanguage,
@@ -297,6 +300,7 @@ export default async function WorkspaceDetail({
         portal={portal}
         item={product}
         id={id}
+        query={query}
         language={language}
         canManageLifecycle={allowed("partner_lifecycle:manage")}
         canExecuteDelivery={allowed("distributor_delivery:execute") || allowed("distributor_orders:fulfil")}

@@ -27,6 +27,7 @@ import {
   acknowledgeInstruction,
   completeInstruction,
   recordPhotoTelemetry,
+  retailer360,
   CUSTOMER_TYPES,
 } from "@/lib/sales-distribution/field-portal-service";
 
@@ -43,6 +44,7 @@ const body = z.object({
     "create-retailer",
     "create-retailer-and-check-in",
     "retailer-search",
+    "retailer-profile",
     "photo-exception",
     "delete-photo",
     "create-follow-up",
@@ -315,6 +317,12 @@ export async function POST(request: Request) {
     else if (action === "retailer-search") {
       const v = z.object({ q: z.string() }).parse(payload);
       result = await executiveRetailerSearch(prisma, user.id, v.q);
+    } else if (action === "retailer-profile") {
+      // Golden Journey Priority 1 — Customer Profile. retailer360() already existed (last visit,
+      // recent orders WITH lines, open follow-ups, photos) but had never been wired to any route
+      // or UI — this is the only new backend surface this feature needed; no new engine.
+      const v = z.object({ retailerId: z.string() }).parse(payload);
+      result = await retailer360(prisma, user.id, v.retailerId);
     } else if (action === "photo-exception")
       result = await recordPhotoException(
         prisma,

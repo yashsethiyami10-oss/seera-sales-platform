@@ -11,6 +11,7 @@ import { recordGpsSample } from "./field-travel-service";
 import { wholesaleOrderUnitToCanonicalPieces } from "./company-order-catalog";
 import { queuePartnerVisitCommunicationSafe } from "./partner-communication-service";
 import { isCompanyDirectEligible, distributorsForEmployeeIds } from "./scope";
+import { istBusinessDayStart } from "./attendance-service";
 
 // Real production bug (Awdhesh Mishra / Neeraj Rawat, Jhansi Division, confirmed via read-only
 // production diagnostic): a subordinate later got a duplicate account created and the original was
@@ -20,7 +21,7 @@ import { isCompanyDirectEligible, distributorsForEmployeeIds } from "./scope";
 // manager's team roster/dashboard aggregation, regardless of how old or stale its assignment row is
 // — this is a status filter on the subordinate's actual account, not a data mutation, so it fixes
 // the visible symptom without touching (or needing to touch) the production assignment history.
-async function managerTeamEmployeeIds(db: PrismaClient, managerId: string) {
+export async function managerTeamEmployeeIds(db: PrismaClient, managerId: string) {
   const assignments = await db.seeraAssignment.findMany({
     where: {
       assignmentType: { in: ["MANAGER_TEAM", "TEAM"] },
@@ -1480,6 +1481,11 @@ export async function managerDsrRollup(
         employeeId: session.employeeId,
         employeeName: employeeName.get(session.employeeId) ?? session.employeeId,
         date: sessionDayStart,
+        // IST business day this session belongs to — the same key SeeraAttendanceRecord is stored
+        // under. Several sessions on one calendar day share this value; DSR intentionally still
+        // lists one row per session ("sessions as details"), but this lets a consumer group rows
+        // under a single business day and cross-reference the one attendance decision for that day.
+        businessDate: istBusinessDayStart(session.startedAt),
         startedAt: session.startedAt,
         endedAt: session.endedAt,
         status: session.status,
@@ -1522,19 +1528,39 @@ export async function managerDsrRollup(
   ]);
   const geographyName = new Map(geographies.map((g) => [g.id, g.name]));
   const distributorName = new Map(distributors.map((d) => [d.id, d.tradeName ?? d.legalName]));
+
+  // Attendance reconciliation: look up the one decided SeeraAttendanceRecord per employee/business-
+  // day so a DSR row can show whether that day was ever marked Present/Late/etc — read-only, never
+  // computed here, so this can't drift from the Attendance screens' own numbers.
+  const attendanceRecords = rows.length
+    ? await db.seeraAttendanceRecord.findMany({
+        where: {
+          employeeId: { in: [...new Set(rows.map((r) => r.employeeId))] },
+          date: { in: [...new Set(rows.map((r) => r.businessDate.getTime()))].map((t) => new Date(t)) },
+        },
+        select: { employeeId: true, date: true, status: true, offDayWorked: true },
+      })
+    : [];
+  const attendanceByKey = new Map(attendanceRecords.map((a) => [`${a.employeeId}|${a.date.getTime()}`, a]));
+
   return {
     total,
     employees: employeeRecords.map((e) => ({ id: e.id, name: e.name ?? e.email })),
-    rows: rows.map((row) => ({
-      ...row,
-      area: row.geographyId ? (geographyName.get(row.geographyId) ?? null) : null,
-      distributor:
-        row.distributorIds.length === 0
-          ? null
-          : row.distributorIds.length === 1
-            ? (distributorName.get(row.distributorIds[0]!) ?? null)
-            : `${row.distributorIds.length} Distributors`,
-    })),
+    rows: rows.map((row) => {
+      const attendance = attendanceByKey.get(`${row.employeeId}|${row.businessDate.getTime()}`);
+      return {
+        ...row,
+        area: row.geographyId ? (geographyName.get(row.geographyId) ?? null) : null,
+        distributor:
+          row.distributorIds.length === 0
+            ? null
+            : row.distributorIds.length === 1
+              ? (distributorName.get(row.distributorIds[0]!) ?? null)
+              : `${row.distributorIds.length} Distributors`,
+        attendanceStatus: attendance?.status ?? null,
+        attendanceOffDayWorked: attendance?.offDayWorked ?? null,
+      };
+    }),
   };
 }
 

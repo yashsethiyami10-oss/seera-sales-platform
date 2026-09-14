@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./WorkflowActions.module.css";
 import type { FinanceWorkspaceData } from "@/lib/finance/founder-workspace-data";
 import { PartyLedgerStatement } from "./PartyLedgerStatement";
+import { PartySearchPicker } from "./PartySearchPicker";
 
 async function post(action: string, payload: unknown, url = "/api/finance/company-operations") {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) });
@@ -1035,7 +1036,7 @@ function PartiesSection({ portal, jump }: { portal: string; jump: (g: Group, s: 
 // same functions Distributor/S.S. self-billing already calls, just with issuerType:"COMPANY",
 // already a first-class, already-governed value in that engine). No new numbering, GST, ledger or
 // PDF logic — the server computes all of it exactly as it does for every other billing document.
-type InvoiceLine = { skuId: string; skuLabel: string; brand: string; quantity: string; rate: string; taxRate: number | null };
+type InvoiceLine = { skuId: string; skuLabel: string; brand: string; quantity: string; rate: string; taxRate: number | null; discountPct: string };
 type InvoiceSku = { value: string; label: string; brand: string; meta?: string; taxRate: number | null; hsn: string | null };
 function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; onClose: () => void; onIssued: () => void }) {
   const [step, setStep] = useState(0); // 0 party, 1 items, 2 tax/total, 3 terms, 4 review
@@ -1044,7 +1045,7 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
   const [parties, setParties] = useState<{ id: string; name: string }[]>([]);
   const [buyerId, setBuyerId] = useState("");
   const [skus, setSkus] = useState<InvoiceSku[]>([]);
-  const [lines, setLines] = useState<InvoiceLine[]>([{ skuId: "", skuLabel: "", brand: "", quantity: "1", rate: "", taxRate: null }]);
+  const [lines, setLines] = useState<InvoiceLine[]>([{ skuId: "", skuLabel: "", brand: "", quantity: "1", rate: "", taxRate: null, discountPct: "" }]);
   const [paymentTerms, setPaymentTerms] = useState("");
   const [notes, setNotes] = useState("");
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -1064,7 +1065,7 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
   function updateLine(i: number, patch: Partial<InvoiceLine>) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   }
-  function addLine() { setLines((prev) => [...prev, { skuId: "", skuLabel: "", brand: "", quantity: "1", rate: "", taxRate: null }]); }
+  function addLine() { setLines((prev) => [...prev, { skuId: "", skuLabel: "", brand: "", quantity: "1", rate: "", taxRate: null, discountPct: "" }]); }
   function removeLine(i: number) { setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)); }
 
   const validLines = lines.filter((l) => l.skuId && Number(l.quantity) > 0 && l.rate !== "");
@@ -1075,21 +1076,26 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
   // this preview can never be what gets posted, only a preview of it.
   const preview = validLines.map((l) => {
     const qty = Number(l.quantity), rate = Number(l.rate), taxRate = l.taxRate ?? 0;
+    const discountPct = Math.min(100, Math.max(0, Number(l.discountPct) || 0));
     const gross = qty * rate;
+    // Mirrors document-lines.ts's server-authoritative order exactly: discount applied to the
+    // gross first, tax derived from the discounted gross — never discount-after-tax.
+    const grossAfterDiscount = gross - (gross * discountPct) / 100;
     const isMuv = /^muv$/i.test(l.brand.trim());
-    const taxable = isMuv ? gross / (1 + taxRate / 100) : gross;
-    const tax = isMuv ? gross - taxable : gross * (taxRate / 100);
-    const total = isMuv ? gross : taxable + tax;
-    return { ...l, gross, taxable, tax, total };
+    const taxable = isMuv ? grossAfterDiscount / (1 + taxRate / 100) : grossAfterDiscount;
+    const tax = isMuv ? grossAfterDiscount - taxable : grossAfterDiscount * (taxRate / 100);
+    const total = isMuv ? grossAfterDiscount : taxable + tax;
+    return { ...l, gross, discountPct, grossAfterDiscount, taxable, tax, total };
   });
   const subtotal = preview.reduce((s, l) => s + l.gross, 0);
+  const discountTotal = preview.reduce((s, l) => s + (l.gross - l.grossAfterDiscount), 0);
   const taxableTotal = preview.reduce((s, l) => s + l.taxable, 0);
   const taxTotal = preview.reduce((s, l) => s + l.tax, 0);
   const grandTotal = preview.reduce((s, l) => s + l.total, 0);
   const anyUnconfiguredTax = validLines.some((l) => l.taxRate == null);
 
   function buildLinesPayload() {
-    return validLines.map((l) => ({ skuId: l.skuId, quantity: Number(l.quantity), rate: Number(l.rate), taxRate: l.taxRate }));
+    return validLines.map((l) => ({ skuId: l.skuId, quantity: Number(l.quantity), rate: Number(l.rate), taxRate: l.taxRate, discountPct: Math.min(100, Math.max(0, Number(l.discountPct) || 0)) }));
   }
 
   async function saveDraft() {
@@ -1165,10 +1171,7 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
               </select>
             </label>
             <label>{PARTY_DIRECTORY_TYPES.find((t) => t.value === partyType)?.label ?? "Party"}
-              <select value={buyerId} onChange={(e) => setBuyerId(e.target.value)}>
-                <option value="">{parties.length === 0 ? "No parties found for this type" : "Choose…"}</option>
-                {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <PartySearchPicker parties={parties} value={buyerId} onChange={setBuyerId} placeholder="Search customer name or phone number…" />
             </label>
             <div className={styles.ctaRow}>
               <button type="button" className={styles.ctaSecondary} onClick={onClose}>Cancel</button>
@@ -1187,6 +1190,7 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
                 </select>
                 <input type="number" min="1" step="1" placeholder="Qty" value={line.quantity} onChange={(e) => updateLine(i, { quantity: e.target.value })} />
                 <input type="number" min="0" step="0.01" placeholder="Rate" value={line.rate} onChange={(e) => updateLine(i, { rate: e.target.value })} />
+                <input type="number" min="0" max="100" step="0.01" placeholder="Discount %" value={line.discountPct} onChange={(e) => updateLine(i, { discountPct: e.target.value })} />
                 <span>{line.taxRate != null ? `${line.taxRate}% GST` : "—"}</span>
                 <button type="button" onClick={() => removeLine(i)} aria-label="Remove line">×</button>
               </div>
@@ -1204,6 +1208,7 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
             {anyUnconfiguredTax && <p className={styles.emptyHint}>One or more items has no governed GST rate configured yet — Founder/Admin must set it under Masters before this invoice can be ISSUED (it can still be saved as a Draft).</p>}
             <div className={styles.wizardTotals}>
               <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
+              {discountTotal > 0 && <div><span>Discount</span><span>−{money(discountTotal)}</span></div>}
               <div><span>Taxable Amount</span><span>{money(taxableTotal)}</span></div>
               <div><span>GST</span><span>{money(taxTotal)}</span></div>
               <div data-total="true"><span>Grand Total</span><span>{money(grandTotal)}</span></div>
@@ -1231,8 +1236,8 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
             <p><strong>Bill to:</strong> {buyerName}</p>
             <div className={styles.tableWrap}>
               <table>
-                <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>GST</th><th>Total</th></tr></thead>
-                <tbody>{preview.map((l, i) => <tr key={i}><td>{l.skuLabel}</td><td>{l.quantity}</td><td>{money(Number(l.rate))}</td><td>{money(l.tax)}</td><td>{money(l.total)}</td></tr>)}</tbody>
+                <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Discount</th><th>GST</th><th>Total</th></tr></thead>
+                <tbody>{preview.map((l, i) => <tr key={i}><td>{l.skuLabel}</td><td>{l.quantity}</td><td>{money(Number(l.rate))}</td><td>{l.discountPct > 0 ? `${l.discountPct}%` : "—"}</td><td>{money(l.tax)}</td><td>{money(l.total)}</td></tr>)}</tbody>
               </table>
             </div>
             <div className={styles.wizardTotals}>
