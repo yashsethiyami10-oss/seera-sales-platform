@@ -37,6 +37,18 @@ const money = (v: unknown) =>
       : v instanceof Date
         ? v.toLocaleString("en-IN")
         : String(v);
+// P0 fix: an order line's `packSnapshot` is already a COMPLETE, self-describing quantity string
+// when a commercial unit (BOX/BAG) was actually selected at order time — e.g. "2 BOX (80 PC)"
+// (see workflow-service.ts's placeRetailerOrder/createCompanyOrder, which both write that exact
+// "(N PC)" suffix). The display used to prepend the raw base-PC orderedQuantity in front of it
+// regardless ("80 2 BOX (80 PC)"), which both double-counted the same quantity and made every
+// order look like it was sold in bare pieces. A line with no configured commercial unit (no
+// "(N PC)" suffix — packSnapshot is just the physical pack description, e.g. "500 g") still needs
+// the real ordered quantity shown, so that case keeps it, multiplied against the pack description.
+const orderLineQuantityLabel = (l: { orderedQuantity: unknown; packSnapshot: string | null }) =>
+  l.packSnapshot && l.packSnapshot.includes("PC)")
+    ? l.packSnapshot
+    : `${text(l.orderedQuantity)}${l.packSnapshot ? ` × ${l.packSnapshot}` : ""}`;
 const Fields = ({ items }: { items: Field[] }) => (
   <dl className={styles.detail}>
     {items.map((x) => (
@@ -479,7 +491,7 @@ export async function OperationalDetail({
                   <span className={styles.itemSub}>{l.skuCodeSnapshot}</span>
                 </div>
                 <span className={styles.itemMeta}>
-                  {text(l.orderedQuantity)} {l.packSnapshot} · {money(l.priceSnapshot)}/unit
+                  {orderLineQuantityLabel(l)} · {money(l.priceSnapshot)}/unit
                 </span>
                 <span className={styles.itemTotal}>{money(l.lineTotal)}</span>
               </div>

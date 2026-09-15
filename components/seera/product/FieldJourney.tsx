@@ -1806,6 +1806,16 @@ export function FieldJourney({
           </p>
         </div>
       </header>
+      {/* P0 fix: Add Customer never asked for Distributor again — there was never a distributor
+          field in this form to begin with (Beat/Route below is its own, explicitly optional,
+          per-retailer classification). What WAS missing is what the Founder actually asked for:
+          a visible read-only echo of the operational context Start Day already established, so it
+          never LOOKS like a second, competing context is being built here. */}
+      {dashboard.workingDistributorLabel && (
+        <p className={styles.note} style={{ margin: 0 }}>
+          {hi ? "आज का कार्यरत वितरक" : "Today's working distributor"}: <strong>{dashboard.workingDistributorLabel}</strong>
+        </p>
+      )}
       {duplicateWarning ? (
         <div className={styles.note}>
           <strong>{hi ? "मिलती-जुलती दुकान पहले से मौजूद है" : "A similar customer may already exist"}</strong>

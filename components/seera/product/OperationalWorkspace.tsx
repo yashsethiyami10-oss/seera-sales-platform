@@ -4,6 +4,7 @@ import type { PrismaClient, UiLanguage } from "@prisma/client";
 import { analyticsScope, type AnalyticsPortal } from "@/lib/phase-10/scope";
 import type { SurfaceItem } from "@/lib/foundation/product-surface";
 import { surfaceLabel } from "@/lib/foundation/product-surface";
+import { requireSurfaceAccess } from "@/lib/foundation/surface-access";
 import { FoundationError } from "@/lib/foundation/errors";
 import { operationalLog } from "@/lib/foundation/logger";
 // A scope/not-found rejection from a service function is a real, expected outcome (a stale query
@@ -2453,6 +2454,16 @@ export async function OperationalWorkspace({
   query: Record<string, string | undefined>;
   permissions: Set<string>;
 }) {
+  // P0 security fix: this "portal" is a URL segment, not a verified identity — every branch below
+  // used to just string-compare `portal === "founder-admin"` etc. and trust it completely, with no
+  // check that the AUTHENTICATED user actually holds that portal. Any logged-in user (a Sales
+  // Executive included) navigating straight to /portal/founder-admin/<slug> reached the founder
+  // branch and any scope resolver keyed off the trusted `portal` argument (analyticsScope in
+  // particular) returned unrestricted, company-wide data. requireSurfaceAccess is the SAME guard
+  // OperationalDetail.tsx's record boundary already uses — it throws (caught by app/error.tsx) the
+  // instant the caller's own permissions don't match this portal, before any workflow branch or
+  // data query below ever runs.
+  await requireSurfaceAccess(db, userId, portal, item);
   const q = (query.q ?? "").trim(),
     page = Math.max(1, Number(query.page) || 1),
     hi = language === "HI",

@@ -21,6 +21,7 @@ const portalPermission: Record<string, string> = {
   "super-stockist": "portal:super_stockist",
   retailer: "portal:retailer",
   auditor: "audit:view",
+  manufacturing: "portal:manufacturing",
 };
 
 /** Repeats authorization and resolves the record scope at every detail boundary. */
