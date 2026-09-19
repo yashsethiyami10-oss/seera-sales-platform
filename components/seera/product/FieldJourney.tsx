@@ -912,12 +912,13 @@ const WORK_TYPES = [
 // UX gating only (disable Start Day, show the required marker); the server independently
 // re-validates the same requirement, so this list drifting would only ever produce an extra
 // server-side rejection, never a security gap.
-const DISTRIBUTOR_REQUIRED_WORK_TYPES: readonly WorkingType[] = ["RETAILING", "DISTRIBUTOR_VISIT"];
+const DISTRIBUTOR_REQUIRED_WORK_TYPES: readonly WorkingType[] = ["DISTRIBUTOR_VISIT"];
 
 export function FieldJourney({
   language,
   dashboard,
   session,
+  session: initialSession,
   visit: rawVisit,
   beatRetailers,
   hasPublishedPlan,
@@ -958,6 +959,9 @@ export function FieldJourney({
     dayActionSubmittingRef = useRef(false),
     [busy, setBusy] = useState(false),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
+    // Keep the authoritative Start Day result locally so the field workspace switches immediately;
+    // the server refresh remains background reconciliation only.
+    [localSession, setLocalSession] = useState(initialSession ?? null),
     [message, setMessage] = useState<ActionMessage | null>(null),
     [mode, setMode] = useState<"ORDER" | "COLLECTION" | "PHOTO" | "FOLLOW_UP">(
       rawVisit && (rawVisit.orderCount > 0 || rawVisit.photos.length > 0) ? "PHOTO" : "ORDER",
@@ -1057,6 +1061,7 @@ export function FieldJourney({
     // different visit started) — see clearPendingReorder below.
     pendingReorderLinesRef = useRef<{ retailerId: string; lines: OrderLine[] } | null>(null);
 
+  const session = localSession ?? initialSession;
   const visit = optimisticVisitCleared ? undefined : (rawVisit ?? localOptimisticVisit ?? undefined);
   const effectivePhotos = visit ? [...visit.photos, ...localAddedPhotos].filter((p) => !locallyDeletedPhotoIds.has(p.id)) : [];
 
@@ -1192,7 +1197,8 @@ export function FieldJourney({
           ok: true,
           text: successText ?? (hi ? "कार्रवाई सुरक्षित रूप से सहेजी गई।" : "Action saved securely."),
         });
-        router.refresh();
+        // Successful field actions should not wait on a full server render to feel complete.
+        if (typeof window !== "undefined") window.setTimeout(() => router.refresh(), 900); else router.refresh();
       } else {
         // Golden Journey Step 6/7 — "RECONCILE STATE. Never leave an employee trapped." This
         // client only knows about an open visit through its own state (rawVisit prop or a
@@ -1351,6 +1357,7 @@ export function FieldJourney({
       // operation and does not require decoding the image.
       const uploadBlob = blob;
       setBusyLabel(hi ? "अपलोड हो रहा है…" : "Uploading…");
+      setMessage({ ok: true, text: hi ? "फ़ोटो अपलोड हो रही है… कृपया प्रतीक्षा करें।" : "Uploading photo… please wait." });
       const data = await uploadFieldPhotoDirect(visit.id, capturePhotoType, uploadBlob, signedOverride, () =>
         setBusyLabel(hi ? "सहेजा जा रहा है…" : "Saving…"),
       );
@@ -1779,7 +1786,15 @@ export function FieldJourney({
                 hi ? "दिन शुरू हुआ।" : "Day started.",
                 hi ? "दिन शुरू हो रहा है…" : "Starting day…",
               ).then((result) => {
-                if (!("queued" in result) && !result.success) dayActionSubmittingRef.current = false;
+                if (!("queued" in result) && result.success) {
+                  const started = result.data as { id?: string; startedAt?: string; workingType?: string; workingDistributorId?: string | null };
+                  if (started?.id) setLocalSession({
+                    id: started.id,
+                    startedAt: started.startedAt ?? new Date().toISOString(),
+                    workingType: started.workingType ?? startWorkingType,
+                    workingDistributorId: started.workingDistributorId ?? null,
+                  });
+                } else if (!("queued" in result) && !result.success) dayActionSubmittingRef.current = false;
               });
             }}
           >
@@ -2912,6 +2927,7 @@ export function FieldJourney({
                   // Do not decode/render the full-resolution original before upload.
                   // The saved Cloudinary URL becomes the authoritative preview after finalize.
                   setBusyLabel(hi ? "फ़ोटो अपलोड हो रही है…" : "Uploading photo…");
+                  setMessage({ ok: true, text: hi ? "फ़ोटो अपलोड हो रही है… कृपया प्रतीक्षा करें।" : "Uploading photo… please wait." });
                   // Let the browser paint the preview and reclaim the decode/canvas memory from the
                   // pass above before the network upload starts — the exact breathing room the
                   // prior two-tap flow gave for free, restored explicitly instead of depending on a
@@ -2953,6 +2969,7 @@ export function FieldJourney({
             >
               {hi ? "कैमरा खोलें" : "Open camera"}
             </button>
+            <ActionMessageBanner message={message} language={language} />
             {photoPreview && (
               <div>
                 <img src={photoPreview} alt="" style={{ maxWidth: 220, borderRadius: 10 }} />
