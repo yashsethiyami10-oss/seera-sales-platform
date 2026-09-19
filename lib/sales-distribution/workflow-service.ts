@@ -248,7 +248,7 @@ export async function supersedePriceVersion(
 // order routing authority. Retailer order routing (placeRetailerOrder) continues to resolve its own
 // commercialPartyId strictly from retailer.distributorId / territory / Manager assignment, exactly
 // as before this feature — it never reads SeeraWorkSession.workingDistributorId.
-const WORKING_TYPES_REQUIRING_DISTRIBUTOR = new Set(["RETAILING", "DISTRIBUTOR_VISIT"]);
+const WORKING_TYPES_REQUIRING_DISTRIBUTOR = new Set(["DISTRIBUTOR_VISIT"]);
 
 export async function startFieldDay(
   prisma: PrismaClient,
