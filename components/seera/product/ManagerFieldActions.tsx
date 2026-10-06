@@ -345,6 +345,10 @@ export function ManagerFieldActions({
             onSubmit={async (event) => {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
+              if (!sessionId) {
+                setMessage(hi ? "पहले आज का फील्ड डे शुरू करें।" : "Start today's field day first.");
+                return;
+              }
               const withPoint = await withGps({});
               if (!withPoint) return;
               if (!checkInKeyRef.current) checkInKeyRef.current = crypto.randomUUID();
@@ -426,7 +430,7 @@ export function ManagerFieldActions({
         {!activeVisit ? (
           <>
             <div className={styles.inlineActions}>
-              <button onClick={() => setShowAddCustomer(true)}>{hi ? "+ ग्राहक जोड़ें" : "+ Add customer"}</button>
+              <button type="button" disabled={!sessionId} onClick={() => setShowAddCustomer(true)}>{hi ? "+ ग्राहक जोड़ें" : "+ Add customer"}</button>
             </div>
             <form
               onSubmit={async (event) => {
@@ -696,7 +700,7 @@ export function ManagerFieldActions({
         {!activeVisit ? (
           <>
             <div className={styles.inlineActions}>
-              <button onClick={() => setShowAddParty(true)}>{hi ? "+ नई पार्टी जोड़ें" : "+ Add new party"}</button>
+              <button type="button" disabled={!sessionId} onClick={() => setShowAddParty(true)}>{hi ? "+ नई पार्टी जोड़ें" : "+ Add new party"}</button>
             </div>
             <form
               onSubmit={async (event) => {
