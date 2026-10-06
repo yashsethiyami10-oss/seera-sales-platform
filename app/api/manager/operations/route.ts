@@ -142,7 +142,7 @@ export async function POST(request: Request) {
         user.id,
         z
           .object({
-            workSessionId: z.string(),
+            workSessionId: z.string().optional(),
             retailerId: z.string().optional(),
             newRetailer: z
               .object({
@@ -377,7 +377,7 @@ export async function POST(request: Request) {
         user.id,
         z
           .object({
-            workSessionId: z.string(),
+            workSessionId: z.string().optional(),
             partnerType: z.enum(["DISTRIBUTOR", "SUPER_STOCKIST"]),
             partnerId: z.string().optional(),
             newParty: z
