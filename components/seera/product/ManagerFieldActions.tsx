@@ -351,7 +351,6 @@ export function ManagerFieldActions({
               const ok = await run({
                 action: "retailer-check-in",
                 payload: {
-                  workSessionId: sessionId,
                   newRetailer: {
                     businessName: String(form.get("businessName")),
                     address: { area: String(form.get("area")) },
@@ -436,7 +435,7 @@ export function ManagerFieldActions({
                 const withPoint = await withGps({});
                 if (!withPoint) return;
                 if (!checkInKeyRef.current) checkInKeyRef.current = crypto.randomUUID();
-                void run({ action: "retailer-check-in", payload: { workSessionId: sessionId, retailerId: String(form.get("retailerId")), idempotencyKey: checkInKeyRef.current, ...withPoint } }).then(
+                void run({ action: "retailer-check-in", payload: { retailerId: String(form.get("retailerId")), idempotencyKey: checkInKeyRef.current, ...withPoint } }).then(
                   (ok) => { if (ok) checkInKeyRef.current = null; },
                 );
               }}
@@ -648,7 +647,6 @@ export function ManagerFieldActions({
               await run({
                 action: "partner-check-in",
                 payload: {
-                  workSessionId: sessionId,
                   partnerType: String(form.get("partnerType")),
                   newParty: {
                     businessName: String(form.get("businessName")),
@@ -707,7 +705,7 @@ export function ManagerFieldActions({
                 const [partnerId, partnerType] = String(form.get("partnerId")).split("::");
                 const withPoint = await withGps({ purpose: String(form.get("purpose")) });
                 if (!withPoint) return;
-                void run({ action: "partner-check-in", payload: { workSessionId: sessionId, partnerType, partnerId, ...withPoint, idempotencyKey: crypto.randomUUID() } });
+                void run({ action: "partner-check-in", payload: { partnerType, partnerId, ...withPoint, idempotencyKey: crypto.randomUUID() } });
               }}
             >
               <label>
