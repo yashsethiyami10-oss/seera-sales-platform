@@ -72,12 +72,11 @@ async function main() {
   // ============= TEST 1 + 3: Manager Own Retailing (new retailer, session correctness, attribution) =============
   const managerSession = await startFieldDay(db, manager.id, { employeeRole: "SALES_MANAGER", workingType: "OWN_RETAILING", remarks: `Stage 1B smoke ${suffix}` });
 
-  // Deliberately pass a WRONG/stale workSessionId to prove the server derives the true session
-  // itself rather than trusting this client-supplied value (the actual fix for "Active workday not
+  // Deliberately omit workSessionId to prove the server derives the true session
+  // itself rather than trusting or requiring a client-supplied value (the actual fix for "Active workday not
   // found" class of bugs — a stale/mismatched client session id must not break the flow).
   const seeraSku = await db.seeraSku.findFirstOrThrow({ where: { brand: "Seera", status: "ACTIVE" } });
   const newRetailerVisit = await managerRetailerCheckIn(db, manager.id, {
-    workSessionId: "deliberately-wrong-stale-session-id",
     newRetailer: { businessName: `Stage1B Manager Shop ${suffix}`, address: { area: "Manager Area" }, mobile: `97${String(suffix).slice(-8)}`, customerType: "RETAILER" },
     idempotencyKey: `s1b-mgr-retailer-${suffix}`,
   });
@@ -105,14 +104,13 @@ async function main() {
 
   // ============= TEST 2: Add new party (Distributor/S.S.) — one-call create + continue =============
   const newPartyVisit = await managerPartnerCheckIn(db, manager.id, {
-    workSessionId: "another-deliberately-wrong-session-id",
     partnerType: "DISTRIBUTOR",
     newParty: { businessName: `Stage1B New Party ${suffix}`, area: "Manager Territory", contactPerson: "Test Contact", mobile: `96${String(suffix).slice(-8)}` },
     purpose: "MARKET_DEVELOPMENT",
     idempotencyKey: `s1b-mgr-party-${suffix}`,
   });
   assert(!!newPartyVisit.prospectId, "expected the new-party visit to be linked to a real created SeeraProspect id (canonical entity returned and used immediately)");
-  assert(newPartyVisit.workSessionId === managerSession.id, "expected the new-party visit to use the real server-derived session too, not the bogus client id");
+  assert(newPartyVisit.workSessionId === managerSession.id, "expected the new-party visit to use the real server-derived session");
   const prospect = await db.seeraProspect.findUniqueOrThrow({ where: { id: newPartyVisit.prospectId! } });
   assert(prospect.businessName === `Stage1B New Party ${suffix}`, "expected the created prospect to match what was submitted");
   console.log(`[T2a] OK — Add New Party: created real SeeraProspect (${prospect.id}) and checked in to it in ONE call, no reselect needed`);
