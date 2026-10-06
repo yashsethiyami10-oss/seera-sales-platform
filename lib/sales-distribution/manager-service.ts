@@ -171,7 +171,7 @@ export async function managerRetailerCheckIn(
   db: PrismaClient,
   managerId: string,
   input: {
-    workSessionId: string;
+    workSessionId?: string;
     retailerId?: string;
     newRetailer?: {
       businessName: string;
@@ -379,7 +379,7 @@ export async function managerPartnerCheckIn(
   db: PrismaClient,
   managerId: string,
   input: {
-    workSessionId: string;
+    workSessionId?: string;
     partnerType: "DISTRIBUTOR" | "SUPER_STOCKIST";
     partnerId?: string;
     newParty?: { businessName: string; area: string; geographyType?: string; contactPerson?: string; mobile?: string; notes?: string };
