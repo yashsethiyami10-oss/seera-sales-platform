@@ -8,6 +8,7 @@ import journeyStyles from "./FieldJourney.module.css";
 import { captureGps, GpsBadge, type GpsStatus } from "./gps";
 import { EmptyOptionHint } from "./EmptyOptionHint";
 import { SkuSelect } from "./SkuSelect";
+import { send as governedSend, GovernedError } from "./governed-fetch";
 
 type Option = { value: string; label: string; meta?: string };
 type SkuOption = Option & { unit?: string; brand: string };
@@ -30,18 +31,6 @@ type LinkedActivity = {
     photos: number;
   } | null;
 };
-
-async function send(body: unknown) {
-  const response = await fetch("/api/manager/operations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(result?.error?.message ?? result?.error?.code ?? "Action failed");
-  return result;
-}
 
 // Priority 5 (Final Remaining System Completion Mission) — Manager Retailing's photo save
 // previously POSTed the raw camera/gallery bytes as base64 straight into capture-photo-manager
@@ -220,7 +209,7 @@ export function ManagerFieldActions({
     setBusy(true);
     setMessage("");
     try {
-      await send(body);
+      await governedSend("/api/manager/operations", body);
       setMessage(hi ? "कार्रवाई सफलतापूर्वक पूरी हुई।" : "Action completed successfully.");
       router.refresh();
       // Every successful action here is a step forward (Add Customer -> Check-in -> Order ->
@@ -230,7 +219,7 @@ export function ManagerFieldActions({
       document.getElementById("manager-field-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return true;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Action failed");
+      setMessage(error instanceof GovernedError ? (error.userMessage ?? error.message) : error instanceof Error ? error.message : "Action failed");
       return false;
     } finally {
       setBusy(false);
