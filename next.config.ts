@@ -39,6 +39,14 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
 
+  // Netlify exposes the deployed commit/deploy id only at BUILD time (COMMIT_REF / DEPLOY_ID), not to
+  // functions at runtime — baked in here so /api/health/live can report which commit is live. Both
+  // are public identifiers, not secrets. Empty on Vercel/local, where the route uses VERCEL_* instead.
+  env: {
+    SEERA_BUILD_COMMIT_SHA: process.env.COMMIT_REF ?? "",
+    SEERA_BUILD_DEPLOY_ID: process.env.DEPLOY_ID ?? "",
+  },
+
   // Quotation/invoice PDF rendering (lib/sales-distribution/document-pdf.ts) reads Noto Sans font
   // .woff files straight out of node_modules/@fontsource at request time via readFileSync(path.
   // join(process.cwd(), ...)) — a dynamically-built path Next's serverless output-file tracer
