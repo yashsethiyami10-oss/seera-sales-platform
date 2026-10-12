@@ -39,7 +39,7 @@ async function main() {
     phone: "9876543210",
     address: "221B Baker Street",
     line1: "House 12",
-    apiKey: "sk-abcdefghijklmnopqrstuvwx",
+    apiKey: "fake-api-key-for-redaction-test",
     dbUrl: "postgres://user:pass@host:5432/db",
     fullPrompt: "This is a very long prompt body that should never be logged verbatim because it might contain sensitive customer context or a full conversation transcript.",
     nested: { cardNumber: "4111111111111111", note: "a normal short note" },
