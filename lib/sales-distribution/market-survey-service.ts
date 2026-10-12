@@ -38,6 +38,8 @@ const CATALOGUE_LINK_DAYS = 30;
 
 type Option = readonly [code: string, en: string, hi: string];
 const codes = <T extends readonly Option[]>(options: T) => options.map(([code]) => code) as unknown as [T[number][0], ...T[number][0][]];
+// Staff see "Choose an option" rather than Zod's raw enum text listing internal codes.
+const choice = <T extends readonly Option[]>(options: T) => z.enum(codes(options), { errorMap: () => ({ message: "Choose an option" }) });
 
 export const RELATIONSHIP_OPTIONS = [
   ["CURRENTLY_SELLS", "Currently sells Seera", "अभी सीरा बेचते हैं"],
@@ -139,8 +141,8 @@ export const marketSurveyInput = z
     longitude: z.coerce.number().min(-180).max(180).optional(),
     gpsAccuracyM: z.coerce.number().int().min(0).max(100_000).optional(),
     retailerId: optionalText(40),
-    relationship: z.enum(codes(RELATIONSHIP_OPTIONS)),
-    issues: z.array(z.enum(codes(ISSUE_OPTIONS))).max(ISSUE_OPTIONS.length).default([]),
+    relationship: choice(RELATIONSHIP_OPTIONS),
+    issues: z.array(choice(ISSUE_OPTIONS)).max(ISSUE_OPTIONS.length).default([]),
     issueOther: optionalText(300),
     retailerWords: optionalText(2000),
     staffInterpretation: optionalText(2000),
@@ -151,19 +153,19 @@ export const marketSurveyInput = z
     competitorWeeklyUnits: z.coerce.number().int().min(0).max(1_000_000).optional(),
     competitorReason: optionalText(600),
     competitorVisitFrequency: optionalText(120),
-    willingToReconsider: z.enum(codes(TRI_OPTIONS)),
-    shelfSpace: z.enum(codes(TRI_OPTIONS)),
-    trialQuantityOk: z.enum(codes(TRI_OPTIONS)),
+    willingToReconsider: choice(TRI_OPTIONS),
+    shelfSpace: choice(TRI_OPTIONS),
+    trialQuantityOk: choice(TRI_OPTIONS),
     wantsTesting: z.boolean().default(false),
     wantsQuotation: z.boolean().default(false),
     wantsFollowUp: z.boolean().default(false),
     notInterested: z.boolean().default(false),
     preferredFollowUpAt: z.coerce.date().optional(),
     notes: optionalText(2000),
-    recommendedActions: z.array(z.enum(codes(ACTION_OPTIONS))).max(ACTION_OPTIONS.length).default([]),
+    recommendedActions: z.array(choice(ACTION_OPTIONS)).max(ACTION_OPTIONS.length).default([]),
     recommendedActionOther: optionalText(300),
-    consentStatus: z.enum(codes(CONSENT_OPTIONS)),
-    consentScopes: z.array(z.enum(codes(CONSENT_SCOPE_OPTIONS))).max(CONSENT_SCOPE_OPTIONS.length).default([]),
+    consentStatus: choice(CONSENT_OPTIONS),
+    consentScopes: z.array(choice(CONSENT_SCOPE_OPTIONS)).max(CONSENT_SCOPE_OPTIONS.length).default([]),
     consentOther: optionalText(300),
   })
   .superRefine((v, ctx) => {
@@ -529,7 +531,7 @@ async function requireManage(db: PrismaClient, actorId: string) {
 }
 
 export const followUpUpdateInput = z.object({
-  status: z.enum(codes(FOLLOW_UP_STATUS_OPTIONS)).optional(),
+  status: choice(FOLLOW_UP_STATUS_OPTIONS).optional(),
   assigneeId: z.string().trim().max(40).nullable().optional(),
   dueAt: z.coerce.date().nullable().optional(),
   trialAgreed: z.boolean().nullable().optional(),
@@ -561,7 +563,7 @@ export async function updateMarketSurveyFollowUp(db: PrismaClient, actorId: stri
     const activities: Prisma.SeeraMarketSurveyActivityCreateManyInput[] = [];
     if (input.status && input.status !== survey.followUpStatus) activities.push({ surveyId, actorId, type: "STATUS_CHANGED", fromStatus: survey.followUpStatus, toStatus: input.status });
     if (input.assigneeId !== undefined && input.assigneeId !== survey.followUpAssigneeId) activities.push({ surveyId, actorId, type: "ASSIGNED", details: { from: survey.followUpAssigneeId, to: input.assigneeId } });
-    if (input.dueAt !== undefined) activities.push({ surveyId, actorId, type: "DUE_DATE_SET", details: { dueAt: input.dueAt?.toISOString() ?? null } });
+    if (input.dueAt !== undefined && (input.dueAt?.getTime() ?? null) !== (survey.followUpDueAt?.getTime() ?? null)) activities.push({ surveyId, actorId, type: "DUE_DATE_SET", details: { dueAt: input.dueAt?.toISOString() ?? null } });
     if (input.trialAgreed !== undefined && input.trialAgreed !== survey.trialAgreed) activities.push({ surveyId, actorId, type: "TRIAL_RECORDED", details: { trialAgreed: input.trialAgreed } });
     if (input.outcome) activities.push({ surveyId, actorId, type: "OUTCOME_RECORDED", note: input.outcome });
     if (input.note) activities.push({ surveyId, actorId, type: "NOTE", note: input.note });

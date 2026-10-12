@@ -144,6 +144,12 @@ describe("survey validation", () => {
   it("rejects unknown issue codes", () => {
     expect(svc.marketSurveyInput.safeParse(base({ issues: ["MADE_UP"] })).success).toBe(false);
   });
+  it("unanswered choices say 'Choose an option', never the raw internal code list (QA finding)", () => {
+    const r = svc.marketSurveyInput.safeParse(base({ relationship: "", willingToReconsider: "" }));
+    const messages = r.success ? [] : r.error.issues.map((i) => i.message);
+    expect(messages).toContain("Choose an option");
+    expect(messages.join(" ")).not.toMatch(/Invalid enum|CURRENTLY_SELLS/);
+  });
 });
 
 describe("submitMarketSurvey", () => {
@@ -264,6 +270,14 @@ describe("follow-up management", () => {
     await svc.updateMarketSurveyFollowUp(db, MANAGER, survey.id, { status: "INTERESTED_IN_TRIAL", trialAgreed: true, note: "Called back" });
     expect(db.surveys[0]).toMatchObject({ followUpStatus: "INTERESTED_IN_TRIAL", trialAgreed: true });
     expect(db.activities.map((a: Row) => a.type)).toEqual(expect.arrayContaining(["STATUS_CHANGED", "TRIAL_RECORDED", "NOTE"]));
+  });
+  it("saving without changing the due date does not add a due-date history entry (QA finding)", async () => {
+    const db = fakeDb();
+    const { survey } = await svc.submitMarketSurvey(db, STAFF, base());
+    await svc.updateMarketSurveyFollowUp(db, MANAGER, survey.id, { dueAt: null, note: "no date change" });
+    expect(db.activities.map((a: Row) => a.type)).not.toContain("DUE_DATE_SET");
+    await svc.updateMarketSurveyFollowUp(db, MANAGER, survey.id, { dueAt: "2026-11-01" });
+    expect(db.activities.map((a: Row) => a.type)).toContain("DUE_DATE_SET");
   });
   it("re-queue after the template is approved creates exactly one event, and a second retry does not duplicate", async () => {
     const db = fakeDb();
