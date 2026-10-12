@@ -26,7 +26,9 @@ export type WhatsAppTemplateKey =
   | "RETAILER_NO_ORDER"
   | "RETAILER_FOLLOW_UP"
   | "DISTRIBUTOR_VISIT_COMPLETED"
-  | "SUPER_STOCKIST_VISIT_COMPLETED";
+  | "SUPER_STOCKIST_VISIT_COMPLETED"
+  | "MARKET_SURVEY_FOLLOW_UP"
+  | "MARKET_SURVEY_CATALOGUE_LINK";
 
 export type TemplateApprovalStatus = "PENDING_META_APPROVAL" | "APPROVED" | "REJECTED" | "DISABLED";
 
@@ -134,6 +136,27 @@ export const WHATSAPP_TEMPLATES: Record<WhatsAppTemplateKey, WhatsAppTemplateDef
     languageCode: null,
     category: null,
     paramLabels: ["Retailer/outlet name", "Order number"],
+    approvalStatus: "PENDING_META_APPROVAL",
+  },
+
+  // Retailer Market Survey & Recovery (lib/sales-distribution/market-survey-service.ts). The Founder
+  // will create/approve these in Meta; until this record is updated with the live name, language
+  // and category, surveys record whatsappState AWAITING_TEMPLATE_CONFIGURATION and nothing is sent.
+  // The names below are proposed, not confirmed to exist in the WABA.
+  MARKET_SURVEY_FOLLOW_UP: {
+    key: "MARKET_SURVEY_FOLLOW_UP",
+    metaTemplateName: "seera_market_survey_follow_up",
+    languageCode: null,
+    category: null,
+    paramLabels: ["Contact/shop name", "Representative name", "Shop name", "Survey date"],
+    approvalStatus: "PENDING_META_APPROVAL",
+  },
+  MARKET_SURVEY_CATALOGUE_LINK: {
+    key: "MARKET_SURVEY_CATALOGUE_LINK",
+    metaTemplateName: "seera_market_survey_catalogue_link",
+    languageCode: null,
+    category: null,
+    paramLabels: ["Contact/shop name", "Representative name", "Catalogue link"],
     approvalStatus: "PENDING_META_APPROVAL",
   },
 };

@@ -21,7 +21,8 @@ export type SurfaceKind =
   | "employee"
   | "instructions"
   | "notifications"
-  | "manufacturing";
+  | "manufacturing"
+  | "market_survey";
 export type SurfaceItem = {
   slug: string;
   en: string;
@@ -86,6 +87,8 @@ const founder: SurfaceItem[] = [
   // slug) is unrelated and untouched — that's a normal, ongoing retail operation, not a "Company
   // return program".
   item("collections", "Collections", "संग्रह", "₹", "finance"),
+  item("market-recovery", "Market recovery", "मार्केट रिकवरी", "◎", "market_survey", "market_survey:view_all"),
+  item("market-survey", "Market survey", "मार्केट सर्वे", "✎", "market_survey", "market_survey:create"),
   item(
     "super-stockists",
     "Super Stockists",
@@ -355,6 +358,7 @@ const manager: SurfaceItem[] = [
   g(G.fieldWorking, item("retailing", "Manager retailing", "मैनेजर रिटेलिंग", "□", "field", "manager_field:operate")),
   g(G.fieldWorking, item("joint-working", "Joint working", "संयुक्त कार्य", "⇄", "field", "joint_work:participate")),
   g(G.fieldWorking, item("partner-visits", "Distributor / S.S. visits", "वितरक / एस.एस. विज़िट", "⌖", "field", "manager_field:operate")),
+  g(G.fieldWorking, item("market-survey", "Market survey", "मार्केट सर्वे", "✎", "market_survey", "market_survey:create")),
   g(G.fieldWorking, item("distributor-search", "Distributor search", "वितरक खोज", "◎", "prospects", "prospect:create")),
   g(G.distributorOversight, item("distributor-oversight", "Distributors", "वितरक", "◇", "partners", "network:manage")),
   g(G.sales, item("delivered-sales", "Delivered sales", "वितरित बिक्री", "✓", "orders", "field_reports:view_self")),
@@ -404,6 +408,7 @@ const executive: SurfaceItem[] = [
     "retailer:visit",
   ),
   item("orders", "Orders", "ऑर्डर", "▤", "orders", "retailer:order"),
+  item("market-survey", "Market survey", "मार्केट सर्वे", "✎", "market_survey", "market_survey:create"),
   item(
     "collections",
     "Collections",

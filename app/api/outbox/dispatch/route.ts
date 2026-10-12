@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/database/client";
 import { dispatchRetailerCommunications } from "@/lib/sales-distribution/retailer-communication-service";
 import { dispatchPartnerCommunications } from "@/lib/sales-distribution/partner-communication-service";
+import { dispatchMarketSurveyCommunications } from "@/lib/sales-distribution/market-survey-service";
 import { getMessagingProvider } from "@/lib/messaging";
 import { enforceRateLimit } from "@/lib/foundation/rate-limit";
 import { apiFailure } from "@/lib/foundation/api-response";
@@ -37,11 +38,14 @@ async function runDispatch(request: Request, rateLimitKey: string) {
   const limitParam = request.method === "GET" ? url.searchParams.get("limit") : (await request.json().catch(() => ({})))?.limit;
   const limit = Math.min(100, Math.max(1, Number(limitParam) || 20));
 
-  const [retailerResults, partnerResults] = await Promise.all([
+  // Market survey messages are dispatched only when SEERA_MARKET_SURVEY_WHATSAPP_ENABLED is "true"
+  // (dispatchMarketSurveyCommunications returns [] otherwise).
+  const [retailerResults, partnerResults, surveyResults] = await Promise.all([
     dispatchRetailerCommunications(prisma, getMessagingProvider, { limit }),
     dispatchPartnerCommunications(prisma, getMessagingProvider, { limit }),
+    dispatchMarketSurveyCommunications(prisma, getMessagingProvider, { limit }),
   ]);
-  const results = [...retailerResults, ...partnerResults];
+  const results = [...retailerResults, ...partnerResults, ...surveyResults];
   const summary = results.reduce<Record<string, number>>((acc, r) => {
     acc[r.status] = (acc[r.status] ?? 0) + 1;
     return acc;
@@ -49,7 +53,7 @@ async function runDispatch(request: Request, rateLimitKey: string) {
   // Only counts/ids returned — never the recipient mobile number or message body, even to this
   // authenticated internal caller (data minimization; the scheduler only needs to know it ran).
   return NextResponse.json(
-    { processed: results.length, retailer: retailerResults.length, partner: partnerResults.length, summary, ids: results.map((r) => r.id) },
+    { processed: results.length, retailer: retailerResults.length, partner: partnerResults.length, survey: surveyResults.length, summary, ids: results.map((r) => r.id) },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

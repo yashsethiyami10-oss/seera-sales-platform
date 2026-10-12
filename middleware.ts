@@ -18,4 +18,4 @@ export function middleware(request: NextRequest) {
   }
   const response=NextResponse.next({request:{headers:requestHeaders}});response.headers.set("X-Request-Id",correlationId);response.headers.set("X-Content-Type-Options","nosniff");response.headers.set("Referrer-Policy","strict-origin-when-cross-origin");response.headers.set("Content-Security-Policy",contentSecurityPolicy);return response;
 }
-export const config = { matcher: ["/portal/:path*", "/api/foundation/:path*", "/api/offline/:path*", "/api/phase-10/:path*", "/api/documents/:path*", "/api/finance/:path*", "/api/manager/:path*", "/api/partners/:path*", "/api/approvals/:path*", "/api/distribution/:path*", "/api/field/:path*", "/api/retailer/:path*", "/api/travel/:path*"] };
+export const config = { matcher: ["/portal/:path*", "/api/foundation/:path*", "/api/offline/:path*", "/api/phase-10/:path*", "/api/documents/:path*", "/api/finance/:path*", "/api/manager/:path*", "/api/partners/:path*", "/api/approvals/:path*", "/api/distribution/:path*", "/api/field/:path*", "/api/retailer/:path*", "/api/travel/:path*", "/api/market-survey/:path*"] };

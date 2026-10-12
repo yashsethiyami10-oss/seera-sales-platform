@@ -487,6 +487,10 @@ model User {
   insights               SeeraInsight[]             @relation("InsightRecipient")
   reportExports          SeeraReportExport[]        @relation("ReportExportActor")
   offlineOperations      SeeraOfflineOperation[]    @relation("OfflineOperationUser")
+  marketSurveysSubmitted SeeraMarketSurvey[]        @relation("MarketSurveyStaff")
+  marketSurveysAssigned  SeeraMarketSurvey[]        @relation("MarketSurveyAssignee")
+  marketSurveyActivities SeeraMarketSurveyActivity[] @relation("MarketSurveyActivityActor")
+  marketSurveyLinks      SeeraMarketSurveyLink[]    @relation("MarketSurveyLinkCreator")
 
   @@index([status])
   @@map("users")
@@ -1095,6 +1099,7 @@ model SeeraRetailer {
   updatedAt          DateTime          @updatedAt
   orders             SeeraSalesOrder[]
   visits             SeeraVisit[]
+  marketSurveys      SeeraMarketSurvey[]
 
   @@index([normalizedMobile, businessName])
   @@index([beatId, distributorId, salespersonId, lifecycle])
@@ -3783,4 +3788,117 @@ model SeeraCompanyDispatchAllocation {
   @@index([orderId])
   @@index([skuId])
   @@map("seera_mfg_company_dispatch_allocations")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Retailer Market Survey & Recovery. One authoritative survey record per field visit, read by the
+// staff form, the Founder panel and the Company Admin panel alike (never copied per panel). Choice
+// fields are validated strings (lib/sales-distribution/market-survey-service.ts) so the governed
+// option lists can grow without a schema change. WhatsApp follow-up reuses OutboxEvent
+// (aggregateType "SeeraMarketSurvey"); `followUpOutboxEventId` is unique so a survey can own at
+// most one follow-up send, and `whatsappState` records honestly why nothing was queued when a send
+// is not allowed (no consent, no/invalid number, template not approved, dispatch switched off).
+// ---------------------------------------------------------------------------------------------
+model SeeraMarketSurvey {
+  id                       String                      @id @default(cuid())
+  reference                String                      @unique
+  idempotencyKey           String                      @unique
+  staffUserId              String
+  retailerId               String?
+  shopName                 String
+  contactName              String?
+  mobile                   String?
+  market                   String
+  address                  String?
+  latitude                 Decimal?                    @db.Decimal(10, 7)
+  longitude                Decimal?                    @db.Decimal(10, 7)
+  gpsAccuracyM             Int?
+  relationship             String
+  issues                   String[]
+  issueOther               String?
+  retailerWords            String?
+  staffInterpretation      String?
+  competitorBrand          String?
+  competitorPackSize       String?
+  competitorPurchasePrice  Decimal?                    @db.Decimal(14, 2)
+  competitorMrp            Decimal?                    @db.Decimal(14, 2)
+  competitorWeeklyUnits    Int?
+  competitorReason         String?
+  competitorVisitFrequency String?
+  willingToReconsider      String
+  shelfSpace               String
+  trialQuantityOk          String
+  wantsTesting             Boolean                     @default(false)
+  wantsQuotation           Boolean                     @default(false)
+  wantsFollowUp            Boolean                     @default(false)
+  notInterested            Boolean                     @default(false)
+  preferredFollowUpAt      DateTime?
+  notes                    String?
+  recommendedActions       String[]
+  recommendedActionOther   String?
+  consentStatus            String
+  consentScopes            String[]
+  consentOther             String?
+  consentAt                DateTime?
+  consentSource            String?
+  followUpStatus           String                      @default("NEW")
+  followUpAssigneeId       String?
+  followUpDueAt            DateTime?
+  trialAgreed              Boolean?
+  lastOutcome              String?
+  whatsappState            String
+  followUpOutboxEventId    String?                     @unique
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+  staff                    User                        @relation("MarketSurveyStaff", fields: [staffUserId], references: [id], onDelete: Restrict)
+  assignee                 User?                       @relation("MarketSurveyAssignee", fields: [followUpAssigneeId], references: [id], onDelete: SetNull)
+  retailer                 SeeraRetailer?              @relation(fields: [retailerId], references: [id], onDelete: SetNull)
+  activities               SeeraMarketSurveyActivity[]
+  links                    SeeraMarketSurveyLink[]
+
+  @@index([createdAt])
+  @@index([staffUserId, createdAt])
+  @@index([market, createdAt])
+  @@index([followUpStatus, followUpDueAt])
+  @@index([mobile, createdAt])
+  @@index([retailerId])
+  @@map("seera_market_surveys")
+}
+
+model SeeraMarketSurveyActivity {
+  id         String            @id @default(cuid())
+  surveyId   String
+  actorId    String?
+  type       String
+  fromStatus String?
+  toStatus   String?
+  note       String?
+  details    Json?
+  createdAt  DateTime          @default(now())
+  survey     SeeraMarketSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  actor      User?             @relation("MarketSurveyActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([surveyId, createdAt])
+  @@map("seera_market_survey_activities")
+}
+
+// Personalised, revocable catalogue link. Only the SHA-256 of the random token is stored; the raw
+// token exists only in the URL handed to the retailer. Viewing the link never creates an order.
+model SeeraMarketSurveyLink {
+  id            String            @id @default(cuid())
+  surveyId      String
+  tokenHash     String            @unique
+  purpose       String
+  createdById   String
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  lastViewedAt  DateTime?
+  viewCount     Int               @default(0)
+  outboxEventId String?           @unique
+  createdAt     DateTime          @default(now())
+  survey        SeeraMarketSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  createdBy     User              @relation("MarketSurveyLinkCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([surveyId, createdAt])
+  @@map("seera_market_survey_links")
 }
