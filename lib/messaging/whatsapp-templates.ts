@@ -27,7 +27,7 @@ export type WhatsAppTemplateKey =
   | "RETAILER_FOLLOW_UP"
   | "DISTRIBUTOR_VISIT_COMPLETED"
   | "SUPER_STOCKIST_VISIT_COMPLETED"
-  | "MARKET_SURVEY_FOLLOW_UP"
+  | "MARKET_SURVEY_THANK_YOU"
   | "MARKET_SURVEY_CATALOGUE_LINK";
 
 export type TemplateApprovalStatus = "PENDING_META_APPROVAL" | "APPROVED" | "REJECTED" | "DISABLED";
@@ -139,18 +139,21 @@ export const WHATSAPP_TEMPLATES: Record<WhatsAppTemplateKey, WhatsAppTemplateDef
     approvalStatus: "PENDING_META_APPROVAL",
   },
 
-  // Retailer Market Survey & Recovery (lib/sales-distribution/market-survey-service.ts). The Founder
-  // will create/approve these in Meta; until this record is updated with the live name, language
-  // and category, surveys record whatsappState AWAITING_TEMPLATE_CONFIGURATION and nothing is sent.
-  // The names below are proposed, not confirmed to exist in the WABA.
-  MARKET_SURVEY_FOLLOW_UP: {
-    key: "MARKET_SURVEY_FOLLOW_UP",
-    metaTemplateName: "seera_market_survey_follow_up",
-    languageCode: null,
-    category: null,
-    paramLabels: ["Contact/shop name", "Representative name", "Shop name", "Survey date"],
-    approvalStatus: "PENDING_META_APPROVAL",
+  // Retailer Market Survey & Recovery (lib/sales-distribution/market-survey-service.ts).
+  // Survey thank-you. Live-reconciled 2026-10-13 via GET /api/founder/whatsapp-diagnostics against
+  // the Seera WABA: status APPROVED, category MARKETING, language "hi", a single BODY component (no
+  // header/buttons) "नमस्ते *{{1}}* जी 🙏 ... Team Seera" with one variable; Meta's example value for
+  // {{1}} is a person's name ("Mahesh Kumar"). Mapping lives in market-survey-service.ts
+  // (THANK_YOU_TEMPLATE_CONTRACT): {{1}} = contact name, falling back to the shop name.
+  MARKET_SURVEY_THANK_YOU: {
+    key: "MARKET_SURVEY_THANK_YOU",
+    metaTemplateName: "seera_retailer_survey_thankyou",
+    languageCode: "hi",
+    category: "MARKETING",
+    paramLabels: ["Greeting name ({{1}}): contact name, else shop name"],
+    approvalStatus: "APPROVED",
   },
+  // Not created in Meta yet; name proposed only.
   MARKET_SURVEY_CATALOGUE_LINK: {
     key: "MARKET_SURVEY_CATALOGUE_LINK",
     metaTemplateName: "seera_market_survey_catalogue_link",

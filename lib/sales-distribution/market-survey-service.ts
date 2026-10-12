@@ -32,7 +32,20 @@ import type { MessagingProvider } from "@/lib/messaging/types";
  */
 
 export const MARKET_SURVEY_AGGREGATE = "SeeraMarketSurvey";
-export const MARKET_SURVEY_FOLLOW_UP_EVENT = "MARKET_SURVEY_FOLLOW_UP";
+export const MARKET_SURVEY_THANK_YOU_EVENT = "MARKET_SURVEY_THANK_YOU";
+// MARKETING template: at most one survey thank-you per number in this window, however many surveys.
+export const THANK_YOU_REPEAT_DAYS = 30;
+
+/**
+ * Body-variable contract for the survey thank-you template (seera_retailer_survey_thankyou),
+ * verified live 2026-10-13 (see whatsapp-templates.ts): exactly one variable, {{1}}, the name in
+ * "नमस्ते {{1}} जी". Sent as the contact name, else the shop name - never blank. If this is ever
+ * unverified (verified: false) or its count stops matching the registry, nothing is queued.
+ */
+export const THANK_YOU_TEMPLATE_CONTRACT: { verified: boolean; params: (survey: { contactName: string | null; shopName: string }) => string[] } = {
+  verified: true,
+  params: (survey) => [sanitizeTemplateParam(survey.contactName, sanitizeTemplateParam(survey.shopName, "Retailer"))],
+};
 export const MARKET_SURVEY_CATALOGUE_EVENT = "MARKET_SURVEY_CATALOGUE_LINK";
 const CATALOGUE_LINK_DAYS = 30;
 
@@ -91,7 +104,7 @@ export const CONSENT_OPTIONS = [
 ] as const satisfies readonly Option[];
 
 export const CONSENT_SCOPE_OPTIONS = [
-  ["SURVEY_FOLLOW_UP", "Survey-related follow-up", "सर्वे से जुड़ा फ़ॉलो-अप"],
+  ["SURVEY_FOLLOW_UP", "Survey thank-you & follow-up on WhatsApp", "सर्वे धन्यवाद और फ़ॉलो-अप (WhatsApp)"],
   ["CATALOGUE_ORDER_INFO", "Requested catalogue / order information", "माँगी गई कैटलॉग / ऑर्डर जानकारी"],
   ["OTHER", "Other (describe)", "अन्य (लिखें)"],
 ] as const satisfies readonly Option[];
@@ -111,6 +124,7 @@ export const FOLLOW_UP_STATUS_OPTIONS = [
 
 export const WHATSAPP_STATE_LABELS: Record<string, [string, string]> = {
   QUEUED: ["Queued for WhatsApp", "WhatsApp कतार में"],
+  SKIPPED_RECENTLY_THANKED: ["Not sent: already thanked recently", "नहीं भेजा: हाल ही में धन्यवाद भेजा"],
   SKIPPED_NO_CONSENT: ["Not sent: no consent", "नहीं भेजा: सहमति नहीं"],
   SKIPPED_OPTED_OUT: ["Not sent: opted out", "नहीं भेजा: मना किया"],
   NO_MOBILE: ["Not sent: no mobile number", "नहीं भेजा: नंबर नहीं"],
@@ -203,7 +217,7 @@ async function latestConsentForMobile(db: Db, mobile: string) {
   });
 }
 
-type SkipState = "SKIPPED_NO_CONSENT" | "SKIPPED_OPTED_OUT" | "NO_MOBILE" | "INVALID_MOBILE" | "AWAITING_TEMPLATE_CONFIGURATION" | "DISPATCH_DISABLED";
+type SkipState = "SKIPPED_NO_CONSENT" | "SKIPPED_OPTED_OUT" | "SKIPPED_RECENTLY_THANKED" | "NO_MOBILE" | "INVALID_MOBILE" | "AWAITING_TEMPLATE_CONFIGURATION" | "DISPATCH_DISABLED";
 type FollowUpDecision =
   | { state: "QUEUED"; templateKey: WhatsAppTemplateKey; languageCode: string; templateName: string }
   | { state: SkipState };
@@ -218,8 +232,20 @@ export async function decideWhatsApp(
   if (!normalizeIndianMobile(input.mobile)) return { state: "INVALID_MOBILE" };
   const latest = await latestConsentForMobile(db, input.mobile);
   if (latest && latest.consentStatus === "REFUSED" && latest.id !== input.surveyId) return { state: "SKIPPED_OPTED_OUT" };
+  if (input.templateKey === "MARKET_SURVEY_THANK_YOU" && !THANK_YOU_TEMPLATE_CONTRACT.verified) return { state: "AWAITING_TEMPLATE_CONFIGURATION" };
+  if (input.templateKey === "MARKET_SURVEY_THANK_YOU") {
+    const since = new Date(Date.now() - THANK_YOU_REPEAT_DAYS * 86_400_000);
+    const recent = await db.seeraMarketSurvey.findFirst({ where: { mobile: input.mobile, followUpOutboxEventId: { not: null }, createdAt: { gte: since }, ...(input.surveyId ? { NOT: { id: input.surveyId } } : {}) }, select: { id: true } });
+    if (recent) return { state: "SKIPPED_RECENTLY_THANKED" };
+  }
   const template = templateFor(input.templateKey);
   if (!isTemplateSendable(template)) return { state: "AWAITING_TEMPLATE_CONFIGURATION" };
+  // Parameter count must match the approved template exactly; a mismatch is a configuration gap,
+  // reported as awaiting configuration (the survey still saves) rather than sent or thrown.
+  if (input.templateKey === "MARKET_SURVEY_THANK_YOU" && THANK_YOU_TEMPLATE_CONTRACT.params({ contactName: null, shopName: "-" }).length !== template.paramLabels.length) {
+    console.error("market_survey.template_contract_mismatch", { templateKey: input.templateKey });
+    return { state: "AWAITING_TEMPLATE_CONFIGURATION" };
+  }
   if (!surveyDispatchEnabled(env)) return { state: "DISPATCH_DISABLED" };
   return { state: "QUEUED", templateKey: input.templateKey, languageCode: template.languageCode, templateName: template.metaTemplateName };
 }
@@ -228,21 +254,20 @@ async function staffName(db: Db, userId: string) {
   return sanitizeTemplateParam((await db.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name, "Seera representative");
 }
 
-function followUpParams(survey: { contactName: string | null; shopName: string; createdAt: Date }, rep: string) {
-  const shop = sanitizeTemplateParam(survey.shopName, "Retailer");
-  return [sanitizeTemplateParam(survey.contactName, shop), rep, shop, sanitizeTemplateParam(survey.createdAt.toLocaleDateString("en-IN"))];
-}
-
 async function createFollowUpOutbox(tx: Prisma.TransactionClient, survey: { id: string; mobile: string | null; contactName: string | null; shopName: string; createdAt: Date; staffUserId: string }, decision: Extract<FollowUpDecision, { state: "QUEUED" }>) {
+  // Exactly the verified template's variables, in order; a count mismatch with the registry is a
+  // configuration error and must never reach Meta.
+  const templateParams = THANK_YOU_TEMPLATE_CONTRACT.params(survey).map((p) => sanitizeTemplateParam(p));
+  if (templateParams.length !== templateFor(decision.templateKey).paramLabels.length) throw new FoundationError("TEMPLATE_CONTRACT_MISMATCH", "Survey thank-you parameters do not match the approved template", 500);
   const payload: WhatsAppOutboxPayload = {
     mobile: survey.mobile!,
     templateName: decision.templateName,
-    templateParams: followUpParams(survey, await staffName(tx, survey.staffUserId)),
+    templateParams,
     templateKey: decision.templateKey,
     languageCode: decision.languageCode,
   };
   const event = await tx.outboxEvent.create({
-    data: { eventType: MARKET_SURVEY_FOLLOW_UP_EVENT, aggregateType: MARKET_SURVEY_AGGREGATE, aggregateId: survey.id, payload: payload as unknown as Prisma.InputJsonValue, status: "PENDING", channel: "WHATSAPP", templateKey: decision.templateKey },
+    data: { eventType: MARKET_SURVEY_THANK_YOU_EVENT, aggregateType: MARKET_SURVEY_AGGREGATE, aggregateId: survey.id, payload: payload as unknown as Prisma.InputJsonValue, status: "PENDING", channel: "WHATSAPP", templateKey: decision.templateKey },
   });
   // Guarded: only the first writer wins, so a survey owns at most one follow-up send.
   const claimed = await tx.seeraMarketSurvey.updateMany({ where: { id: survey.id, followUpOutboxEventId: null }, data: { followUpOutboxEventId: event.id, whatsappState: "QUEUED" } });
@@ -279,7 +304,7 @@ export async function submitMarketSurvey(db: PrismaClient, actorId: string, raw:
   const now = new Date();
   try {
     const result = await db.$transaction(async (tx) => {
-      const decision = await decideWhatsApp(tx, { consentStatus: input.consentStatus, consentScopes: input.consentScopes, mobile, requiredScope: "SURVEY_FOLLOW_UP", templateKey: "MARKET_SURVEY_FOLLOW_UP" }, env);
+      const decision = await decideWhatsApp(tx, { consentStatus: input.consentStatus, consentScopes: input.consentScopes, mobile, requiredScope: "SURVEY_FOLLOW_UP", templateKey: "MARKET_SURVEY_THANK_YOU" }, env);
       const survey = await tx.seeraMarketSurvey.create({
         data: {
           reference: reference(now),
@@ -494,7 +519,7 @@ export async function marketSurveyDashboard(db: PrismaClient, actorId: string, f
     retailersOrderedSinceSurvey: [...ordersPerRetailer.values()].filter((n) => n >= 1).length,
     retailersRepeatOrderedSinceSurvey: [...ordersPerRetailer.values()].filter((n) => n >= 2).length,
     areas: areaRows.map((r) => ({ market: r.market, surveys: r._count._all, willing: willingByArea.get(r.market) ?? 0, shelf: shelfByArea.get(r.market) ?? 0 })),
-    templates: (["MARKET_SURVEY_FOLLOW_UP", "MARKET_SURVEY_CATALOGUE_LINK"] as const).map((key) => {
+    templates: (["MARKET_SURVEY_THANK_YOU", "MARKET_SURVEY_CATALOGUE_LINK"] as const).map((key) => {
       const t = templateFor(key);
       return { key, name: t.metaTemplateName, approvalStatus: t.approvalStatus, languageCode: t.languageCode, params: t.paramLabels, sendable: isTemplateSendable(t) };
     }),
@@ -615,7 +640,7 @@ export async function retryMarketSurveyWhatsApp(db: PrismaClient, actorId: strin
     return { state: "QUEUED" as const };
   }
   const result = await db.$transaction(async (tx) => {
-    const decision = await decideWhatsApp(tx, { consentStatus: survey.consentStatus, consentScopes: survey.consentScopes, mobile: survey.mobile, requiredScope: "SURVEY_FOLLOW_UP", templateKey: "MARKET_SURVEY_FOLLOW_UP", surveyId }, env);
+    const decision = await decideWhatsApp(tx, { consentStatus: survey.consentStatus, consentScopes: survey.consentScopes, mobile: survey.mobile, requiredScope: "SURVEY_FOLLOW_UP", templateKey: "MARKET_SURVEY_THANK_YOU", surveyId }, env);
     if (decision.state !== "QUEUED") {
       await tx.seeraMarketSurvey.update({ where: { id: surveyId }, data: { whatsappState: decision.state } });
       return { state: decision.state, outboxEventId: null };

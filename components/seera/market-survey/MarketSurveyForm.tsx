@@ -33,7 +33,7 @@ const t = {
     consentHelp: "Ask clearly. Giving a phone number is not consent to messages.", consentOther: "Describe the other communication",
     submit: "Save survey", saving: "Saving…", retry: "Not saved — check the connection and tap Save again. Your answers are kept.",
     fix: "Please correct the highlighted fields.", saved: "Survey saved", replayed: "Already saved earlier (no duplicate created)",
-    ref: "Reference", wa: "WhatsApp follow-up", another: "Start a new survey", linkHint: "Existing retailer with this number:", link: "Link", linked: "Linked",
+    ref: "Reference", wa: "WhatsApp thank-you", another: "Start a new survey", linkHint: "Existing retailer with this number:", link: "Link", linked: "Linked",
   },
   HI: {
     a: "रिटेलर", b: "सीरा के साथ इतिहास", c: "खरीद बंद / न करने का कारण", d: "प्रतियोगी", e: "तैयारी", f: "सीरा को क्या करना चाहिए?", g: "WhatsApp सहमति",
@@ -48,7 +48,7 @@ const t = {
     consentHelp: "साफ़ पूछें। नंबर देना मैसेज की सहमति नहीं है।", consentOther: "अन्य संदेश का विवरण",
     submit: "सर्वे सेव करें", saving: "सेव हो रहा है…", retry: "सेव नहीं हुआ — कनेक्शन जाँचें और फिर सेव दबाएँ। आपके जवाब सुरक्षित हैं।",
     fix: "कृपया लाल फ़ील्ड ठीक करें।", saved: "सर्वे सेव हो गया", replayed: "पहले ही सेव हो चुका था (डुप्लिकेट नहीं बना)",
-    ref: "रेफ़रेंस", wa: "WhatsApp फ़ॉलो-अप", another: "नया सर्वे शुरू करें", linkHint: "इस नंबर से मौजूद रिटेलर:", link: "जोड़ें", linked: "जुड़ा",
+    ref: "रेफ़रेंस", wa: "WhatsApp धन्यवाद", another: "नया सर्वे शुरू करें", linkHint: "इस नंबर से मौजूद रिटेलर:", link: "जोड़ें", linked: "जुड़ा",
   },
 } as const;
 
