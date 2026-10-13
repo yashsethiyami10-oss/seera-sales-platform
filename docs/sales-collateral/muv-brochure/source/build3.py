@@ -11,7 +11,7 @@ from html import escape
 # ---------------------------------------------------------------- data
 # card: (name, brand_line, photo|None, [(size, mrp|None)], photo_scale, swatch_colour)
 SEERA_CAKES = [
-    ("Detergent Cake Blue", "Seera · Jumbo", "seera_cake_jumbo", [("180 g", None)], 1.0, "#2F6FD6"),
+    ("Detergent Cake Blue", "Seera · Jumbo", "seera_cake_jumbo", [("180 g", 10)], 1.0, "#2F6FD6"),
     ("Detergent Cake White", "Aatmanirbhar Seera", "aatma_sachet", [("160 g", 10)], 1.0, "#9DB4D6"),
     ("Detergent Cake Blue", "Aatmanirbhar Yuva", "yuva_bar", [("210 g", 10)], 1.0, "#2A3FB8"),
 ]
@@ -23,9 +23,9 @@ SEERA_POWDERS = [
     ("Detergent Powder", "Seera · Sarv Shaktiman", "seera_powder_bag", [("1 kg", 75)], 1.0, "#E2552F"),
     ("Detergent Powder", "Aatmanirbhar Seera", "aatma_pouch", [("120 g", 10)], 0.78, "#2A3FB8"),
     ("Detergent Powder", "Aatmanirbhar Seera", "aatma_pouch", [("300 g", 20)], 0.95, "#2A3FB8"),
-    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("1 kg", 70)], 0.78, "#1E9BB8"),
-    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("3 kg", 250)], 0.89, "#1E9BB8"),
-    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("5 kg", 450)], 1.0, "#1E9BB8"),
+    ("Washing Powder", "Shine Plus", "shine_plus_3d", [("1 kg", 70)], 0.78, "#1E9BB8"),
+    ("Washing Powder", "Shine Plus", "shine_plus_3d", [("3 kg", 250)], 0.89, "#1E9BB8"),
+    ("Washing Powder", "Shine Plus", "shine_plus_3d", [("5 kg", 450)], 1.0, "#1E9BB8"),
 ]
 
 MUV_FABRIC = [
@@ -36,7 +36,7 @@ MUV_FABRIC = [
 MUV_HOME_A = [
     ("Dishwash Gel", "Lemon Fresh", "cut_dishwash", [("500 ml", 85), ("1 L", 155), ("5 L", 699)], 1.0, "#E6D04A"),
     ("Floor Cleaner", "Cloud Walk", "cut_cloudwalk", [("1 L", 150), ("5 L", 549)], 1.0, "#6FA6E6"),
-    ("Floor Cleaner", "Velvet Mist", None, [("1 L", 150), ("5 L", 549)], 1.0, "#A891E0"),
+    ("Floor Cleaner", "Velvet Mist", "cut_velvetmist", [("1 L", 150), ("5 L", 549)], 1.0, "#A891E0"),
 ]
 MUV_HOME_B = [
     ("Toilet Cleaner", "MUV", "cut_toilet", [("500 ml", 80), ("5 L", 400)], 1.0, "#4D7BD1"),
