@@ -104,3 +104,10 @@ h3.center { text-align: center; font-size: 18pt; margin-top: 2mm; }
 .s-mrp { white-space: nowrap; }
 .s-group { padding-top: 9mm; }
 .s-head { padding-top: 13mm; }
+
+/* real Seera pack photos */
+.s-icon { height: 50mm; }
+.s-photo { max-height: calc(46mm * var(--k)); max-width: calc(92% * var(--k)); object-fit: contain; filter: drop-shadow(0 2.5mm 2.5mm rgba(60,30,10,0.22)); }
+.s-aatma { position: absolute; top: 12mm; right: 12mm; width: 52mm; z-index: 2; }
+.cv-aatma { position: absolute; top: 9mm; right: 10mm; width: 44mm; }
+.cv-top { position: absolute; }

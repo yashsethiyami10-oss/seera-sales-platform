@@ -10,22 +10,23 @@ from html import escape
 
 # ------------------------------------------------------------------ Seera
 # (brand, product, weight, mrp|None, icon, colour)
+# (brand, product, weight, mrp|None, photo|None, colour, photo scale)
 SEERA_CAKES = [
-    ("Seera", "Detergent Cake Blue", "180 g", None, "cake", "#2F6FD6"),
-    ("Seera", "Detergent Cake White", "150 g", None, "cake", "#EDEAE4"),
-    ("Yuva", "Detergent Cake Blue", "170 g", None, "cake", "#2F6FD6"),
+    ("Seera", "Detergent Cake Blue", "180 g", None, "seera_cake_jumbo", "#2F6FD6", 1.0),
+    ("Seera", "Detergent Cake White", "150 g", None, "aatma_sachet", "#9DB4D6", 1.0),
+    ("Yuva", "Detergent Cake Blue", "170 g", None, None, "#2F6FD6", 1.0),
 ]
 SEERA_BARTAN = [
-    ("Seera", "Bartan Tub", "300 g", None, "tub", "#3FA36B"),
-    ("Seera", "Bartan Tub", "500 g", None, "tub", "#3FA36B"),
+    ("Seera", "Bartan Tub", "300 g", None, "seera_bartan", "#3FA36B", 0.82),
+    ("Seera", "Bartan Tub", "500 g", None, "seera_bartan500", "#3FA36B", 1.0),
 ]
 SEERA_POWDERS = [
-    ("Seera", "Detergent Powder", "1 kg", None, "bag", "#E2552F"),
-    ("Aatmanirbhar Seera", "Detergent Powder", "120 g", 10, "sachet", "#F08A24"),
-    ("Aatmanirbhar Seera", "Detergent Powder", "300 g", 20, "sachet", "#F08A24"),
-    ("Shine Plus", "Detergent Powder", "1 kg", None, "bag", "#1E9BB8"),
-    ("Shine Plus", "Detergent Powder", "3 kg", None, "bag", "#1E9BB8"),
-    ("Shine Plus", "Detergent Powder", "5 kg", None, "bag", "#1E9BB8"),
+    ("Seera", "Detergent Powder", "1 kg", None, "seera_powder_bag", "#E2552F", 1.0),
+    ("Aatmanirbhar Seera", "Detergent Powder", "120 g", 10, "aatma_pouch", "#2A3FB8", 0.74),
+    ("Aatmanirbhar Seera", "Detergent Powder", "300 g", 20, "aatma_pouch", "#2A3FB8", 0.95),
+    ("Shine Plus", "Detergent Powder", "1 kg", None, "shine_plus_filled", "#1E9BB8", 0.74),
+    ("Shine Plus", "Detergent Powder", "3 kg", None, "shine_plus_filled", "#1E9BB8", 0.87),
+    ("Shine Plus", "Detergent Powder", "5 kg", None, "shine_plus_filled", "#1E9BB8", 1.0),
 ]
 
 # ------------------------------------------------------------------ MUV
@@ -100,10 +101,12 @@ ICONS = {
 SVG_DEFS = '<svg width="0" height="0" style="position:absolute"><defs><linearGradient id="sh" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient></defs></svg>'
 
 
-def seera_tile(brand, product, weight, mrp, icon, colour):
+def seera_tile(brand, product, weight, mrp, photo, colour, scale):
     mrp_html = f'<span class="s-mrp">MRP {rupee(mrp)}</span>' if mrp is not None else ""
+    visual = (f'<img class="s-photo" style="--k:{scale}" src="img/{photo}.webp" alt="">' if photo
+              else ICONS["cake"].format(c=colour))
     return f'''<article class="s-tile" style="--c:{colour}">
-    <div class="s-icon">{ICONS[icon].format(c=colour)}</div>
+    <div class="s-icon">{visual}</div>
     <p class="s-brand">{escape(brand)}</p>
     <h3>{escape(product)}</h3>
     <div class="s-foot"><span class="s-wt">{escape(weight)}</span>{mrp_html}</div>
@@ -126,6 +129,7 @@ pages = []
 # 1 cover
 pages.append('''<section class="page cover2">
   <div class="cv-top">
+    <img class="cv-aatma" src="img/aatma_logo.webp" alt="Aatmanirbhar">
     <img class="cv-seera" src="img/seera_logo.png" alt="Seera">
   </div>
   <div class="cv-mid"><span>Product Catalogue · 2026</span></div>
@@ -140,6 +144,7 @@ pages.append('''<section class="page cover2">
 
 # 2 Seera opener
 pages.append('''<section class="page seera s-open">
+  <img class="s-aatma" src="img/aatma_logo.webp" alt="Aatmanirbhar">
   <div class="s-open-inner">
     <img class="s-big" src="img/seera_logo.png" alt="Seera">
     <img class="s-tag" src="img/seera_tagline.png" alt="">
