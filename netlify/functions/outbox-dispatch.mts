@@ -11,7 +11,9 @@
 // - Netlify runs scheduled functions only on the published production deploy, never on drafts,
 //   deploy previews, branch deploys or local builds/tests.
 
-export const DISPATCH_URL = "https://seeradetergent.in/api/outbox/dispatch";
+// Must be the primary (www) host: Netlify 301-redirects the apex, and a redirected POST becomes a GET,
+// which this route answers only with the CRON_SECRET bearer check — so the worker would never run.
+export const DISPATCH_URL = "https://www.seeradetergent.in/api/outbox/dispatch";
 export const REQUEST_TIMEOUT_MS = 20_000;
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;

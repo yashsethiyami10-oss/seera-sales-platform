@@ -20,7 +20,7 @@ describe("Netlify outbox dispatch schedule", () => {
   it("is scheduled every 5 minutes and stays below Netlify's 30 s limit", () => {
     expect(config.schedule).toBe("*/5 * * * *");
     expect(REQUEST_TIMEOUT_MS).toBeLessThan(30_000);
-    expect(DISPATCH_URL).toBe("https://seeradetergent.in/api/outbox/dispatch");
+    expect(DISPATCH_URL).toBe("https://www.seeradetergent.in/api/outbox/dispatch");
   });
 
   it("does nothing unless SEERA_OUTBOX_DISPATCH_ENABLED is exactly 'true' (default disabled)", async () => {
