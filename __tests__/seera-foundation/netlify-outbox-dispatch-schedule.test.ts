@@ -50,6 +50,7 @@ describe("Netlify outbox dispatch schedule", () => {
     expect(init.headers).toEqual({ "Content-Type": "application/json", "x-outbox-worker-secret": SECRET });
     expect(JSON.parse(init.body)).toEqual({ limit: 20 });
     expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.redirect).toBe("error"); // secret never follows a redirect; a host change fails loudly
     expect(result).toMatchObject({ ran: true, ok: true, status: 200, processed: 2, retailer: 1, partner: 1, summary: { PUBLISHED: 2 } });
   });
 

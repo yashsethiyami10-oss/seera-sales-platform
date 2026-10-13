@@ -11,8 +11,10 @@
 // - Netlify runs scheduled functions only on the published production deploy, never on drafts,
 //   deploy previews, branch deploys or local builds/tests.
 
-// Must be the primary (www) host: Netlify 301-redirects the apex, and a redirected POST becomes a GET,
-// which this route answers only with the CRON_SECRET bearer check — so the worker would never run.
+// Must be the primary (www) host, which serves the route directly. The apex redirects (observed 308 for a
+// POST on 2026-10-13) - a needless extra hop that a host change could turn into a 301, which fetch would
+// replay as a GET (answered only with the CRON_SECRET check). The request below also refuses redirects, so
+// any such change fails loudly in the logs instead of silently never dispatching.
 export const DISPATCH_URL = "https://www.seeradetergent.in/api/outbox/dispatch";
 export const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -33,6 +35,8 @@ export async function runOutboxDispatch(env: Record<string, string | undefined> 
       method: "POST",
       headers: { "Content-Type": "application/json", "x-outbox-worker-secret": secret },
       body: JSON.stringify({ limit: 20 }),
+      // Never follow a redirect: the worker secret must only ever reach DISPATCH_URL itself.
+      redirect: "error",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) {
