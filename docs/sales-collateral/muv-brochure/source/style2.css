@@ -1,0 +1,106 @@
+/* v2 overrides: Seera + MUV combined, name/weight/MRP only */
+:root { --saffron: #E8742A; --s-red: #D9473A; --s-ink: #2A1A14; --s-ivory: #FBF6EE; }
+
+.folio { justify-content: space-between; }
+.chip .mrp { letter-spacing: 0.02em; }
+.card h3 { font-size: 13.5pt; margin-top: 3mm; }
+h3.center { text-align: center; font-size: 18pt; margin-top: 2mm; }
+
+/* MUV section head */
+.sec-head { padding: 18mm 14mm 0; display: flex; align-items: center; gap: 6mm; }
+.sec-head h2 { margin: 0; font-size: 30pt; }
+.mini-logo { height: 8mm; opacity: 0.95; }
+.sec-head .mini-logo { padding-right: 6mm; border-right: 0.25mm solid var(--hair); height: 9mm; }
+.grid3 { padding-top: 8mm; }
+.grid3.tall { padding-top: 22mm; }
+.duo { padding-top: 22mm; }
+.tiles { padding-top: 10mm; }
+.tile { padding: 9mm 7mm; }
+.tile h4 { font-size: 13pt; }
+
+.hw2 { display: grid; grid-template-columns: 1fr 1fr; padding: 14mm 30mm 0; }
+.hw-table { padding: 4mm 32mm 0; }
+.hw-table .variant { grid-template-columns: 5mm 34mm 1fr; }
+
+.car-text .mini-logo { height: 9mm; margin-bottom: 6mm; }
+.car-product { margin-top: 20mm; }
+
+/* ---------------- cover ---------------- */
+.cover2 { background: #08080b; }
+.cv-top { position: absolute; left: 0; right: 0; top: 0; height: 112mm;
+  background: radial-gradient(90% 90% at 50% 40%, #fffaf2 0%, #f6ecdd 60%, #efe0c9 100%);
+  display: flex; align-items: center; justify-content: center; }
+.cv-seera { height: 70mm; margin-top: 4mm; }
+.cv-mid { position: absolute; top: 112mm; left: 0; right: 0; height: 14mm; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(90deg, #b88a4a, #e9cf9c 50%, #b88a4a); }
+.cv-mid span { font-size: 8pt; letter-spacing: 0.5em; text-transform: uppercase; color: #2a1d10; font-weight: 600; }
+.cv-bottom { position: absolute; top: 126mm; bottom: 0; left: 0; right: 0; overflow: hidden;
+  background: radial-gradient(90% 70% at 50% 75%, #241e3a 0%, #120f1c 50%, #08080b 100%); }
+.cv-bottom .cover-aura { top: 70%; }
+.cv-muv { position: absolute; top: 12mm; left: 50%; transform: translateX(-50%); height: 20mm; }
+.cv-row { position: absolute; bottom: 14mm; left: 0; right: 0; display: flex; justify-content: center; align-items: flex-end; gap: 1mm; }
+.cv-row img { height: 72mm; filter: drop-shadow(0 5mm 5mm rgba(0,0,0,0.6)); }
+.cv-row img.hero { height: 100mm; }
+.cv-row img:nth-child(1), .cv-row img:nth-child(5) { height: 66mm; }
+
+/* ---------------- Seera pages (light, warm) ---------------- */
+.page.seera { background: radial-gradient(120% 70% at 50% 0%, #fffaf3 0%, var(--s-ivory) 55%, #f3e7d6 100%); color: var(--s-ink); }
+.seera .folio { color: rgba(42,26,20,0.45); border-top-color: rgba(42,26,20,0.12); }
+.s-head { padding: 16mm 14mm 0; display: flex; justify-content: center; }
+.s-head img { height: 26mm; }
+.s-group { font-family: var(--display); font-weight: 400; font-size: 26pt; color: var(--s-ink); padding: 12mm 14mm 0; display: flex; align-items: center; gap: 5mm; }
+.s-group::after { content: ""; flex: 1; height: 0.4mm; background: linear-gradient(90deg, var(--saffron), transparent); }
+.s-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; padding: 6mm 14mm 0; }
+.s-tile { background: #fff; border-radius: 4mm; padding: 6mm 6mm 5mm; position: relative; overflow: hidden;
+  box-shadow: 0 2mm 6mm rgba(90,50,20,0.10), 0 0 0 0.25mm rgba(90,50,20,0.08); }
+.s-tile::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1.6mm; background: var(--c); }
+.s-icon { height: 52mm; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c) 18%, transparent), transparent); }
+.s-icon svg { height: 40mm; filter: drop-shadow(0 2mm 2mm rgba(0,0,0,0.15)); }
+.s-brand { font-size: 7.4pt; letter-spacing: 0.28em; text-transform: uppercase; color: var(--s-red); font-weight: 700; margin-top: 3mm; }
+.s-tile h3 { font-size: 15pt; color: var(--s-ink); margin-top: 1mm; }
+.s-foot { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4mm; padding-top: 3mm; border-top: 0.25mm solid rgba(42,26,20,0.1); }
+.s-wt { font-family: var(--display); font-size: 28pt; font-weight: 400; color: var(--s-ink); line-height: 1; }
+.s-mrp { font-size: 10pt; font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--saffron), var(--s-red)); padding: 1.4mm 3.2mm; border-radius: 10mm; }
+
+.s-open { display: flex; align-items: center; justify-content: center; }
+.s-open::before { content: ""; position: absolute; width: 200mm; height: 200mm; left: 50%; top: 46%; transform: translate(-50%,-50%);
+  background: radial-gradient(circle, rgba(232,116,42,0.16), transparent 62%); }
+.s-open-inner { position: relative; text-align: center; }
+.s-big { width: 150mm; }
+.s-tag { display: block; width: 110mm; margin: 12mm auto 0; }
+.s-brands { margin-top: 22mm; display: flex; align-items: center; justify-content: center; gap: 6mm; font-family: var(--display); font-size: 16pt; color: var(--s-ink); }
+.s-brands i { width: 1.6mm; height: 1.6mm; border-radius: 50%; background: var(--saffron); }
+
+/* ---------------- MUV opener ---------------- */
+.muv-open { background: radial-gradient(100% 70% at 50% 70%, #241e3a 0%, #120f1c 50%, #08080b 100%); }
+.muv-open .cover-aura { top: 66%; }
+.mo-logo { position: absolute; top: 50mm; left: 50%; transform: translateX(-50%); height: 34mm; }
+.mo-worlds { position: absolute; top: 96mm; width: 100%; text-align: center; font-size: 7.4pt; letter-spacing: 0.34em; text-transform: uppercase; color: var(--mute); }
+.mo-line { position: absolute; bottom: 30mm; left: 6mm; right: 6mm; display: flex; justify-content: center; align-items: flex-end; }
+.mo-line img { height: 56mm; margin: 0 -1.5mm; filter: drop-shadow(0 5mm 5mm rgba(0,0,0,0.6)); }
+.mo-line img:nth-child(5) { height: 84mm; z-index: 3; }
+.mo-line img:nth-child(4), .mo-line img:nth-child(6) { height: 70mm; z-index: 2; }
+
+/* ---------------- back ---------------- */
+.back2 { background: #08080b; }
+.b-seera { position: absolute; top: 0; left: 0; right: 0; height: 50%; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(90% 90% at 50% 50%, #fffaf2 0%, #f1e4cf 100%); }
+.b-seera img { height: 56mm; }
+.b-muv { position: absolute; bottom: 0; left: 0; right: 0; height: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: radial-gradient(90% 90% at 50% 50%, #1f1a33 0%, #08080b 100%); }
+.b-muv .cover-aura { top: 50%; }
+.b-muv img { height: 26mm; position: relative; }
+
+.chip { font-size: 8.8pt; padding: 1.3mm 3.2mm; }
+.card h3 { font-size: 14.5pt; }
+.variant b { font-size: 12pt; }
+.variants .variant { grid-template-columns: 4mm 26mm 1fr; }
+.hw-table { padding: 4mm 26mm 0; }
+.car-product h3 { font-size: 20pt; }
+.s-icon { height: 42mm; }
+.s-icon svg { height: 34mm; }
+.s-wt { font-size: 24pt; white-space: nowrap; }
+.s-mrp { white-space: nowrap; }
+.s-group { padding-top: 9mm; }
+.s-head { padding-top: 13mm; }
