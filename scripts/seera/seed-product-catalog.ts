@@ -6,7 +6,7 @@ import { authorizeDatabaseCommand } from "../../lib/database/identity-guard";
 // TEST-only, idempotent (upsert-by-code) seed for the Sales Executive product selector's two
 // brand families — see SEERA-SALES-EXECUTIVE-CLOSURE-PASS-#2 section 6/7/8.
 //
-// SEERA: the 9 Founder-approved product NAMES for this review pass still have no Founder-approved
+// SEERA: the 9 original Founder-approved product NAMES (plus the 2 Aatmanirbhar sachets below, which do have a Founder MRP) for this review pass still have no Founder-approved
 // retail MRP — inventing one would be worse than leaving it visibly blank, so these seed with
 // mrp=1 (an obvious, non-commercial placeholder — never shown to the Executive; see
 // OperationalWorkspace.tsx's catalog query comment) and NO SS_TO_DISTRIBUTOR/DISTRIBUTOR_TO_RETAILER
@@ -58,7 +58,11 @@ const db = new PrismaClient({ datasourceUrl: runtime.toString() });
 // (deriveInclusiveTax/taxSplit) was already correct and needed no change.
 const SEERA_HSN = "3402";
 const SEERA_GST_RATE = 18;
-const SEERA_PRODUCTS: Array<{ name: string; packSize: number; unitType: string; code: string }> = [
+// Aatmanirbhar sachets (Founder-supplied, 2026-10-13): 50 pcs/Bag, MRP ₹10 / ₹20 per pc — the first
+// Seera-family SKUs with a real Founder MRP, so they carry `mrp` and `unitsPerCase`; every other row
+// keeps the mrp=1 placeholder / unitsPerCase owned by seed-company-to-ss-price-list.ts. No price
+// version or scheme is seeded for them (rate/scheme are entered by the Sales Executive on the spot).
+const SEERA_PRODUCTS: Array<{ name: string; packSize: number; unitType: string; code: string; mrp?: number; unitsPerCase?: number }> = [
   { name: "Seera Detergent Cake Blue", packSize: 180, unitType: "g", code: "SEERA-CAKE-BLUE" },
   { name: "Seera Detergent Cake White", packSize: 150, unitType: "g", code: "SEERA-CAKE-WHITE" },
   { name: "Seera Detergent Powder 1 kg", packSize: 1, unitType: "kg", code: "SEERA-POWDER-1KG" },
@@ -68,6 +72,8 @@ const SEERA_PRODUCTS: Array<{ name: string; packSize: number; unitType: string; 
   { name: "Shine Plus Detergent Powder 5 kg", packSize: 5, unitType: "kg", code: "SEERA-SHINEPLUS-POWDER-5KG" },
   { name: "Seera Bartan Tub 300 g", packSize: 300, unitType: "g", code: "SEERA-BARTAN-300G" },
   { name: "Seera Bartan Tub 500 g", packSize: 500, unitType: "g", code: "SEERA-BARTAN-500G" },
+  { name: "Aatmanirbhar Seera Detergent Powder 120 g", packSize: 120, unitType: "g", code: "SEERA-AATMANIRBHAR-POWDER-120G", mrp: 10, unitsPerCase: 50 },
+  { name: "Aatmanirbhar Seera Detergent Powder 300 g", packSize: 300, unitType: "g", code: "SEERA-AATMANIRBHAR-POWDER-300G", mrp: 20, unitsPerCase: 50 },
 ];
 
 function parsePackSize(raw: string): { value: number; unit: string } {
@@ -86,7 +92,16 @@ async function main() {
     const before = await db.seeraSku.findUnique({ where: { code: item.code } });
     await db.seeraSku.upsert({
       where: { code: item.code },
-      update: { productName: item.name, packSize: item.packSize, unitType: item.unitType, status: "ACTIVE", hsn: SEERA_HSN, taxRate: SEERA_GST_RATE },
+      update: {
+        productName: item.name,
+        packSize: item.packSize,
+        unitType: item.unitType,
+        status: "ACTIVE",
+        hsn: SEERA_HSN,
+        taxRate: SEERA_GST_RATE,
+        ...(item.mrp != null && { mrp: item.mrp }),
+        ...(item.unitsPerCase != null && { unitsPerCase: item.unitsPerCase }),
+      },
       create: {
         code: item.code,
         productName: item.name,
@@ -94,8 +109,8 @@ async function main() {
         category: "PERSONAL_CARE",
         packSize: item.packSize,
         unitType: item.unitType,
-        unitsPerCase: 1,
-        mrp: 1,
+        unitsPerCase: item.unitsPerCase ?? 1,
+        mrp: item.mrp ?? 1,
         status: "ACTIVE",
         hsn: SEERA_HSN,
         taxRate: SEERA_GST_RATE,
