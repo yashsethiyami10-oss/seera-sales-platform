@@ -7,7 +7,7 @@ Each product shows only its name, weight/pack and MRP.
   (`prisma/migrations/20260816000000_seera_catalog_restoration/migration.sql`).
 - Seera: only the two Aatmanirbhar sachets have an MRP; the other Seera SKUs show weight only until
   their MRP is filled in (`mrp` field in `source/build2.py`, currently `None`).
-- Seera pack photos are Founder-supplied (background removed); Yuva Cake still uses an icon until its photo arrives. `fill_pouch.py` gives the flat Shine Plus pouch a filled look.
+- Seera pack photos are Founder-supplied (background removed) (Yuva bar cut out of the Founder-supplied ad). `fill_pouch.py` gives the flat Shine Plus pouch a filled look.
 
 ## Rebuild
 From `source/`:

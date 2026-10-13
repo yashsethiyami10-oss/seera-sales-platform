@@ -14,7 +14,7 @@ from html import escape
 SEERA_CAKES = [
     ("Seera", "Detergent Cake Blue", "180 g", None, "seera_cake_jumbo", "#2F6FD6", 1.0),
     ("Seera", "Detergent Cake White", "150 g", None, "aatma_sachet", "#9DB4D6", 1.0),
-    ("Yuva", "Detergent Cake Blue", "170 g", None, None, "#2F6FD6", 1.0),
+    ("Yuva", "Detergent Cake Blue", "170 g", None, "yuva_bar", "#2F6FD6", 1.0),
 ]
 SEERA_BARTAN = [
     ("Seera", "Bartan Tub", "300 g", None, "seera_bartan", "#3FA36B", 0.82),
