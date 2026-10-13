@@ -14,7 +14,7 @@ function transactionTimeoutFor(fn: string) {
   const body = source.slice(start, next === -1 ? undefined : next);
   const match = body.match(/\$transaction\([\s\S]*?\},\s*\{[\s\S]*?timeout:\s*([\d_]+)/);
   expect(match, `${fn} must pass explicit transaction options`).not.toBeNull();
-  return Number(match![1].replace(/_/g, ""));
+  return Number((match?.[1] ?? "0").replace(/_/g, ""));
 }
 
 describe("order transaction time budget", () => {
