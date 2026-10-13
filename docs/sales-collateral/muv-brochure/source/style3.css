@@ -127,3 +127,4 @@ body { font-family: "Poppins", sans-serif; color: var(--ink); -webkit-print-colo
 .list tr.g td { padding-top: 1.6mm; font-size: 7.4pt; }
 .lists { padding-top: 7mm; }
 .grid.c2.short .stage { height: 72mm; }
+.page .body .grid.c2.short .stage { height: 62mm; }
