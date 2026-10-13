@@ -1,0 +1,152 @@
+@page { size: 210mm 297mm; margin: 0; }
+:root { --ink: #1b1b1b; --yellow: #FFD400; --red: #E5262E; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Poppins", sans-serif; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { width: 210mm; height: 297mm; position: relative; overflow: hidden; break-after: page; }
+.page:last-child { break-after: auto; }
+h2, h3, h4, .hi, .burst span, .wt-big, .chip, .lh, .c-banner, .brand-chips { font-family: "Baloo 2", "Poppins", sans-serif; }
+
+/* ---------- themes: bright fill + halftone dots ---------- */
+.prod { --bg: #E5262E; --bg2: #FF6A2B; }
+.t-red { --bg: #E5262E; --bg2: #FF7A1A; }
+.t-blue { --bg: #1F4FD8; --bg2: #2FA3FF; }
+.t-pink { --bg: #E8457A; --bg2: #FF8FA8; }
+.t-teal { --bg: #0FA4A0; --bg2: #4FD6C2; }
+.t-sky { --bg: #2F7FE0; --bg2: #6EC1FF; }
+.t-lilac { --bg: #8A5CF0; --bg2: #C59BFF; }
+.t-navy { --bg: #22296B; --bg2: #4B4FC9; }
+.t-yellow { --bg: #FFC21A; --bg2: #FFE066; }
+.prod { background:
+  radial-gradient(rgba(255,255,255,0.16) 1.1mm, transparent 1.2mm) 0 0 / 7mm 7mm,
+  linear-gradient(160deg, var(--bg) 0%, var(--bg2) 100%); }
+
+/* soap bubbles */
+.bub { position: absolute; border-radius: 50%; z-index: 0; pointer-events: none;
+  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.75) 0 8%, rgba(255,255,255,0.12) 22%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.35) 100%);
+  border: 0.4mm solid rgba(255,255,255,0.55); }
+
+/* ---------- header ---------- */
+.ph-head { position: relative; z-index: 2; display: flex; align-items: center; gap: 6mm; padding: 13mm 12mm 0; }
+.lsticker { background: #fff; border: 0.8mm solid var(--ink); border-radius: 4mm; box-shadow: 1.6mm 1.6mm 0 var(--ink); padding: 2.5mm 4.5mm; transform: rotate(-3deg); display: inline-flex; align-items: center; }
+.lsticker .ls { height: 16mm; }
+.lsticker.aat { transform: rotate(3deg); padding: 2mm 3mm; }
+.lsticker.aat img { height: 11mm; }
+.lsticker.dark { background: #17123A; }
+.lsticker .lm { height: 10mm; }
+.ttl h2 { font-size: 40pt; font-weight: 800; color: #fff; line-height: 0.95; text-shadow: 1.4mm 1.4mm 0 var(--ink); -webkit-text-stroke: 0.5mm var(--ink); letter-spacing: 0.01em; }
+.ttl .hi { display: inline-block; margin-top: 2.5mm; background: var(--yellow); color: var(--ink); font-weight: 700; font-size: 12pt; padding: 0.4mm 3.5mm; border: 0.6mm solid var(--ink); border-radius: 10mm; transform: rotate(-1.5deg); }
+
+/* ---------- body / grid ---------- */
+.body { position: relative; z-index: 2; padding: 7mm 12mm 0; }
+.sec { display: inline-block; font-size: 15pt; font-weight: 800; color: var(--ink); background: #fff; border: 0.7mm solid var(--ink); border-radius: 10mm; padding: 0 5mm; margin: 1mm 0 4mm; box-shadow: 1.2mm 1.2mm 0 var(--ink); }
+.grid { display: grid; gap: 6mm; margin-bottom: 6mm; }
+.grid.c3 { grid-template-columns: repeat(3, 1fr); }
+.grid.c2 { grid-template-columns: repeat(2, 1fr); }
+
+/* ---------- sticker card ---------- */
+.card { position: relative; background: #fff; border: 0.8mm solid var(--ink); border-radius: 5mm; box-shadow: 2mm 2mm 0 var(--ink); display: flex; flex-direction: column; }
+.stage { position: relative; height: 150mm; display: flex; align-items: center; justify-content: center; padding: 5mm; overflow: hidden; border-radius: 4.2mm 4.2mm 0 0; }
+.grid.short .stage { height: 64mm; }
+.grid.c2.short .stage { height: 60mm; }
+.blob { position: absolute; width: 82%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 30%, #fff) 0%, color-mix(in srgb, var(--c) 14%, #fff) 60%, transparent 72%); }
+.stage img { position: relative; max-height: calc(100% * var(--k)); max-width: calc(100% * var(--k)); object-fit: contain; filter: drop-shadow(0 2.5mm 2mm rgba(0,0,0,0.25)); }
+.stage .ph { position: relative; height: 78%; }
+.info { padding: 3mm 4mm 4mm; border-top: 0.6mm dashed var(--ink); flex: 1; display: flex; flex-direction: column; }
+.line { font-size: 7pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 70%, #000); }
+.info h3 { font-size: 14pt; font-weight: 800; line-height: 1.05; margin-top: 0.4mm; }
+.wt-big { margin-top: auto; padding-top: 2mm; display: inline-block; align-self: flex-start; font-size: 15pt; font-weight: 800; background: var(--ink); color: #fff; border-radius: 2.5mm; padding: 0.6mm 3.5mm 0; line-height: 1.35; }
+.chips { margin-top: auto; padding-top: 2mm; display: flex; flex-wrap: wrap; gap: 1.6mm; }
+.chip { display: inline-flex; align-items: stretch; border: 0.6mm solid var(--ink); border-radius: 2.5mm; overflow: hidden; font-size: 11pt; line-height: 1.5; }
+.chip b { background: var(--ink); color: #fff; padding: 0 2.2mm; font-weight: 700; }
+.chip i { font-style: normal; background: var(--yellow); color: var(--red); padding: 0 2.2mm; font-weight: 800; }
+
+/* MRP starburst */
+.burst { position: absolute; top: -6mm; right: -5mm; width: 27mm; height: 27mm; z-index: 5; transform: rotate(12deg); }
+.burst svg { width: 100%; height: 100%; filter: drop-shadow(0.9mm 0.9mm 0 var(--ink)); }
+.burst polygon { fill: var(--yellow); stroke: var(--ink); stroke-width: 2.4; stroke-linejoin: round; }
+.burst span { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--red); font-weight: 800; font-size: 17pt; line-height: 0.9; }
+.burst small { font-size: 7pt; color: var(--ink); letter-spacing: 0.1em; font-weight: 800; }
+
+/* ---------- footer ---------- */
+.pfoot { position: absolute; z-index: 3; left: 12mm; right: 12mm; bottom: 7mm; display: flex; align-items: center; justify-content: space-between; color: #fff; font-size: 7.5pt; font-weight: 700; letter-spacing: 0.14em; }
+.pfoot b { background: #fff; color: var(--ink); border: 0.7mm solid var(--ink); border-radius: 50%; width: 10mm; height: 10mm; display: flex; align-items: center; justify-content: center; font-size: 9pt; box-shadow: 1mm 1mm 0 var(--ink); }
+.t-yellow .pfoot { color: var(--ink); }
+
+/* ---------- cover ---------- */
+.rays { position: absolute; inset: -40%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.13) 0 7.5deg, transparent 7.5deg 15deg); }
+.cover4 { background: linear-gradient(180deg, #E5262E 0%, #FF6A1A 52%, #2A1F6E 52%, #17123A 100%); }
+.cover4 .rays { inset: auto; left: -50mm; right: -50mm; top: -120mm; height: 270mm; }
+.c-top { position: absolute; top: 0; left: 0; right: 0; height: 154mm; z-index: 2; }
+.lsticker.big { position: absolute; left: 12mm; top: 12mm; }
+.lsticker.big .ls { height: 28mm; }
+.lsticker.big2 { position: absolute; right: 12mm; top: 15mm; }
+.lsticker.big2 img { height: 15mm; }
+.c-seera-packs { position: absolute; left: 0; right: 0; bottom: 18mm; height: 92mm; }
+.c-seera-packs img { position: absolute; bottom: 0; filter: drop-shadow(1.5mm 2mm 0 rgba(0,0,0,0.35)); }
+.p1 { height: 86mm; left: 14mm; transform: rotate(-8deg); }
+.p2 { height: 82mm; left: 62mm; transform: rotate(3deg); z-index: 2; }
+.p3 { height: 72mm; left: 112mm; transform: rotate(-4deg); }
+.p4 { height: 38mm; right: 10mm; bottom: 34mm !important; transform: rotate(8deg); }
+.p5 { height: 30mm; right: 14mm; transform: rotate(-6deg); z-index: 3; }
+.c-banner { position: absolute; top: 140mm; left: -6mm; right: -6mm; z-index: 4; background: var(--yellow); border-top: 1mm solid var(--ink); border-bottom: 1mm solid var(--ink); transform: rotate(-4deg); display: flex; align-items: center; justify-content: center; gap: 5mm; padding: 2mm 0; box-shadow: 0 2mm 0 var(--ink); }
+.c-banner span { font-size: 26pt; font-weight: 800; color: var(--ink); letter-spacing: 0.04em; }
+.c-banner b { font-size: 26pt; font-weight: 800; color: #fff; background: var(--red); border: 0.8mm solid var(--ink); border-radius: 3mm; padding: 0 4mm; }
+.c-bottom { position: absolute; top: 166mm; bottom: 0; left: 0; right: 0; z-index: 2; }
+.c-muv { position: absolute; top: 9mm; left: 50%; transform: translateX(-50%); height: 17mm; }
+.c-bottles { position: absolute; bottom: 9mm; left: 0; right: 0; display: flex; justify-content: center; align-items: flex-end; gap: 2mm; }
+.c-bottles img { height: 72mm; filter: drop-shadow(0 4mm 4mm rgba(0,0,0,0.5)); }
+.c-bottles img.big { height: 92mm; }
+
+/* ---------- dividers ---------- */
+.seera-div { background: linear-gradient(170deg, #E5262E 0%, #FF6A1A 100%); }
+.seera-div .rays { inset: -60%; }
+.lsticker.hero { position: absolute; left: 50%; top: 26mm; transform: translateX(-50%) rotate(-3deg); flex-direction: column; padding: 8mm 12mm; z-index: 2; }
+.lsticker.hero .ls { height: 46mm; }
+.lsticker.hero .tg { width: 80mm; margin-top: 4mm; }
+.lsticker.corner { position: absolute; right: 10mm; top: 10mm; z-index: 3; }
+.brand-chips { position: absolute; top: 128mm; left: 0; right: 0; z-index: 2; display: flex; justify-content: center; gap: 3mm; flex-wrap: wrap; padding: 0 12mm; }
+.brand-chips span { background: #fff; border: 0.7mm solid var(--ink); border-radius: 10mm; padding: 0 4.5mm; font-weight: 800; font-size: 13pt; box-shadow: 1.2mm 1.2mm 0 var(--ink); }
+.brand-chips span:nth-child(odd) { transform: rotate(-3deg); background: var(--yellow); }
+.brand-chips span:nth-child(even) { transform: rotate(3deg); }
+.fan { position: absolute; left: 0; right: 0; top: 152mm; height: 84mm; z-index: 2; }
+.fan img { position: absolute; bottom: 0; filter: drop-shadow(1.5mm 2mm 0 rgba(0,0,0,0.35)); }
+.fan .f1 { height: 82mm; left: 22mm; transform: rotate(-9deg); }
+.fan .f2 { height: 70mm; left: 78mm; transform: rotate(2deg); z-index: 2; }
+.fan .f3 { height: 80mm; right: 22mm; transform: rotate(8deg); }
+.fan.bars { top: 240mm; height: 40mm; display: flex; justify-content: center; align-items: center; gap: 4mm; }
+.fan.bars img { position: static; height: 24mm; }
+.fan.bars img.tub { height: 30mm; }
+.muv-div { background: radial-gradient(100% 75% at 50% 75%, #5A3FD0 0%, #2A1F6E 50%, #17123A 100%); }
+.mv-logo { position: absolute; top: 44mm; left: 50%; transform: translateX(-50%); height: 32mm; z-index: 2; }
+.brand-chips.light { top: 96mm; }
+.brand-chips.light span { font-size: 11pt; }
+.mv-line { position: absolute; bottom: 24mm; left: 6mm; right: 6mm; display: flex; justify-content: center; align-items: flex-end; z-index: 2; }
+.mv-line img { height: 58mm; margin: 0 -1.5mm; filter: drop-shadow(0 4mm 4mm rgba(0,0,0,0.5)); }
+.mv-line img:nth-child(5) { height: 88mm; z-index: 3; }
+.mv-line img:nth-child(4), .mv-line img:nth-child(6) { height: 72mm; z-index: 2; }
+
+/* ---------- price list ---------- */
+.lists { position: relative; z-index: 2; display: grid; grid-template-columns: 1fr 1.25fr; gap: 6mm; padding: 7mm 12mm 0; }
+.lcard { background: #fff; border: 0.8mm solid var(--ink); border-radius: 4mm; box-shadow: 2mm 2mm 0 var(--ink); overflow: hidden; align-self: start; }
+.lh { color: #fff; font-weight: 800; font-size: 15pt; padding: 1mm 4mm 0; border-bottom: 0.7mm solid var(--ink); }
+.lh.seera { background: var(--red); } .lh.muv { background: #2A1F6E; }
+.list4 table { width: 100%; border-collapse: collapse; font-size: 6.9pt; }
+.list4 td { padding: 0.45mm 2.5mm; border-bottom: 0.2mm solid #eee; }
+.list4 td.m { text-align: right; font-weight: 800; color: var(--red); }
+.list4 tr.g td { font-weight: 800; font-size: 7.6pt; background: #FFF4C2; padding-top: 1.4mm; }
+
+/* ---------- back ---------- */
+.back4 { background: linear-gradient(180deg, #E5262E 0%, #FF6A1A 50%, #2A1F6E 50%, #17123A 100%); }
+.back4 .rays { inset: auto; left: -60mm; right: -60mm; top: -110mm; height: 260mm; }
+.center1 { position: absolute; left: 50%; top: 52mm; transform: translateX(-50%) rotate(-3deg); z-index: 2; }
+.center1 .ls { height: 34mm; }
+.center2 { position: absolute; left: 50%; top: 105mm; transform: translateX(-50%) rotate(3deg); z-index: 2; }
+.center2 img { height: 14mm; }
+.b-muv { position: absolute; top: 148.5mm; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; z-index: 2; }
+.b-muv img { height: 28mm; }
+/* v4 fit fixes */
+.t-red .grid.short .stage, .t-blue .grid.short .stage { height: 76mm; }
+.page .grid.c2.short .stage { height: 76mm; }
+.list4 td:nth-child(2) { white-space: nowrap; }
+.t-red .info h3, .t-blue .info h3 { font-size: 15pt; }
+.t-red .grid.short .stage { height: 64mm; }
