@@ -16,16 +16,16 @@ SEERA_CAKES = [
     ("Detergent Cake Blue", "Aatmanirbhar Yuva", "yuva_bar", [("210 g", 10)], 1.0, "#2A3FB8"),
 ]
 SEERA_BARTAN = [
-    ("Bartan Tub", "Seera", "seera_bartan", [("300 g", None)], 0.85, "#3FA36B"),
-    ("Bartan Tub", "Seera", "seera_bartan500", [("500 g", None)], 1.0, "#3FA36B"),
+    ("Bartan Tub", "Seera", "seera_bartan", [("300 g", 20)], 0.85, "#3FA36B"),
+    ("Bartan Tub", "Seera", "seera_bartan500", [("500 g", 35)], 1.0, "#3FA36B"),
 ]
 SEERA_POWDERS = [
-    ("Detergent Powder", "Seera · Sarv Shaktiman", "seera_powder_bag", [("1 kg", None)], 1.0, "#E2552F"),
+    ("Detergent Powder", "Seera · Sarv Shaktiman", "seera_powder_bag", [("1 kg", 75)], 1.0, "#E2552F"),
     ("Detergent Powder", "Aatmanirbhar Seera", "aatma_pouch", [("120 g", 10)], 0.78, "#2A3FB8"),
     ("Detergent Powder", "Aatmanirbhar Seera", "aatma_pouch", [("300 g", 20)], 0.95, "#2A3FB8"),
-    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("1 kg", None)], 0.78, "#1E9BB8"),
-    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("3 kg", None)], 0.89, "#1E9BB8"),
-    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("5 kg", None)], 1.0, "#1E9BB8"),
+    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("1 kg", 70)], 0.78, "#1E9BB8"),
+    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("3 kg", 250)], 0.89, "#1E9BB8"),
+    ("Washing Powder", "Shine Plus", "shine_plus_filled", [("5 kg", 450)], 1.0, "#1E9BB8"),
 ]
 
 MUV_FABRIC = [
@@ -44,9 +44,9 @@ MUV_HOME_B = [
     ("Glass Cleaner", "MUV", "cut_glass", [("500 ml", 90)], 1.0, "#3D8FE0"),
 ]
 MUV_HYGIENE = [
-    ("White Phenyl", "MUV", None, [("1 L", 60), ("5 L", 270)], 1.0, "#D9D4C7"),
-    ("Black Phenyl", "MUV", None, [("1 L", 80)], 1.0, "#3A3536"),
-    ("Bleach", "MUV", None, [("500 ml", 50)], 1.0, "#9FC6DC"),
+    ("White Phenyl", "MUV", "cut_whitephenyl", [("1 L", 60), ("5 L", 270)], 1.0, "#D9D4C7"),
+    ("Black Phenyl", "MUV", "cut_blackphenyl", [("1 L", 80)], 1.0, "#3A3536"),
+    ("Bleach", "MUV", "cut_bleach", [("500 ml", 50)], 1.0, "#9FC6DC"),
 ]
 MUV_HAND = [
     ("Hand Wash", "Silk Blossom", "cut_silk", [("500 ml", 95)], 1.0, "#E6A6D2"),

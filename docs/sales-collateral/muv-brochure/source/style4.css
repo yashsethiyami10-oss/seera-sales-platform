@@ -150,3 +150,17 @@ h2, h3, h4, .hi, .burst span, .wt-big, .chip, .lh, .c-banner, .brand-chips { fon
 .list4 td:nth-child(2) { white-space: nowrap; }
 .t-red .info h3, .t-blue .info h3 { font-size: 15pt; }
 .t-red .grid.short .stage { height: 64mm; }
+
+/* ===== v5 design system: one colour world per brand ===== */
+.t-muv { --bg: #2A1F6E; --bg2: #6B4BE0; }
+.t-muv .ttl .hi { display: none; }
+/* cover: sharp packs, minimal rotation */
+.c-seera-packs .p1 { height: 84mm; left: 18mm; transform: rotate(-4deg); }
+.c-seera-packs .p2 { height: 90mm; left: 72mm; transform: none; z-index: 2; }
+.c-seera-packs .bars { position: absolute; right: 12mm; bottom: 4mm; width: 60mm; display: flex; flex-direction: column; align-items: center; gap: 3mm; }
+.c-seera-packs .bars img { position: static; width: 56mm; height: auto; filter: drop-shadow(1.2mm 1.6mm 0 rgba(0,0,0,0.35)); }
+.c-seera-packs .bars img:last-child { width: 40mm; }
+/* Seera divider fan: two sharp pouches */
+.fan .f1 { height: 82mm; left: 36mm; transform: rotate(-6deg); }
+.fan .f2 { height: 86mm; left: auto; right: 36mm; transform: rotate(4deg); z-index: 2; }
+.fan.bars img { height: 22mm; }

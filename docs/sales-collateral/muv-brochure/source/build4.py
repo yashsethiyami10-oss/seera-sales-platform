@@ -85,8 +85,8 @@ pages.append(f'''<section class="page cover4">
     <div class="lsticker big"><img class="ls" src="img/seera_logo.png" alt="Seera"></div>
     <div class="lsticker aat big2"><img src="img/aatma_logo.webp" alt="Aatmanirbhar"></div>
     <div class="c-seera-packs">
-      <img class="p1" src="img/seera_powder_bag.webp" alt=""><img class="p2" src="img/shine_plus_filled.webp" alt=""><img class="p3" src="img/aatma_pouch.webp" alt="">
-      <img class="p4" src="img/seera_bartan500.webp" alt=""><img class="p5" src="img/yuva_bar.webp" alt="">
+      <img class="p1" src="img/shine_plus_filled.webp" alt=""><img class="p2" src="img/seera_powder_bag.webp" alt="">
+      <div class="bars"><img src="img/yuva_bar.webp" alt=""><img src="img/aatma_sachet.webp" alt=""><img src="img/seera_bartan.webp" alt=""></div>
     </div>
   </div>
   <div class="c-banner"><span>PRODUCT CATALOGUE</span><b>2026</b></div>
@@ -103,14 +103,14 @@ pages.append(f'''<section class="page div4 seera-div">
   <div class="lsticker aat corner"><img src="img/aatma_logo.webp" alt="Aatmanirbhar"></div>
   <div class="brand-chips"><span>Seera</span><span>Aatmanirbhar</span><span>Yuva</span><span>Shine Plus</span></div>
   <div class="fan">
-    <img class="f1" src="img/seera_powder_bag.webp" alt=""><img class="f2" src="img/aatma_pouch.webp" alt=""><img class="f3" src="img/shine_plus_filled.webp" alt="">
+    <img class="f1" src="img/shine_plus_filled.webp" alt=""><img class="f2" src="img/seera_powder_bag.webp" alt="">
   </div>
-  <div class="fan bars"><img src="img/seera_cake_jumbo.webp" alt=""><img src="img/yuva_bar.webp" alt=""><img src="img/aatma_sachet.webp" alt=""><img class="tub" src="img/seera_bartan500.webp" alt=""></div>
+  <div class="fan bars"><img src="img/seera_cake_jumbo.webp" alt=""><img src="img/yuva_bar.webp" alt=""><img src="img/aatma_sachet.webp" alt=""><img class="tub" src="img/seera_bartan.webp" alt=""></div>
 </section>''')
 
 pages.append(page("t-red", "seera", 3, "Cakes &amp; Bartan", "डिटर्जेंट केक · बर्तन टब",
                   [("Detergent Cakes", SEERA_CAKES, 3, True), ("Bartan Tub", SEERA_BARTAN, 3, True)]))
-pages.append(page("t-blue", "seera", 4, "Detergent Powders", "डिटर्जेंट पाउडर", [("", SEERA_POWDERS, 3, True)]))
+pages.append(page("t-red", "seera", 4, "Detergent Powders", "डिटर्जेंट पाउडर", [("", SEERA_POWDERS, 3, True)]))
 
 lineup = ["cut_bathroom", "cut_glass", "cut_coolwater", "cut_dishwash", "cut_rose", "cut_toilet", "cut_lavender", "cut_crimson", "cut_oceanfresh"]
 pages.append(f'''<section class="page div4 muv-div">
@@ -120,11 +120,11 @@ pages.append(f'''<section class="page div4 muv-div">
   <div class="mv-line">{"".join(f'<img src="img/{x}.webp" alt="">' for x in lineup)}</div>
 </section>''')
 
-pages.append(page("t-pink", "muv", 6, "Fabric Care", "", [("", MUV_FABRIC, 3, False)]))
-pages.append(page("t-teal", "muv", 7, "Home Care", "", [("", MUV_HOME_A, 3, False)]))
-pages.append(page("t-sky", "muv", 8, "Home Care", "", [("Bathroom & Glass", MUV_HOME_B, 3, True), ("Hygiene", MUV_HYGIENE, 3, True)]))
-pages.append(page("t-lilac", "muv", 9, "Personal Care", "", [("", MUV_HAND, 2, True)]))
-pages.append(page("t-navy", "muv", 10, "Body &amp; Car Care", "", [("Body Care", MUV_BODY, 3, True), ("Car Care", MUV_CAR, 3, True)]))
+pages.append(page("t-muv", "muv", 6, "Fabric Care", "", [("", MUV_FABRIC, 3, False)]))
+pages.append(page("t-muv", "muv", 7, "Home Care", "", [("", MUV_HOME_A, 3, False)]))
+pages.append(page("t-muv", "muv", 8, "Home Care", "", [("Bathroom & Glass", MUV_HOME_B, 3, True), ("Hygiene", MUV_HYGIENE, 3, True)]))
+pages.append(page("t-muv", "muv", 9, "Personal Care", "", [("", MUV_HAND, 2, True)]))
+pages.append(page("t-muv", "muv", 10, "Body &amp; Car Care", "", [("Body Care", MUV_BODY, 3, True), ("Car Care", MUV_CAR, 3, True)]))
 
 
 def plist(groups):

@@ -1,7 +1,7 @@
 # Seera + MUV — Product Catalogue 2026
 
 `Seera_MUV_Catalogue_2026.pdf` — 12-page A4 brochure: Seera first (pages 2–4), then MUV (pages 5–11).
-Each product shows only its name, weight/pack and MRP. Layout v4 (playful retail): bright section colours, sticker-style cards, MRP starbursts —
+Each product shows only its name, weight/pack and MRP. Layout v5 design system: one colour world per brand (Seera red, MUV violet), identical sticker cards, MRP starbursts —
 brand-colour header band (logo + category), product cards (photo, name, weight → MRP rows), brand footer;
 page 11 is a combined price list.
 
