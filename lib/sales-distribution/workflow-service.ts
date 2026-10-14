@@ -984,7 +984,10 @@ export async function placeRetailerOrder(
     // TEST Neon under load. This was a genuine functional failure risk on the Executive's most
     // frequent write action, not just a UX slowness complaint. Widened, not the work reduced further
     // here — the queries themselves are already batched (see PERFORMANCE PHASE 2 comment above).
-    timeout: 10_000,
+    // Raised again 10s -> 20s (2026-10-14): the same P2028 recurred at ~12.7s against TEST Neon
+    // (checkout-idempotency test P). Only the budget changes; a transaction that overruns still
+    // rolls back, so no partial order can be written.
+    timeout: 20_000,
     maxWait: 5_000,
   });
   timing.stage("transaction_commit");
@@ -1162,7 +1165,8 @@ export async function fulfilRetailerOrder(
     // Distributor-portal accept/reject reliability bug, not a hypothetical one. The per-line
     // seraOrderLine.update loop above means this widens further than placeRetailerOrder's tx as
     // order line count grows; the work itself is unchanged here, only the budget.
-    timeout: 10_000,
+    // Raised 10s -> 20s together with placeRetailerOrder's (2026-10-14, P2028 at ~12.7s on TEST).
+    timeout: 20_000,
     maxWait: 5_000,
   });
   // Stage 7 fix: ORDER_ACCEPTED/ORDER_PARTIAL were defined in the retailer-communication event

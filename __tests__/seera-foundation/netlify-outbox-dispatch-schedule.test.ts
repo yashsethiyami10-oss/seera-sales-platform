@@ -20,7 +20,7 @@ describe("Netlify outbox dispatch schedule", () => {
   it("is scheduled every 5 minutes and stays below Netlify's 30 s limit", () => {
     expect(config.schedule).toBe("*/5 * * * *");
     expect(REQUEST_TIMEOUT_MS).toBeLessThan(30_000);
-    expect(DISPATCH_URL).toBe("https://seeradetergent.in/api/outbox/dispatch");
+    expect(DISPATCH_URL).toBe("https://www.seeradetergent.in/api/outbox/dispatch");
   });
 
   it("does nothing unless SEERA_OUTBOX_DISPATCH_ENABLED is exactly 'true' (default disabled)", async () => {
@@ -50,6 +50,7 @@ describe("Netlify outbox dispatch schedule", () => {
     expect(init.headers).toEqual({ "Content-Type": "application/json", "x-outbox-worker-secret": SECRET });
     expect(JSON.parse(init.body)).toEqual({ limit: 20 });
     expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.redirect).toBe("error"); // secret never follows a redirect; a host change fails loudly
     expect(result).toMatchObject({ ran: true, ok: true, status: 200, processed: 2, retailer: 1, partner: 1, summary: { PUBLISHED: 2 } });
   });
 

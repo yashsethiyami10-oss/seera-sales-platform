@@ -15,6 +15,7 @@ import {
 } from "@/components/seera/foundation/FoundationActions";
 import { surfaceItem } from "@/lib/foundation/product-surface";
 import { OperationalWorkspace } from "@/components/seera/product/OperationalWorkspace";
+import { MarketSurveySection } from "@/components/seera/market-survey/MarketSurveySection";
 import { ChangePasswordActions } from "@/components/seera/product/ChangePasswordActions";
 import styles from "@/components/seera/foundation/Workspace.module.css";
 const valid = new Set([
@@ -584,6 +585,19 @@ export default async function WorkspacePage({
       </>
     );
   }
+  // Retailer market survey (staff form) and market recovery (Founder/Admin). Visibility comes from
+  // surfaceItem's permission check above; every query/mutation re-authorizes in the service.
+  if (product?.kind === "market_survey")
+    return (
+      <MarketSurveySection
+        db={prisma}
+        userId={user.id}
+        portal={portal}
+        slug={product.slug}
+        language={language}
+        query={query}
+      />
+    );
   if (product)
     return (
       <OperationalWorkspace

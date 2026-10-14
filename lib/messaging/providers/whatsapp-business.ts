@@ -89,7 +89,9 @@ export class WhatsAppBusinessProvider implements MessagingProvider {
           messaging_product: "whatsapp",
           to: recipient,
           type: "template",
-          template: { name: templateName, language: { code: resolvedLanguageCode }, components: [{ type: "body", parameters: params.map((p) => ({ type: "text", text: p })) }] },
+          // A template with no {{n}} variables takes no body component at all (an empty parameters
+          // list is not the same thing); every existing template sends 1+ params and is unchanged.
+          template: { name: templateName, language: { code: resolvedLanguageCode }, ...(params.length ? { components: [{ type: "body", parameters: params.map((p) => ({ type: "text", text: p })) }] } : {}) },
         }),
       });
       if (!res.ok) throw await graphApiError("WhatsApp Cloud API send failed", res);

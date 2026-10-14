@@ -38,16 +38,23 @@ runtime.searchParams.set("pool_timeout", "60");
 const db = new PrismaClient({ datasourceUrl: runtime.toString() });
 
 describe("WhatsApp queuing failure must never fail retailer checkout", () => {
-  beforeAll(() => {
+  // Timing fix (2026-10-13). A healthy run is ~59 sequential queries at ~220 ms each (~14 s) to the
+  // Singapore TEST endpoint. Failures were never slow queries: acquiring a connection occasionally
+  // stalled for tens of seconds (e.g. Neon waking a suspended endpoint), surfacing as "Test timed out
+  // in 30000ms" or "Timed out fetching a new connection from the connection pool". Connect and run one
+  // query here, outside the timed test, and give the test ~6x a healthy run. Assertions are unchanged.
+  beforeAll(async () => {
     console.log(`[SEERA DB GUARD] role=${target.role} fingerprint=${target.fingerprint}`);
-  });
+    await db.$connect();
+    await db.$queryRaw`SELECT 1`;
+  }, 120_000);
   afterAll(async () => {
     await db.$disconnect();
-  });
+  }, 30_000);
 
   it(
     "executiveCheckOut succeeds and the visit is durably checked out even though the WhatsApp queue write is forced to throw",
-    { timeout: 30_000 },
+    { timeout: 90_000 },
     async () => {
       const { startFieldDay, endFieldDay } = await import("../../lib/sales-distribution/workflow-service");
       const { executiveCheckIn, executiveCheckOut } = await import("../../lib/sales-distribution/field-portal-service");
