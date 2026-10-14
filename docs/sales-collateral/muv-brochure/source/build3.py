@@ -51,8 +51,8 @@ MUV_HYGIENE = [
 MUV_HAND = [
     ("Hand Wash", "Silk Blossom", "cut_silk", [("500 ml", 95)], 1.0, "#E6A6D2"),
     ("Hand Wash", "Ocean Fresh", "cut_oceanfresh", [("500 ml", 95), ("5 L", 725)], 1.0, "#6FB6E6"),
-    ("Hand Wash", "Citrus Blast", None, [("250 ml", 80), ("500 ml", 95), ("5 L", 725)], 1.0, "#F0A93C"),
-    ("Hand Wash", "Life Shield", None, [("250 ml", 80), ("500 ml", 95)], 1.0, "#5DB98A"),
+    ("Hand Wash", "Citrus Blast", "cut_citrus", [("250 ml", 80), ("500 ml", 95), ("5 L", 725)], 1.0, "#F0A93C"),
+    ("Hand Wash", "Life Shield", "cut_lifeshield", [("250 ml", 80), ("500 ml", 95)], 1.0, "#5DB98A"),
 ]
 MUV_BODY = [
     ("Body Wash", "Crimson Veil", "cut_crimson", [("250 ml", 110), ("950 ml", 360)], 1.0, "#2F6B45"),

@@ -1,6 +1,6 @@
 # Seera + MUV — Product Catalogue 2026
 
-`Seera_MUV_Catalogue_2026.pdf` — 12-page A4 brochure: Seera first (pages 2–4), then MUV (pages 5–11).
+`Seera_MUV_Catalogue_2026_PRINT.pdf` (≈53 MB, full-resolution lossless images, vector text — send this to the printer) and `Seera_MUV_Catalogue_2026_share.pdf` (≈25 MB, for WhatsApp/email) — 12-page A4 brochure: Seera first (pages 2–4), then MUV (pages 5–11).
 Each product shows only its name, weight/pack and MRP. Layout v6 (professional, build5.py): cover + page 2 show the Aatmanirbhar → Seera + MUV family; every product page = hero banner (category visual, hero pack, cleaning-type icons) + 3D product shelf cards (podium, reflection, MRP tag) —
 brand-colour header band (logo + category), product cards (photo, name, weight → MRP rows), brand footer;
 page 11 is a combined price list.
@@ -14,7 +14,7 @@ page 11 is a combined price list.
 From `source/`:
 
 ```bash
-python3 build5.py catalogue.html && node render.mjs "$PWD/catalogue.html" ../Seera_MUV_Catalogue_2026.pdf
+python3 build5.py catalogue.html && node render.mjs "$PWD/catalogue.html" ../Seera_MUV_Catalogue_2026_PRINT.pdf
 ```
 
 Product cutouts were made with `remove_bg.py` (rembg, `birefnet-general` model) from `public/hero/products/`.
