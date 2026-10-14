@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import styles from "./ProductSurface.module.css";
 import journeyStyles from "./FieldJourney.module.css";
 import { AssignDistributorForm } from "./AssignDistributorForm";

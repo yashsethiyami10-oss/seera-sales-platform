@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import workspaceStyles from "@/components/seera/foundation/Workspace.module.css";
 import type { PrismaClient, UiLanguage } from "@prisma/client";
 import { analyticsScope, type AnalyticsPortal } from "@/lib/phase-10/scope";

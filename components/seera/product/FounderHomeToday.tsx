@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import styles from "./FounderHomeToday.module.css";
 
 // MASTER UX mission §1 — Founder Home's "WHAT IS HAPPENING TODAY" financial summary. Every figure

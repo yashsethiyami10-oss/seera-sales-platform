@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import { useEffect, useRef, useState } from "react";
 import styles from "./FieldJourney.module.css";
 import { queueOfflineOperation, syncClientQueue, listClientQueue } from "@/lib/phase-11/offline-client";

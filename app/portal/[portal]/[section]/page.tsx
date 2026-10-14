@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/database/client";
 import { resolveRequestIdentity } from "@/lib/foundation/request-auth";

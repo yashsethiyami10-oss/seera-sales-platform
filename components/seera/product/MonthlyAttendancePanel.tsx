@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import type { founderMonthlyAttendanceSheet } from "@/lib/sales-distribution/attendance-service";
 
 // Attendance Intelligence add-on — Section 6's PRIMARY REQUIREMENT. Grid: employees (rows) ×
