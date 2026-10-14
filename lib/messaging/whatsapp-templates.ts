@@ -59,12 +59,17 @@ export interface WhatsAppTemplateDefinition {
 export const WHATSAPP_TEMPLATES: Record<WhatsAppTemplateKey, WhatsAppTemplateDefinition> = {
   // Live-reconciled against the Founder's Seera WABA — status=APPROVED, category=MARKETING,
   // language=hi, 5 body parameters, all confirmed via Graph API (not assumed).
+  // Re-reconciled 2026-10-14 (production incident): the template was edited in Meta after 2026-09-19 and
+  // now has exactly 4 body variables. Sending the old 5 made every order message fail with HTTP 400.
+  // Live body: "नमस्ते {{1}}" / "आपके आउटलेट {{2}}" / "विज़िट दिनांक {{3}}" / "ऑर्डर अपडेट {{4}}".
+  // (Its representative line reads "{{*2}}", which Meta treats as literal text - a template typo to fix in
+  // Meta; when it is re-approved with a representative variable, update this record and the mapping.)
   RETAILER_ORDER_PLACED: {
     key: "RETAILER_ORDER_PLACED",
     metaTemplateName: "seera_retailer_order_placed",
     languageCode: "hi",
     category: "MARKETING",
-    paramLabels: ["Retailer/contact name", "Representative name", "Outlet name", "Visit date", "Order number/status"],
+    paramLabels: ["Retailer/contact name", "Outlet name", "Visit date", "Order number/status"],
     approvalStatus: "APPROVED",
   },
   RETAILER_NO_ORDER: {
