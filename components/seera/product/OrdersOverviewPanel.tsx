@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import type { OrderBucket, OrderRow } from "@/lib/sales-distribution/orders-overview-service";
 import styles from "./OrdersOverviewPanel.module.css";
 

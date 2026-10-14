@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import type { founderAttendanceSummary, founderAttendanceMonthKpis } from "@/lib/sales-distribution/attendance-service";
 import { LeaveManagementActions } from "./LeaveManagementActions";
 

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import { notFound } from "next/navigation";
 import type { PrismaClient, UiLanguage } from "@prisma/client";
 import type { SurfaceItem } from "@/lib/foundation/product-surface";

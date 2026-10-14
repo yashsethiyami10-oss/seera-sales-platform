@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import { Fragment, type ReactNode } from "react";
 import type { PrismaClient } from "@prisma/client";
 import { PageHeading } from "@/components/seera/foundation/States";

@@ -13,3 +13,20 @@ describe("portal navigation prefetch", () => {
     for (const tag of links) expect(tag).toContain("prefetch={false}");
   });
 });
+
+describe("portal in-page links do not prefetch by default", () => {
+  const { execSync } = require("node:child_process") as typeof import("node:child_process");
+  const root = path.resolve(__dirname, "../..");
+  const files = execSync("git ls-files components/seera app/portal", { cwd: root, encoding: "utf8" }).split("\n").filter((f: string) => /\.tsx?$/.test(f));
+
+  it("no portal file imports next/link directly (all go through PortalLink)", () => {
+    const offenders = files.filter((f: string) => f !== "components/seera/foundation/PortalLink.tsx" && /from ?["']next\/link["']/.test(readFileSync(path.join(root, f), "utf8")));
+    expect(offenders).toEqual([]);
+  });
+
+  it("PortalLink defaults prefetch to false and still allows an explicit opt-in", () => {
+    const src = readFileSync(path.join(root, "components/seera/foundation/PortalLink.tsx"), "utf8");
+    expect(src).toMatch(/prefetch = false/);
+    expect(src).toMatch(/<Link prefetch=\{prefetch\} \{\.\.\.props\} \/>/);
+  });
+});

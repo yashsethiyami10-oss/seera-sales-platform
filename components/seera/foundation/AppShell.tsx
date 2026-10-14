@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/seera/foundation/PortalLink";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Phase1Language, ShellNavItem } from "@/lib/foundation/phase1-ui";
