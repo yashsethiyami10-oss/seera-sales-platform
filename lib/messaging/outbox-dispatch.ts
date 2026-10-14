@@ -95,7 +95,10 @@ async function claimAndSendOne(
     return { id: event.id, status: "PUBLISHED" };
   } catch (error) {
     const attempts = event.attempts + 1;
-    const errorCode = error instanceof Error ? error.message : "SEND_FAILED";
+    // Keep Meta's own error code (e.g. 132000 = parameter count mismatch) - the HTTP status alone hid
+    // the real cause of the 2026-10-14 order-message incident.
+    const metaCode = (error as { metaCode?: unknown })?.metaCode;
+    const errorCode = typeof metaCode === "number" || typeof metaCode === "string" ? `META_${metaCode}` : error instanceof Error ? error.message : "SEND_FAILED";
     const isPermanent = classifyWhatsAppError(error) === "PERMANENT";
     if (isPermanent || attempts >= MAX_ATTEMPTS) {
       await db.outboxEvent.update({ where: { id: event.id }, data: { status: "DEAD_LETTER", attempts, lastErrorCode: errorCode, channel: "WHATSAPP" } });

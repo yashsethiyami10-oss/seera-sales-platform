@@ -155,7 +155,9 @@ export async function queueRetailerCommunication(
     // Live Meta mapping (reconciled against the Founder's Seera WABA): contact name,
     // representative name, outlet name, visit date, order number/status — in that exact order.
     case "RETAILER_ORDER_PLACED":
-      templateParams = [contactName, repName!, outletName, visitDate, sanitizeTemplateParam(orderForEvent?.orderNumber)];
+      // Live 4-variable template (see whatsapp-templates.ts): contact name, outlet name, visit date,
+      // order number - in that exact order.
+      templateParams = [contactName, outletName, visitDate, sanitizeTemplateParam(orderForEvent?.orderNumber)];
       break;
     // Not live in Meta yet (isTemplateSendable already refused to queue these above) — mapping
     // left as previously documented so the Founder can create matching templates.

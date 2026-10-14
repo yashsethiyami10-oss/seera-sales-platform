@@ -105,7 +105,8 @@ describe("WHATSAPP_TEMPLATES live Meta reconciliation", () => {
       expect(def.approvalStatus).toBe("APPROVED");
       expect(def.languageCode).toBe("hi");
       expect(def.category).toBe("MARKETING");
-      expect(def.paramLabels).toHaveLength(5);
+      // seera_retailer_order_placed was edited in Meta (re-reconciled 2026-10-14) and now has 4 variables.
+      expect(def.paramLabels).toHaveLength(key === "RETAILER_ORDER_PLACED" ? 4 : 5);
       expect(isTemplateSendable(def)).toBe(true);
     }
   });
