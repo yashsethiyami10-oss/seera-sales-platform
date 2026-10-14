@@ -141,6 +141,10 @@ export async function dispatchWhatsAppOutbox(
       status: { in: ["PENDING", "FAILED"] },
       attempts: { lt: MAX_ATTEMPTS },
       availableAt: { lte: now },
+      // A row with a provider message id was already accepted by Meta; a later FAILED on it comes
+      // from a delivery-status webhook (e.g. 131049), not a send error. Re-sending would duplicate
+      // a message Meta already processed, so only never-accepted rows are retried.
+      providerMessageId: null,
     },
     orderBy: { availableAt: "asc" },
     take: input.limit ?? 20,
@@ -171,6 +175,6 @@ export async function dispatchOutboxEventById(
   eventId: string,
 ): Promise<DispatchResult | null> {
   const event = await db.outboxEvent.findUnique({ where: { id: eventId } });
-  if (!event || !["PENDING", "FAILED"].includes(event.status) || event.attempts >= MAX_ATTEMPTS) return null;
+  if (!event || !["PENDING", "FAILED"].includes(event.status) || event.attempts >= MAX_ATTEMPTS || event.providerMessageId) return null;
   return claimAndSendOne(db, getMessagingProvider(), event, new Date());
 }

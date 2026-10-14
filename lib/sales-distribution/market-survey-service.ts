@@ -419,13 +419,15 @@ function filterWhere(filters: SurveyFilters, scope: { all: boolean; actorId: str
 }
 
 /** Display state for the follow-up message: the survey's own reason, or the live outbox status. */
-export function whatsappDisplayState(survey: { whatsappState: string }, outbox?: { status: string; lastErrorCode: string | null } | null) {
+export function whatsappDisplayState(survey: { whatsappState: string }, outbox?: { status: string; lastErrorCode: string | null; providerMessageId?: string | null } | null) {
   if (!outbox) return survey.whatsappState;
   if (outbox.status === "PENDING" || outbox.status === "PROCESSING") return "QUEUED";
   if (outbox.status === "PUBLISHED") return "SENT";
   if (outbox.status === "DELIVERED") return "DELIVERED";
   if (outbox.status === "READ") return "READ";
   if (outbox.lastErrorCode === "CONSENT_WITHDRAWN") return "CANCELLED_OPT_OUT";
+  // Meta accepted it, then reported a delivery failure via webhook: final, nothing will retry it.
+  if (outbox.providerMessageId) return "FAILED";
   return outbox.status === "FAILED" ? "RETRYING" : "FAILED";
 }
 
