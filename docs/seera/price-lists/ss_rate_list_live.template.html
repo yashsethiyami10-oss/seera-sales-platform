@@ -1,0 +1,687 @@
+<title>Seera S.S. Rate List</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+__FONTS__
+<style>
+/* Layout: a foam-and-bubbles hero (the wash), then a sticky brand switch over a scannable rate ledger. */
+:root {
+  --paper: #fbfbfd;
+  --card: #ffffff;
+  --ink: #16183d;
+  --ink-2: #44476e;
+  --muted: #7b7e9b;
+  --line: #e6e6f0;
+  --red: #e0533f;
+  --red-soft: rgba(224, 83, 63, 0.10);
+  --navy: #2e2f8f;
+  --navy-soft: rgba(46, 47, 143, 0.10);
+  --saffron: #f26b0f;
+  --green: #1d7a4e;
+  --green-soft: rgba(29, 122, 78, 0.10);
+  --foam: #eef4fb;
+  --plate: #ffffff;
+  --hero-ink: #16183d;
+  --display: "Bricolage Grotesque", "Hind", system-ui, sans-serif;
+  --body: "Hind", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0d0f29; --card: #161a3f; --ink: #eef0ff; --ink-2: #c3c6e6; --muted: #8e92b8; --line: #272b5a;
+    --red: #ff7a64; --red-soft: rgba(255, 122, 100, 0.14); --navy: #9fa2ff; --navy-soft: rgba(159, 162, 255, 0.14);
+    --saffron: #ff8a3d; --green: #4cc98a; --green-soft: rgba(76, 201, 138, 0.14); --foam: #121640; --plate: #ffffff; --hero-ink: #eef0ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0d0f29; --card: #161a3f; --ink: #eef0ff; --ink-2: #c3c6e6; --muted: #8e92b8; --line: #272b5a;
+  --red: #ff7a64; --red-soft: rgba(255, 122, 100, 0.14); --navy: #9fa2ff; --navy-soft: rgba(159, 162, 255, 0.14);
+  --saffron: #ff8a3d; --green: #4cc98a; --green-soft: rgba(76, 201, 138, 0.14); --foam: #121640; --plate: #ffffff; --hero-ink: #eef0ff;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; margin: 0; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.wrap { max-width: 960px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.num { font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------- hero ---------- */
+.hero { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--foam), var(--paper) 92%); }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hero .wrap { position: relative; z-index: 1; padding-block: 28px 84px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; }
+.eyebrow { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--saffron); font-weight: 600; }
+.plate { display: inline-block; background: var(--plate); border-radius: 18px; padding: 10px 18px 6px; box-shadow: 0 10px 30px rgba(22, 24, 61, 0.10); margin: 14px 0 18px; }
+.plate img { height: 84px; display: block; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(38px, 7vw, 68px); line-height: 0.96; letter-spacing: -0.03em; margin: 0; color: var(--hero-ink); text-wrap: balance; }
+h1 span { color: var(--red); display: block; }
+.lead { color: var(--ink-2); max-width: 46ch; margin: 14px 0 0; font-size: 17px; }
+.facts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.fact { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 14px; }
+.fact b { display: block; font-family: var(--display); font-size: 17px; font-weight: 700; }
+.fact small { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.seal { width: 150px; height: 150px; position: relative; animation: spin 26s linear infinite; flex: none; }
+.seal svg { width: 100%; height: 100%; fill: var(--red); filter: drop-shadow(0 8px 14px rgba(224, 83, 63, 0.35)); }
+.seal .t { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; color: #fff; line-height: 1.02; animation: spin 26s linear infinite reverse; }
+.seal .t small { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
+.seal .t b { font-family: var(--display); font-size: 32px; font-weight: 800; }
+.seal .t i { font-style: normal; font-size: 10px; opacity: 0.9; margin-top: 2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.wave { position: absolute; left: 0; right: 0; bottom: -1px; height: 64px; z-index: 1; }
+.wave svg { width: 100%; height: 100%; display: block; }
+.wave .w1 { fill: var(--saffron); opacity: 0.9; } .wave .w2 { fill: var(--red); } .wave .w3 { fill: var(--paper); }
+.hint { position: absolute; z-index: 2; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 70px; font-size: 12px; color: var(--muted); }
+
+/* ---------- switch ---------- */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-block: 10px; }
+.tabs { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px; position: relative; }
+.tabs button { border: 0; background: none; padding: 8px 16px; border-radius: 999px; cursor: pointer; font-weight: 600; position: relative; z-index: 1; transition: color .25s; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: #fff; }
+.tabs .pill { position: absolute; top: 4px; bottom: 4px; border-radius: 999px; background: var(--red); transition: left .35s cubic-bezier(.3,1.4,.5,1), width .35s, background .35s; }
+.search { flex: 1 1 180px; min-width: 0; }
+.search input { width: 100%; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 9px 16px; font: inherit; }
+.dl { text-decoration: none; border: 0; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 9px 16px; font-weight: 600; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.dl svg { width: 16px; height: 16px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; width: 100%; scrollbar-width: none; }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.chip svg { width: 16px; height: 16px; color: var(--red); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chip[aria-pressed="true"] svg { color: var(--paper); }
+
+/* ---------- ledger ---------- */
+main .wrap { padding-block: 22px 40px; }
+.basis { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--ink-2); font-size: 14px; margin-bottom: 14px; }
+.basis b { color: var(--ink); }
+.group { margin-top: 26px; }
+.group h2 { font-family: var(--display); font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.group h2 svg { width: 22px; height: 22px; color: var(--red); }
+.group h2 small { margin-left: auto; font-family: var(--body); letter-spacing: 0.08em; color: var(--muted); font-weight: 500; font-size: 12px; }
+.rows { display: grid; gap: 8px; }
+.row { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; cursor: pointer; text-align: left; width: 100%; transition: transform .2s, box-shadow .2s, border-color .2s; animation: rise .5s both; }
+.row:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(22, 24, 61, 0.08); border-color: color-mix(in srgb, var(--red) 40%, var(--line)); }
+@keyframes rise { from { transform: translateY(10px); opacity: 0.001; } }
+.pname { font-weight: 600; font-size: 17px; line-height: 1.25; }
+.meta { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 4px; }
+.brand { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
+.b-seera { color: var(--red); background: var(--red-soft); }
+.b-yuva { color: var(--navy); background: var(--navy-soft); }
+.b-shine { color: var(--saffron); background: color-mix(in srgb, var(--saffron) 12%, transparent); }
+.b-aatmanirbhar { color: var(--green); background: var(--green-soft); }
+.code { font-family: var(--mono); font-size: 12px; }
+.free { display: inline-flex; align-items: center; gap: 6px; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 2px 10px 2px 3px; font-size: 13px; font-weight: 600; }
+.free b { background: var(--red); color: #fff; font-size: 10px; letter-spacing: 0.12em; padding: 2px 7px; border-radius: 999px; animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--red) 18%, transparent); } }
+.price { text-align: right; }
+.price .big { font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: -0.02em; line-height: 1; }
+.price .big::before { content: "₹"; font-size: 0.6em; margin-right: 2px; color: var(--muted); font-weight: 700; }
+.price small { display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }
+.detail { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 4px; }
+.detail[hidden] { display: none; }
+.detail div { font-size: 13px; color: var(--muted); }
+.detail b { display: block; color: var(--ink); font-size: 15px; }
+.empty { color: var(--muted); padding: 30px 0; text-align: center; }
+
+/* ---------- planner ---------- */
+.prow { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto 120px; gap: 8px 16px; align-items: center; transition: border-color .2s, box-shadow .2s; }
+.prow.on { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.step { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--paper); }
+.step button { border: 0; background: none; width: 38px; height: 38px; font-size: 20px; cursor: pointer; color: var(--ink); }
+.step button:active { background: var(--red-soft); }
+.step input { width: 46px; border: 0; background: none; text-align: center; font: 600 16px var(--body); color: var(--ink); font-variant-numeric: tabular-nums; }
+.step small { font-size: 11px; color: var(--muted); padding-right: 6px; }
+.line { text-align: right; }
+.line b { font-family: var(--display); font-size: 18px; display: block; }
+.line small { color: var(--muted); font-size: 12px; }
+.prow:not(.on) .line b { color: var(--muted); }
+.cart { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+.cart-in { pointer-events: auto; max-width: 936px; margin: 0 auto; background: var(--ink); color: var(--paper); border-radius: 18px; padding: 12px 16px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 18px; align-items: center; box-shadow: 0 16px 40px rgba(22, 24, 61, 0.35); }
+.tot small { display: block; font-size: 12px; opacity: 0.7; }
+.tot b { font-family: var(--display); font-size: 26px; font-weight: 800; line-height: 1.05; }
+.tot span { display: block; font-size: 12px; opacity: 0.7; }
+.freeline { font-size: 14px; min-width: 0; }
+.freeline b { background: var(--red); color: #fff; font-size: 10px; letter-spacing: 0.12em; padding: 2px 7px; border-radius: 999px; margin-right: 6px; }
+.acts { display: flex; gap: 8px; }
+.acts button { border: 0; border-radius: 999px; padding: 10px 16px; font-weight: 600; cursor: pointer; }
+.acts .go { background: var(--red); color: #fff; }
+.acts .ghost { background: transparent; color: var(--paper); border: 1px solid color-mix(in srgb, var(--paper) 35%, transparent); }
+.cart textarea { pointer-events: auto; display: block; max-width: 936px; width: 100%; margin: 8px auto 0; height: 140px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 13px var(--mono); padding: 10px; }
+body.planning main .wrap { padding-bottom: 190px; }
+.who { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+.who h2 { font-family: var(--display); font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 10px; }
+.who-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 14px; }
+.who label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; min-width: 0; }
+.who label.wide { grid-column: 1 / -1; }
+.who input { width: 100%; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 10px; padding: 9px 12px; font: 500 15px var(--body); }
+.who input.bad { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.acts .wa { background: #1f9d55; color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+.acts .wa svg { width: 18px; height: 18px; }
+
+/* ---------- terms ---------- */
+.terms { margin-top: 38px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.term { border-top: 2px solid var(--ink); padding-top: 10px; }
+.term h3 { font-family: var(--display); font-size: 16px; margin: 0 0 4px; }
+.term p { margin: 0; color: var(--ink-2); font-size: 15px; }
+footer { border-top: 1px solid var(--line); }
+footer .wrap { padding-block: 24px 36px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; color: var(--muted); font-size: 13px; }
+footer img { height: 34px; }
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 20; }
+
+@media (max-width: 640px), (pointer: coarse) {
+  /* Phone keyboard open: hide the floating order bar so the field being typed into stays visible. */
+  body.typing .cart { display: none; }
+  body.typing main .wrap { padding-bottom: 40px; }
+}
+@media (max-width: 640px) {
+  /* The control bar scrolls away on phones instead of pinning ~200px over the content. */
+  .bar { position: static; backdrop-filter: none; }
+  .bar .wrap { flex-wrap: wrap; }
+  .tabs button { padding: 8px 12px; font-size: 15px; }
+  .dl { padding: 9px 12px; margin-left: auto; }
+  .dl span { display: none; }
+  .cart .freeline { font-size: 13px; }
+  .cart-in { box-shadow: 0 -6px 24px rgba(22, 24, 61, 0.25); gap: 4px; padding: 10px 12px; }
+  .tot span { display: none; }
+  .acts { display: grid; grid-template-columns: auto 1fr 1.6fr; gap: 6px; }
+  .acts .lg { display: none; }
+  .acts button, .acts a { justify-content: center; white-space: nowrap; }
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); padding-block: 20px 76px; }
+  .seal { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 18px; width: 96px; height: 96px; }
+  .seal .t b { font-size: 21px; } .seal .t small, .seal .t i { font-size: 8px; }
+  .plate img { height: 62px; }
+  .price .big { font-size: 22px; }
+  .hint { display: none; }
+  .eyebrow { margin-right: 104px; }
+  .prow { grid-template-columns: minmax(0, 1fr) auto; }
+  .prow > div:first-child { grid-column: 1 / -1; }
+  .step { justify-self: start; }
+  .cart-in { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 14px; }
+  .tot b { font-size: 22px; }
+  .acts .go { flex: 1; justify-content: center; }
+  .acts button, .acts a { padding: 10px 12px; }
+  .search { order: 3; flex-basis: 100%; }
+  .dl { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+
+<header class="hero" id="hero">
+  <canvas id="foam" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">Trade Price Schedule · Ref __REF__</div>
+      <div class="plate"><img src="__LOGO__" alt="Seera"></div>
+      <h1>Super Stockist <span>Rate List</span></h1>
+      <p class="lead">Company-to-Super Stockist rates for Seera, Yuva, Shine Plus, Aatmanirbhar and MUV. Tap any product for its full billing break-up.</p>
+      <div class="facts">
+        <div class="fact"><small>Effective from</small><b>__EFFECTIVE__</b></div>
+        <div class="fact"><small>Portfolio</small><b id="skuCount">48 SKUs · 5 brands</b></div>
+        <div class="fact"><small>Seera range</small><b>Net landing incl. GST</b></div>
+      </div>
+    </div>
+    <div class="seal" aria-label="Scheme: 3 pieces free per box on detergent cakes">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><polygon id="star"/></svg>
+      <div class="t"><small>Scheme</small><b>3 PCS</b><small>Free / Box</small><i>on detergent cakes</i></div>
+    </div>
+  </div>
+  <div class="hint">Tap the foam ✦</div>
+  <div class="wave" aria-hidden="true"><svg viewBox="0 0 1000 64" preserveAspectRatio="none">
+    <path class="w1" d="M0 26 C160 6 320 44 520 24 S860 0 1000 20 V64 H0Z"/>
+    <path class="w2" d="M0 38 C200 18 360 56 560 36 S870 16 1000 34 V64 H0Z"/>
+    <path class="w3" d="M0 50 C220 34 380 64 600 48 S880 34 1000 48 V64 H0Z"/>
+  </svg></div>
+</header>
+
+<nav class="bar" aria-label="Brand range">
+  <div class="wrap">
+    <div class="tabs" role="tablist">
+      <span class="pill" id="pill"></span>
+      <button role="tab" id="tab-seera" aria-selected="true" data-tab="seera">Seera Range</button>
+      <button role="tab" id="tab-muv" aria-selected="false" data-tab="muv">MUV</button>
+      <button role="tab" id="tab-plan" aria-selected="false" data-tab="plan">Order Planner</button>
+    </div>
+    <label class="search"><span hidden>Search products</span><input id="q" type="search" placeholder="Search product, pack or code…" autocomplete="off"></label>
+    <a class="dl" id="dl" aria-label="Download PDF" href="__PDF__" download="Seera_Super_Stockist_Price_List_2026.pdf" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>PDF</span></a>
+    <div class="chips" id="chips"></div>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap">
+    <div class="basis" id="basis"></div>
+    <section class="who" id="who" hidden aria-label="Super Stockist details">
+      <h2>Order from</h2>
+      <div class="who-grid">
+        <label>Firm name *<input id="ssFirm" autocomplete="organization" placeholder="e.g. Shree Ganesh Traders"></label>
+        <label>Contact person<input id="ssName" autocomplete="name" placeholder="Name"></label>
+        <label>Mobile<input id="ssPhone" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile"></label>
+        <label>Town / City<input id="ssTown" placeholder="Town, District"></label>
+        <label>Delivery required by<input id="ssDate" type="date"></label>
+        <label class="wide">Remarks<input id="ssRemarks" placeholder="Transport, delivery address, payment note…"></label>
+      </div>
+    </section>
+    <div id="list"></div>
+    <aside class="cart" id="cart" hidden aria-live="polite">
+      <div class="cart-in">
+        <div class="tot"><small id="cartCount">0 items</small><b class="num" id="cartTotal">₹0.00</b><span id="cartSplit"></span></div>
+        <div class="freeline" id="cartFree"></div>
+        <div class="acts"><button class="ghost" id="clearPlan">Clear</button><button class="ghost" id="copyPlan">Copy<span class="lg"> order</span></button><a class="go wa" id="sendWa" href="https://wa.me/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2c0 1.3.9 2.5 1 2.7.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg><span><span class="lg">Send on </span>WhatsApp</span></a></div>
+      </div>
+      <textarea id="copyBox" hidden readonly aria-label="Order text"></textarea>
+    </aside>
+
+    <section class="terms" aria-label="Commercial terms">
+      <div class="term"><h3>Validity</h3><p>Effective from __EFFECTIVE__ until superseded by a revised price list. Supersedes SEERA/SS-PL/2026/01.</p></div>
+      <div class="term"><h3>Taxes</h3><p>Seera range: Net Landing per Box / Bag includes GST @ 18% (HSN 3402). MUV: S.S. Price per piece includes GST.</p></div>
+      <div class="term"><h3>Free goods</h3><p>Every Box of Seera / Yuva cake carries 3 pcs of ₹10 MRP detergent powder free. Free goods carry no invoice value.</p></div>
+      <div class="term"><h3>Order units</h3><p>Seera, Yuva, Shine Plus, Aatmanirbhar and Bartan Tub are billed per full Box / Bag. MUV is billed per piece.</p></div>
+      <div class="term"><h3>MRP compliance</h3><p>Products must not be sold above the printed MRP at any level of the distribution chain.</p></div>
+      <div class="term"><h3>Confidential</h3><p>Issued to authorised Super Stockists only. Not to be shared with distributors, retailers or third parties.</p></div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <img src="__TAGLINE__" alt="Sarv Shaktimaan">
+    <span>Seera · Super Stockist Rate List · Ref __REF__</span>
+  </div>
+</footer>
+
+<script>
+const DATA = __DATA__;
+const ICONS = __ICONS__;
+const inr = (v) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* starburst seal */
+(() => {
+  const pts = [];
+  for (let k = 0; k < 44; k++) {
+    const r = k % 2 ? 43 : 50, a = Math.PI * k / 22 - Math.PI / 2;
+    pts.push((50 + r * Math.cos(a)).toFixed(1) + "," + (50 + r * Math.sin(a)).toFixed(1));
+  }
+  document.getElementById("star").setAttribute("points", pts.join(" "));
+})();
+document.getElementById("skuCount").textContent = `${DATA.seera.length + DATA.muv.length} SKUs · 5 brands`;
+
+/* state */
+let tab = "seera", cat = "All", query = "";
+try { const h = location.hash.slice(1); if (h === "muv" || h === "seera" || h === "plan") tab = h; } catch (e) {}
+
+const PLAN = [
+  ...DATA.seera.map((p, i) => ({ id: "s" + i, group: "Seera Range", cat: p.cat, name: p.name, brand: p.brand,
+    sub: `${p.pack} · ${p.case}`, rate: p.net, unit: p.unit, scheme: p.scheme,
+    freeCake: p.cat === "Detergent Cakes" ? 3 : 0, freeBag: /^1 pc \/ Bag$/.test(p.scheme) ? 1 : 0 })),
+  ...DATA.muv.map((p, i) => ({ id: "m" + i, group: "MUV", cat: p.cat, name: p.name, brand: "MUV", code: p.code,
+    sub: `${p.pack} · ${p.code}`, rate: p.ss, unit: "pc", scheme: "", freeCake: 0, freeBag: 0 })),
+];
+const unitLabel = (u, n) => u === "pc" ? (n === 1 ? "pc" : "pcs") : (n === 1 ? u : u + (u === "Box" ? "es" : "s"));
+let qty = {};
+try { qty = JSON.parse(localStorage.getItem("seera-ss-plan") || "{}") || {}; } catch (e) { qty = {}; }
+const saveQty = () => { try { localStorage.setItem("seera-ss-plan", JSON.stringify(qty)); } catch (e) {} };
+const ORDER_WA = "__ORDER_WA__";
+const WHO_FIELDS = ["ssFirm", "ssName", "ssPhone", "ssTown", "ssDate", "ssRemarks"];
+let who = {};
+try { who = JSON.parse(localStorage.getItem("seera-ss-who") || "{}") || {}; } catch (e) { who = {}; }
+let poRef = "";
+try { poRef = localStorage.getItem("seera-ss-po") || ""; } catch (e) {}
+function ensurePo() {
+  if (poRef) return poRef;
+  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+  poRef = `PO-SS-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+  try { localStorage.setItem("seera-ss-po", poRef); } catch (e) {}
+  return poRef;
+}
+function rupeesInWords(n) {
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const two = (x) => x < 20 ? a[x] : b[Math.floor(x / 10)] + (x % 10 ? " " + a[x % 10] : "");
+  const three = (x) => (x >= 100 ? a[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " : "") : "") + (x % 100 ? two(x % 100) : "");
+  const paisa = Math.round(n * 100);
+  let r = Math.floor(paisa / 100); const p = paisa % 100;
+  const parts = [], cr = Math.floor(r / 1e7); r %= 1e7;
+  const lk = Math.floor(r / 1e5); r %= 1e5; const th = Math.floor(r / 1000); r %= 1000;
+  if (cr) parts.push(three(cr) + " Crore"); if (lk) parts.push(two(lk) + " Lakh"); if (th) parts.push(two(th) + " Thousand"); if (r) parts.push(three(r));
+  return "Rupees " + (parts.join(" ") || "Zero") + (p ? " and " + two(p) + " Paise" : "") + " Only";
+}
+
+const brandClass = (b) => "b-" + b.split(" ")[0].toLowerCase();
+
+function seeraRow(p, i) {
+  const scheme = p.scheme ? `<span class="free"><b>FREE</b>${esc(p.scheme)}</span>` : "";
+  const mrp = p.mrp ? ` · MRP ₹${p.mrp}/pc` : "";
+  return `<button class="row" style="animation-delay:${i * 35}ms" aria-expanded="false">
+    <div><div class="pname">${esc(p.name)}</div>
+      <div class="meta"><span class="brand ${brandClass(p.brand)}">${esc(p.brand)}</span><span>${esc(p.pack)}${mrp} · ${esc(p.case)}</span>${scheme}</div></div>
+    <div class="price"><div class="big num" data-v="${p.net}">${inr(p.net)}</div><small>per ${p.unit} · ₹${inr(p.each)} ${esc(p.per)}</small></div>
+    <div class="detail" hidden>
+      <div>Basic rate<b class="num">₹${inr(p.basic)}</b></div>
+      <div>GST 18%<b class="num">₹${inr(p.gst)}</b></div>
+      <div>Net landing<b class="num">₹${inr(p.net)}</b></div>
+      <div>Effective<b class="num">₹${inr(p.each)} ${esc(p.per)}</b></div>
+    </div>
+  </button>`;
+}
+
+function muvRow(p, i) {
+  return `<button class="row" style="animation-delay:${i * 30}ms" aria-expanded="false">
+    <div><div class="pname">${esc(p.name)}</div>
+      <div class="meta"><span>${esc(p.pack)} · MRP ₹${inr(p.mrp)}</span><span class="code">${esc(p.code)}</span></div></div>
+    <div class="price"><div class="big num" data-v="${p.ss}">${inr(p.ss)}</div><small>S.S. price / pc</small></div>
+    <div class="detail" hidden>
+      <div>MRP<b class="num">₹${inr(p.mrp)}</b></div>
+      <div>S.S. price<b class="num">₹${inr(p.ss)}</b></div>
+      <div>Pack<b>${esc(p.pack)}</b></div>
+    </div>
+  </button>`;
+}
+
+function planRow(p) {
+  const n = qty[p.id] || 0;
+  const scheme = p.scheme ? `<span class="free"><b>FREE</b>${esc(p.scheme)}</span>` : "";
+  const brand = p.brand === "MUV" ? "" : `<span class="brand ${brandClass(p.brand)}">${esc(p.brand)}</span>`;
+  return `<div class="prow${n ? " on" : ""}" data-id="${p.id}">
+    <div><div class="pname">${esc(p.name)}</div><div class="meta">${brand}<span>${esc(p.sub)}</span>${scheme}</div></div>
+    <div class="step"><button data-d="-1" aria-label="One less">−</button><input id="qty-${p.id}" inputmode="numeric" value="${n}" aria-label="Quantity of ${esc(p.name)} ${esc(p.sub)}"><small>${unitLabel(p.unit, 2)}</small><button data-d="1" aria-label="One more">+</button></div>
+    <div class="line"><b class="num">₹${inr(n * p.rate)}</b><small>₹${inr(p.rate)} / ${p.unit}</small></div>
+  </div>`;
+}
+
+function renderPlan() {
+  const groups = ["All", "Seera Range", "MUV"];
+  if (!groups.includes(cat)) cat = "All";
+  document.getElementById("chips").innerHTML = groups.map((c) => `<button class="chip" aria-pressed="${c === cat}" data-cat="${c}">${c}</button>`).join("");
+  document.getElementById("basis").innerHTML = `<span><b>Plan your order</b> · Boxes / Bags for the Seera range, pieces for MUV</span><span>Totals include GST</span><span>Free goods are counted automatically</span>`;
+  const q = query.trim().toLowerCase();
+  const shown = PLAN.filter((p) => (cat === "All" || p.group === cat) && (!q || [p.name, p.sub, p.brand, p.cat].join(" ").toLowerCase().includes(q)));
+  const by = {};
+  shown.forEach((p) => (by[p.cat] = by[p.cat] || []).push(p));
+  document.getElementById("list").innerHTML = Object.entries(by).map(([c, ps]) => `<section class="group"><h2>${ICONS[c] || ""}${esc(c)}<small>${ps.length} SKU${ps.length > 1 ? "s" : ""}</small></h2><div class="rows">${ps.map(planRow).join("")}</div></section>`).join("")
+    || `<p class="empty">No product matches “${esc(query)}”.</p>`;
+  updateCart();
+}
+
+function updateCart() {
+  let total = 0, seera = 0, muv = 0, lines = 0, cakeFree = 0, bagFree = 0;
+  PLAN.forEach((p) => {
+    const n = qty[p.id] || 0; if (!n) return;
+    const v = n * p.rate; total += v; lines++;
+    if (p.group === "MUV") muv += v; else seera += v;
+    cakeFree += n * p.freeCake; bagFree += n * p.freeBag;
+  });
+  document.getElementById("cartCount").textContent = `${lines} product${lines === 1 ? "" : "s"} · incl. GST`;
+  document.getElementById("cartTotal").textContent = "₹" + inr(total);
+  document.getElementById("cartSplit").textContent = `Seera range ₹${inr(seera)} · MUV ₹${inr(muv)}`;
+  const free = [];
+  if (cakeFree) free.push(`${cakeFree} pcs ₹10 detergent powder`);
+  if (bagFree) free.push(`${bagFree} pc${bagFree > 1 ? "s" : ""} on powder bags`);
+  if (lines) refreshWa();
+  document.getElementById("cartFree").innerHTML = free.length ? `<b>FREE</b>${free.join(" + ")}` : `<span style="opacity:.7">Add cakes or powder bags to unlock free goods</span>`;
+}
+
+function orderText() {
+  const fmtDate = (d) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const line = "──────────────────";
+  const out = [`*PURCHASE ORDER — SEERA*`, line,
+    `Order Ref : ${ensurePo()}`, `Order Date: ${fmtDate(new Date())}`, `Rate List : ${DATA.ref} (effective ${DATA.effective})`, ""];
+  out.push(`*FROM (Super Stockist)*`, `Firm: ${who.ssFirm || "-"}`);
+  if (who.ssName) out.push(`Contact: ${who.ssName}`);
+  if (who.ssPhone) out.push(`Mobile: ${who.ssPhone}`);
+  if (who.ssTown) out.push(`Town: ${who.ssTown}`);
+  if (who.ssDate) out.push(`Delivery required by: ${fmtDate(new Date(who.ssDate + "T00:00:00"))}`);
+  out.push("", `*ORDER ITEMS*`);
+  let total = 0, seera = 0, muv = 0, k = 0, cakeFree = 0, cakeBoxes = 0, bagFree = 0;
+  ["Seera Range", "MUV"].forEach((g) => {
+    const items = PLAN.filter((p) => p.group === g && qty[p.id]);
+    if (!items.length) return;
+    out.push(`_${g === "MUV" ? "MUV (per piece)" : "Seera · Yuva · Shine Plus · Aatmanirbhar"}_`);
+    items.forEach((p) => {
+      const n = qty[p.id], v = n * p.rate;
+      total += v; if (g === "MUV") muv += v; else seera += v;
+      cakeFree += n * p.freeCake; if (p.freeCake) cakeBoxes += n; bagFree += n * p.freeBag;
+      out.push(`${String(++k).padStart(2, "0")}. ${p.name} — ${p.code ? p.sub.split(" · ")[0] + " [" + p.code + "]" : p.sub}`,
+        `     ${n} ${unitLabel(p.unit, n)} × ₹${inr(p.rate)} = *₹${inr(v)}*`);
+    });
+    out.push("");
+  });
+  out.push(line);
+  if (seera && muv) out.push(`Seera range: ₹${inr(seera)}`, `MUV: ₹${inr(muv)}`);
+  out.push(`*GRAND TOTAL: ₹${inr(total)}* (incl. GST)`, `_${rupeesInWords(total)}_`);
+  if (cakeFree || bagFree) {
+    out.push("", `*FREE GOODS (Scheme)*`);
+    if (cakeFree) out.push(`• ${cakeFree} pcs ₹10 Detergent Powder (on ${cakeBoxes} ${unitLabel("Box", cakeBoxes)} of cakes)`);
+    if (bagFree) out.push(`• ${bagFree} pc${bagFree > 1 ? "s" : ""} free on detergent powder bags`);
+  }
+  if (who.ssRemarks) out.push("", `*Remarks:* ${who.ssRemarks}`);
+  out.push("", `Kindly confirm the order and share the dispatch date.`, `— Sent via Seera S.S. Order Planner`);
+  return out.join("\n");
+}
+
+function orderReady() {
+  if (!Object.keys(qty).length) { toast("Add a quantity first"); return false; }
+  if (!(who.ssFirm || "").trim()) {
+    const f = document.getElementById("ssFirm"); f.classList.add("bad"); f.focus();
+    f.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+    toast("Enter your firm name to place the order"); return false;
+  }
+  return true;
+}
+
+function refreshWa() {
+  const a = document.getElementById("sendWa");
+  a.href = `https://wa.me/${ORDER_WA}?text=${encodeURIComponent(orderText())}`;
+}
+
+function render() {
+  document.body.classList.toggle("planning", tab === "plan");
+  document.getElementById("cart").hidden = tab !== "plan";
+  document.getElementById("who").hidden = tab !== "plan";
+  if (tab === "plan") { renderPlan(); movePill(); return; }
+  const items = DATA[tab];
+  const cats = ["All", ...new Set(items.map((p) => p.cat))];
+  if (!cats.includes(cat)) cat = "All";
+  document.getElementById("chips").innerHTML = cats.map((c) =>
+    `<button class="chip" aria-pressed="${c === cat}" data-cat="${esc(c)}">${c === "All" ? "" : ICONS[c] || ""}${esc(c)}</button>`).join("");
+
+  document.getElementById("basis").innerHTML = tab === "seera"
+    ? `<span><b>Billed per Box / Bag</b> · Net landing includes GST 18%</span><span>Shine Plus at <b>₹${DATA.shine}/kg</b></span><span>Tap a row for the GST break-up</span>`
+    : `<span><b>Billed per piece</b> · S.S. price includes GST</span><span>Tap a row for MRP and pack details</span><span>Earlier 2.5% MUV scheme withdrawn</span>`;
+
+  const q = query.trim().toLowerCase();
+  const shown = items.filter((p) => (cat === "All" || p.cat === cat) &&
+    (!q || [p.name, p.pack, p.code, p.brand, p.cat].join(" ").toLowerCase().includes(q)));
+  const groups = {};
+  shown.forEach((p) => (groups[p.cat] = groups[p.cat] || []).push(p));
+  let i = 0;
+  const html = Object.entries(groups).map(([c, ps]) => `<section class="group"><h2>${ICONS[c] || ""}${esc(c)}<small>${ps.length} SKU${ps.length > 1 ? "s" : ""}</small></h2>
+    <div class="rows">${ps.map((p) => (tab === "seera" ? seeraRow : muvRow)(p, i++)).join("")}</div></section>`).join("");
+  document.getElementById("list").innerHTML = html || `<p class="empty">No product matches “${esc(query)}”.</p>`;
+  countUp();
+  movePill();
+}
+
+function countUp() {
+  if (reduce) return;
+  const els = [...document.querySelectorAll(".big[data-v]")];
+  const t0 = performance.now(), dur = 650;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    els.forEach((el) => { el.textContent = inr(+el.dataset.v * e); });
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function movePill() {
+  const btn = document.getElementById("tab-" + tab), pill = document.getElementById("pill");
+  pill.style.left = btn.offsetLeft + "px";
+  pill.style.width = btn.offsetWidth + "px";
+  pill.style.background = tab === "seera" ? "var(--red)" : tab === "muv" ? "var(--navy)" : "var(--green)";
+  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+}
+
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b || b.dataset.tab === tab) return;
+  tab = b.dataset.tab; cat = "All";
+  try { history.replaceState(null, "", "#" + tab); } catch (err) {}
+  render();
+});
+document.getElementById("chips").addEventListener("click", (e) => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  cat = b.dataset.cat; render();
+});
+document.getElementById("q").addEventListener("input", (e) => { query = e.target.value; render(); });
+function setQty(id, n) {
+  n = Math.max(0, Math.min(9999, Math.floor(+n || 0)));
+  if (n) qty[id] = n; else delete qty[id];
+  saveQty();
+  const row = document.querySelector(`.prow[data-id="${id}"]`);
+  if (row) {
+    const p = PLAN.find((x) => x.id === id);
+    row.classList.toggle("on", !!n);
+    const inp = row.querySelector("input"); if (document.activeElement !== inp) inp.value = n;
+    row.querySelector(".line b").textContent = "₹" + inr(n * p.rate);
+  }
+  updateCart();
+}
+document.getElementById("list").addEventListener("click", (e) => {
+  const st = e.target.closest(".step button");
+  if (st) { const id = st.closest(".prow").dataset.id; setQty(id, (qty[id] || 0) + +st.dataset.d); return; }
+});
+document.getElementById("list").addEventListener("input", (e) => {
+  const inp = e.target.closest(".step input"); if (!inp) return;
+  inp.value = inp.value.replace(/[^0-9]/g, "");
+  setQty(inp.closest(".prow").dataset.id, inp.value);
+});
+document.getElementById("list").addEventListener("focusin", (e) => { const inp = e.target.closest(".step input"); if (inp) inp.select(); });
+WHO_FIELDS.forEach((id) => {
+  const el = document.getElementById(id);
+  el.value = who[id] || "";
+  el.addEventListener("input", () => {
+    who[id] = el.value; el.classList.remove("bad");
+    try { localStorage.setItem("seera-ss-who", JSON.stringify(who)); } catch (e) {}
+    if (Object.keys(qty).length) refreshWa();
+  });
+});
+document.getElementById("clearPlan").addEventListener("click", () => {
+  qty = {}; saveQty(); poRef = "";
+  try { localStorage.removeItem("seera-ss-po"); } catch (e) {}
+  renderPlan(); document.getElementById("copyBox").hidden = true;
+});
+document.getElementById("copyPlan").addEventListener("click", () => {
+  if (!orderReady()) return;
+  const text = orderText(), box = document.getElementById("copyBox");
+  const fallback = () => { box.hidden = false; box.value = text; box.focus(); box.select(); toast("Select all and copy the order text"); };
+  try {
+    navigator.clipboard.writeText(text).then(() => { box.hidden = true; toast(`Order ${poRef} copied`); }, fallback);
+  } catch (err) { fallback(); }
+});
+document.getElementById("sendWa").addEventListener("click", (e) => {
+  if (!orderReady()) { e.preventDefault(); return; }
+  refreshWa();
+});
+document.getElementById("list").addEventListener("click", (e) => {
+  const row = e.target.closest(".row"); if (!row) return;
+  const d = row.querySelector(".detail"), open = d.hidden;
+  d.hidden = !open; row.setAttribute("aria-expanded", String(open));
+});
+addEventListener("resize", movePill);
+document.fonts && document.fonts.ready.then(movePill);
+render();
+
+/* PDF download: plain link on the website, the viewer's save prompt inside claude.ai */
+(async () => {
+  const dl = document.getElementById("dl");
+  if (!window.claude) { dl.hidden = false; return; }
+  const downloads = await window.claude.use?.("downloads");
+  if (!downloads) return;
+  dl.hidden = false;
+  dl.addEventListener("click", async (e) => {
+    e.preventDefault();
+    try {
+      const blob = await (await fetch(dl.getAttribute("href"))).blob();
+      await downloads.save({ filename: "Seera_Super_Stockist_Price_List_2026.pdf", data: blob });
+      toast("PDF saved");
+    } catch (err) {
+      if (err && err.code === "declined") return;
+      toast(err && err.code === "rate_limited" ? "A save prompt is already open" : "PDF could not be saved here");
+    }
+  });
+})();
+/* Track when a typing field has focus (phones: the keyboard shrinks the screen). */
+const isTypingField = (el) => !!el && el.matches && el.matches("input:not([type=checkbox]):not([type=radio]), textarea") && !el.closest(".cart");
+document.addEventListener("focusin", (e) => {
+  if (!isTypingField(e.target)) return;
+  document.body.classList.add("typing");
+  setTimeout(() => { try { e.target.scrollIntoView({ block: "center" }); } catch (err) {} }, 300);
+});
+document.addEventListener("focusout", (e) => {
+  if (!isTypingField(e.target)) return;
+  setTimeout(() => { if (!isTypingField(document.activeElement)) document.body.classList.remove("typing"); }, 120);
+});
+
+function toast(msg) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+}
+
+/* foam: rising soap bubbles; tap to blow more */
+(() => {
+  const hero = document.getElementById("hero"), cv = document.getElementById("foam"), ctx = cv.getContext("2d");
+  const tints = ["224,83,63", "46,47,143", "242,107,15", "74,163,223"];
+  let W = 0, H = 0, dpr = 1, bubbles = [];
+  const make = (x, y, small) => ({
+    x: x ?? W * (0.38 + 0.62 * Math.random()), y: y ?? H + Math.random() * H,
+    r: small ? 4 + Math.random() * 10 : 5 + Math.random() * (W < 640 ? 14 : 24),
+    vy: 0.25 + Math.random() * 0.6, ph: Math.random() * 6.28, sw: 0.4 + Math.random() * 0.8,
+    c: tints[(Math.random() * tints.length) | 0], life: 1,
+  });
+  function size() {
+    dpr = Math.min(2, devicePixelRatio || 1);
+    W = hero.clientWidth; H = hero.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!bubbles.length) bubbles = Array.from({ length: Math.round(W / 60) + 6 }, () => { const b = make(); b.y = Math.random() * H; return b; });
+  }
+  function draw(b) {
+    const g = ctx.createRadialGradient(b.x - b.r * 0.35, b.y - b.r * 0.4, b.r * 0.1, b.x, b.y, b.r);
+    g.addColorStop(0, "rgba(255,255,255,0.55)");
+    g.addColorStop(0.7, `rgba(${b.c},0.08)`);
+    g.addColorStop(1, `rgba(${b.c},0.30)`);
+    ctx.globalAlpha = b.life;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.283); ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = `rgba(${b.c},0.35)`; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(b.x - b.r * 0.38, b.y - b.r * 0.42, b.r * 0.26, b.r * 0.14, -0.6, 0, 6.283);
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    bubbles.forEach((b) => {
+      b.y -= b.vy; b.x += Math.sin(t / 900 + b.ph) * b.sw * 0.4;
+      if (b.burst) { b.life -= 0.02; }
+      draw(b);
+    });
+    bubbles = bubbles.filter((b) => b.y + b.r > -10 && b.life > 0);
+    while (bubbles.length < Math.round(W / 60) + 6) bubbles.push(make());
+    requestAnimationFrame(frame);
+  }
+  size();
+  addEventListener("resize", () => { size(); });
+  if (reduce) { bubbles.forEach(draw); return; }
+  hero.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("a,button,input")) return;
+    const r = hero.getBoundingClientRect();
+    for (let k = 0; k < 9; k++) {
+      const b = make(e.clientX - r.left + (Math.random() - 0.5) * 30, e.clientY - r.top + (Math.random() - 0.5) * 20, true);
+      b.vy = 0.8 + Math.random() * 1.4; b.burst = Math.random() < 0.3; bubbles.push(b);
+    }
+  });
+  requestAnimationFrame(frame);
+})();
+</script>
