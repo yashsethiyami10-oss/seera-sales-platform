@@ -1,0 +1,418 @@
+<title>Seera S.S. Rate List</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hind:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a foam-and-bubbles hero (the wash), then a sticky brand switch over a scannable rate ledger. */
+:root {
+  --paper: #fbfbfd;
+  --card: #ffffff;
+  --ink: #16183d;
+  --ink-2: #44476e;
+  --muted: #7b7e9b;
+  --line: #e6e6f0;
+  --red: #e0533f;
+  --red-soft: rgba(224, 83, 63, 0.10);
+  --navy: #2e2f8f;
+  --navy-soft: rgba(46, 47, 143, 0.10);
+  --saffron: #f26b0f;
+  --green: #1d7a4e;
+  --green-soft: rgba(29, 122, 78, 0.10);
+  --foam: #eef4fb;
+  --plate: #ffffff;
+  --hero-ink: #16183d;
+  --display: "Bricolage Grotesque", "Hind", system-ui, sans-serif;
+  --body: "Hind", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0d0f29; --card: #161a3f; --ink: #eef0ff; --ink-2: #c3c6e6; --muted: #8e92b8; --line: #272b5a;
+    --red: #ff7a64; --red-soft: rgba(255, 122, 100, 0.14); --navy: #9fa2ff; --navy-soft: rgba(159, 162, 255, 0.14);
+    --saffron: #ff8a3d; --green: #4cc98a; --green-soft: rgba(76, 201, 138, 0.14); --foam: #121640; --plate: #ffffff; --hero-ink: #eef0ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0d0f29; --card: #161a3f; --ink: #eef0ff; --ink-2: #c3c6e6; --muted: #8e92b8; --line: #272b5a;
+  --red: #ff7a64; --red-soft: rgba(255, 122, 100, 0.14); --navy: #9fa2ff; --navy-soft: rgba(159, 162, 255, 0.14);
+  --saffron: #ff8a3d; --green: #4cc98a; --green-soft: rgba(76, 201, 138, 0.14); --foam: #121640; --plate: #ffffff; --hero-ink: #eef0ff;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; margin: 0; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.wrap { max-width: 960px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.num { font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------- hero ---------- */
+.hero { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--foam), var(--paper) 92%); }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hero .wrap { position: relative; z-index: 1; padding-block: 28px 84px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; }
+.eyebrow { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--saffron); font-weight: 600; }
+.plate { display: inline-block; background: var(--plate); border-radius: 18px; padding: 10px 18px 6px; box-shadow: 0 10px 30px rgba(22, 24, 61, 0.10); margin: 14px 0 18px; }
+.plate img { height: 84px; display: block; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(38px, 7vw, 68px); line-height: 0.96; letter-spacing: -0.03em; margin: 0; color: var(--hero-ink); text-wrap: balance; }
+h1 span { color: var(--red); display: block; }
+.lead { color: var(--ink-2); max-width: 46ch; margin: 14px 0 0; font-size: 17px; }
+.facts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.fact { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 14px; }
+.fact b { display: block; font-family: var(--display); font-size: 17px; font-weight: 700; }
+.fact small { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.seal { width: 150px; height: 150px; position: relative; animation: spin 26s linear infinite; flex: none; }
+.seal svg { width: 100%; height: 100%; fill: var(--red); filter: drop-shadow(0 8px 14px rgba(224, 83, 63, 0.35)); }
+.seal .t { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; color: #fff; line-height: 1.02; animation: spin 26s linear infinite reverse; }
+.seal .t small { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
+.seal .t b { font-family: var(--display); font-size: 32px; font-weight: 800; }
+.seal .t i { font-style: normal; font-size: 10px; opacity: 0.9; margin-top: 2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.wave { position: absolute; left: 0; right: 0; bottom: -1px; height: 64px; z-index: 1; }
+.wave svg { width: 100%; height: 100%; display: block; }
+.wave .w1 { fill: var(--saffron); opacity: 0.9; } .wave .w2 { fill: var(--red); } .wave .w3 { fill: var(--paper); }
+.hint { position: absolute; z-index: 2; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 70px; font-size: 12px; color: var(--muted); }
+
+/* ---------- switch ---------- */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-block: 10px; }
+.tabs { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px; position: relative; }
+.tabs button { border: 0; background: none; padding: 8px 16px; border-radius: 999px; cursor: pointer; font-weight: 600; position: relative; z-index: 1; transition: color .25s; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: #fff; }
+.tabs .pill { position: absolute; top: 4px; bottom: 4px; border-radius: 999px; background: var(--red); transition: left .35s cubic-bezier(.3,1.4,.5,1), width .35s, background .35s; }
+.search { flex: 1 1 180px; min-width: 0; }
+.search input { width: 100%; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 9px 16px; font: inherit; }
+.dl { border: 0; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 9px 16px; font-weight: 600; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.dl svg { width: 16px; height: 16px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; width: 100%; scrollbar-width: none; }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.chip svg { width: 16px; height: 16px; color: var(--red); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chip[aria-pressed="true"] svg { color: var(--paper); }
+
+/* ---------- ledger ---------- */
+main .wrap { padding-block: 22px 40px; }
+.basis { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--ink-2); font-size: 14px; margin-bottom: 14px; }
+.basis b { color: var(--ink); }
+.group { margin-top: 26px; }
+.group h2 { font-family: var(--display); font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.group h2 svg { width: 22px; height: 22px; color: var(--red); }
+.group h2 small { margin-left: auto; font-family: var(--body); letter-spacing: 0.08em; color: var(--muted); font-weight: 500; font-size: 12px; }
+.rows { display: grid; gap: 8px; }
+.row { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; cursor: pointer; text-align: left; width: 100%; transition: transform .2s, box-shadow .2s, border-color .2s; animation: rise .5s both; }
+.row:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(22, 24, 61, 0.08); border-color: color-mix(in srgb, var(--red) 40%, var(--line)); }
+@keyframes rise { from { transform: translateY(10px); opacity: 0.001; } }
+.pname { font-weight: 600; font-size: 17px; line-height: 1.25; }
+.meta { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 4px; }
+.brand { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
+.b-seera { color: var(--red); background: var(--red-soft); }
+.b-yuva { color: var(--navy); background: var(--navy-soft); }
+.b-shine { color: var(--saffron); background: color-mix(in srgb, var(--saffron) 12%, transparent); }
+.b-aatmanirbhar { color: var(--green); background: var(--green-soft); }
+.code { font-family: var(--mono); font-size: 12px; }
+.free { display: inline-flex; align-items: center; gap: 6px; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 2px 10px 2px 3px; font-size: 13px; font-weight: 600; }
+.free b { background: var(--red); color: #fff; font-size: 10px; letter-spacing: 0.12em; padding: 2px 7px; border-radius: 999px; animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--red) 18%, transparent); } }
+.price { text-align: right; }
+.price .big { font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: -0.02em; line-height: 1; }
+.price .big::before { content: "₹"; font-size: 0.6em; margin-right: 2px; color: var(--muted); font-weight: 700; }
+.price small { display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }
+.detail { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 4px; }
+.detail[hidden] { display: none; }
+.detail div { font-size: 13px; color: var(--muted); }
+.detail b { display: block; color: var(--ink); font-size: 15px; }
+.mbar { grid-column: 1 / -1; display: grid; gap: 4px; }
+.track { height: 8px; border-radius: 99px; background: var(--red-soft); overflow: hidden; }
+.fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--navy), var(--red)); width: var(--w); transition: width 1s cubic-bezier(.2,.8,.2,1); }
+.mbar .lab { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.mbar .lab b { color: var(--green); }
+.empty { color: var(--muted); padding: 30px 0; text-align: center; }
+
+/* ---------- terms ---------- */
+.terms { margin-top: 38px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.term { border-top: 2px solid var(--ink); padding-top: 10px; }
+.term h3 { font-family: var(--display); font-size: 16px; margin: 0 0 4px; }
+.term p { margin: 0; color: var(--ink-2); font-size: 15px; }
+footer { border-top: 1px solid var(--line); }
+footer .wrap { padding-block: 24px 36px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; color: var(--muted); font-size: 13px; }
+footer img { height: 34px; }
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 20; }
+
+@media (max-width: 640px) {
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); padding-block: 20px 76px; }
+  .seal { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 18px; width: 96px; height: 96px; }
+  .seal .t b { font-size: 21px; } .seal .t small, .seal .t i { font-size: 8px; }
+  .plate img { height: 62px; }
+  .price .big { font-size: 22px; }
+  .hint { display: none; }
+  .eyebrow { margin-right: 104px; }
+  .search { order: 3; flex-basis: 100%; }
+  .dl { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+
+<header class="hero" id="hero">
+  <canvas id="foam" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">Trade Price Schedule · Ref __REF__</div>
+      <div class="plate"><img src="__LOGO__" alt="Seera"></div>
+      <h1>Super Stockist <span>Rate List</span></h1>
+      <p class="lead">Company-to-Super Stockist rates for Seera, Yuva, Shine Plus, Aatmanirbhar and MUV. Tap any product for its full billing break-up.</p>
+      <div class="facts">
+        <div class="fact"><small>Effective from</small><b>__EFFECTIVE__</b></div>
+        <div class="fact"><small>Portfolio</small><b id="skuCount">48 SKUs · 5 brands</b></div>
+        <div class="fact"><small>Seera range</small><b>Net landing incl. GST</b></div>
+      </div>
+    </div>
+    <div class="seal" aria-label="Scheme: 3 pieces free per box on detergent cakes">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><polygon id="star"/></svg>
+      <div class="t"><small>Scheme</small><b>3 PCS</b><small>Free / Box</small><i>on detergent cakes</i></div>
+    </div>
+  </div>
+  <div class="hint">Tap the foam ✦</div>
+  <div class="wave" aria-hidden="true"><svg viewBox="0 0 1000 64" preserveAspectRatio="none">
+    <path class="w1" d="M0 26 C160 6 320 44 520 24 S860 0 1000 20 V64 H0Z"/>
+    <path class="w2" d="M0 38 C200 18 360 56 560 36 S870 16 1000 34 V64 H0Z"/>
+    <path class="w3" d="M0 50 C220 34 380 64 600 48 S880 34 1000 48 V64 H0Z"/>
+  </svg></div>
+</header>
+
+<nav class="bar" aria-label="Brand range">
+  <div class="wrap">
+    <div class="tabs" role="tablist">
+      <span class="pill" id="pill"></span>
+      <button role="tab" id="tab-seera" aria-selected="true" data-tab="seera">Seera Range</button>
+      <button role="tab" id="tab-muv" aria-selected="false" data-tab="muv">MUV</button>
+    </div>
+    <label class="search"><span hidden>Search products</span><input id="q" type="search" placeholder="Search product, pack or code…" autocomplete="off"></label>
+    <button class="dl" id="dl" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>PDF</button>
+    <div class="chips" id="chips"></div>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap">
+    <div class="basis" id="basis"></div>
+    <div id="list"></div>
+
+    <section class="terms" aria-label="Commercial terms">
+      <div class="term"><h3>Validity</h3><p>Effective from __EFFECTIVE__ until superseded by a revised price list. Supersedes SEERA/SS-PL/2026/01.</p></div>
+      <div class="term"><h3>Taxes</h3><p>Seera range: Net Landing per Box / Bag includes GST @ 18% (HSN 3402). MUV: S.S. Price per piece includes GST.</p></div>
+      <div class="term"><h3>Free goods</h3><p>Every Box of Seera / Yuva cake carries 3 pcs of ₹10 MRP detergent powder free. Free goods carry no invoice value.</p></div>
+      <div class="term"><h3>Order units</h3><p>Seera, Yuva, Shine Plus, Aatmanirbhar and Bartan Tub are billed per full Box / Bag. MUV is billed per piece.</p></div>
+      <div class="term"><h3>MRP compliance</h3><p>Products must not be sold above the printed MRP at any level of the distribution chain.</p></div>
+      <div class="term"><h3>Confidential</h3><p>Issued to authorised Super Stockists only. Not to be shared with distributors, retailers or third parties.</p></div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <img src="__TAGLINE__" alt="Sarv Shaktimaan">
+    <span>Seera · Super Stockist Rate List · Ref __REF__</span>
+  </div>
+</footer>
+
+<script>
+const DATA = __DATA__;
+const ICONS = __ICONS__;
+const inr = (v) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* starburst seal */
+(() => {
+  const pts = [];
+  for (let k = 0; k < 44; k++) {
+    const r = k % 2 ? 43 : 50, a = Math.PI * k / 22 - Math.PI / 2;
+    pts.push((50 + r * Math.cos(a)).toFixed(1) + "," + (50 + r * Math.sin(a)).toFixed(1));
+  }
+  document.getElementById("star").setAttribute("points", pts.join(" "));
+})();
+document.getElementById("skuCount").textContent = `${DATA.seera.length + DATA.muv.length} SKUs · 5 brands`;
+
+/* state */
+let tab = "seera", cat = "All", query = "";
+try { const h = location.hash.slice(1); if (h === "muv" || h === "seera") tab = h; } catch (e) {}
+
+const brandClass = (b) => "b-" + b.split(" ")[0].toLowerCase();
+
+function seeraRow(p, i) {
+  const scheme = p.scheme ? `<span class="free"><b>FREE</b>${esc(p.scheme)}</span>` : "";
+  const mrp = p.mrp ? ` · MRP ₹${p.mrp}/pc` : "";
+  return `<button class="row" style="animation-delay:${i * 35}ms" aria-expanded="false">
+    <div><div class="pname">${esc(p.name)}</div>
+      <div class="meta"><span class="brand ${brandClass(p.brand)}">${esc(p.brand)}</span><span>${esc(p.pack)}${mrp} · ${esc(p.case)}</span>${scheme}</div></div>
+    <div class="price"><div class="big num" data-v="${p.net}">${inr(p.net)}</div><small>per ${p.unit} · ₹${inr(p.each)} ${esc(p.per)}</small></div>
+    <div class="detail" hidden>
+      <div>Basic rate<b class="num">₹${inr(p.basic)}</b></div>
+      <div>GST 18%<b class="num">₹${inr(p.gst)}</b></div>
+      <div>Net landing<b class="num">₹${inr(p.net)}</b></div>
+      <div>Effective<b class="num">₹${inr(p.each)} ${esc(p.per)}</b></div>
+    </div>
+  </button>`;
+}
+
+function muvRow(p, i) {
+  const margin = (1 - p.ss / p.mrp) * 100;
+  return `<button class="row" style="animation-delay:${i * 30}ms" aria-expanded="false">
+    <div><div class="pname">${esc(p.name)}</div>
+      <div class="meta"><span>${esc(p.pack)}</span><span class="code">${esc(p.code)}</span></div></div>
+    <div class="price"><div class="big num" data-v="${p.ss}">${inr(p.ss)}</div><small>S.S. price / pc</small></div>
+    <div class="mbar"><div class="track"><div class="fill" style="--w:${(p.ss / p.mrp * 100).toFixed(1)}%"></div></div>
+      <div class="lab"><span>MRP ₹${inr(p.mrp)}</span><span>S.S. margin <b class="num">${margin.toFixed(1)}%</b></span></div></div>
+    <div class="detail" hidden>
+      <div>MRP<b class="num">₹${inr(p.mrp)}</b></div>
+      <div>S.S. price<b class="num">₹${inr(p.ss)}</b></div>
+      <div>Margin per pc<b class="num">₹${inr(p.mrp - p.ss)}</b></div>
+    </div>
+  </button>`;
+}
+
+function render() {
+  const items = DATA[tab];
+  const cats = ["All", ...new Set(items.map((p) => p.cat))];
+  if (!cats.includes(cat)) cat = "All";
+  document.getElementById("chips").innerHTML = cats.map((c) =>
+    `<button class="chip" aria-pressed="${c === cat}" data-cat="${esc(c)}">${c === "All" ? "" : ICONS[c] || ""}${esc(c)}</button>`).join("");
+
+  document.getElementById("basis").innerHTML = tab === "seera"
+    ? `<span><b>Billed per Box / Bag</b> · Net landing includes GST 18%</span><span>Shine Plus at <b>₹${DATA.shine}/kg</b></span><span>Tap a row for the GST break-up</span>`
+    : `<span><b>Billed per piece</b> · S.S. price includes GST</span><span>Bar shows S.S. price against MRP</span><span>Earlier 2.5% MUV scheme withdrawn</span>`;
+
+  const q = query.trim().toLowerCase();
+  const shown = items.filter((p) => (cat === "All" || p.cat === cat) &&
+    (!q || [p.name, p.pack, p.code, p.brand, p.cat].join(" ").toLowerCase().includes(q)));
+  const groups = {};
+  shown.forEach((p) => (groups[p.cat] = groups[p.cat] || []).push(p));
+  let i = 0;
+  const html = Object.entries(groups).map(([c, ps]) => `<section class="group"><h2>${ICONS[c] || ""}${esc(c)}<small>${ps.length} SKU${ps.length > 1 ? "s" : ""}</small></h2>
+    <div class="rows">${ps.map((p) => (tab === "seera" ? seeraRow : muvRow)(p, i++)).join("")}</div></section>`).join("");
+  document.getElementById("list").innerHTML = html || `<p class="empty">No product matches “${esc(query)}”.</p>`;
+  countUp();
+  movePill();
+}
+
+function countUp() {
+  if (reduce) return;
+  const els = [...document.querySelectorAll(".big[data-v]")];
+  const t0 = performance.now(), dur = 650;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    els.forEach((el) => { el.textContent = inr(+el.dataset.v * e); });
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function movePill() {
+  const btn = document.getElementById("tab-" + tab), pill = document.getElementById("pill");
+  pill.style.left = btn.offsetLeft + "px";
+  pill.style.width = btn.offsetWidth + "px";
+  pill.style.background = tab === "seera" ? "var(--red)" : "var(--navy)";
+  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+}
+
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b || b.dataset.tab === tab) return;
+  tab = b.dataset.tab; cat = "All";
+  try { history.replaceState(null, "", "#" + tab); } catch (err) {}
+  render();
+});
+document.getElementById("chips").addEventListener("click", (e) => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  cat = b.dataset.cat; render();
+});
+document.getElementById("q").addEventListener("input", (e) => { query = e.target.value; render(); });
+document.getElementById("list").addEventListener("click", (e) => {
+  const row = e.target.closest(".row"); if (!row) return;
+  const d = row.querySelector(".detail"), open = d.hidden;
+  d.hidden = !open; row.setAttribute("aria-expanded", String(open));
+});
+addEventListener("resize", movePill);
+document.fonts && document.fonts.ready.then(movePill);
+render();
+
+/* PDF download through the viewer's save prompt */
+(async () => {
+  const dl = document.getElementById("dl");
+  const downloads = await window.claude?.use?.("downloads");
+  if (!downloads) return;
+  dl.hidden = false;
+  dl.addEventListener("click", async () => {
+    try {
+      const blob = await (await fetch("Seera_Super_Stockist_Price_List_2026.pdf")).blob();
+      await downloads.save({ filename: "Seera_Super_Stockist_Price_List_2026.pdf", data: blob });
+      toast("PDF saved");
+    } catch (err) {
+      if (err && err.code === "declined") return;
+      toast(err && err.code === "rate_limited" ? "A save prompt is already open" : "PDF could not be saved here");
+    }
+  });
+})();
+function toast(msg) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+}
+
+/* foam: rising soap bubbles; tap to blow more */
+(() => {
+  const hero = document.getElementById("hero"), cv = document.getElementById("foam"), ctx = cv.getContext("2d");
+  const tints = ["224,83,63", "46,47,143", "242,107,15", "74,163,223"];
+  let W = 0, H = 0, dpr = 1, bubbles = [];
+  const make = (x, y, small) => ({
+    x: x ?? W * (0.38 + 0.62 * Math.random()), y: y ?? H + Math.random() * H,
+    r: small ? 4 + Math.random() * 10 : 5 + Math.random() * (W < 640 ? 14 : 24),
+    vy: 0.25 + Math.random() * 0.6, ph: Math.random() * 6.28, sw: 0.4 + Math.random() * 0.8,
+    c: tints[(Math.random() * tints.length) | 0], life: 1,
+  });
+  function size() {
+    dpr = Math.min(2, devicePixelRatio || 1);
+    W = hero.clientWidth; H = hero.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!bubbles.length) bubbles = Array.from({ length: Math.round(W / 60) + 6 }, () => { const b = make(); b.y = Math.random() * H; return b; });
+  }
+  function draw(b) {
+    const g = ctx.createRadialGradient(b.x - b.r * 0.35, b.y - b.r * 0.4, b.r * 0.1, b.x, b.y, b.r);
+    g.addColorStop(0, "rgba(255,255,255,0.55)");
+    g.addColorStop(0.7, `rgba(${b.c},0.08)`);
+    g.addColorStop(1, `rgba(${b.c},0.30)`);
+    ctx.globalAlpha = b.life;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.283); ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = `rgba(${b.c},0.35)`; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(b.x - b.r * 0.38, b.y - b.r * 0.42, b.r * 0.26, b.r * 0.14, -0.6, 0, 6.283);
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    bubbles.forEach((b) => {
+      b.y -= b.vy; b.x += Math.sin(t / 900 + b.ph) * b.sw * 0.4;
+      if (b.burst) { b.life -= 0.02; }
+      draw(b);
+    });
+    bubbles = bubbles.filter((b) => b.y + b.r > -10 && b.life > 0);
+    while (bubbles.length < Math.round(W / 60) + 6) bubbles.push(make());
+    requestAnimationFrame(frame);
+  }
+  size();
+  addEventListener("resize", () => { size(); });
+  if (reduce) { bubbles.forEach(draw); return; }
+  hero.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("a,button,input")) return;
+    const r = hero.getBoundingClientRect();
+    for (let k = 0; k < 9; k++) {
+      const b = make(e.clientX - r.left + (Math.random() - 0.5) * 30, e.clientY - r.top + (Math.random() - 0.5) * 20, true);
+      b.vy = 0.8 + Math.random() * 1.4; b.burst = Math.random() < 0.3; bubbles.push(b);
+    }
+  });
+  requestAnimationFrame(frame);
+})();
+</script>
