@@ -6,7 +6,7 @@ Edition 2026/02, effective 01 October 2026 (Founder instruction, 23 Oct 2026):
       * Detergent cakes: Rs 298.00/Box (unchanged); scheme = 3 pcs Rs 10 detergent powder free/Box.
       * Seera Detergent Powder: Rs 1,350/Bag.
       * Shine Plus: Rs 42/kg x pack kg x pcs per Bag.
-      * Bartan Tub 300 g / 500 g: Rs 540 / Rs 504 per Box (scripts/seera/seed-company-to-ss-price-list.ts).
+      * Bartan Tub 300 g / 500 g: Rs 576 (36 pcs) / Rs 528 (24 pcs) per Box.
       * Aatmanirbhar 120 g: Rs 310/Bag of 50 (MRP Rs 10/pc); Aatmanirbhar 3 kg: Rs 117/pc, 10 pcs/Bag.
   - MUV: S.S. / Distributor / Retail prices per piece from MUV Care Co. Revised Professional Rate List
     (ref MUV/RL/2026-03).
@@ -46,8 +46,8 @@ SEERA = [
     ("Detergent Powders", "SEERA-SHINEPLUS-POWDER-5KG", "Shine Plus Detergent Powder", "Shine Plus", "5 kg", "6 × 5 kg / Bag", "Bag", SHINE_PER_KG * 5 * 6, 6, "per pc", "1 pc free / Bag"),
     ("Detergent Powders", "", "Aatmanirbhar Detergent Powder", "Aatmanirbhar", "120 g<span class='per'>MRP ₹10 / pc</span>", "50 pcs / Bag", "Bag", 310.00, 50, "per pc", ""),
     ("Detergent Powders", "", "Aatmanirbhar Detergent Powder", "Aatmanirbhar", "3 kg", "10 pcs / Bag", "Bag", 117.00 * 10, 10, "per pc", ""),
-    ("Dishwash", "SEERA-BARTAN-300G", "Seera Bartan Tub", "Seera", "300 g", "36 pcs / Box", "Box", 540.00, 36, "per pc", ""),
-    ("Dishwash", "SEERA-BARTAN-500G", "Seera Bartan Tub", "Seera", "500 g", "24 pcs / Box", "Box", 504.00, 24, "per pc", ""),
+    ("Dishwash", "SEERA-BARTAN-300G", "Seera Bartan Tub", "Seera", "300 g", "36 pcs / Box", "Box", 576.00, 36, "per pc", ""),
+    ("Dishwash", "SEERA-BARTAN-500G", "Seera Bartan Tub", "Seera", "500 g", "24 pcs / Box", "Box", 528.00, 24, "per pc", ""),
 ]
 
 # category, code, product, pack, MRP, S.S. price, distributor price, retail price — per piece
