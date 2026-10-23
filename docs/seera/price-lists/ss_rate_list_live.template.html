@@ -1,8 +1,6 @@
 <title>Seera S.S. Rate List</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hind:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+__FONTS__
 <style>
 /* Layout: a foam-and-bubbles hero (the wash), then a sticky brand switch over a scannable rate ledger. */
 :root {
@@ -84,7 +82,7 @@ h1 span { color: var(--red); display: block; }
 .tabs .pill { position: absolute; top: 4px; bottom: 4px; border-radius: 999px; background: var(--red); transition: left .35s cubic-bezier(.3,1.4,.5,1), width .35s, background .35s; }
 .search { flex: 1 1 180px; min-width: 0; }
 .search input { width: 100%; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 9px 16px; font: inherit; }
-.dl { border: 0; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 9px 16px; font-weight: 600; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.dl { text-decoration: none; border: 0; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 9px 16px; font-weight: 600; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
 .dl svg { width: 16px; height: 16px; }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; width: 100%; scrollbar-width: none; }
 .chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
@@ -154,7 +152,16 @@ main .wrap { padding-block: 22px 40px; }
 .acts .go { background: var(--red); color: #fff; }
 .acts .ghost { background: transparent; color: var(--paper); border: 1px solid color-mix(in srgb, var(--paper) 35%, transparent); }
 .cart textarea { pointer-events: auto; display: block; max-width: 936px; width: 100%; margin: 8px auto 0; height: 140px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 13px var(--mono); padding: 10px; }
-body.planning main .wrap { padding-bottom: 170px; }
+body.planning main .wrap { padding-bottom: 190px; }
+.who { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+.who h2 { font-family: var(--display); font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 10px; }
+.who-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 14px; }
+.who label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; min-width: 0; }
+.who label.wide { grid-column: 1 / -1; }
+.who input { width: 100%; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 10px; padding: 9px 12px; font: 500 15px var(--body); }
+.who input.bad { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.acts .wa { background: #1f9d55; color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+.acts .wa svg { width: 18px; height: 18px; }
 
 /* ---------- terms ---------- */
 .terms { margin-top: 38px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
@@ -179,7 +186,8 @@ footer img { height: 34px; }
   .step { justify-self: start; }
   .cart-in { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 14px; }
   .tot b { font-size: 22px; }
-  .acts .go { flex: 1; }
+  .acts .go { flex: 1; justify-content: center; }
+  .acts button, .acts a { padding: 10px 12px; }
   .search { order: 3; flex-basis: 100%; }
   .dl { margin-left: auto; }
 }
@@ -224,7 +232,7 @@ footer img { height: 34px; }
       <button role="tab" id="tab-plan" aria-selected="false" data-tab="plan">Order Planner</button>
     </div>
     <label class="search"><span hidden>Search products</span><input id="q" type="search" placeholder="Search product, pack or code…" autocomplete="off"></label>
-    <button class="dl" id="dl" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>PDF</button>
+    <a class="dl" id="dl" href="__PDF__" download="Seera_Super_Stockist_Price_List_2026.pdf" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>PDF</a>
     <div class="chips" id="chips"></div>
   </div>
 </nav>
@@ -232,12 +240,23 @@ footer img { height: 34px; }
 <main>
   <div class="wrap">
     <div class="basis" id="basis"></div>
+    <section class="who" id="who" hidden aria-label="Super Stockist details">
+      <h2>Order from</h2>
+      <div class="who-grid">
+        <label>Firm name *<input id="ssFirm" autocomplete="organization" placeholder="e.g. Shree Ganesh Traders"></label>
+        <label>Contact person<input id="ssName" autocomplete="name" placeholder="Name"></label>
+        <label>Mobile<input id="ssPhone" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile"></label>
+        <label>Town / City<input id="ssTown" placeholder="Town, District"></label>
+        <label>Delivery required by<input id="ssDate" type="date"></label>
+        <label class="wide">Remarks<input id="ssRemarks" placeholder="Transport, delivery address, payment note…"></label>
+      </div>
+    </section>
     <div id="list"></div>
     <aside class="cart" id="cart" hidden aria-live="polite">
       <div class="cart-in">
         <div class="tot"><small id="cartCount">0 items</small><b class="num" id="cartTotal">₹0.00</b><span id="cartSplit"></span></div>
         <div class="freeline" id="cartFree"></div>
-        <div class="acts"><button class="ghost" id="clearPlan">Clear</button><button class="go" id="copyPlan">Copy order for WhatsApp</button></div>
+        <div class="acts"><button class="ghost" id="clearPlan">Clear</button><button class="ghost" id="copyPlan">Copy order</button><a class="go wa" id="sendWa" href="https://wa.me/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2c0 1.3.9 2.5 1 2.7.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg>Send on WhatsApp</a></div>
       </div>
       <textarea id="copyBox" hidden readonly aria-label="Order text"></textarea>
     </aside>
@@ -293,6 +312,31 @@ const unitLabel = (u, n) => u === "pc" ? (n === 1 ? "pc" : "pcs") : (n === 1 ? u
 let qty = {};
 try { qty = JSON.parse(localStorage.getItem("seera-ss-plan") || "{}") || {}; } catch (e) { qty = {}; }
 const saveQty = () => { try { localStorage.setItem("seera-ss-plan", JSON.stringify(qty)); } catch (e) {} };
+const ORDER_WA = "__ORDER_WA__";
+const WHO_FIELDS = ["ssFirm", "ssName", "ssPhone", "ssTown", "ssDate", "ssRemarks"];
+let who = {};
+try { who = JSON.parse(localStorage.getItem("seera-ss-who") || "{}") || {}; } catch (e) { who = {}; }
+let poRef = "";
+try { poRef = localStorage.getItem("seera-ss-po") || ""; } catch (e) {}
+function ensurePo() {
+  if (poRef) return poRef;
+  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+  poRef = `PO-SS-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+  try { localStorage.setItem("seera-ss-po", poRef); } catch (e) {}
+  return poRef;
+}
+function rupeesInWords(n) {
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const two = (x) => x < 20 ? a[x] : b[Math.floor(x / 10)] + (x % 10 ? " " + a[x % 10] : "");
+  const three = (x) => (x >= 100 ? a[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " : "") : "") + (x % 100 ? two(x % 100) : "");
+  const paisa = Math.round(n * 100);
+  let r = Math.floor(paisa / 100); const p = paisa % 100;
+  const parts = [], cr = Math.floor(r / 1e7); r %= 1e7;
+  const lk = Math.floor(r / 1e5); r %= 1e5; const th = Math.floor(r / 1000); r %= 1000;
+  if (cr) parts.push(three(cr) + " Crore"); if (lk) parts.push(two(lk) + " Lakh"); if (th) parts.push(two(th) + " Thousand"); if (r) parts.push(three(r));
+  return "Rupees " + (parts.join(" ") || "Zero") + (p ? " and " + two(p) + " Paise" : "") + " Only";
+}
 
 const brandClass = (b) => "b-" + b.split(" ")[0].toLowerCase();
 
@@ -367,25 +411,67 @@ function updateCart() {
   const free = [];
   if (cakeFree) free.push(`${cakeFree} pcs ₹10 detergent powder`);
   if (bagFree) free.push(`${bagFree} pc${bagFree > 1 ? "s" : ""} on powder bags`);
+  if (lines) refreshWa();
   document.getElementById("cartFree").innerHTML = free.length ? `<b>FREE</b>${free.join(" + ")}` : `<span style="opacity:.7">Add cakes or powder bags to unlock free goods</span>`;
 }
 
 function orderText() {
-  const out = [`*Seera — Super Stockist Order*`, `Rate list ${DATA.ref} · effective ${DATA.effective}`, ""];
-  let total = 0, k = 0, cakeFree = 0, bagFree = 0;
-  PLAN.forEach((p) => {
-    const n = qty[p.id] || 0; if (!n) return;
-    const v = n * p.rate; total += v; cakeFree += n * p.freeCake; bagFree += n * p.freeBag;
-    out.push(`${++k}. ${p.name} (${p.sub.split(" · ")[0]}) — ${n} ${unitLabel(p.unit, n)} × ₹${inr(p.rate)} = ₹${inr(v)}`);
+  const fmtDate = (d) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const line = "──────────────────";
+  const out = [`*PURCHASE ORDER — SEERA*`, line,
+    `Order Ref : ${ensurePo()}`, `Order Date: ${fmtDate(new Date())}`, `Rate List : ${DATA.ref} (effective ${DATA.effective})`, ""];
+  out.push(`*FROM (Super Stockist)*`, `Firm: ${who.ssFirm || "-"}`);
+  if (who.ssName) out.push(`Contact: ${who.ssName}`);
+  if (who.ssPhone) out.push(`Mobile: ${who.ssPhone}`);
+  if (who.ssTown) out.push(`Town: ${who.ssTown}`);
+  if (who.ssDate) out.push(`Delivery required by: ${fmtDate(new Date(who.ssDate + "T00:00:00"))}`);
+  out.push("", `*ORDER ITEMS*`);
+  let total = 0, seera = 0, muv = 0, k = 0, cakeFree = 0, cakeBoxes = 0, bagFree = 0;
+  ["Seera Range", "MUV"].forEach((g) => {
+    const items = PLAN.filter((p) => p.group === g && qty[p.id]);
+    if (!items.length) return;
+    out.push(`_${g === "MUV" ? "MUV (per piece)" : "Seera · Yuva · Shine Plus · Aatmanirbhar"}_`);
+    items.forEach((p) => {
+      const n = qty[p.id], v = n * p.rate;
+      total += v; if (g === "MUV") muv += v; else seera += v;
+      cakeFree += n * p.freeCake; if (p.freeCake) cakeBoxes += n; bagFree += n * p.freeBag;
+      out.push(`${String(++k).padStart(2, "0")}. ${p.name} — ${p.code ? p.sub.split(" · ")[0] + " [" + p.code + "]" : p.sub}`,
+        `     ${n} ${unitLabel(p.unit, n)} × ₹${inr(p.rate)} = *₹${inr(v)}*`);
+    });
+    out.push("");
   });
-  out.push("", `*Total: ₹${inr(total)}* (incl. GST)`);
-  if (cakeFree || bagFree) out.push(`Free goods: ${[cakeFree && cakeFree + " pcs ₹10 detergent powder", bagFree && bagFree + " pc on powder bags"].filter(Boolean).join(" + ")}`);
+  out.push(line);
+  if (seera && muv) out.push(`Seera range: ₹${inr(seera)}`, `MUV: ₹${inr(muv)}`);
+  out.push(`*GRAND TOTAL: ₹${inr(total)}* (incl. GST)`, `_${rupeesInWords(total)}_`);
+  if (cakeFree || bagFree) {
+    out.push("", `*FREE GOODS (Scheme)*`);
+    if (cakeFree) out.push(`• ${cakeFree} pcs ₹10 Detergent Powder (on ${cakeBoxes} ${unitLabel("Box", cakeBoxes)} of cakes)`);
+    if (bagFree) out.push(`• ${bagFree} pc${bagFree > 1 ? "s" : ""} free on detergent powder bags`);
+  }
+  if (who.ssRemarks) out.push("", `*Remarks:* ${who.ssRemarks}`);
+  out.push("", `Kindly confirm the order and share the dispatch date.`, `— Sent via Seera S.S. Order Planner`);
   return out.join("\n");
+}
+
+function orderReady() {
+  if (!Object.keys(qty).length) { toast("Add a quantity first"); return false; }
+  if (!(who.ssFirm || "").trim()) {
+    const f = document.getElementById("ssFirm"); f.classList.add("bad"); f.focus();
+    f.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+    toast("Enter your firm name to place the order"); return false;
+  }
+  return true;
+}
+
+function refreshWa() {
+  const a = document.getElementById("sendWa");
+  a.href = `https://wa.me/${ORDER_WA}?text=${encodeURIComponent(orderText())}`;
 }
 
 function render() {
   document.body.classList.toggle("planning", tab === "plan");
   document.getElementById("cart").hidden = tab !== "plan";
+  document.getElementById("who").hidden = tab !== "plan";
   if (tab === "plan") { renderPlan(); movePill(); return; }
   const items = DATA[tab];
   const cats = ["All", ...new Set(items.map((p) => p.cat))];
@@ -465,14 +551,31 @@ document.getElementById("list").addEventListener("input", (e) => {
   setQty(inp.closest(".prow").dataset.id, inp.value);
 });
 document.getElementById("list").addEventListener("focusin", (e) => { const inp = e.target.closest(".step input"); if (inp) inp.select(); });
-document.getElementById("clearPlan").addEventListener("click", () => { qty = {}; saveQty(); renderPlan(); document.getElementById("copyBox").hidden = true; });
+WHO_FIELDS.forEach((id) => {
+  const el = document.getElementById(id);
+  el.value = who[id] || "";
+  el.addEventListener("input", () => {
+    who[id] = el.value; el.classList.remove("bad");
+    try { localStorage.setItem("seera-ss-who", JSON.stringify(who)); } catch (e) {}
+    if (Object.keys(qty).length) refreshWa();
+  });
+});
+document.getElementById("clearPlan").addEventListener("click", () => {
+  qty = {}; saveQty(); poRef = "";
+  try { localStorage.removeItem("seera-ss-po"); } catch (e) {}
+  renderPlan(); document.getElementById("copyBox").hidden = true;
+});
 document.getElementById("copyPlan").addEventListener("click", () => {
+  if (!orderReady()) return;
   const text = orderText(), box = document.getElementById("copyBox");
-  if (!Object.keys(qty).length) { toast("Add a quantity first"); return; }
   const fallback = () => { box.hidden = false; box.value = text; box.focus(); box.select(); toast("Select all and copy the order text"); };
   try {
-    navigator.clipboard.writeText(text).then(() => { box.hidden = true; toast("Order copied — paste it in WhatsApp"); }, fallback);
+    navigator.clipboard.writeText(text).then(() => { box.hidden = true; toast(`Order ${poRef} copied`); }, fallback);
   } catch (err) { fallback(); }
+});
+document.getElementById("sendWa").addEventListener("click", (e) => {
+  if (!orderReady()) { e.preventDefault(); return; }
+  refreshWa();
 });
 document.getElementById("list").addEventListener("click", (e) => {
   const row = e.target.closest(".row"); if (!row) return;
@@ -483,15 +586,17 @@ addEventListener("resize", movePill);
 document.fonts && document.fonts.ready.then(movePill);
 render();
 
-/* PDF download through the viewer's save prompt */
+/* PDF download: plain link on the website, the viewer's save prompt inside claude.ai */
 (async () => {
   const dl = document.getElementById("dl");
-  const downloads = await window.claude?.use?.("downloads");
+  if (!window.claude) { dl.hidden = false; return; }
+  const downloads = await window.claude.use?.("downloads");
   if (!downloads) return;
   dl.hidden = false;
-  dl.addEventListener("click", async () => {
+  dl.addEventListener("click", async (e) => {
+    e.preventDefault();
     try {
-      const blob = await (await fetch("Seera_Super_Stockist_Price_List_2026.pdf")).blob();
+      const blob = await (await fetch(dl.getAttribute("href"))).blob();
       await downloads.save({ filename: "Seera_Super_Stockist_Price_List_2026.pdf", data: blob });
       toast("PDF saved");
     } catch (err) {
