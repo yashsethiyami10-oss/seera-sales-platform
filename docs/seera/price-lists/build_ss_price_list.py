@@ -1,11 +1,15 @@
 """Builds the Company -> Super Stockist price list (HTML + PDF).
 
-Rates are the governed COMPANY_TO_SS price versions from
-prisma/migrations/20260816000000_seera_catalog_restoration/migration.sql (effective 2026-01-01):
-  - Seera / Yuva / Shine Plus: stored amount is the GST-exclusive basic rate per Box/Bag
-    (GST 18%, HSN 3402, added on top — see scripts/seera/smoke-gst-price-mode-both-portals.ts).
-  - MUV: stored amount is the GST-inclusive net rate per piece.
-Pack/case configuration comes from lib/sales-distribution/company-order-catalog.ts.
+Edition 2026/02, effective 01 October 2026 (Founder instruction, 23 Oct 2026):
+  - Seera / Yuva / Shine Plus / Aatmanirbhar / Bartan Tub: every rate below is the Net Landing per
+    Box/Bag INCLUSIVE of GST 18% (HSN 3402); Basic Rate and GST are back-calculated from it.
+      * Detergent cakes: Rs 298.00/Box (unchanged); scheme = 3 pcs Rs 10 detergent powder free/Box.
+      * Seera Detergent Powder: Rs 1,350/Bag.
+      * Shine Plus: Rs 42/kg x pack kg x pcs per Bag.
+      * Bartan Tub 300 g / 500 g: Rs 540 / Rs 504 per Box (scripts/seera/seed-company-to-ss-price-list.ts).
+      * Aatmanirbhar 120 g: Rs 310/Bag of 50 (MRP Rs 10/pc); Aatmanirbhar 3 kg: Rs 117/pc, 10 pcs/Bag.
+  - MUV: S.S. / Distributor / Retail prices per piece from MUV Care Co. Revised Professional Rate List
+    (ref MUV/RL/2026-03).
 
 Usage: python3 docs/seera/price-lists/build_ss_price_list.py
 """
@@ -23,61 +27,68 @@ HTML_OUT = OUT_DIR / "Seera_Super_Stockist_Price_List_2026.html"
 PDF_OUT = OUT_DIR / "Seera_Super_Stockist_Price_List_2026.pdf"
 CHROME = "/opt/pw-browsers/chromium"
 
-EFFECTIVE = "01 January 2026"
+EFFECTIVE = "01 October 2026"
 ISSUED = "23 October 2026"
-REF = "SEERA/SS-PL/2026/01"
+REF = "SEERA/SS-PL/2026/02"
 GST = 0.18
 
-# code, product, brand, pack, case config, billing unit, basic rate (ex-GST), per-unit divisor, per-unit label, scheme
+CAKE_SCHEME = "3 pcs ₹10 Powder free / Box"
+SHINE_PER_KG = 42
+
+# category, code, product, brand, pack, case config, billing unit, net landing (incl. GST), per-unit divisor, per-unit label, scheme
 SEERA = [
-    ("SEERA-CAKE-BLUE", "Seera Blue Detergent Cake", "Seera", "180 g", "40 pcs / Box", "Box", 252.54, 40, "per pc", "1 pc free / Box"),
-    ("SEERA-CAKE-WHITE", "Seera White Detergent Cake", "Seera", "150 g", "40 pcs / Box", "Box", 252.54, 40, "per pc", "1 pc free / Box"),
-    ("SEERA-YUVA-CAKE-BLUE", "Yuva Blue Detergent Cake", "Yuva", "170 g", "40 pcs / Box", "Box", 252.54, 40, "per pc", "2 pcs free / Box"),
-    ("SEERA-POWDER-1KG", "Seera Detergent Powder", "Seera", "1 kg", "25 × 1 kg / Bag", "Bag", 1165.26, 25, "per kg", "1 pc free / Bag"),
-    ("SEERA-SHINEPLUS-POWDER-1KG", "Shine Plus Detergent Powder", "Shine Plus", "1 kg", "25 × 1 kg / Bag", "Bag", 953.39, 25, "per kg", "1 pc free / Bag"),
-    ("SEERA-SHINEPLUS-POWDER-3KG", "Shine Plus Detergent Powder", "Shine Plus", "3 kg", "10 × 3 kg / Bag", "Bag", 1144.06, 10, "per pc", "1 pc free / Bag"),
-    ("SEERA-SHINEPLUS-POWDER-5KG", "Shine Plus Detergent Powder", "Shine Plus", "5 kg", "6 × 5 kg / Bag", "Bag", 1144.06, 6, "per pc", "1 pc free / Bag"),
+    ("Detergent Cakes", "SEERA-CAKE-BLUE", "Seera Blue Detergent Cake", "Seera", "180 g", "40 pcs / Box", "Box", 298.00, 40, "per pc", CAKE_SCHEME),
+    ("Detergent Cakes", "SEERA-CAKE-WHITE", "Seera White Detergent Cake", "Seera", "150 g", "40 pcs / Box", "Box", 298.00, 40, "per pc", CAKE_SCHEME),
+    ("Detergent Cakes", "SEERA-YUVA-CAKE-BLUE", "Yuva Blue Detergent Cake", "Yuva", "170 g", "40 pcs / Box", "Box", 298.00, 40, "per pc", CAKE_SCHEME),
+    ("Detergent Powders", "SEERA-POWDER-1KG", "Seera Detergent Powder", "Seera", "1 kg", "25 × 1 kg / Bag", "Bag", 1350.00, 25, "per kg", "1 pc free / Bag"),
+    ("Detergent Powders", "SEERA-SHINEPLUS-POWDER-1KG", "Shine Plus Detergent Powder", "Shine Plus", "1 kg", "25 × 1 kg / Bag", "Bag", SHINE_PER_KG * 1 * 25, 25, "per kg", "1 pc free / Bag"),
+    ("Detergent Powders", "SEERA-SHINEPLUS-POWDER-3KG", "Shine Plus Detergent Powder", "Shine Plus", "3 kg", "10 × 3 kg / Bag", "Bag", SHINE_PER_KG * 3 * 10, 10, "per pc", "1 pc free / Bag"),
+    ("Detergent Powders", "SEERA-SHINEPLUS-POWDER-5KG", "Shine Plus Detergent Powder", "Shine Plus", "5 kg", "6 × 5 kg / Bag", "Bag", SHINE_PER_KG * 5 * 6, 6, "per pc", "1 pc free / Bag"),
+    ("Detergent Powders", "", "Aatmanirbhar Detergent Powder", "Aatmanirbhar", "120 g<span class='per'>MRP ₹10 / pc</span>", "50 pcs / Bag", "Bag", 310.00, 50, "per pc", ""),
+    ("Detergent Powders", "", "Aatmanirbhar Detergent Powder", "Aatmanirbhar", "3 kg", "10 pcs / Bag", "Bag", 117.00 * 10, 10, "per pc", ""),
+    ("Dishwash", "SEERA-BARTAN-300G", "Seera Bartan Tub", "Seera", "300 g", "36 pcs / Box", "Box", 540.00, 36, "per pc", ""),
+    ("Dishwash", "SEERA-BARTAN-500G", "Seera Bartan Tub", "Seera", "500 g", "24 pcs / Box", "Box", 504.00, 24, "per pc", ""),
 ]
 
-# category, code, product, pack, MRP, S.S. net rate (GST-inclusive)
+# category, code, product, pack, MRP, S.S. price, distributor price, retail price — per piece
 MUV = [
-    ("Fabric Care", "MUV-LD-IR-1000", "Indian Rose Liquid Detergent", "1 L", 155, 116.25),
-    ("Fabric Care", "MUV-LD-IR-5000", "Indian Rose Liquid Detergent", "5 L", 699, 524.25),
-    ("Fabric Care", "MUV-LD-CW-1000", "Cool Water Liquid Detergent", "1 L", 155, 116.25),
-    ("Fabric Care", "MUV-LD-CW-5000", "Cool Water Liquid Detergent", "5 L", 699, 524.25),
-    ("Fabric Care", "MUV-LD-LG-1000", "Lavender Garden Liquid Detergent", "1 L", 155, 116.25),
-    ("Fabric Care", "MUV-LD-LG-5000", "Lavender Garden Liquid Detergent", "5 L", 699, 524.25),
-    ("Home Care", "MUV-DG-STD-500", "Dishwash Gel", "500 ml", 85, 63.75),
-    ("Home Care", "MUV-DG-STD-1000", "Dishwash Gel", "1 L", 155, 116.25),
-    ("Home Care", "MUV-DG-STD-5000", "Dishwash Gel", "5 L", 699, 524.25),
-    ("Home Care", "MUV-FC-VM-1000", "Velvet Mist Floor Cleaner", "1 L", 150, 112.50),
-    ("Home Care", "MUV-FC-VM-5000", "Velvet Mist Floor Cleaner", "5 L", 549, 411.75),
-    ("Home Care", "MUV-FC-CWK-1000", "Cloud Walk Floor Cleaner", "1 L", 150, 112.50),
-    ("Home Care", "MUV-FC-CWK-5000", "Cloud Walk Floor Cleaner", "5 L", 549, 411.75),
-    ("Home Care", "MUV-TC-STD-500", "Toilet Cleaner", "500 ml", 80, 60.00),
-    ("Home Care", "MUV-TC-STD-5000", "Toilet Cleaner", "5 L", 400, 300.00),
-    ("Home Care", "MUV-BC-STD-500", "Bathroom Cleaner", "500 ml", 65, 48.75),
-    ("Home Care", "MUV-GC-STD-500", "Glass Cleaner", "500 ml", 90, 67.50),
-    ("Home Care", "MUV-WP-STD-1000", "White Phenyl", "1 L", 60, 45.00),
-    ("Home Care", "MUV-WP-STD-5000", "White Phenyl", "5 L", 270, 202.50),
-    ("Home Care", "MUV-BP-STD-1000", "Black Phenyl", "1 L", 80, 60.00),
-    ("Home Care", "MUV-BL-STD-500", "Bleach", "500 ml", 50, 37.50),
-    ("Car Care", "MUV-CW-STD-500", "Car Wash", "500 ml", 70, 52.50),
-    ("Car Care", "MUV-CW-STD-5000", "Car Wash", "5 L", 550, 412.50),
-    ("Hand Care", "MUV-HW-LS-250", "Lifeshield Hand Wash", "250 ml", 80, 60.00),
-    ("Hand Care", "MUV-HW-LS-500", "Lifeshield Hand Wash", "500 ml", 95, 71.25),
-    ("Hand Care", "MUV-HW-SB-500", "Silk Blossom Hand Wash", "500 ml", 95, 71.25),
-    ("Hand Care", "MUV-HW-OF-500", "Ocean Fresh Hand Wash", "500 ml", 95, 71.25),
-    ("Hand Care", "MUV-HW-OF-5000", "Ocean Fresh Hand Wash", "5 L", 725, 543.75),
-    ("Hand Care", "MUV-HW-CB-250", "Citrus Blast Hand Wash", "250 ml", 80, 60.00),
-    ("Hand Care", "MUV-HW-CB-500", "Citrus Blast Hand Wash", "500 ml", 95, 71.25),
-    ("Hand Care", "MUV-HW-CB-5000", "Citrus Blast Hand Wash", "5 L", 725, 543.75),
-    ("Body Care", "MUV-BW-CV-250", "Crimson Veil Body Wash", "250 ml", 110, 77.00),
-    ("Body Care", "MUV-BW-CV-950", "Crimson Veil Body Wash", "950 ml", 360, 252.00),
-    ("Body Care", "MUV-BW-VO-250", "Velvet Oak Body Wash", "250 ml", 110, 77.00),
-    ("Body Care", "MUV-BW-VO-950", "Velvet Oak Body Wash", "950 ml", 360, 252.00),
-    ("Body Care", "MUV-BW-MF-250", "Midnight Frost Body Wash", "250 ml", 110, 77.00),
-    ("Body Care", "MUV-BW-MF-950", "Midnight Frost Body Wash", "950 ml", 360, 252.00),
+    ("Fabric Care", "MUV-LD-IR-1000", "Indian Rose Liquid Detergent", "1 L", 155, 110.44, 118.17, 126.44),
+    ("Fabric Care", "MUV-LD-IR-5000", "Indian Rose Liquid Detergent", "5 L", 699, 498.04, 532.90, 570.20),
+    ("Fabric Care", "MUV-LD-CW-1000", "Cool Water Liquid Detergent", "1 L", 155, 110.44, 118.17, 126.44),
+    ("Fabric Care", "MUV-LD-CW-5000", "Cool Water Liquid Detergent", "5 L", 699, 498.04, 532.90, 570.20),
+    ("Fabric Care", "MUV-LD-LG-1000", "Lavender Garden Liquid Detergent", "1 L", 155, 110.44, 118.17, 126.44),
+    ("Fabric Care", "MUV-LD-LG-5000", "Lavender Garden Liquid Detergent", "5 L", 699, 498.04, 532.90, 570.20),
+    ("Home Care", "MUV-TC-STD-500", "Toilet Cleaner", "500 ml", 80, 57.00, 60.99, 65.26),
+    ("Home Care", "MUV-TC-STD-5000", "Toilet Cleaner", "5 L", 400, 285.00, 304.95, 326.30),
+    ("Home Care", "MUV-DG-STD-500", "Dishwash Gel", "500 ml", 85, 60.56, 64.80, 69.34),
+    ("Home Care", "MUV-DG-STD-1000", "Dishwash Gel", "1 L", 155, 110.44, 118.17, 126.44),
+    ("Home Care", "MUV-DG-STD-5000", "Dishwash Gel", "5 L", 699, 498.04, 532.90, 570.20),
+    ("Home Care", "MUV-BC-STD-500", "Bathroom Cleaner", "500 ml", 65, 46.31, 49.55, 53.02),
+    ("Home Care", "MUV-GC-STD-500", "Glass Cleaner", "500 ml", 90, 63.00, 67.41, 72.13),
+    ("Home Care", "MUV-FC-VM-1000", "Velvet Mist Floor Cleaner", "1 L", 150, 106.88, 114.36, 122.37),
+    ("Home Care", "MUV-FC-CWK-1000", "Cloud Walk Floor Cleaner", "1 L", 150, 106.88, 114.36, 122.37),
+    ("Home Care", "MUV-FC-VM-5000", "Velvet Mist Floor Cleaner", "5 L", 549, 391.16, 418.54, 447.84),
+    ("Home Care", "MUV-FC-CWK-5000", "Cloud Walk Floor Cleaner", "5 L", 549, 391.16, 418.54, 447.84),
+    ("Home Care", "MUV-WP-STD-1000", "Phenyl", "1 L", 60, 42.00, 44.94, 48.09),
+    ("Home Care", "MUV-WP-STD-5000", "Phenyl", "5 L", 270, 195.00, 208.65, 223.26),
+    ("Home Care", "MUV-BP-STD-1000", "Black Phenyl", "1 L", 80, 46.00, 49.22, 52.67),
+    ("Home Care", "MUV-BL-STD-500", "Bleach", "500 ml", 50, 36.00, 38.52, 41.22),
+    ("Car Care", "MUV-CW-STD-500", "Car Wash", "500 ml", 70, 49.88, 53.37, 57.11),
+    ("Car Care", "MUV-CW-STD-5000", "Car Wash", "5 L", 550, 391.88, 419.31, 448.66),
+    ("Hand Care", "MUV-HW-LS-250", "Lifeshield Hand Wash", "250 ml", 80, 57.00, 60.99, 65.26),
+    ("Hand Care", "MUV-HW-LS-500", "Lifeshield Hand Wash", "500 ml", 95, 67.69, 72.43, 77.50),
+    ("Hand Care", "MUV-HW-SB-500", "Silk Blossom Hand Wash", "500 ml", 95, 67.69, 72.43, 77.50),
+    ("Hand Care", "MUV-HW-OF-500", "Ocean Fresh Hand Wash", "500 ml", 95, 67.69, 72.43, 77.50),
+    ("Hand Care", "MUV-HW-OF-5000", "Ocean Fresh Hand Wash", "5 L", 725, 516.56, 552.72, 591.41),
+    ("Hand Care", "MUV-HW-CB-250", "Citrus Blast Hand Wash", "250 ml", 80, 57.00, 60.99, 65.26),
+    ("Hand Care", "MUV-HW-CB-500", "Citrus Blast Hand Wash", "500 ml", 95, 67.69, 72.43, 77.50),
+    ("Hand Care", "MUV-HW-CB-5000", "Citrus Blast Hand Wash", "5 L", 725, 516.56, 552.72, 591.41),
+    ("Body Care", "MUV-BW-CV-250", "Crimson Veil Body Wash", "250 ml", 110, 73.15, 78.27, 83.75),
+    ("Body Care", "MUV-BW-CV-950", "Crimson Veil Body Wash", "950 ml", 360, 239.40, 256.16, 274.09),
+    ("Body Care", "MUV-BW-VO-250", "Velvet Oak Body Wash", "250 ml", 110, 73.15, 78.27, 83.75),
+    ("Body Care", "MUV-BW-VO-950", "Velvet Oak Body Wash", "950 ml", 360, 239.40, 256.16, 274.09),
+    ("Body Care", "MUV-BW-MF-250", "Midnight Frost Body Wash", "250 ml", 110, 73.15, 78.27, 83.75),
+    ("Body Care", "MUV-BW-MF-950", "Midnight Frost Body Wash", "950 ml", 360, 239.40, 256.16, 274.09),
 ]
 
 
@@ -112,21 +123,25 @@ def image_data_uri(path: Path, max_px: int) -> str:
 
 
 def seera_rows() -> str:
-    rows = []
-    for i, (code, name, brand, pack, case, unit, basic, div, per, scheme) in enumerate(SEERA, 1):
-        gst = money(basic * GST)
-        net = money(basic + gst)
+    rows, current = [], None
+    for i, (cat, code, name, brand, pack, case, unit, net, div, per, scheme) in enumerate(SEERA, 1):
+        if cat != current:
+            current = cat
+            count = sum(1 for r in SEERA if r[0] == cat)
+            rows.append(f'<tr class="cat"><td colspan="8">{cat}<span>{count} SKUs</span></td></tr>')
+        basic = money(net / (1 + GST))
+        gst = money(net - basic)
+        scheme_chip = f'<span class="scheme">✦ {scheme}</span>' if scheme else ""
         rows.append(
             f"""<tr>
   <td class="n">{i:02d}</td>
-  <td class="prod"><div class="pn">{name}</div><div class="code"><span class="brand brand-{brand.split()[0].lower()}">{brand}</span>{code}</div></td>
+  <td class="prod"><div class="pn">{name}</div><div class="code"><span class="brand brand-{brand.split()[0].lower()}">{brand}</span>{scheme_chip}</div></td>
   <td class="c">{pack}</td>
   <td class="c">{case}</td>
   <td class="r">{inr(basic)}</td>
   <td class="r muted">{inr(gst)}</td>
   <td class="r net">{inr(net)}<span class="per">/ {unit}</span></td>
   <td class="r">{inr(money(net / div))}<span class="per">{per}</span></td>
-  <td class="c"><span class="scheme">{scheme}</span></td>
 </tr>"""
         )
     return "\n".join(rows)
@@ -134,14 +149,14 @@ def seera_rows() -> str:
 
 def muv_rows(categories: list[str]) -> str:
     rows, current = [], None
-    for i, (cat, code, name, pack, mrp, rate) in enumerate(MUV, 1):
+    for i, (cat, code, name, pack, mrp, ss, dist, retail) in enumerate(MUV, 1):
         if cat not in categories:
             continue
         if cat != current:
             current = cat
             count = sum(1 for r in MUV if r[0] == cat)
-            rows.append(f'<tr class="cat"><td colspan="7">{cat}<span>{count} SKUs</span></td></tr>')
-        margin = (1 - rate / mrp) * 100
+            rows.append(f'<tr class="cat"><td colspan="9">{cat}<span>{count} SKUs</span></td></tr>')
+        margin = (1 - ss / mrp) * 100
         rows.append(
             f"""<tr>
   <td class="n">{i:02d}</td>
@@ -149,11 +164,18 @@ def muv_rows(categories: list[str]) -> str:
   <td class="code-cell">{code}</td>
   <td class="c">{pack}</td>
   <td class="r muted">{inr(mrp)}</td>
-  <td class="r net">{inr(rate)}</td>
-  <td class="c"><span class="margin">{margin:.0f}%</span></td>
+  <td class="r net">{inr(ss)}</td>
+  <td class="r">{inr(dist)}</td>
+  <td class="r">{inr(retail)}</td>
+  <td class="c"><span class="margin">{margin:.1f}%</span></td>
 </tr>"""
         )
     return "\n".join(rows)
+
+
+def muv_margin_range() -> str:
+    margins = [(1 - r[5] / r[4]) * 100 for r in MUV]
+    return f"{min(margins):.1f}% – {max(margins):.1f}%"
 
 
 def build_html() -> str:
@@ -180,8 +202,8 @@ body {{ font-family:'Inter',sans-serif; color:var(--ink); font-size:8.6pt; line-
   background:linear-gradient(180deg,var(--red) 0 62%,var(--saffron) 62% 82%,var(--navy) 82% 100%); }}
 
 /* masthead */
-.mast {{ display:flex; align-items:center; justify-content:space-between; padding:13mm 0 7mm; border-bottom:0.6pt solid var(--ink); }}
-.mast .logo {{ height:25mm; }}
+.mast {{ display:flex; align-items:center; justify-content:space-between; padding:10mm 0 5mm; border-bottom:0.6pt solid var(--ink); }}
+.mast .logo {{ height:21mm; }}
 .mast .right {{ text-align:right; }}
 .eyebrow {{ font-size:6.8pt; letter-spacing:0.28em; text-transform:uppercase; color:var(--gold); font-weight:600; }}
 .title {{ font-family:'Inter Display','Inter',sans-serif; font-size:25pt; font-weight:700; letter-spacing:-0.02em; line-height:1.05; margin:2mm 0 1.6mm; }}
@@ -189,7 +211,7 @@ body {{ font-family:'Inter',sans-serif; color:var(--ink); font-size:8.6pt; line-
 .sub {{ color:var(--ink-2); font-size:8.4pt; }}
 
 .meta {{ display:grid; grid-template-columns:repeat(4,1fr); border-bottom:0.6pt solid var(--line); }}
-.meta div {{ padding:3.2mm 0 3.2mm 0; }}
+.meta div {{ padding:2.4mm 0; }}
 .meta div + div {{ padding-left:4mm; border-left:0.6pt solid var(--line); }}
 .meta .k {{ font-size:6.2pt; letter-spacing:0.2em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
 .meta .v {{ font-size:9pt; font-weight:600; margin-top:0.6mm; }}
@@ -205,26 +227,28 @@ body {{ font-family:'Inter',sans-serif; color:var(--ink); font-size:8.6pt; line-
 
 /* tables */
 table {{ width:100%; border-collapse:collapse; }}
-thead th {{ font-size:6.2pt; letter-spacing:0.12em; text-transform:uppercase; font-weight:700; color:var(--ink-2);
+thead th {{ font-size:5.9pt; letter-spacing:0.1em; text-transform:uppercase; font-weight:700; color:var(--ink-2);
   text-align:left; padding:2.4mm 2mm; background:var(--cream); border-top:1.2pt solid var(--ink); border-bottom:0.6pt solid var(--ink); }}
 thead th.r {{ text-align:right; }} thead th.c {{ text-align:center; }}
 thead th .u {{ display:block; letter-spacing:0.04em; text-transform:none; font-weight:500; color:var(--muted); margin-top:0.4mm; }}
-tbody td {{ padding:2.3mm 2mm; border-bottom:0.5pt solid var(--line); vertical-align:middle; }}
+tbody td {{ padding:1.7mm 1.8mm; border-bottom:0.5pt solid var(--line); vertical-align:middle; }}
 td.r {{ text-align:right; white-space:nowrap; }} td.c {{ text-align:center; white-space:nowrap; }}
 td.n {{ color:var(--muted); font-size:7.2pt; width:7mm; }}
 .pn {{ font-weight:600; font-size:8.6pt; }}
 .code {{ font-family:'DejaVu Sans Mono',monospace; font-size:6pt; color:var(--muted); margin-top:0.9mm; letter-spacing:0.02em; white-space:nowrap; }}
 .code .brand {{ font-family:'Inter',sans-serif; margin-right:1.6mm; }}
-td.prod {{ width:62mm; }}
-.code-cell {{ font-family:'DejaVu Sans Mono',monospace; font-size:6.4pt; color:var(--muted); }}
+td.prod {{ width:58mm; }}
+.code-cell {{ font-family:'DejaVu Sans Mono',monospace; font-size:5.8pt; color:var(--muted); white-space:nowrap; }}
+.muv .pn {{ font-size:8pt; white-space:nowrap; }}
 .muted {{ color:var(--muted); }}
 td.net {{ font-weight:700; font-size:9.2pt; color:var(--ink); background:rgba(224,83,63,0.055); }}
 .per {{ display:block; font-size:6pt; font-weight:500; color:var(--muted); letter-spacing:0.04em; }}
 .brand {{ font-size:5.6pt; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding:0.8mm 1.8mm; border-radius:0.8mm; white-space:nowrap; }}
 .brand-seera {{ color:var(--red); background:rgba(224,83,63,0.1); }}
 .brand-yuva {{ color:var(--navy); background:rgba(46,47,143,0.09); }}
+.brand-aatmanirbhar {{ color:#1f6b46; background:rgba(31,107,70,0.09); }}
 .brand-shine {{ color:var(--saffron); background:rgba(242,107,15,0.1); }}
-.scheme {{ font-size:6.8pt; font-weight:600; color:#1f6b46; background:rgba(31,107,70,0.08); padding:0.9mm 2mm; border-radius:3mm; white-space:nowrap; }}
+.scheme {{ display:inline-block; font-size:6.2pt; line-height:1.3; font-weight:600; color:#1f6b46; background:rgba(31,107,70,0.08); padding:0.8mm 1.8mm; border-radius:2mm; white-space:nowrap; margin-left:1.8mm; font-family:'Inter',sans-serif; }}
 .margin {{ font-weight:700; font-size:7.6pt; color:var(--navy); }}
 tr.cat td {{ background:var(--paper); font-family:'Inter Display',sans-serif; font-weight:700; font-size:7.4pt; letter-spacing:0.18em;
   text-transform:uppercase; color:var(--ink); padding:3.2mm 2mm 1.4mm; border-bottom:0.8pt solid var(--ink); }}
@@ -275,7 +299,7 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
     <div class="right">
       <div class="eyebrow">Trade Price Schedule · Edition 2026</div>
       <h1 class="title">Super Stockist<br><em>Price List</em></h1>
-      <div class="sub">Company to Super Stockist · Seera · Yuva · Shine Plus · MUV</div>
+      <div class="sub">Company to Super Stockist · Seera · Yuva · Shine Plus · Aatmanirbhar · MUV</div>
     </div>
   </header>
   <div class="meta">
@@ -285,30 +309,23 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
     <div><div class="k">Classification</div><div class="v">Confidential</div></div>
   </div>
 
-  <div class="highlights">
-    <div class="hl"><div class="k">Portfolio</div><div class="v">4 Brands · {len(SEERA) + len(MUV)} SKUs</div><div class="d">Detergent cakes, powders, liquid detergents, home, car, hand &amp; body care.</div></div>
-    <div class="hl"><div class="k">Seera Free-Goods Scheme</div><div class="v">Up to 2 pcs / Box</div><div class="d">Free goods on every Box / Bag of Seera, Yuva &amp; Shine Plus.</div></div>
-    <div class="hl"><div class="k">MUV Super Stockist Margin</div><div class="v">25% – 30% on MRP</div><div class="d">Net rates inclusive of GST — no further tax on invoice.</div></div>
-  </div>
-
   <div class="sec">
-    <div class="left"><div class="num">01</div><div><h2>Fabric Care — Seera, Yuva &amp; Shine Plus</h2><p>Detergent cakes &amp; powders · Billed per Box / Bag · HSN 3402</p></div></div>
-    <div class="tag">Rates + GST 18%</div>
+    <div class="left"><div class="num">01</div><div><h2>Seera · Yuva · Shine Plus · Aatmanirbhar</h2><p>Detergent cakes, detergent powders &amp; Bartan Tub · Billed per Box / Bag · HSN 3402</p></div></div>
+    <div class="tag">Net Landing incl. GST</div>
   </div>
   <table>
     <thead><tr>
-      <th>#</th><th>Product</th><th class="c">Pack</th><th class="c">Case Config.</th>
+      <th>#</th><th>Product · Trade Scheme</th><th class="c">Pack</th><th class="c">Case Config.</th>
       <th class="r">Basic Rate<span class="u">₹ / Box·Bag</span></th>
       <th class="r">GST 18%<span class="u">₹</span></th>
       <th class="r">Net Landing<span class="u">₹ incl. GST</span></th>
       <th class="r">Effective<span class="u">₹ incl. GST</span></th>
-      <th class="c">Trade Scheme</th>
     </tr></thead>
     <tbody>
 {seera_rows()}
     </tbody>
   </table>
-  <p class="note"><b>Billing basis:</b> Basic Rate is per full Box / Bag; GST @ 18% is charged additionally on the tax invoice. Effective rate is shown for reference only (Net Landing ÷ units per Box / Bag). Free goods are supplied as additional pieces and are not deducted from the invoice value.</p>
+  <p class="note"><b>Billing basis:</b> Net Landing is the final invoice value per full Box / Bag, inclusive of GST @ 18%; Basic Rate and GST are its tax break-up. Shine Plus is priced at ₹{SHINE_PER_KG} / kg × pack weight × pieces per Bag. Effective rate = Net Landing ÷ units per Box / Bag. <b>Cake scheme:</b> 3 pcs of ₹10 MRP detergent powder free per Box.</p>
 
   <div class="foot"><span><b>Seera</b> · Super Stockist Price List 2026</span><span>Ref {REF}</span><span>Page 1 / 4</span></div>
 </section>
@@ -318,15 +335,17 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
   <div class="rail"></div>
   <div class="runhead"><img src="{logo}" alt="Seera"><div class="t">Super Stockist Price List<span>Effective {EFFECTIVE}</span></div></div>
   <div class="sec" style="margin-top:6mm">
-    <div class="left"><div class="num">02</div><div><h2>MUV — Fabric &amp; Home Care</h2><p>Billed per piece · Net rates are inclusive of GST</p></div></div>
-    <div class="tag inc">Rates incl. GST</div>
+    <div class="left"><div class="num">02</div><div><h2>MUV — Fabric &amp; Home Care</h2><p>Billed per piece · Price structure: S.S. → Distributor → Retail</p></div></div>
+    <div class="tag inc">Per Piece</div>
   </div>
   <table class="muv">
     <thead><tr>
       <th>#</th><th>Product</th><th>SKU Code</th><th class="c">Pack</th>
       <th class="r">MRP<span class="u">₹ / pc</span></th>
-      <th class="r">S.S. Net Rate<span class="u">₹ / pc incl. GST</span></th>
-      <th class="c">Margin<span class="u">on MRP</span></th>
+      <th class="r">S.S. Price<span class="u">₹ / pc</span></th>
+      <th class="r">Distributor<span class="u">₹ / pc</span></th>
+      <th class="r">Retail<span class="u">₹ / pc</span></th>
+      <th class="c">S.S. Margin<span class="u">on MRP</span></th>
     </tr></thead>
     <tbody>
 {muv_rows(["Fabric Care", "Home Care"])}
@@ -340,21 +359,23 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
   <div class="rail"></div>
   <div class="runhead"><img src="{logo}" alt="Seera"><div class="t">Super Stockist Price List<span>Effective {EFFECTIVE}</span></div></div>
   <div class="sec" style="margin-top:6mm">
-    <div class="left"><div class="num">02</div><div><h2>MUV — Car, Hand &amp; Body Care</h2><p>Continued · Billed per piece · Net rates are inclusive of GST</p></div></div>
-    <div class="tag inc">Rates incl. GST</div>
+    <div class="left"><div class="num">02</div><div><h2>MUV — Car, Hand &amp; Body Care</h2><p>Continued · Billed per piece · Price structure: S.S. → Distributor → Retail</p></div></div>
+    <div class="tag inc">Per Piece</div>
   </div>
   <table class="muv">
     <thead><tr>
       <th>#</th><th>Product</th><th>SKU Code</th><th class="c">Pack</th>
       <th class="r">MRP<span class="u">₹ / pc</span></th>
-      <th class="r">S.S. Net Rate<span class="u">₹ / pc incl. GST</span></th>
-      <th class="c">Margin<span class="u">on MRP</span></th>
+      <th class="r">S.S. Price<span class="u">₹ / pc</span></th>
+      <th class="r">Distributor<span class="u">₹ / pc</span></th>
+      <th class="r">Retail<span class="u">₹ / pc</span></th>
+      <th class="c">S.S. Margin<span class="u">on MRP</span></th>
     </tr></thead>
     <tbody>
 {muv_rows(["Car Care", "Hand Care", "Body Care"])}
     </tbody>
   </table>
-  <p class="note"><b>Margin on MRP</b> = (MRP − S.S. Net Rate) ÷ MRP. MUV is billed per piece; no additional GST is charged over the S.S. Net Rate.</p>
+  <p class="note"><b>Price structure:</b> Distributor Price = S.S. Price + 7%; Retail Price = Distributor Price + 7%. Special S.S. landing rates apply to Phenyl 1 L &amp; 5 L, Black Phenyl 1 L, Bleach 500 ml and Glass Cleaner 500 ml. MRP is inclusive of GST. <b>S.S. Margin on MRP</b> = (MRP − S.S. Price) ÷ MRP. The earlier additional 2.5% MUV scheme stands withdrawn.</p>
   <div class="foot"><span><b>Seera</b> · Super Stockist Price List 2026</span><span>Ref {REF}</span><span>Page 3 / 4</span></div>
 </section>
 
@@ -363,15 +384,20 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
   <div class="rail"></div>
   <img class="watermark" src="{logo}" alt="">
   <div class="runhead"><img src="{logo}" alt="Seera"><div class="t">Super Stockist Price List<span>Effective {EFFECTIVE}</span></div></div>
-  <div class="sec" style="margin-top:6mm">
+  <div class="highlights">
+    <div class="hl"><div class="k">Portfolio</div><div class="v">5 Brands · {len(SEERA) + len(MUV)} SKUs</div><div class="d">Seera, Yuva, Shine Plus, Aatmanirbhar &amp; MUV — fabric, home, car, hand &amp; body care.</div></div>
+    <div class="hl"><div class="k">Detergent Cake Scheme</div><div class="v">3 pcs free / Box</div><div class="d">₹10 MRP detergent powder free on every Box of Seera &amp; Yuva cakes.</div></div>
+    <div class="hl"><div class="k">MUV Margin on MRP</div><div class="v">{muv_margin_range()}</div><div class="d">S.S. price vs printed MRP, per piece.</div></div>
+  </div>
+  <div class="sec" style="margin-top:7mm">
     <div class="left"><div class="num">03</div><div><h2>Commercial Terms &amp; Notes</h2><p>Applicable to all orders placed against this price list</p></div></div>
   </div>
   <div class="terms">
-    <div class="term"><div class="i">01</div><div><h4>Validity</h4><p>Rates are effective from {EFFECTIVE} and remain valid until superseded by a revised price list issued by the Company. This edition supersedes all earlier Super Stockist price communications.</p></div></div>
-    <div class="term"><div class="i">02</div><div><h4>Taxes — Seera, Yuva &amp; Shine Plus</h4><p>Basic Rates are exclusive of GST. GST @ 18% (HSN 3402) is charged additionally on the tax invoice. Net Landing shown is the final invoice value per Box / Bag.</p></div></div>
-    <div class="term"><div class="i">03</div><div><h4>Taxes — MUV</h4><p>S.S. Net Rates for MUV are inclusive of GST. The invoice value per piece equals the rate shown; applicable tax is included within it.</p></div></div>
-    <div class="term"><div class="i">04</div><div><h4>Order Units</h4><p>Seera, Yuva &amp; Shine Plus are billed per full Box / Bag as per the case configuration shown. MUV is billed per piece.</p></div></div>
-    <div class="term"><div class="i">05</div><div><h4>Free-Goods Scheme</h4><p>Free pieces are supplied in addition to the ordered quantity on every eligible Box / Bag. Free goods carry no invoice value and are never adjusted against the billed amount. Schemes may be revised or withdrawn by the Company with notice.</p></div></div>
+    <div class="term"><div class="i">01</div><div><h4>Validity</h4><p>Rates are effective from {EFFECTIVE} and remain valid until superseded by a revised price list issued by the Company. This edition supersedes price list SEERA/SS-PL/2026/01 and all earlier Super Stockist price communications.</p></div></div>
+    <div class="term"><div class="i">02</div><div><h4>Taxes — Seera, Yuva, Shine Plus &amp; Aatmanirbhar</h4><p>Net Landing is the final invoice value per Box / Bag, inclusive of GST @ 18% (HSN 3402). Basic Rate and GST are shown as the tax break-up of that value.</p></div></div>
+    <div class="term"><div class="i">03</div><div><h4>MUV Pricing</h4><p>MUV is billed per piece at the S.S. Price. Distributor and Retail prices are the recommended onward billing rates (+7% at each level). MRP is inclusive of GST.</p></div></div>
+    <div class="term"><div class="i">04</div><div><h4>Order Units</h4><p>Seera, Yuva, Shine Plus, Aatmanirbhar and Bartan Tub are billed per full Box / Bag as per the case configuration shown. MUV is billed per piece.</p></div></div>
+    <div class="term"><div class="i">05</div><div><h4>Free-Goods Scheme</h4><p>Every Box of Seera / Yuva detergent cake carries 3 pcs of ₹10 MRP detergent powder free. Detergent powder Bags carry the scheme shown against them. Free goods are supplied over and above the ordered quantity, carry no invoice value and may be revised or withdrawn by the Company with notice.</p></div></div>
     <div class="term"><div class="i">06</div><div><h4>MRP Compliance</h4><p>Products must not be sold above the printed MRP at any level of the distribution chain.</p></div></div>
     <div class="term"><div class="i">07</div><div><h4>Price Revisions</h4><p>The Company reserves the right to revise prices, schemes and pack configurations. Orders are billed at the rate in force on the date of invoicing.</p></div></div>
     <div class="term"><div class="i">08</div><div><h4>Confidentiality</h4><p>This document is issued exclusively to the authorised Super Stockist named below and is not to be shared with distributors, retailers or third parties.</p></div></div>
