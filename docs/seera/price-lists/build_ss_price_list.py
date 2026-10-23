@@ -8,7 +8,7 @@ Edition 2026/02, effective 01 October 2026 (Founder instruction, 23 Oct 2026):
       * Shine Plus: Rs 42/kg x pack kg x pcs per Bag.
       * Bartan Tub 300 g / 500 g: Rs 576 (36 pcs) / Rs 528 (24 pcs) per Box.
       * Aatmanirbhar 120 g: Rs 310/Bag of 50 (MRP Rs 10/pc); Aatmanirbhar 3 kg: Rs 117/pc, 10 pcs/Bag.
-  - MUV: S.S. / Distributor / Retail prices per piece from MUV Care Co. Revised Professional Rate List
+  - MUV: S.S. price per piece from MUV Care Co. Revised Professional Rate List
     (ref MUV/RL/2026-03).
 
 Usage: python3 docs/seera/price-lists/build_ss_price_list.py
@@ -50,7 +50,7 @@ SEERA = [
     ("Dishwash", "SEERA-BARTAN-500G", "Seera Bartan Tub", "Seera", "500 g", "24 pcs / Box", "Box", 528.00, 24, "per pc", ""),
 ]
 
-# category, code, product, pack, MRP, S.S. price, distributor price, retail price — per piece
+# category, code, product, pack, MRP, S.S. price — per piece (distributor/retail columns kept as source data, not printed)
 MUV = [
     ("Fabric Care", "MUV-LD-IR-1000", "Indian Rose Liquid Detergent", "1 L", 155, 110.44, 118.17, 126.44),
     ("Fabric Care", "MUV-LD-IR-5000", "Indian Rose Liquid Detergent", "5 L", 699, 498.04, 532.90, 570.20),
@@ -149,13 +149,13 @@ def seera_rows() -> str:
 
 def muv_rows(categories: list[str]) -> str:
     rows, current = [], None
-    for i, (cat, code, name, pack, mrp, ss, dist, retail) in enumerate(MUV, 1):
+    for i, (cat, code, name, pack, mrp, ss, *_onward) in enumerate(MUV, 1):
         if cat not in categories:
             continue
         if cat != current:
             current = cat
             count = sum(1 for r in MUV if r[0] == cat)
-            rows.append(f'<tr class="cat"><td colspan="9">{cat}<span>{count} SKUs</span></td></tr>')
+            rows.append(f'<tr class="cat"><td colspan="7">{cat}<span>{count} SKUs</span></td></tr>')
         margin = (1 - ss / mrp) * 100
         rows.append(
             f"""<tr>
@@ -165,8 +165,6 @@ def muv_rows(categories: list[str]) -> str:
   <td class="c">{pack}</td>
   <td class="r muted">{inr(mrp)}</td>
   <td class="r net">{inr(ss)}</td>
-  <td class="r">{inr(dist)}</td>
-  <td class="r">{inr(retail)}</td>
   <td class="c"><span class="margin">{margin:.1f}%</span></td>
 </tr>"""
         )
@@ -335,7 +333,7 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
   <div class="rail"></div>
   <div class="runhead"><img src="{logo}" alt="Seera"><div class="t">Super Stockist Price List<span>Effective {EFFECTIVE}</span></div></div>
   <div class="sec" style="margin-top:6mm">
-    <div class="left"><div class="num">02</div><div><h2>MUV — Fabric &amp; Home Care</h2><p>Billed per piece · Price structure: S.S. → Distributor → Retail</p></div></div>
+    <div class="left"><div class="num">02</div><div><h2>MUV — Fabric &amp; Home Care</h2><p>Billed per piece · S.S. Price inclusive of GST</p></div></div>
     <div class="tag inc">Per Piece</div>
   </div>
   <table class="muv">
@@ -343,8 +341,6 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
       <th>#</th><th>Product</th><th>SKU Code</th><th class="c">Pack</th>
       <th class="r">MRP<span class="u">₹ / pc</span></th>
       <th class="r">S.S. Price<span class="u">₹ / pc</span></th>
-      <th class="r">Distributor<span class="u">₹ / pc</span></th>
-      <th class="r">Retail<span class="u">₹ / pc</span></th>
       <th class="c">S.S. Margin<span class="u">on MRP</span></th>
     </tr></thead>
     <tbody>
@@ -359,7 +355,7 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
   <div class="rail"></div>
   <div class="runhead"><img src="{logo}" alt="Seera"><div class="t">Super Stockist Price List<span>Effective {EFFECTIVE}</span></div></div>
   <div class="sec" style="margin-top:6mm">
-    <div class="left"><div class="num">02</div><div><h2>MUV — Car, Hand &amp; Body Care</h2><p>Continued · Billed per piece · Price structure: S.S. → Distributor → Retail</p></div></div>
+    <div class="left"><div class="num">02</div><div><h2>MUV — Car, Hand &amp; Body Care</h2><p>Continued · Billed per piece · S.S. Price inclusive of GST</p></div></div>
     <div class="tag inc">Per Piece</div>
   </div>
   <table class="muv">
@@ -367,15 +363,13 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
       <th>#</th><th>Product</th><th>SKU Code</th><th class="c">Pack</th>
       <th class="r">MRP<span class="u">₹ / pc</span></th>
       <th class="r">S.S. Price<span class="u">₹ / pc</span></th>
-      <th class="r">Distributor<span class="u">₹ / pc</span></th>
-      <th class="r">Retail<span class="u">₹ / pc</span></th>
       <th class="c">S.S. Margin<span class="u">on MRP</span></th>
     </tr></thead>
     <tbody>
 {muv_rows(["Car Care", "Hand Care", "Body Care"])}
     </tbody>
   </table>
-  <p class="note"><b>Price structure:</b> Distributor Price = S.S. Price + 7%; Retail Price = Distributor Price + 7%. Special S.S. landing rates apply to Phenyl 1 L &amp; 5 L, Black Phenyl 1 L, Bleach 500 ml and Glass Cleaner 500 ml. MRP is inclusive of GST. <b>S.S. Margin on MRP</b> = (MRP − S.S. Price) ÷ MRP. The earlier additional 2.5% MUV scheme stands withdrawn.</p>
+  <p class="note"><b>Pricing:</b> S.S. Price is the final invoice value per piece, inclusive of GST. Special S.S. landing rates apply to Phenyl 1 L &amp; 5 L, Black Phenyl 1 L, Bleach 500 ml and Glass Cleaner 500 ml. MRP is inclusive of GST. <b>S.S. Margin on MRP</b> = (MRP − S.S. Price) ÷ MRP. The earlier additional 2.5% MUV scheme stands withdrawn.</p>
   <div class="foot"><span><b>Seera</b> · Super Stockist Price List 2026</span><span>Ref {REF}</span><span>Page 3 / 4</span></div>
 </section>
 
@@ -395,7 +389,7 @@ tr.cat td span {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.
   <div class="terms">
     <div class="term"><div class="i">01</div><div><h4>Validity</h4><p>Rates are effective from {EFFECTIVE} and remain valid until superseded by a revised price list issued by the Company. This edition supersedes price list SEERA/SS-PL/2026/01 and all earlier Super Stockist price communications.</p></div></div>
     <div class="term"><div class="i">02</div><div><h4>Taxes — Seera, Yuva, Shine Plus &amp; Aatmanirbhar</h4><p>Net Landing is the final invoice value per Box / Bag, inclusive of GST @ 18% (HSN 3402). Basic Rate and GST are shown as the tax break-up of that value.</p></div></div>
-    <div class="term"><div class="i">03</div><div><h4>MUV Pricing</h4><p>MUV is billed per piece at the S.S. Price. Distributor and Retail prices are the recommended onward billing rates (+7% at each level). MRP is inclusive of GST.</p></div></div>
+    <div class="term"><div class="i">03</div><div><h4>MUV Pricing</h4><p>MUV is billed per piece at the S.S. Price shown, which is the final invoice value inclusive of GST. MRP is inclusive of GST.</p></div></div>
     <div class="term"><div class="i">04</div><div><h4>Order Units</h4><p>Seera, Yuva, Shine Plus, Aatmanirbhar and Bartan Tub are billed per full Box / Bag as per the case configuration shown. MUV is billed per piece.</p></div></div>
     <div class="term"><div class="i">05</div><div><h4>Free-Goods Scheme</h4><p>Every Box of Seera / Yuva detergent cake carries 3 pcs of ₹10 MRP detergent powder free. Detergent powder Bags carry the scheme shown against them. Free goods are supplied over and above the ordered quantity, carry no invoice value and may be revised or withdrawn by the Company with notice.</p></div></div>
     <div class="term"><div class="i">06</div><div><h4>MRP Compliance</h4><p>Products must not be sold above the printed MRP at any level of the distribution chain.</p></div></div>
