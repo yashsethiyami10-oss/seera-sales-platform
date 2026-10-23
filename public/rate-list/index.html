@@ -244,11 +244,6 @@ main .wrap { padding-block: 22px 40px; }
 .detail[hidden] { display: none; }
 .detail div { font-size: 13px; color: var(--muted); }
 .detail b { display: block; color: var(--ink); font-size: 15px; }
-.mbar { grid-column: 1 / -1; display: grid; gap: 4px; }
-.track { height: 8px; border-radius: 99px; background: var(--red-soft); overflow: hidden; }
-.fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--navy), var(--red)); width: var(--w); transition: width 1s cubic-bezier(.2,.8,.2,1); }
-.mbar .lab { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
-.mbar .lab b { color: var(--green); }
 .empty { color: var(--muted); padding: 30px 0; text-align: center; }
 
 /* ---------- planner ---------- */
@@ -480,17 +475,14 @@ function seeraRow(p, i) {
 }
 
 function muvRow(p, i) {
-  const margin = (1 - p.ss / p.mrp) * 100;
   return `<button class="row" style="animation-delay:${i * 30}ms" aria-expanded="false">
     <div><div class="pname">${esc(p.name)}</div>
-      <div class="meta"><span>${esc(p.pack)}</span><span class="code">${esc(p.code)}</span></div></div>
+      <div class="meta"><span>${esc(p.pack)} · MRP ₹${inr(p.mrp)}</span><span class="code">${esc(p.code)}</span></div></div>
     <div class="price"><div class="big num" data-v="${p.ss}">${inr(p.ss)}</div><small>S.S. price / pc</small></div>
-    <div class="mbar"><div class="track"><div class="fill" style="--w:${(p.ss / p.mrp * 100).toFixed(1)}%"></div></div>
-      <div class="lab"><span>MRP ₹${inr(p.mrp)}</span><span>S.S. margin <b class="num">${margin.toFixed(1)}%</b></span></div></div>
     <div class="detail" hidden>
       <div>MRP<b class="num">₹${inr(p.mrp)}</b></div>
       <div>S.S. price<b class="num">₹${inr(p.ss)}</b></div>
-      <div>Margin per pc<b class="num">₹${inr(p.mrp - p.ss)}</b></div>
+      <div>Pack<b>${esc(p.pack)}</b></div>
     </div>
   </button>`;
 }
@@ -604,7 +596,7 @@ function render() {
 
   document.getElementById("basis").innerHTML = tab === "seera"
     ? `<span><b>Billed per Box / Bag</b> · Net landing includes GST 18%</span><span>Shine Plus at <b>₹${DATA.shine}/kg</b></span><span>Tap a row for the GST break-up</span>`
-    : `<span><b>Billed per piece</b> · S.S. price includes GST</span><span>Bar shows S.S. price against MRP</span><span>Earlier 2.5% MUV scheme withdrawn</span>`;
+    : `<span><b>Billed per piece</b> · S.S. price includes GST</span><span>Tap a row for MRP and pack details</span><span>Earlier 2.5% MUV scheme withdrawn</span>`;
 
   const q = query.trim().toLowerCase();
   const shown = items.filter((p) => (cat === "All" || p.cat === cat) &&

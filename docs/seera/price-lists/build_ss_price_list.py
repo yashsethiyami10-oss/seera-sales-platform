@@ -230,8 +230,7 @@ def muv_rows(categories: list[str]) -> str:
         if cat != current:
             current = cat
             count = sum(1 for r in MUV if r[0] == cat)
-            rows.append(f'<tr class="cat"><td colspan="7"><span class="ico">{ICONS[cat]}</span>{cat}<span class="cnt">{count} SKUs</span></td></tr>')
-        margin = (1 - ss / mrp) * 100
+            rows.append(f'<tr class="cat"><td colspan="6"><span class="ico">{ICONS[cat]}</span>{cat}<span class="cnt">{count} SKUs</span></td></tr>')
         rows.append(
             f"""<tr>
   <td class="n">{i:02d}</td>
@@ -240,15 +239,9 @@ def muv_rows(categories: list[str]) -> str:
   <td class="c">{pack}</td>
   <td class="r muted">{inr(mrp)}</td>
   <td class="r net">{inr(ss)}</td>
-  <td class="c"><span class="margin">{margin:.1f}%</span></td>
 </tr>"""
         )
     return "\n".join(rows)
-
-
-def muv_margin_range() -> str:
-    margins = [(1 - r[5] / r[4]) * 100 for r in MUV]
-    return f"{min(margins):.1f}% – {max(margins):.1f}%"
 
 
 def build_html() -> str:
@@ -323,7 +316,6 @@ td.net {{ font-weight:700; font-size:9.2pt; color:var(--ink); background:rgba(22
 .brand-aatmanirbhar {{ color:#1f6b46; background:rgba(31,107,70,0.09); }}
 .brand-shine {{ color:var(--saffron); background:rgba(242,107,15,0.1); }}
 .scheme {{ display:inline-block; font-size:6.2pt; line-height:1.3; font-weight:600; color:#1f6b46; background:rgba(31,107,70,0.08); padding:0.8mm 1.8mm; border-radius:2mm; white-space:nowrap; margin-left:1.8mm; font-family:'Inter',sans-serif; }}
-.margin {{ font-weight:700; font-size:7.6pt; color:var(--navy); }}
 tr.cat td {{ background:var(--paper); font-family:'Inter Display',sans-serif; font-weight:700; font-size:7.4pt; letter-spacing:0.18em;
   text-transform:uppercase; color:var(--ink); padding:3.2mm 2mm 1.4mm; border-bottom:0.8pt solid var(--ink); }}
 tr.cat td span.cnt {{ float:right; font-family:'Inter',sans-serif; letter-spacing:0.08em; font-weight:500; color:var(--muted); font-size:6.4pt; }}
@@ -469,7 +461,6 @@ tr.cat .ico svg {{ width:100%; height:100%; }}
       <th>#</th><th>Product</th><th>SKU Code</th><th class="c">Pack</th>
       <th class="r">MRP<span class="u">₹ / pc</span></th>
       <th class="r">S.S. Price<span class="u">₹ / pc</span></th>
-      <th class="c">S.S. Margin<span class="u">on MRP</span></th>
     </tr></thead>
     <tbody>
 {muv_rows(["Fabric Care", "Home Care"])}
@@ -492,13 +483,12 @@ tr.cat .ico svg {{ width:100%; height:100%; }}
       <th>#</th><th>Product</th><th>SKU Code</th><th class="c">Pack</th>
       <th class="r">MRP<span class="u">₹ / pc</span></th>
       <th class="r">S.S. Price<span class="u">₹ / pc</span></th>
-      <th class="c">S.S. Margin<span class="u">on MRP</span></th>
     </tr></thead>
     <tbody>
 {muv_rows(["Car Care", "Hand Care", "Body Care"])}
     </tbody>
   </table>
-  <p class="note"><b>Pricing:</b> S.S. Price is the final invoice value per piece, inclusive of GST. Special S.S. landing rates apply to Phenyl 1 L &amp; 5 L, Black Phenyl 1 L, Bleach 500 ml and Glass Cleaner 500 ml. MRP is inclusive of GST. <b>S.S. Margin on MRP</b> = (MRP − S.S. Price) ÷ MRP. The earlier additional 2.5% MUV scheme stands withdrawn.</p>
+  <p class="note"><b>Pricing:</b> S.S. Price is the final invoice value per piece, inclusive of GST. Special S.S. landing rates apply to Phenyl 1 L &amp; 5 L, Black Phenyl 1 L, Bleach 500 ml and Glass Cleaner 500 ml. MRP is inclusive of GST. The earlier additional 2.5% MUV scheme stands withdrawn.</p>
   <div class="foot"><span><b>Seera</b> · Super Stockist Price List 2026</span><span>Ref {REF}</span><span>Page 4 / 5</span></div>
 </section>
 
@@ -511,7 +501,7 @@ tr.cat .ico svg {{ width:100%; height:100%; }}
   <div class="highlights">
     <div class="hl"><div class="k">Portfolio</div><div class="v">5 Brands · {len(SEERA) + len(MUV)} SKUs</div><div class="d">Seera, Yuva, Shine Plus, Aatmanirbhar &amp; MUV — fabric, home, car, hand &amp; body care.</div></div>
     <div class="hl"><div class="k">Detergent Cake Scheme</div><div class="v">3 pcs free / Box</div><div class="d">₹10 MRP detergent powder free on every Box of Seera &amp; Yuva cakes.</div></div>
-    <div class="hl"><div class="k">MUV Margin on MRP</div><div class="v">{muv_margin_range()}</div><div class="d">S.S. price vs printed MRP, per piece.</div></div>
+    <div class="hl"><div class="k">MUV Range</div><div class="v">{len(MUV)} SKUs</div><div class="d">Billed per piece · S.S. price inclusive of GST.</div></div>
   </div>
   <div class="sec" style="margin-top:7mm">
     <div class="left"><div class="num">03</div><div><h2>Commercial Terms &amp; Notes</h2><p>Applicable to all orders placed against this price list</p></div></div>
