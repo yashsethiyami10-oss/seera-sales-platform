@@ -9,3 +9,17 @@
   .headerActions>a{display:none}
   .user{flex-shrink:0}
   .user summary span{display:none}}
+/* Role themes — Sales Executive gets the SEERA crimson field theme, Sales Manager a deep navy
+   command theme with a gold accent. Every other portal keeps the default navy sidebar. */
+.shell[data-portal="sales-executive"] .sidebar{background:radial-gradient(140% 70% at 0% 0%,#b91c1c 0,#7f1414 45%,#3b0d14 100%)}
+.shell[data-portal="sales-executive"] .navGroupToggle,.shell[data-portal="sales-executive"] .sidebarUserRole{color:#fecaca}
+.shell[data-portal="sales-executive"] .nav a{color:#ffe4e6}
+.shell[data-portal="sales-executive"] .nav a[data-active="true"]{background:#ffffff24;box-shadow:inset 3px 0 #fde68a}
+.shell[data-portal="sales-executive"] .footer{color:#fecaca}
+.shell[data-portal="sales-executive"] .roleBadge{background:#fdeaea;color:#991b1b}
+.shell[data-portal="sales-manager"] .sidebar{background:radial-gradient(140% 70% at 0% 0%,#1e3a8a 0,#172554 50%,#0b1023 100%)}
+.shell[data-portal="sales-manager"] .nav a[data-active="true"]{box-shadow:inset 3px 0 #fbbf24;background:#fbbf2418}
+.shell[data-portal="sales-manager"] .navGroupToggle,.shell[data-portal="sales-manager"] .sidebarUserRole{color:#fcd34d}
+.shell[data-portal="sales-manager"] .roleBadge{background:#fef3c7;color:#92400e}
+.nav a span[aria-hidden]{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#ffffff12;flex:none;transition:background-color .15s}
+.nav a[data-active="true"] span[aria-hidden]{background:#ffffff2e}

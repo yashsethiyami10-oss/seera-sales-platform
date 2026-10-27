@@ -823,10 +823,40 @@ function DashboardHeader({
           </span>
         </div>
         {dashboard.target && (
-          <div className={styles.progress} role="progressbar" aria-label={hi ? "मासिक लक्ष्य प्रगति" : "Monthly target progress"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, dashboard.target.achievementPct))}>
-            <span style={{ width: `${Math.min(100, Math.max(0, dashboard.target.achievementPct))}%` }} />
+          <div className={styles.targetCard}>
+            <div className={styles.targetHead}>
+              <span>{hi ? "मासिक लक्ष्य" : "Monthly target"}</span>
+              <strong>{dashboard.target.achievementPct}%</strong>
+            </div>
+            <div className={styles.progress} role="progressbar" aria-label={hi ? "मासिक लक्ष्य प्रगति" : "Monthly target progress"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, dashboard.target.achievementPct))}>
+              <span style={{ width: `${Math.min(100, Math.max(0, dashboard.target.achievementPct))}%` }} />
+            </div>
+            <p className={styles.meta}>
+              ₹{dashboard.target.achieved.toLocaleString("en-IN")} {hi ? "में से" : "of"} ₹{dashboard.target.value.toLocaleString("en-IN")} ·{" "}
+              {hi ? "रोज़ चाहिए" : "Need/day"} ₹{dashboard.target.requiredDailyRunRate.toLocaleString("en-IN")} · {dashboard.target.daysRemaining} {hi ? "दिन बाकी" : "days left"}
+            </p>
           </div>
         )}
+        <dl className={styles.statGrid} data-compact="true">
+          <div>
+            <dt>{hi ? "देखे गए" : "Visited"}</dt>
+            <dd>{dashboard.today.visited}<small> / {dashboard.today.planned}</small></dd>
+          </div>
+          <div>
+            <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
+            <dd>{dashboard.today.orders}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "बुक मूल्य" : "Booked value"}</dt>
+            <dd>₹{dashboard.today.bookedValue.toLocaleString("en-IN")}</dd>
+          </div>
+          <div>
+            <dt>{hi ? "फॉलो-अप देय" : "Follow-ups due"}</dt>
+            <dd>{dashboard.today.followUpsDue}</dd>
+          </div>
+        </dl>
+        <details className={styles.moreStats}>
+          <summary>{hi ? "सभी आँकड़े देखें" : "See all numbers"}</summary>
         {dashboard.target && (
           <dl className={styles.statGrid}>
             <div>
@@ -893,6 +923,7 @@ function DashboardHeader({
             <dd>{dashboard.today.distributorProspects}</dd>
           </div>
         </dl>
+        </details>
       </div>
     </section>
   );
@@ -918,6 +949,34 @@ const WORK_TYPES = [
 // re-validates the same requirement, so this list drifting would only ever produce an extra
 // server-side rejection, never a security gap.
 const DISTRIBUTOR_REQUIRED_WORK_TYPES: readonly WorkingType[] = ["RETAILING", "DISTRIBUTOR_VISIT"];
+
+// In-app replacement for window.prompt (which looks broken inside the Android WebView shell and can
+// be suppressed by some browsers). Resolves with the trimmed reason, or null when cancelled.
+type ReasonRequest = { title: string; options?: string[]; resolve: (value: string | null) => void };
+function ReasonDialog({ request, language, onDone }: { request: ReasonRequest; language: "EN" | "HI"; onDone: () => void }) {
+  const hi = language === "HI", [value, setValue] = useState(""), inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { if (!request.options?.length) inputRef.current?.focus(); }, [request]);
+  const finish = (result: string | null) => { request.resolve(result && result.trim() ? result.trim() : null); onDone(); };
+  return (
+    <div className={styles.dialogBackdrop} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) finish(null); }}>
+      <div className={styles.dialog} role="dialog" aria-modal="true" aria-label={request.title} onKeyDown={(e) => { if (e.key === "Escape") finish(null); }}>
+        <h3>{request.title}</h3>
+        {request.options?.length ? (
+          <div className={styles.reasonChips}>
+            {request.options.map((option) => (
+              <button type="button" key={option} data-active={value === option} onClick={() => setValue(option)}>{option}</button>
+            ))}
+          </div>
+        ) : null}
+        <textarea ref={inputRef} rows={2} value={value} onChange={(e) => setValue(e.target.value)} placeholder={hi ? "कारण लिखें…" : "Type a reason…"} />
+        <div className={styles.dialogActions}>
+          <button type="button" className={styles.secondary} onClick={() => finish(null)}>{hi ? "रद्द करें" : "Cancel"}</button>
+          <button type="button" className={styles.primary} disabled={!value.trim()} onClick={() => finish(value)}>{hi ? "पुष्टि करें" : "Confirm"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function FieldJourney({
   language,
@@ -962,6 +1021,7 @@ export function FieldJourney({
     checkoutSubmittingRef = useRef(false),
     dayActionSubmittingRef = useRef(false),
     [busy, setBusy] = useState(false),
+    [reasonRequest, setReasonRequest] = useState<ReasonRequest | null>(null),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
     [mode, setMode] = useState<"ORDER" | "COLLECTION" | "PHOTO" | "FOLLOW_UP">(
@@ -1466,7 +1526,7 @@ export function FieldJourney({
     setGpsStatus(status);
     let gpsExceptionReason: string | undefined;
     if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
-      gpsExceptionReason = window.prompt(hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason") ?? undefined;
+      gpsExceptionReason = (await askReason(hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason")) ?? undefined;
       if (!gpsExceptionReason) {
         setBusy(false);
         return { success: false as const, code: "GPS_REASON_REQUIRED", message: "GPS reason was not provided." };
@@ -1586,7 +1646,14 @@ export function FieldJourney({
     else closeCustomerProfile();
   };
 
-  const header = <DashboardHeader language={language} dashboard={dashboard} />;
+  const askReason = (title: string, options?: string[]) =>
+    new Promise<string | null>((resolve) => setReasonRequest({ title, options, resolve }));
+  const header = (
+    <>
+      <DashboardHeader language={language} dashboard={dashboard} />
+      {reasonRequest && <ReasonDialog request={reasonRequest} language={language} onDone={() => setReasonRequest(null)} />}
+    </>
+  );
 
   // ---------------------------------------------------------------- Start Day ----
   if (!session)
@@ -1758,11 +1825,11 @@ export function FieldJourney({
               let startExceptionReason: string | undefined;
               if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
                 startExceptionReason =
-                  window.prompt(
+                  (await askReason(
                     hi
                       ? "GPS उपलब्ध नहीं है। दिन शुरू करने का कारण दर्ज करें।"
                       : "GPS is not available. Enter a reason to start the day anyway.",
-                  ) ?? undefined;
+                  )) ?? undefined;
                 if (!startExceptionReason) {
                   dayActionSubmittingRef.current = false;
                   setBusy(false);
@@ -2134,20 +2201,9 @@ export function FieldJourney({
                   scrollToJourneyTop();
                 }}
               >
-                {hi ? "🔍 ग्राहक खोजें" : "🔍 Search customer"}
+                {hi ? "🔍 ग्राहक खोजें / ऑर्डर लें" : "🔍 Find customer / take order"}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMessage(null);
-                  setNoVisitOrder(null);
-                  closeCustomerProfile();
-                  setRetailerSearchOpen(true);
-                  scrollToJourneyTop();
-                }}
-              >
-                {hi ? "+ नया ऑर्डर" : "+ New order"}
-              </button>
+
             </div>
             {isProspectMode && (
               <p className={styles.note}>
@@ -2254,7 +2310,7 @@ export function FieldJourney({
                           setCustomerProfile(null);
                         }}
                       >
-                        {hi ? "बिना विज़िट ऑर्डर" : "Order without visit"}
+                        {hi ? "📞 फ़ोन ऑर्डर (बिना विज़िट)" : "📞 Phone order (no visit)"}
                       </button>
                     </div>
                     {profileData.recentOrders.length > 0 && (
@@ -2374,11 +2430,12 @@ export function FieldJourney({
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => {
-                              const reason = window.prompt(
+                            onClick={async () => {
+                              const reason = await askReason(
+                                hi ? `${retailer.businessName} — छोड़ने का कारण` : `Skip ${retailer.businessName} — reason`,
                                 hi
-                                  ? "छोड़ने का कारण (दुकान बंद / अनुपलब्ध / मार्ग बाधा / आपातकाल / प्रबंधक निर्देश / अन्य)"
-                                  : "Skip reason (Shop Closed / Unavailable / Route Constraint / Emergency / Manager Instruction / Other)",
+                                  ? ["दुकान बंद", "मालिक उपलब्ध नहीं", "मार्ग बाधा", "आपातकाल", "प्रबंधक निर्देश"]
+                                  : ["Shop Closed", "Unavailable", "Route Constraint", "Emergency", "Manager Instruction"],
                               );
                               if (!reason) return;
                               void run(
@@ -2407,7 +2464,7 @@ export function FieldJourney({
                               scrollToJourneyTop();
                             }}
                           >
-                            {hi ? "नया ऑर्डर" : "New Order"}
+                            {hi ? "📞 फ़ोन ऑर्डर" : "📞 Phone order"}
                           </button>
                         </div>
                       )}
@@ -2427,7 +2484,7 @@ export function FieldJourney({
                               scrollToJourneyTop();
                             }}
                           >
-                            {hi ? "नया ऑर्डर" : "New Order"}
+                            {hi ? "📞 फ़ोन ऑर्डर" : "📞 Phone order"}
                           </button>
                         </div>
                       )}
@@ -2534,9 +2591,9 @@ export function FieldJourney({
                       let endExceptionReason: string | undefined;
                       if (status === "PERMISSION_DENIED" || status === "UNAVAILABLE") {
                         endExceptionReason =
-                          window.prompt(
+                          (await askReason(
                             hi ? "GPS उपलब्ध नहीं — कारण दर्ज करें" : "GPS unavailable — enter a reason",
-                          ) ?? undefined;
+                          )) ?? undefined;
                         if (!endExceptionReason) {
                           setBusy(false);
                           return;
@@ -2823,7 +2880,7 @@ export function FieldJourney({
                     disabled={busy}
                     aria-label={hi ? "हटाएँ" : "Remove"}
                     onClick={async () => {
-                      const reason = window.prompt(hi ? "हटाने का कारण" : "Reason for removing this photo");
+                      const reason = await askReason(hi ? "हटाने का कारण" : "Reason for removing this photo", hi ? ["गलत फ़ोटो", "धुंधली फ़ोटो", "दोबारा ली गई"] : ["Wrong photo", "Blurry", "Retaken"]);
                       if (!reason) return;
                       const result = await run("delete-photo", { photoId: photo.id, reason }, null, hi ? "फ़ोटो हटाई गई।" : "Photo removed.");
                       if (!("queued" in result) && result.success)

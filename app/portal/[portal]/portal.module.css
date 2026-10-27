@@ -23,3 +23,8 @@
 .shell :global([data-phase="10"]){box-shadow:0 14px 32px #17255412}
 .shell :global([data-phase="10"] article){min-height:86px}
 @media(max-width:640px){.shell{padding:0;background:#f8fafc}.hero{border-radius:0;padding:20px 16px}.topbar{display:grid}.title{font-size:30px}.summary{font-size:16px}.nav ul{display:grid;grid-template-columns:1fr 1fr}.nav li{border-radius:12px;padding:0 12px}.content{padding:0 12px 32px}.shell :global([data-phase="10"]){padding:14px!important;border-radius:14px!important}.shell :global(form){display:grid;grid-template-columns:1fr;width:100%}.shell :global(input),.shell :global(select),.shell :global(button){width:100%;box-sizing:border-box}.shell :global(fieldset button){width:auto}.shell :global(table){min-width:520px}}
+.hero[data-portal="sales-executive"]{background:radial-gradient(120% 160% at 0% 0%,#ef4444 0,#b91c1c 30%,#7f1414 65%,#3b0d14 100%)}
+.hero[data-portal="sales-manager"]{background:radial-gradient(120% 160% at 0% 0%,#2563eb 0,#1e3a8a 35%,#172554 70%,#0b1023 100%)}
+.hero[data-portal="sales-manager"] .eyebrow{color:#fde68a}
+.hero{animation:heroIn .45s ease-out both}
+@keyframes heroIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}

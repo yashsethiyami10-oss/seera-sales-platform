@@ -252,7 +252,7 @@ export default async function PortalShell({
         data-portal={portal}
         data-language={language}
       >
-        <section className={styles.hero}>
+        <section className={styles.hero} data-portal={portal}>
           <div className={styles.topbar}>
             <div>
               <p className={styles.eyebrow}>
