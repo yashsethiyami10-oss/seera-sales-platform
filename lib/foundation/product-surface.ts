@@ -605,6 +605,32 @@ const auditor: SurfaceItem[] = [
   shared.profile,
 ];
 
+// Sidebar grouping for the two field-sales roles: daily work first, progress/reports next, and the
+// rarely used personal/system pages in the collapsed "MORE" group (AppShell collapses MORE by
+// default). Items keep their slugs, permissions and labels; only group + order change.
+const TODAY: [string, string] = ["TODAY'S WORK", "आज का काम"];
+const TEAM: [string, string] = ["MY TEAM", "मेरी टीम"];
+const PROGRESS: [string, string] = ["PROGRESS & REPORTS", "प्रगति और रिपोर्ट"];
+const MORE: [string, string] = ["MORE", "अधिक"];
+const FIELD_GROUPS: Record<string, Record<string, [string, string]>> = {
+  "sales-executive": {
+    today: TODAY, beat: TODAY, retailers: TODAY, orders: TODAY, collections: TODAY, instructions: TODAY,
+    "market-survey": PROGRESS, prospects: PROGRESS, targets: PROGRESS, "delivered-sales": PROGRESS, dsr: PROGRESS,
+  },
+  "sales-manager": {
+    "my-day": TODAY, "beat-planner": TODAY, retailing: TODAY, "joint-working": TODAY, "partner-visits": TODAY, "market-survey": TODAY, "distributor-search": TODAY, instructions: TODAY,
+    team: TEAM, "team-review": TEAM, attendance: TEAM, approvals: TEAM, "ta-verification": TEAM, visits: TEAM, "photo-compliance": TEAM, alerts: TEAM,
+    "distributor-oversight": PROGRESS, "delivered-sales": PROGRESS, collections: PROGRESS, dsr: PROGRESS, "new-retailers": PROGRESS, analytics: PROGRESS,
+  },
+};
+function groupFieldSales(portal: string, items: SurfaceItem[]): SurfaceItem[] {
+  const groups = FIELD_GROUPS[portal];
+  if (!groups) return items;
+  const order = [TODAY, TEAM, PROGRESS, MORE];
+  const grouped = items.map((x) => ({ ...x, group: groups[x.slug] ?? MORE }));
+  return order.flatMap((group) => grouped.filter((x) => x.group === group));
+}
+
 export function surfaceItems(
   portal: string,
   permissions: Set<string>,
@@ -635,13 +661,13 @@ export function surfaceItems(
                     : portal === "manufacturing"
                       ? manufacturing
                       : [];
-  return source.filter(
+  return groupFieldSales(portal, source.filter(
     (x) =>
       (!x.permission ||
         permissions.has(x.permission) ||
         permissions.has("system:super_admin")) &&
       (!x.ownerOnly || permissions.has(x.ownerOnly)),
-  );
+  ));
 }
 export function surfaceItem(
   portal: string,
