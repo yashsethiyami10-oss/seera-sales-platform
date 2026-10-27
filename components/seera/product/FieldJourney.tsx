@@ -789,7 +789,7 @@ function DashboardHeader({
   return (
     <section id="field-journey-top" className={styles.journey}>
       <div className={styles.dashboard}>
-        <div className="idRow">
+        <div className={styles.idRow}>
           <span>
             <strong>{dashboard.employeeName}</strong> · {dashboard.employeeCode}
           </span>
@@ -822,6 +822,11 @@ function DashboardHeader({
                   : "Day not started"}
           </span>
         </div>
+        {dashboard.target && (
+          <div className={styles.progress} role="progressbar" aria-label={hi ? "मासिक लक्ष्य प्रगति" : "Monthly target progress"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, dashboard.target.achievementPct))}>
+            <span style={{ width: `${Math.min(100, Math.max(0, dashboard.target.achievementPct))}%` }} />
+          </div>
+        )}
         {dashboard.target && (
           <dl className={styles.statGrid}>
             <div>
@@ -2177,7 +2182,7 @@ export function FieldJourney({
             {customerProfile && (
               <div className={styles.note}>
                 <strong>{customerProfile.businessName}</strong>
-                <p className="meta">
+                <p className={styles.meta}>
                   {customerProfile.code} · {customerProfile.mobile ?? (hi ? "मोबाइल नहीं" : "No mobile")}
                 </p>
                 <div className={styles.quickActions}>
@@ -2346,7 +2351,7 @@ export function FieldJourney({
                               publish-time stop sequence (see executiveBeat, field-portal-service.ts)
                               — surfaced as a visible visit-order number. */}
                           <h3>{index + 1}. {retailer.businessName}</h3>
-                          <p className="meta">
+                          <p className={styles.meta}>
                             {retailer.ownerName ?? "—"} · {retailer.mobile ?? (hi ? "मोबाइल नहीं" : "No mobile")}
                           </p>
                         </div>
@@ -2362,7 +2367,7 @@ export function FieldJourney({
                         )}
                       </header>
                       {(!retailer.visitStatus || retailer.visitStatus === "PENDING") && (
-                        <div className="rowActions">
+                        <div className={styles.rowActions}>
                           <button type="button" data-primary="true" disabled={busy} onClick={() => startVisitFor(retailer)}>
                             {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "विज़िट शुरू करें" : "Start visit"}
                           </button>
@@ -2407,7 +2412,7 @@ export function FieldJourney({
                         </div>
                       )}
                       {retailer.visitStatus && retailer.visitStatus !== "PENDING" && (
-                        <div className="rowActions">
+                        <div className={styles.rowActions}>
                           <button type="button" disabled={busy} onClick={() => startVisitFor(retailer)}>
                             {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "फिर से चेक-इन करें" : "Check In Again"}
                           </button>
