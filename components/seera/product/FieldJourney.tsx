@@ -1181,7 +1181,9 @@ export function FieldJourney({
     setBusy(false);
     setBusyLabel(null);
     setOptimisticVisitCleared(false);
-    setLocalOptimisticVisit(null);
+    // Keep the optimistic visit that just produced this id (fresh check-in / Add Customer) — clearing
+    // it here bounced the Executive back to the day screen until router.refresh() landed.
+    setLocalOptimisticVisit((current) => (current && current.id === visit?.id ? current : null));
     setLocalAddedPhotos([]);
     setLocallyDeletedPhotoIds(new Set());
     if (fileRef.current) fileRef.current.value = "";
