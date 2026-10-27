@@ -47,9 +47,23 @@ export function ProductHome({
           "users",
           "system",
         ].includes(x.slug),
-    );
+    ),
+    // Field roles: the home page shows only daily-work and progress cards; personal/system pages
+    // stay one tap away in the sidebar's "More" group so the home screen is not a wall of options.
+    fieldRole = portal === "sales-executive" || portal === "sales-manager",
+    cards = fieldRole ? items.filter((x) => x.group?.[0] !== "MORE") : items,
+    startHref = portal === "sales-executive" ? `/portal/${portal}/today` : portal === "sales-manager" ? `/portal/${portal}/my-day` : null;
   return (
     <section className={styles.work}>
+      {startHref && items.some((x) => startHref.endsWith(`/${x.slug}`)) && (
+        <Link className={styles.startCta} href={startHref}>
+          <span>
+            <strong>{hi ? "आज का काम शुरू करें" : "Start today’s work"}</strong>
+            <small>{hi ? "दिन शुरू → दुकान विज़िट → ऑर्डर → दिन समाप्त" : "Start day → Visit shops → Book orders → End day"}</small>
+          </span>
+          <i aria-hidden>→</i>
+        </Link>
+      )}
       <div>
         <p className={styles.eyebrow}>{hi ? "त्वरित पहुँच" : "QUICK ACCESS"}</p>
         <h2>{hi ? "आपका संचालन कार्यक्षेत्र" : "Your operating workspace"}</h2>
@@ -60,7 +74,7 @@ export function ProductHome({
         </p>
       </div>
       <div className={styles.grid}>
-        {items.slice(0, 15).map((x) => (
+        {cards.slice(0, 15).map((x) => (
           <Link key={x.slug} href={`/portal/${portal}/${x.slug}`}>
             <b aria-hidden>{x.icon}</b>
             <span>

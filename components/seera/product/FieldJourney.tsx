@@ -1022,6 +1022,9 @@ export function FieldJourney({
     dayActionSubmittingRef = useRef(false),
     [busy, setBusy] = useState(false),
     [reasonRequest, setReasonRequest] = useState<ReasonRequest | null>(null),
+    [checkoutOutcome, setCheckoutOutcome] = useState<"ORDER_BOOKED" | "NO_ORDER" | "FOLLOW_UP" | "MARKET_INTELLIGENCE">(
+      rawVisit && rawVisit.orderCount > 0 ? "ORDER_BOOKED" : "NO_ORDER",
+    ),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
     [mode, setMode] = useState<"ORDER" | "COLLECTION" | "PHOTO" | "FOLLOW_UP">(
@@ -1069,7 +1072,7 @@ export function FieldJourney({
     [duplicateWarning, setDuplicateWarning] = useState<{ similar: { id: string; businessName: string; mobile: string | null }[] } | null>(null),
     [gpsStatus, setGpsStatus] = useState<GpsStatus>("IDLE"),
     [startWorkingType, setStartWorkingType] = useState<WorkingType>("RETAILING"),
-    [startWorkingDistributorId, setStartWorkingDistributorId] = useState(""),
+    [startWorkingDistributorId, setStartWorkingDistributorId] = useState(distributorOptions.length === 1 ? (distributorOptions[0]?.value ?? "") : ""),
     [pendingSyncCount, setPendingSyncCount] = useState(0),
     // Checkout already durably completes server-side before this ever gets set (see the checkout
     // handler below) — this is not an optimistic-before-success write, it's skipping an UNRELATED
@@ -1123,6 +1126,11 @@ export function FieldJourney({
     pendingReorderLinesRef = useRef<{ retailerId: string; lines: OrderLine[] } | null>(null);
 
   const visit = optimisticVisitCleared ? undefined : (rawVisit ?? localOptimisticVisit ?? undefined);
+  // Pre-select the obvious checkout outcome: "Order booked" once this visit has an order, else "No order".
+  const visitOrderCount = visit?.orderCount ?? 0;
+  useEffect(() => {
+    setCheckoutOutcome(visitOrderCount > 0 ? "ORDER_BOOKED" : "NO_ORDER");
+  }, [visit?.id, visitOrderCount]);
   const effectivePhotos = visit ? [...visit.photos, ...localAddedPhotos].filter((p) => !locallyDeletedPhotoIds.has(p.id)) : [];
 
   const revokePhotoPreview = () => {
@@ -1939,10 +1947,6 @@ export function FieldJourney({
             <input name="mobile" inputMode="tel" />
           </label>
           <label>
-            {hi ? "वैकल्पिक मोबाइल" : "Alternate mobile"}
-            <input name="alternateMobile" inputMode="tel" />
-          </label>
-          <label>
             {hi ? "ग्राहक प्रकार" : "Customer type"}
             <select name="customerType" defaultValue="RETAILER">
               {CUSTOMER_TYPES.map(([value, en, hiLabel]) => (
@@ -1951,10 +1955,6 @@ export function FieldJourney({
                 </option>
               ))}
             </select>
-          </label>
-          <label>
-            {hi ? "पिनकोड" : "Pincode"}
-            <input name="pincode" inputMode="numeric" />
           </label>
           {beatOptions.length > 0 && (
             <label>
@@ -1969,14 +1969,27 @@ export function FieldJourney({
               </select>
             </label>
           )}
-          <label>
-            {hi ? "GSTIN" : "GSTIN"}
-            <input name="gstin" />
-          </label>
-          <label>
-            {hi ? "टिप्पणी" : "Notes"}
-            <input name="notes" />
-          </label>
+          <details className={styles.moreStats} style={{ gridColumn: "1/-1" }}>
+            <summary>{hi ? "और जानकारी (वैकल्पिक): दूसरा मोबाइल, पिनकोड, GSTIN, टिप्पणी" : "More details (optional): 2nd mobile, pincode, GSTIN, notes"}</summary>
+            <div className={styles.extraFields}>
+              <label>
+                {hi ? "वैकल्पिक मोबाइल" : "Alternate mobile"}
+                <input name="alternateMobile" inputMode="tel" />
+              </label>
+              <label>
+                {hi ? "पिनकोड" : "Pincode"}
+                <input name="pincode" inputMode="numeric" />
+              </label>
+              <label>
+                {hi ? "GSTIN" : "GSTIN"}
+                <input name="gstin" />
+              </label>
+              <label>
+                {hi ? "टिप्पणी" : "Notes"}
+                <input name="notes" />
+              </label>
+            </div>
+          </details>
           <button className={styles.primary} disabled={busy}>
             {busy ? (busyLabel ?? (hi ? "सहेज रहे हैं…" : "Saving…")) : hi ? "सहेजें और चेक-इन करें" : "Save & check in"}
           </button>
@@ -2166,33 +2179,28 @@ export function FieldJourney({
                 <GpsBadge language={language} status={gpsStatus} />
               </div>
             )}
-            <div className={styles.quickActions}>
+            {(() => {
+              const done = beatRetailers.filter((r) => r.visitStatus && r.visitStatus !== "PENDING").length;
+              const next = beatRetailers.find((r) => !r.visitStatus || r.visitStatus === "PENDING");
+              if (!beatRetailers.length) return null;
+              return next ? (
+                <div className={styles.nextShop}>
+                  <div>
+                    <small>{hi ? `अगली दुकान · ${done}/${beatRetailers.length} पूरी` : `NEXT SHOP · ${done}/${beatRetailers.length} done`}</small>
+                    <strong>{next.businessName}</strong>
+                    <span>{next.ownerName ?? ""}{next.mobile ? ` · ${next.mobile}` : ""}</span>
+                  </div>
+                  <button type="button" className={styles.primary} disabled={busy} onClick={() => startVisitFor(next)}>
+                    {busy ? (busyLabel ?? (hi ? "चेक-इन हो रहा है…" : "Checking in…")) : hi ? "▶ विज़िट शुरू करें" : "▶ Start visit"}
+                  </button>
+                </div>
+              ) : (
+                <p className={styles.allDone}>{hi ? `🎉 आज की सभी ${beatRetailers.length} दुकानें पूरी! नई दुकान जोड़ें या दिन समाप्त करें।` : `🎉 All ${beatRetailers.length} planned shops done! Add a new shop or end your day.`}</p>
+              );
+            })()}
+            <div className={styles.actionPair}>
               <button
                 type="button"
-                className={styles.addCustomerCta}
-                onClick={() => {
-                  setMessage(null);
-                  setShowAddCustomer(true);
-                  scrollToJourneyTop();
-                }}
-              >
-                {hi ? "+ ग्राहक जोड़ें" : "+ Add customer"}
-              </button>
-              {/* P0 fix (Founder UAT): a relative "../prospects" href resolves to /portal/prospects
-                  (one directory too high from /portal/sales-executive/today), which 404s and
-                  bounces back to the dashboard — every sibling component in this codebase uses an
-                  absolute path instead; FieldJourney only ever renders for sales-executive. */}
-              <Link href="/portal/sales-executive/prospects">
-                {hi ? "+ वितरक / संभावना विज़िट" : "+ Distributor / prospect visit"}
-              </Link>
-              {/* Golden Journey — general customer search, not limited to today's published beat.
-                  Reuses the exact same typeahead (executiveRetailerSearch) Part A4 already built;
-                  a result now opens the Customer Profile (Search → Profile → Check In / Reorder
-                  Last), with the old direct phone/WhatsApp no-visit order still one tap away from
-                  inside that profile — nothing removed, just given a real front door. */}
-              <button
-                type="button"
-                className={styles.addCustomerCta}
                 onClick={() => {
                   setMessage(null);
                   setNoVisitOrder(null);
@@ -2201,15 +2209,33 @@ export function FieldJourney({
                   scrollToJourneyTop();
                 }}
               >
-                {hi ? "🔍 ग्राहक खोजें / ऑर्डर लें" : "🔍 Find customer / take order"}
+                <b aria-hidden>🔍</b>
+                <span>{hi ? "दुकान खोजें" : "Find a shop"}</span>
+                <small>{hi ? "पुरानी दुकान · ऑर्डर लें" : "Existing shop · take order"}</small>
               </button>
-
+              <button
+                type="button"
+                onClick={() => {
+                  setMessage(null);
+                  setShowAddCustomer(true);
+                  scrollToJourneyTop();
+                }}
+              >
+                <b aria-hidden>＋</b>
+                <span>{hi ? "नई दुकान" : "New shop"}</span>
+                <small>{hi ? "जोड़ें और चेक-इन करें" : "Add & check in"}</small>
+              </button>
             </div>
+            {/* P0 fix (Founder UAT): absolute path — a relative "../prospects" href 404s from
+                /portal/sales-executive/today. FieldJourney only ever renders for sales-executive. */}
+            <Link className={isProspectMode ? styles.addCustomerCta : styles.textLink} href="/portal/sales-executive/prospects">
+              {hi ? "वितरक / संभावना विज़िट →" : "Distributor / prospect visit →"}
+            </Link>
             {isProspectMode && (
               <p className={styles.note}>
                 {hi
-                  ? "आज का कार्य प्रकार वितरक खोज/विज़िट है। ऊपर 'वितरक / संभावना विज़िट' खोलें, या किसी वास्तविक दुकान पर रुकने के लिए ग्राहक जोड़ें।"
-                  : "Today's work type is Distributor Search/Visit. Open “Distributor / prospect visit” above, or Add customer if you stop at an actual shop."}
+                  ? "आज का कार्य प्रकार वितरक खोज/विज़िट है। ऊपर 'वितरक / संभावना विज़िट' खोलें, या किसी वास्तविक दुकान पर रुकने के लिए 'नई दुकान' दबाएँ।"
+                  : "Today's work type is Distributor Search/Visit. Open “Distributor / prospect visit” above, or tap New shop if you stop at an actual shop."}
               </p>
             )}
             {retailerSearchOpen && !noVisitOrder && !customerProfile && (
@@ -2225,11 +2251,14 @@ export function FieldJourney({
                 {retailerSearchQuery.trim().length >= 2 && retailerSearchResults.length === 0 && (
                   <p className={styles.note}>{hi ? "कोई मेल नहीं मिला।" : "No matches found."}</p>
                 )}
-                {retailerSearchResults.map((r) => (
-                  <button type="button" key={r.id} onClick={() => openCustomerProfile(r)}>
-                    {r.businessName} · {r.code} · {r.mobile ?? (hi ? "मोबाइल नहीं" : "no mobile")}
-                  </button>
-                ))}
+                <div className={styles.searchResults}>
+                  {retailerSearchResults.map((r) => (
+                    <button type="button" key={r.id} onClick={() => openCustomerProfile(r)}>
+                      <strong>{r.businessName}</strong>
+                      <span>{r.code} · {r.mobile ?? (hi ? "मोबाइल नहीं" : "no mobile")}</span>
+                    </button>
+                  ))}
+                </div>
                 <button type="button" className={styles.secondary} onClick={() => { setRetailerSearchOpen(false); setRetailerSearchQuery(""); }}>
                   {hi ? "रद्द करें" : "Cancel"}
                 </button>
@@ -2397,7 +2426,7 @@ export function FieldJourney({
             )}
             {beatRetailers.length > 0 && (
               <>
-                <strong>{hi ? "योजनाबद्ध ग्राहक" : "PLANNED CUSTOMERS"}</strong>
+                <strong className={styles.listTitle}>{hi ? "आज का रूट (क्रम से)" : "TODAY’S ROUTE (in order)"}</strong>
                 <div className={styles.beatList}>
                   {beatRetailers.map((retailer, index) => (
                     <div className={styles.beatCard} key={retailer.id}>
@@ -2413,7 +2442,7 @@ export function FieldJourney({
                         </div>
                         {retailer.visitStatus && retailer.visitStatus !== "PENDING" && (
                           <span className={styles.pill} data-status={retailer.visitStatus}>
-                            {retailer.visitStatus}
+                            {({ PRODUCTIVE: hi ? "✓ ऑर्डर मिला" : "✓ Order", SKIPPED: hi ? "छोड़ा" : "Skipped", NO_ORDER: hi ? "ऑर्डर नहीं" : "No order", FOLLOW_UP: hi ? "फिर आना है" : "Follow-up" } as Record<string, string>)[retailer.visitStatus] ?? retailer.visitStatus}
                           </span>
                         )}
                         {retailer.followUpAt && new Date(retailer.followUpAt) <= new Date() && (
@@ -2702,8 +2731,8 @@ export function FieldJourney({
           </div>
         )}
         <div className={styles.tabs}>
-          {(["ORDER", "COLLECTION", "PHOTO", "FOLLOW_UP"] as const).map((x) => (
-            <button type="button" key={x} data-active={mode === x} onClick={() => setMode(x)}>
+          {(["ORDER", "PHOTO", "COLLECTION", "FOLLOW_UP"] as const).map((x) => (
+            <button type="button" key={x} data-active={mode === x} data-done={(x === "ORDER" && visit.orderCount > 0) || (x === "PHOTO" && effectivePhotos.length > 0)} onClick={() => setMode(x)}>
               {x === "ORDER"
                 ? hi
                   ? "ऑर्डर"
@@ -3180,27 +3209,38 @@ export function FieldJourney({
             })();
           }}
         >
-          <label>
-            {hi ? "विज़िट परिणाम" : "Visit outcome"}
-            <select name="outcome">
-              <option value="ORDER_BOOKED">{hi ? "ऑर्डर बुक किया गया" : "Order booked"}</option>
-              <option value="FOLLOW_UP">{hi ? "फॉलो-अप" : "Follow up"}</option>
-              <option value="NO_ORDER">{hi ? "कोई ऑर्डर नहीं" : "No order"}</option>
-              <option value="MARKET_INTELLIGENCE">{hi ? "बाज़ार जानकारी" : "Market intelligence"}</option>
-            </select>
-          </label>
-          <label>
-            {hi ? "कारण (यदि कोई ऑर्डर नहीं)" : "Reason (if no order)"}
-            <input name="noOrderReason" />
-          </label>
-          <label>
-            {hi ? "फॉलो-अप तिथि (वैकल्पिक)" : "Follow-up date (optional)"}
-            <input name="followUpAt" type="date" />
-          </label>
-          <label>
-            {hi ? "विज़िट टिप्पणी" : "Visit note"}
-            <input name="notes" />
-          </label>
+          <strong className={styles.listTitle}>{hi ? "इस विज़िट का नतीजा?" : "How did this visit go?"}</strong>
+          <div className={styles.outcomeChips} role="radiogroup" aria-label={hi ? "विज़िट परिणाम" : "Visit outcome"}>
+            {([
+              ["ORDER_BOOKED", "✅ Order booked", "✅ ऑर्डर बुक"],
+              ["NO_ORDER", "✖ No order", "✖ कोई ऑर्डर नहीं"],
+              ["FOLLOW_UP", "⏰ Come back later", "⏰ बाद में आना है"],
+              ["MARKET_INTELLIGENCE", "📝 Market info only", "📝 सिर्फ़ बाज़ार जानकारी"],
+            ] as const).map(([value, en, hiLabel]) => (
+              <label key={value} data-active={checkoutOutcome === value}>
+                <input type="radio" name="outcome" value={value} checked={checkoutOutcome === value} onChange={() => setCheckoutOutcome(value)} />
+                {hi ? hiLabel : en}
+              </label>
+            ))}
+          </div>
+          {checkoutOutcome === "NO_ORDER" && (
+            <label>
+              {hi ? "ऑर्डर क्यों नहीं मिला?" : "Why no order?"}
+              <input name="noOrderReason" list="seera-no-order-reasons" placeholder={hi ? "जैसे: स्टॉक भरा है" : "e.g. Stock is full"} />
+              <datalist id="seera-no-order-reasons">
+                <option value={hi ? "स्टॉक पहले से भरा है" : "Stock already full"} />
+                <option value={hi ? "मालिक उपलब्ध नहीं" : "Owner not available"} />
+                <option value={hi ? "भुगतान बकाया" : "Payment pending"} />
+                <option value={hi ? "कीमत ज़्यादा लगी" : "Price concern"} />
+              </datalist>
+            </label>
+          )}
+          {(checkoutOutcome === "FOLLOW_UP" || checkoutOutcome === "NO_ORDER") && (
+            <label>
+              {hi ? "फिर कब आना है? (वैकल्पिक)" : "When to come back? (optional)"}
+              <input name="followUpAt" type="date" />
+            </label>
+          )}
           {effectivePhotos.length === 0 && (
             <label>
               {hi ? "फ़ोटो न होने का कारण" : "Reason no photo was taken"}
@@ -3214,21 +3254,30 @@ export function FieldJourney({
               </select>
             </label>
           )}
-          <label>
-            {hi ? "मार्ग विचलन (यदि लागू हो)" : "Route deviation (if applicable)"}
-            <select name="routeDeviationReason" defaultValue="">
-              <option value="">{hi ? "कोई विचलन नहीं" : "No deviation"}</option>
-              <option value="NEW_OUTLET_OPPORTUNITY">{hi ? "नया आउटलेट अवसर" : "New outlet opportunity"}</option>
-              <option value="URGENT_PAYMENT_FOLLOW_UP">{hi ? "अत्यावश्यक भुगतान फॉलो-अप" : "Urgent payment follow-up"}</option>
-              <option value="SHOP_CLOSURE">{hi ? "दुकान बंद" : "Shop closure"}</option>
-              <option value="ROAD_TRAFFIC">{hi ? "सड़क / यातायात" : "Road / traffic"}</option>
-              <option value="MANAGER_INSTRUCTION">{hi ? "प्रबंधक निर्देश" : "Manager instruction"}</option>
-              <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>
-              <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
-            </select>
-          </label>
-          <button className={styles.secondary} disabled={busy}>
-            {busy ? (busyLabel ?? (hi ? "हो रहा है…" : "Working…")) : hi ? "चेकआउट और अगला ग्राहक" : "Checkout & next customer"}
+          <details className={styles.moreStats} style={{ gridColumn: "1/-1" }}>
+            <summary>{hi ? "टिप्पणी / रूट बदलाव जोड़ें (वैकल्पिक)" : "Add note / route change (optional)"}</summary>
+            <div className={styles.extraFields}>
+              <label>
+                {hi ? "विज़िट टिप्पणी" : "Visit note"}
+                <input name="notes" />
+              </label>
+            <label>
+              {hi ? "मार्ग विचलन (यदि लागू हो)" : "Route deviation (if applicable)"}
+              <select name="routeDeviationReason" defaultValue="">
+                <option value="">{hi ? "कोई विचलन नहीं" : "No deviation"}</option>
+                <option value="NEW_OUTLET_OPPORTUNITY">{hi ? "नया आउटलेट अवसर" : "New outlet opportunity"}</option>
+                <option value="URGENT_PAYMENT_FOLLOW_UP">{hi ? "अत्यावश्यक भुगतान फॉलो-अप" : "Urgent payment follow-up"}</option>
+                <option value="SHOP_CLOSURE">{hi ? "दुकान बंद" : "Shop closure"}</option>
+                <option value="ROAD_TRAFFIC">{hi ? "सड़क / यातायात" : "Road / traffic"}</option>
+                <option value="MANAGER_INSTRUCTION">{hi ? "प्रबंधक निर्देश" : "Manager instruction"}</option>
+                <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>
+                <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+              </select>
+            </label>
+            </div>
+          </details>
+          <button className={styles.primary} disabled={busy}>
+            {busy ? (busyLabel ?? (hi ? "हो रहा है…" : "Working…")) : hi ? "✓ विज़िट पूरी करें → अगली दुकान" : "✓ Finish visit → next shop"}
           </button>
         </form>
         <ActionMessageBanner message={message} language={language} />
