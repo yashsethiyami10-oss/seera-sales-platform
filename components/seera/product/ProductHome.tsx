@@ -25,6 +25,7 @@ const HINTS: Record<string, [string, string]> = {
   "joint-working": ["Work a beat alongside an executive", "एग्जीक्यूटिव के साथ बीट पर काम करें"],
   "ta-expenses": ["Your travel allowance and claims", "आपका यात्रा भत्ता और दावे"],
   sync: ["Check offline orders waiting to upload", "अपलोड के लिए रुके ऑफ़लाइन ऑर्डर देखें"],
+  instructions: ["Tasks and notes from your manager", "आपके मैनेजर के काम और निर्देश"],
 };
 
 export function ProductHome({
@@ -66,11 +67,15 @@ export function ProductHome({
       )}
       <div>
         <p className={styles.eyebrow}>{hi ? "त्वरित पहुँच" : "QUICK ACCESS"}</p>
-        <h2>{hi ? "आपका संचालन कार्यक्षेत्र" : "Your operating workspace"}</h2>
+        <h2>{fieldRole ? (hi ? "आपके काम" : "Your work") : hi ? "आपका संचालन कार्यक्षेत्र" : "Your operating workspace"}</h2>
         <p>
-          {hi
-            ? "व्यावसायिक नाम, स्थिति और दायरे के साथ लाइव रिकॉर्ड खोलें।"
-            : "Open live records with business names, statuses and your authorized scope."}
+          {fieldRole
+            ? hi
+              ? "जिस काम को करना है, उसका कार्ड दबाएँ।"
+              : "Tap a card to open that part of your work."
+            : hi
+              ? "व्यावसायिक नाम, स्थिति और दायरे के साथ लाइव रिकॉर्ड खोलें।"
+              : "Open live records with business names, statuses and your authorized scope."}
         </p>
       </div>
       <div className={styles.grid}>

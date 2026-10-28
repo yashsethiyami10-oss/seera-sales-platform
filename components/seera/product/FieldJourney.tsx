@@ -1126,6 +1126,49 @@ export function FieldJourney({
     pendingReorderLinesRef = useRef<{ retailerId: string; lines: OrderLine[] } | null>(null);
 
   const visit = optimisticVisitCleared ? undefined : (rawVisit ?? localOptimisticVisit ?? undefined);
+  // Reconcile-until-applied. Every field action ends in router.refresh(), and browser E2E runs
+  // showed that refresh occasionally never reaches the screen even though the server already
+  // returned the new state (stale "Day started." form, no ✓ after Save Order, a closed visit still
+  // shown). After each key action we record what the next server state must look like and keep
+  // refreshing (bounded) until the props actually show it.
+  const [awaitingState, setAwaitingState] = useState<
+    | { kind: "SESSION" }
+    | { kind: "VISIT"; visitId: string }
+    | { kind: "ORDER"; visitId: string; minOrders: number }
+    | { kind: "NO_VISIT"; visitId: string }
+    | { kind: "ENDED" }
+    | null
+  >(null);
+  const awaitingSatisfied =
+    !awaitingState ||
+    (awaitingState.kind === "SESSION" && Boolean(session)) ||
+    (awaitingState.kind === "VISIT" && rawVisit?.id === awaitingState.visitId) ||
+    (awaitingState.kind === "ORDER" && rawVisit?.id === awaitingState.visitId && rawVisit.orderCount >= awaitingState.minOrders) ||
+    (awaitingState.kind === "NO_VISIT" && rawVisit?.id !== awaitingState.visitId) ||
+    (awaitingState.kind === "ENDED" && dashboard.dayStatus === "ENDED");
+  useEffect(() => {
+    if (!awaitingState) return;
+    if (awaitingSatisfied) {
+      setAwaitingState(null);
+      return;
+    }
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      router.refresh();
+      if (tries >= 6) {
+        clearInterval(timer);
+        setAwaitingState(null);
+      }
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [awaitingState, awaitingSatisfied, router]);
+  // Re-arm the Start Day guard once the session it started has arrived, so a later "start a new
+  // session" after End Day (same page, no reload) is not silently swallowed by the guard.
+  useEffect(() => {
+    if (session) dayActionSubmittingRef.current = false;
+  }, [session?.id]);
+
   // Pre-select the obvious checkout outcome: "Order booked" once this visit has an order, else "No order".
   const visitOrderCount = visit?.orderCount ?? 0;
   useEffect(() => {
@@ -1347,9 +1390,10 @@ export function FieldJourney({
   // returning from the camera, which is exactly the "photo -> dashboard" symptom seen in field UAT.
   // Native Capacitor Camera owns the camera Activity and returns a bounded JPEG URI instead, so the
   // web renderer never has to receive the raw camera file through an HTML file input.
-  useEffect(() => {
-    checkpointActiveVisitInUrl(visit?.id);
-  }, [visit?.id]);
+  // The URL checkpoint is written only right before the native camera opens (openNativeCamera).
+  // Writing it on every visit change called history.replaceState, which Next.js 15 turns into a
+  // router "restore" that cancelled the router.refresh() fired by the same action — the screen then
+  // kept showing stale data (no visit after Add Customer, no ✓ after Save Order).
 
   const uploadNativeCameraResult = async (result: {
     uri?: string;
@@ -1564,6 +1608,7 @@ export function FieldJourney({
     // same visit back through props.
     if (!("queued" in result) && result.success) {
       const data = result.data as { id: string; checkedInAt: string };
+      setAwaitingState({ kind: "VISIT", visitId: data.id });
       setLocalOptimisticVisit({
         id: data.id,
         retailerId: retailer.id,
@@ -1736,6 +1781,7 @@ export function FieldJourney({
             )}
           </section>
         )}
+        {(() => { const startDay = (
         <section className={styles.journey}>
           <header>
             <span>1</span>
@@ -1862,6 +1908,7 @@ export function FieldJourney({
                 hi ? "दिन शुरू हो रहा है…" : "Starting day…",
               ).then((result) => {
                 if (!("queued" in result) && !result.success) dayActionSubmittingRef.current = false;
+                else if (!("queued" in result)) setAwaitingState({ kind: "SESSION" });
               });
             }}
           >
@@ -1869,6 +1916,12 @@ export function FieldJourney({
           </button>
           <ActionMessageBanner message={message} language={language} />
         </section>
+        ); return dashboard.dayStatus === "ENDED" ? (
+          <details className={styles.moreStats}>
+            <summary>{hi ? "आज फिर से काम करना है? नया सत्र शुरू करें" : "Need to work again today? Start a new session"}</summary>
+            {startDay}
+          </details>
+        ) : startDay; })()}
       </>
     );
 
@@ -2100,6 +2153,7 @@ export function FieldJourney({
       retailer: { id: string; businessName: string; mobile: string | null; distributorId: string | null };
       visit: { id: string; checkedInAt: string };
     };
+    setAwaitingState({ kind: "VISIT", visitId: data.visit.id });
     setLocalOptimisticVisit({
       id: data.visit.id,
       retailerId: data.retailer.id,
@@ -2652,7 +2706,10 @@ export function FieldJourney({
                         hi ? "दिन समाप्त हुआ।" : "Day ended.",
                         hi ? "दिन समाप्त हो रहा है…" : "Ending day…",
                       );
-                      if (!("queued" in outcome) && outcome.success) setShowEndDayPreview(false);
+                      if (!("queued" in outcome) && outcome.success) {
+                        setShowEndDayPreview(false);
+                        setAwaitingState({ kind: "ENDED" });
+                      }
                     }}
                   >
                     {busy ? (busyLabel ?? (hi ? "दिन समाप्त हो रहा है…" : "Ending day…")) : hi ? "पुष्टि करें और समाप्त करें" : "Confirm & end day"}
@@ -2814,6 +2871,7 @@ export function FieldJourney({
                 if ("queued" in outcome || outcome.success) {
                   orderKeyRef.current = null;
                   clearPendingReorder();
+                  if (!("queued" in outcome)) setAwaitingState({ kind: "ORDER", visitId: visit.id, minOrders: visit.orderCount + 1 });
                   setMode("PHOTO");
                 }
               })();
@@ -3202,6 +3260,7 @@ export function FieldJourney({
                 // reset effect below, keyed on visit?.id).
                 sessionStorage.removeItem(`seera:field-visit:${visit.id}:mode`);
                 setOptimisticVisitCleared(true);
+                if (!("queued" in result)) setAwaitingState({ kind: "NO_VISIT", visitId: visit.id });
                 clearPendingReorder();
               } else {
                 // Only a genuine failure re-arms the guard — a legitimate retry (same
@@ -3227,8 +3286,8 @@ export function FieldJourney({
           </div>
           {checkoutOutcome === "NO_ORDER" && (
             <label>
-              {hi ? "ऑर्डर क्यों नहीं मिला?" : "Why no order?"}
-              <input name="noOrderReason" list="seera-no-order-reasons" placeholder={hi ? "जैसे: स्टॉक भरा है" : "e.g. Stock is full"} />
+              {hi ? "ऑर्डर क्यों नहीं मिला? *" : "Why no order? *"}
+              <input name="noOrderReason" required list="seera-no-order-reasons" placeholder={hi ? "जैसे: स्टॉक भरा है" : "e.g. Stock is full"} />
               <datalist id="seera-no-order-reasons">
                 <option value={hi ? "स्टॉक पहले से भरा है" : "Stock already full"} />
                 <option value={hi ? "मालिक उपलब्ध नहीं" : "Owner not available"} />
@@ -3245,9 +3304,9 @@ export function FieldJourney({
           )}
           {effectivePhotos.length === 0 && (
             <label>
-              {hi ? "फ़ोटो न होने का कारण" : "Reason no photo was taken"}
-              <select name="photoExceptionReason" defaultValue="">
-                <option value="">{hi ? "फ़ोटो संलग्न है" : "Photo attached"}</option>
+              {hi ? "फ़ोटो नहीं ली? कारण चुनें *" : "No photo taken? Choose a reason *"}
+              <select name="photoExceptionReason" defaultValue="" required>
+                <option value="" disabled>{hi ? "कारण चुनें… (या ऊपर Photo टैब में फ़ोटो लें)" : "Choose… (or take a photo in the Photo tab)"}</option>
                 <option value="RETAILER_REFUSED">{hi ? "रिटेलर ने मना किया" : "Retailer refused"}</option>
                 <option value="CAMERA_ISSUE">{hi ? "कैमरा / डिवाइस समस्या" : "Camera / device issue"}</option>
                 <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>

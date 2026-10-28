@@ -1,7 +1,7 @@
 import {describe,it,expect} from "vitest";import {readFileSync} from "node:fs";import path from "node:path";const root=path.resolve(__dirname,"..","..");const read=(f:string)=>readFileSync(path.join(root,f),"utf8");
 describe("Phase 11 static production gates",()=>{
- it("ships an installable manifest and service worker",()=>{expect(read("app/manifest.ts")).toContain("standalone");expect(read("public/sw.js")).toContain("seera-shell-v1")});
- it("never caches authenticated API responses",()=>expect(read("public/sw.js")).toContain('url.pathname.startsWith("/api/")'));
+ it("ships an installable manifest and service worker",()=>{expect(read("app/manifest.ts")).toContain("standalone");expect(read("public/sw.js")).toMatch(/seera-shell-v\d+/)});
+ it("never caches authenticated API responses",()=>{const sw=read("public/sw.js");expect(sw).not.toContain("cache.put");expect(sw).toContain('request.mode!=="navigate"')});
  it("uses IndexedDB rather than financial localStorage",()=>{expect(read("lib/phase-11/offline-client.ts")).toContain("indexedDB.open");expect(read("lib/phase-11/offline-client.ts")).not.toContain("localStorage")});
  it("requires server session context on sync",()=>expect(read("app/api/offline/sync/route.ts")).toContain("STALE_DEVICE_SESSION"));
  it("enforces server idempotency persistence",()=>expect(read("prisma/schema.prisma")).toContain("@@unique([userId, clientOperationId])"));

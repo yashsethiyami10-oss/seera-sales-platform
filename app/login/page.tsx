@@ -7,8 +7,9 @@ export default function LoginPage() {
       <section className={styles.brand}>
         <div className={styles.glow} aria-hidden />
         <div className={styles.brandAssets}>
-          <Image className={styles.logo} src="/seera logo.png" alt="Seera" width={2560} height={1990} priority />
-          <Image className={styles.tagline} src="/seera tagline.png" alt="Sarv Shaktiman" width={2172} height={724} priority />
+          <Image className={styles.logo} src="/brand/seera-wordmark.png" alt="Seera" width={800} height={546} priority />
+          <span className={styles.divider} aria-hidden />
+          <Image className={styles.tagline} src="/brand/seera-tagline.png" alt="Sarv Shaktiman" width={900} height={175} priority />
         </div>
         <h1 className={styles.srOnly}>Seera — Sarv Shaktiman</h1>
         <h2>Sales &amp; Distribution OS</h2>
