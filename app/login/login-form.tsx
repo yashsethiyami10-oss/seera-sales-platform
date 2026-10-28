@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import styles from "./login.module.css";
 
 const text = {
-  EN: { welcome: "Welcome back", intro: "Sign in to your Seera workspace.", email: "Email or mobile number", password: "Password", show: "Show", hide: "Hide", submit: "Sign in securely", loading: "Signing in…", required: "Enter your email/mobile number and password.", invalid: "The credentials are incorrect or the account is unavailable.", network: "Seera could not reach the server. Check your connection and try again.", language: "हिन्दी", hint: "Distributors & stockists can use their 10-digit mobile number.", caps: "Caps Lock is on", help: "Authorized Seera users only · Forgot password? Ask your manager or admin." },
-  HI: { welcome: "वापसी पर स्वागत है", intro: "अपने नियंत्रित सीरा कार्यक्षेत्र में साइन इन करें।", email: "ईमेल या मोबाइल नंबर", password: "पासवर्ड", show: "दिखाएँ", hide: "छिपाएँ", submit: "सुरक्षित साइन इन", loading: "साइन इन हो रहा है…", required: "अपना ईमेल/मोबाइल नंबर और पासवर्ड दर्ज करें।", invalid: "जानकारी गलत है या खाता उपलब्ध नहीं है।", network: "सीरा सर्वर से संपर्क नहीं कर सका। कनेक्शन जाँचें और फिर प्रयास करें।", language: "English", hint: "वितरक और स्टॉकिस्ट अपना 10 अंकों का मोबाइल नंबर डाल सकते हैं।", caps: "Caps Lock चालू है", help: "केवल अधिकृत सीरा उपयोगकर्ता · पासवर्ड भूल गए? अपने मैनेजर या एडमिन से पूछें।" },
+  EN: { welcome: "Welcome back", intro: "Sign in to your Seera workspace.", email: "Email or mobile number", password: "Password", show: "Show", hide: "Hide", submit: "Sign in securely", loading: "Signing in…", required: "Enter your email/mobile number and password.", invalid: "The credentials are incorrect or the account is unavailable.", tooMany: "Too many sign-in attempts. Please wait 5 minutes and try again.", network: "Seera could not reach the server. Check your connection and try again.", language: "हिन्दी", hint: "Distributors & stockists can use their 10-digit mobile number.", caps: "Caps Lock is on", help: "Authorized Seera users only · Forgot password? Ask your manager or admin." },
+  HI: { welcome: "वापसी पर स्वागत है", intro: "अपने नियंत्रित सीरा कार्यक्षेत्र में साइन इन करें।", email: "ईमेल या मोबाइल नंबर", password: "पासवर्ड", show: "दिखाएँ", hide: "छिपाएँ", submit: "सुरक्षित साइन इन", loading: "साइन इन हो रहा है…", required: "अपना ईमेल/मोबाइल नंबर और पासवर्ड दर्ज करें।", invalid: "जानकारी गलत है या खाता उपलब्ध नहीं है।", tooMany: "बहुत ज़्यादा प्रयास हुए। 5 मिनट रुककर फिर कोशिश करें।", network: "सीरा सर्वर से संपर्क नहीं कर सका। कनेक्शन जाँचें और फिर प्रयास करें।", language: "English", hint: "वितरक और स्टॉकिस्ट अपना 10 अंकों का मोबाइल नंबर डाल सकते हैं।", caps: "Caps Lock चालू है", help: "केवल अधिकृत सीरा उपयोगकर्ता · पासवर्ड भूल गए? अपने मैनेजर या एडमिन से पूछें।" },
 } as const;
 
 export function LoginForm() {
@@ -32,7 +32,7 @@ export function LoginForm() {
       setLoading(true);
       try {
         const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
-        if (!response.ok) { setError(t.invalid); return; }
+        if (!response.ok) { setError(response.status === 429 ? t.tooMany : t.invalid); return; }
         const result = await response.json() as { landingPath?: string };
         // Return to the portal page that sent the user here (layout redirects add ?next=/portal/...),
         // but only same-site portal paths — never an absolute or protocol-relative URL.

@@ -1,7 +1,7 @@
 export type UiLanguage = "EN" | "HI";
 
 const EN = {
-  protectedPortal: "Seera protected portal", authenticatedAs: "Authenticated as", language: "Language", english: "English", hindi: "Hindi",
+  protectedPortal: "Seera · Sarv Shaktiman", authenticatedAs: "Welcome", language: "Language", english: "English", hindi: "Hindi",
   unavailable: "Portal temporarily unavailable", accessDenied: "Access denied", disabledMessage: "This portal is disabled by an approved feature flag.", deniedMessage: "This portal is unavailable for the authenticated identity.", reserved: "This governed portal shell remains reserved for its frozen roadmap phase.",
   today: "Today", beatRoadmap: "Beat Roadmap", retailers: "Retailers", orders: "Orders", dsr: "Daily Sales Report", teamFieldwork: "Team Fieldwork", jointWorking: "Joint Working", partnerDevelopment: "Partner Development", approvals: "Approvals", assistedOperations: "Assisted Operations", orderInbox: "Order Inbox", deliveries: "Deliveries", inventory: "Inventory", replenishment: "Replenishment", creditClaims: "Credit & Claims", distributorOrders: "Distributor Orders", dispatch: "Dispatch", credit: "Credit", companyOrders: "Company Orders", controlCenter: "Control Center", masters: "Masters", network: "Network", audit: "Audit",
   accountsDashboard: "Financial control and reconciliation", paymentVerification: "Payment Verification", ledger: "Ledger", ageing: "Ageing", allocations: "Partial Allocation", expenses: "Expenses & TA Claims",
@@ -15,7 +15,7 @@ const EN = {
 } as const;
 
 const HI: Record<keyof typeof EN, string> = {
-  protectedPortal: "सीरा सुरक्षित पोर्टल", authenticatedAs: "लॉग इन उपयोगकर्ता", language: "भाषा", english: "अंग्रेज़ी", hindi: "हिन्दी",
+  protectedPortal: "सीरा · सर्व शक्तिमान", authenticatedAs: "स्वागत है", language: "भाषा", english: "अंग्रेज़ी", hindi: "हिन्दी",
   unavailable: "पोर्टल अस्थायी रूप से उपलब्ध नहीं है", accessDenied: "प्रवेश अस्वीकृत", disabledMessage: "यह पोर्टल स्वीकृत सुविधा ध्वज द्वारा बंद है।", deniedMessage: "यह पोर्टल इस उपयोगकर्ता के लिए उपलब्ध नहीं है।", reserved: "यह नियंत्रित पोर्टल अपने निर्धारित रोडमैप चरण के लिए सुरक्षित है।",
   today: "आज", beatRoadmap: "आज का बीट मार्ग", retailers: "खुदरा विक्रेता", orders: "ऑर्डर", dsr: "दैनिक बिक्री रिपोर्ट", teamFieldwork: "टीम फील्ड कार्य", jointWorking: "संयुक्त कार्य", partnerDevelopment: "व्यापार भागीदार विकास", approvals: "अनुमोदन", assistedOperations: "सहायता प्राप्त संचालन", orderInbox: "ऑर्डर इनबॉक्स", deliveries: "डिलीवरी", inventory: "स्टॉक", replenishment: "पुनःपूर्ति", creditClaims: "क्रेडिट और दावे", distributorOrders: "वितरक ऑर्डर", dispatch: "प्रेषण", credit: "क्रेडिट", companyOrders: "कंपनी ऑर्डर", controlCenter: "नियंत्रण केंद्र", masters: "मास्टर डेटा", network: "बिक्री नेटवर्क", audit: "ऑडिट",
   accountsDashboard: "वित्तीय नियंत्रण और मिलान", paymentVerification: "भुगतान सत्यापन", ledger: "खाता-बही", ageing: "बकाया आयु", allocations: "आंशिक आवंटन", expenses: "खर्च और यात्रा भत्ता दावे",

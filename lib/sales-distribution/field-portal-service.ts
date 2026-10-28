@@ -1228,11 +1228,17 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
   // Neon regardless of how many queries run within it, so collapsing to 2 stages here materially
   // cuts this function's latency on every call (and this function reruns on every field-portal
   // router.refresh(), i.e. after every field action).
-  const [session, employee, retailers, target, todayVisits, todayOrders, followUpsDue, prospects, newRetailersToday, photosToday, plannedToday] =
+  const [session, endedToday, employee, retailers, target, todayVisits, todayOrders, followUpsDue, prospects, newRetailersToday, photosToday, plannedToday] =
     await Promise.all([
       db.seeraWorkSession.findFirst({
         where: { employeeId: actorId, employeeRole: "SALES_EXECUTIVE", status: "ACTIVE" },
         orderBy: { startedAt: "desc" },
+      }),
+      // A day already ended today → "ENDED", so the field app shows the day summary instead of
+      // the Start Day form (dayStatus was previously only ever ACTIVE / NOT_STARTED).
+      db.seeraWorkSession.findFirst({
+        where: { employeeId: actorId, employeeRole: "SALES_EXECUTIVE", status: "ENDED", startedAt: { gte: startOfDay } },
+        select: { id: true },
       }),
       db.user.findUnique({
         where: { id: actorId },
@@ -1326,7 +1332,7 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
   const daysRemaining = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / 86_400_000));
   const dashboardResult = {
     employee,
-    dayStatus: session ? "ACTIVE" : "NOT_STARTED",
+    dayStatus: session ? "ACTIVE" : endedToday ? "ENDED" : "NOT_STARTED",
     session,
     target: target
       ? {

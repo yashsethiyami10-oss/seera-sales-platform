@@ -1,6 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { notFound, redirect } from "next/navigation";
-import { LanguageSelector } from "@/components/seera/LanguageSelector";
 import { OfflineStatus } from "@/components/seera/phase-11/OfflineStatus";
 import { Phase10Dashboard } from "@/components/seera/phase-10/Phase10Dashboard";
 import { ProductHome } from "@/components/seera/product/ProductHome";
@@ -260,18 +259,11 @@ export default async function PortalShell({
               </p>
               <h1 className={styles.title}>{title}</h1>
               <p className={styles.identity}>
-                {translate(language, "authenticatedAs")}:{" "}
+                {translate(language, "authenticatedAs")},{" "}
                 {user.name ?? user.email}
               </p>
             </div>
-            <LanguageSelector
-              initialLanguage={language}
-              labels={{
-                language: translate(language, "language"),
-                english: translate(language, "english"),
-                hindi: translate(language, "hindi"),
-              }}
-            />
+            {/* Language switch lives in the top header (AppShell) — one control, not two. */}
           </div>
           {experience ? (
             <>
@@ -291,6 +283,10 @@ export default async function PortalShell({
         <div className={styles.content}>
           {["sales-executive", "distributor", "super-stockist"].includes(portal) && (
             <OfflineStatus language={language} />
+          )}
+          {/* Field roles: the "Start today's work" entry and their daily cards come first. */}
+          {(portal === "sales-executive" || portal === "sales-manager") && (
+            <ProductHome portal={portal} permissions={permissions} language={language} />
           )}
           {managerSummary && (
             <ManagerDashboardSummary language={language} summary={managerSummary} portal={portal} mappedDistributors={assignableDistributors} />
@@ -320,11 +316,13 @@ export default async function PortalShell({
                 : "Analytics is temporarily unavailable. Please retry."}
             </p>
           )}
-          <ProductHome
-            portal={portal}
-            permissions={permissions}
-            language={language}
-          />
+          {portal !== "sales-executive" && portal !== "sales-manager" && (
+            <ProductHome
+              portal={portal}
+              permissions={permissions}
+              language={language}
+            />
+          )}
         </div>
       </main>
     );

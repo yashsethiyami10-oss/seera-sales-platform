@@ -14,8 +14,9 @@
 .shell :global(fieldset){position:relative;z-index:2;color:#fff}
 .shell :global(fieldset legend){font-weight:700;margin-bottom:6px}
 .shell :global(button),.shell :global(select),.shell :global(input){min-height:44px;border:1px solid #cbd5e1;border-radius:9px;padding:8px 12px;font:inherit;background:#fff;color:#172554}
-.shell :global(button){cursor:pointer;font-weight:800;border-color:#1d4ed8;color:#fff;background:#1d4ed8}
-.shell :global(button:hover){background:#1e3a8a}
+.shell :global(button){cursor:pointer;font-weight:800;border-color:var(--seera-primary,#b91c1c);color:#fff;background:var(--seera-primary,#b91c1c);transition:background-color .15s,border-color .15s}
+.shell :global(button:hover){background:var(--seera-primary-dark,#7f1414)}
+.shell[data-portal="sales-manager"] :global(button){border-color:#1e3a8a;background:#1e3a8a}.shell[data-portal="sales-manager"] :global(button:hover){background:#172554}
 .shell :global(button[aria-pressed="true"]){background:#fff;color:#991b1b;border-color:#fff;box-shadow:0 0 0 3px #ffffff38}
 .shell :global(form){display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:12px 0}
 .shell :global(label){display:grid;gap:5px;font-weight:700}
@@ -28,3 +29,4 @@
 .hero[data-portal="sales-manager"] .eyebrow{color:#fde68a}
 .hero{animation:heroIn .45s ease-out both}
 @keyframes heroIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.content>*+*{margin-top:16px}
