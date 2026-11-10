@@ -22,7 +22,8 @@ export type SurfaceKind =
   | "instructions"
   | "notifications"
   | "manufacturing"
-  | "market_survey";
+  | "market_survey"
+  | "library";
 export type SurfaceItem = {
   slug: string;
   en: string;
@@ -184,6 +185,7 @@ const founder: SurfaceItem[] = [
     "travel",
     "ta_claim:approve",
   ),
+  item("company-documents", "Company documents & price list", "कंपनी दस्तावेज़ और रेट लिस्ट", "▧", "library", "settings:manage"),
   shared.documents,
   item("reports", "Reports & exports", "रिपोर्ट और निर्यात", "▨", "analytics"),
   shared.analytics,
@@ -375,6 +377,7 @@ const manager: SurfaceItem[] = [
   g(G.taTravel, item("my-ta", "My Travel", "मेरी यात्रा", "⌁", "travel", "field_reports:view_self")),
   g(G.taTravel, item("ta-verification", "Team TA verification", "टीम टीए सत्यापन", "✓", "travel", "ta_claim:verify")),
   item("instructions", "Team instructions", "टीम निर्देश", "✎", "instructions", "manager_instruction:manage"),
+  item("company-documents", "Company documents & price list", "कंपनी दस्तावेज़ और रेट लिस्ट", "▧", "library", "portal:sales_manager"),
   item("my-salary", "My salary", "मेरा वेतन", "₹", "employee"),
   item("employment-policy", "My employment / field policy", "मेरी रोजगार / फील्ड नीति", "§", "employee"),
   shared.analytics,
@@ -451,6 +454,7 @@ const executive: SurfaceItem[] = [
   ),
   item("instructions", "My instructions", "मेरे निर्देश", "✎", "instructions", "field_day:manage_self"),
   item("ta-expenses", "My Travel", "मेरी यात्रा", "⌁", "travel", "field_reports:view_self"),
+  item("company-documents", "Company documents & price list", "कंपनी दस्तावेज़ और रेट लिस्ट", "▧", "library", "portal:sales_executive"),
   item("my-salary", "My salary", "मेरा वेतन", "₹", "employee"),
   item("employment-policy", "My employment / field policy", "मेरी रोजगार / फील्ड नीति", "§", "employee"),
   item("sync", "Offline & sync", "ऑफ़लाइन और सिंक", "⇅", "automation"),
@@ -615,12 +619,12 @@ const MORE: [string, string] = ["MORE", "अधिक"];
 const FIELD_GROUPS: Record<string, Record<string, [string, string]>> = {
   "sales-executive": {
     today: TODAY, beat: TODAY, retailers: TODAY, orders: TODAY, collections: TODAY, instructions: TODAY,
-    "market-survey": PROGRESS, prospects: PROGRESS, targets: PROGRESS, "delivered-sales": PROGRESS, dsr: PROGRESS,
+    "market-survey": PROGRESS, prospects: PROGRESS, "company-documents": PROGRESS, targets: PROGRESS, "delivered-sales": PROGRESS, dsr: PROGRESS,
   },
   "sales-manager": {
     "my-day": TODAY, "beat-planner": TODAY, retailing: TODAY, "joint-working": TODAY, "partner-visits": TODAY, "market-survey": TODAY, "distributor-search": TODAY, instructions: TODAY,
     team: TEAM, "team-review": TEAM, attendance: TEAM, approvals: TEAM, "ta-verification": TEAM, visits: TEAM, "photo-compliance": TEAM, alerts: TEAM,
-    "distributor-oversight": PROGRESS, "delivered-sales": PROGRESS, collections: PROGRESS, dsr: PROGRESS, "new-retailers": PROGRESS, analytics: PROGRESS,
+    "distributor-oversight": PROGRESS, "company-documents": PROGRESS, "delivered-sales": PROGRESS, collections: PROGRESS, dsr: PROGRESS, "new-retailers": PROGRESS, analytics: PROGRESS,
   },
 };
 function groupFieldSales(portal: string, items: SurfaceItem[]): SurfaceItem[] {
