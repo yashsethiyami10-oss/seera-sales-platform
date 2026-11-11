@@ -15,6 +15,7 @@ const HINTS: Record<string, [string, string]> = {
   "market-survey": ["Capture competitor and shelf insights", "प्रतिस्पर्धी और शेल्फ़ जानकारी दर्ज करें"],
   prospects: ["Log new distributor leads", "नए वितरक लीड दर्ज करें"],
   "distributor-search": ["Log new distributor leads", "नए वितरक लीड दर्ज करें"],
+  "partner-kyc": ["Upload GST, PAN, Aadhaar, bank proof — photo or PDF", "GST, PAN, आधार, बैंक प्रमाण — फ़ोटो या PDF"],
   targets: ["How close you are to this month's target", "इस महीने के लक्ष्य से आप कितनी दूर हैं"],
   "delivered-sales": ["Orders actually delivered — counts for target", "वास्तव में डिलीवर ऑर्डर — लक्ष्य में गिने जाते हैं"],
   dsr: ["Daily sales report and past days", "दैनिक बिक्री रिपोर्ट और पिछले दिन"],

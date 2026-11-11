@@ -14,6 +14,7 @@ import {
 import styles from "@/components/seera/foundation/Workspace.module.css";
 import { surfaceItem } from "@/lib/foundation/product-surface";
 import { OperationalDetail } from "@/components/seera/product/OperationalDetail";
+import { ProtectedData } from "@/components/seera/product/ProtectedData";
 export default async function WorkspaceDetail({
   params,
   searchParams,
@@ -292,8 +293,8 @@ export default async function WorkspaceDetail({
     );
   }
   const product = surfaceItem(portal, section, permissions);
-  if (product)
-    return (
+  if (product) {
+    const detail = (
       <OperationalDetail
         db={prisma}
         userId={actor.id}
@@ -311,5 +312,11 @@ export default async function WorkspaceDetail({
         canManageCommercialParty={allowed("network:manage")}
       />
     );
+    // A partner's view of one customer (retailer / distributor) is view-only: copy, print and
+    // save are blocked in the browser, and no download route exists for it.
+    if (["distributor", "super-stockist", "retailer"].includes(portal) && (product.kind === "retailers" || product.kind === "partners"))
+      return <ProtectedData language={language === "HI" ? "HI" : "EN"}>{detail}</ProtectedData>;
+    return detail;
+  }
   notFound();
 }

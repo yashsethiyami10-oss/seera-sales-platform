@@ -30,6 +30,10 @@ type Summary = {
     workingType: string | null;
     workingDistributorId: string | null;
     workingDistributorLabel: string | null;
+    visits?: number;
+    productive?: number;
+    orders?: number;
+    bookedValue?: number;
   }[];
   unassignedOrders: {
     id: string;
@@ -75,6 +79,28 @@ export function ManagerDashboardSummary({
       </dl>
       {summary.teamToday.length > 0 && (
         <>
+          <div>
+            <small>{hi ? "टीम लीडरबोर्ड — आज" : "TEAM LEADERBOARD — TODAY"}</small>
+            <h2>{hi ? "आज कौन आगे है" : "Who is leading today"}</h2>
+          </div>
+          <ol className={journeyStyles.leaderboard}>
+            {[...summary.teamToday]
+              .sort((a, b) => (b.bookedValue ?? 0) - (a.bookedValue ?? 0) || (b.orders ?? 0) - (a.orders ?? 0) || (b.visits ?? 0) - (a.visits ?? 0))
+              .map((e, i) => (
+                <li key={e.employeeId} data-rank={i < 3 && (e.bookedValue ?? 0) > 0 ? i + 1 : undefined} data-idle={e.dayStatus === "NOT_STARTED" || undefined}>
+                  <b aria-hidden>{(e.bookedValue ?? 0) > 0 ? (["🥇", "🥈", "🥉"][i] ?? `#${i + 1}`) : e.dayStatus === "NOT_STARTED" ? "💤" : `#${i + 1}`}</b>
+                  <span>
+                    <strong>{e.employeeName}</strong>
+                    <small>
+                      {e.dayStatus === "ACTIVE" ? (hi ? "फील्ड में" : "In field") : e.dayStatus === "ENDED" ? (hi ? "दिन समाप्त" : "Day ended") : hi ? "दिन शुरू नहीं" : "Not started"}
+                      {" · "}
+                      {e.visits ?? 0} {hi ? "विज़िट" : "visits"} · {e.orders ?? 0} {hi ? "ऑर्डर" : "orders"}
+                    </small>
+                  </span>
+                  <i>{money(e.bookedValue ?? 0)}</i>
+                </li>
+              ))}
+          </ol>
           <div>
             <small>{hi ? "टीम — आज" : "TEAM — TODAY"}</small>
             <h2>{hi ? "कार्यरत वितरक" : "Working Distributor"}</h2>

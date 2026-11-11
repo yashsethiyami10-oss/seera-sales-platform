@@ -73,6 +73,8 @@ import { TeamTaClaimsPanel } from "./ManagerTaClaimActions";
 import { TravelPolicyActions } from "./TravelPolicyActions";
 import { TravelAdjustmentActions } from "./TravelAdjustmentActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
+import { PartnerKycPanel } from "./PartnerKycPanel";
+import { ProtectedData } from "./ProtectedData";
 import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments, territoriesAndBeats, activeExecutiveTerritoryAssignments } from "@/lib/sales-distribution/operational-service";
 import { companyDirectEligibilityRoster } from "@/lib/sales-distribution/distributor-management-service";
 import { moneyDeskHome, moneyDeskSupportingData } from "@/lib/finance/money-desk-service";
@@ -3044,14 +3046,37 @@ export async function OperationalWorkspace({
         />
       </>
     );
+  } else if (item.slug === "partner-kyc") {
+    // Self-contained: PartnerKycPanel loads its own subject list / documents from
+    // /api/partner-kyc, which re-checks the actor's scope on every call.
+    workflow = <PartnerKycPanel language={language} portal={portal} initial={query.kyc} />;
   } else if (portal === "sales-executive" && item.slug === "prospects") {
+    const myProspects = await db.seeraProspect.findMany({
+      where: { ownerEmployeeId: userId, status: { not: "REJECTED" } },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+      select: { id: true, businessName: true, prospectType: true, stage: true, normalizedMobile: true },
+    });
     workflow = (
-      <WorkflowActions
-        kind="prospect"
-        language={language}
-        prospectEndpoint="/api/field/operations"
-        prospectAction="create-prospect"
-      />
+      <>
+        <WorkflowActions
+          kind="prospect"
+          language={language}
+          prospectEndpoint="/api/field/operations"
+          prospectAction="create-prospect"
+        />
+        {myProspects.length > 0 && (
+          <section className={styles.toolbar} style={{ display: "grid", gap: 10 }}>
+            <strong>{hi ? "मेरे प्रॉस्पेक्ट — KYC दस्तावेज़ जोड़ें" : "My prospects — add KYC documents"}</strong>
+            {myProspects.map((p) => (
+              <Link key={p.id} href={`${base}/partner-kyc?kyc=PROSPECT:${p.id}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "12px 14px", borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0", fontWeight: 800, textDecoration: "none", color: "#172554" }}>
+                <span>{p.businessName} · {p.prospectType === "SUPER_STOCKIST" ? "S.S." : hi ? "वितरक" : "Distributor"} · {p.stage}</span>
+                <span>📎 {hi ? "दस्तावेज़" : "Documents"} →</span>
+              </Link>
+            ))}
+          </section>
+        )}
+      </>
     );
   } else if (
     portal === "sales-manager" &&
@@ -4780,6 +4805,7 @@ export async function OperationalWorkspace({
           where: { buyerPartnerId: parties[0].value, type: "DISTRIBUTOR_REPLENISHMENT" },
           orderBy: { createdAt: "desc" },
           take: 15,
+          include: { lines: { select: { skuId: true, orderedQuantity: true } } },
         }),
       ]);
       const superStockist = distributorPartner?.assignedSuperStockistId
@@ -4825,8 +4851,10 @@ export async function OperationalWorkspace({
               brand: x.brand,
               meta: label,
               unavailable: rate == null,
+              rate: rate ?? undefined,
             };
           })}
+          lastOrderLines={(recentSsOrders.find((o) => o.status !== "REJECTED" && o.lines.length > 0)?.lines ?? []).map((l) => ({ skuId: l.skuId, quantity: Number(l.orderedQuantity) }))}
           recentOrders={recentSsOrders.map((o) => ({
             id: o.id,
             orderNumber: o.orderNumber,
@@ -5006,7 +5034,7 @@ export async function OperationalWorkspace({
         }),
         db.seeraSalesOrder.findMany({
           where: { buyerPartnerId: parties[0].value, type: "COMPANY_REPLENISHMENT" },
-          include: { paymentProofs: { orderBy: { submittedAt: "desc" }, take: 1 } },
+          include: { paymentProofs: { orderBy: { submittedAt: "desc" }, take: 1 }, lines: { select: { skuId: true, orderedQuantity: true, schemeSnapshot: true } } },
           orderBy: { createdAt: "desc" },
           take: 15,
         }),
@@ -5048,6 +5076,11 @@ export async function OperationalWorkspace({
           language={language}
           superStockistId={parties[0].value}
           catalog={catalog}
+          lastOrderLines={(recentCompanyOrders.find((o) => o.status !== "CANCELLED" && o.lines.length > 0)?.lines ?? []).map((l) => ({
+            skuId: l.skuId,
+            quantity: Number(l.orderedQuantity),
+            commercialUom: ((l.schemeSnapshot as { selectedUom?: string } | null)?.selectedUom ?? "") || undefined,
+          }))}
           recentOrders={recentCompanyOrders.map((o) => ({
             id: o.id,
             orderNumber: o.orderNumber,
@@ -5631,8 +5664,12 @@ export async function OperationalWorkspace({
   const isSelfContainedPanel = isExecutiveTodayPage
     || ((portal === "founder-admin" || portal === "accounts") && (item.slug === "money-desk" || item.slug === "finance-os"))
     || (portal === "founder-admin" && (item.slug === "sales" || item.slug === "orders" || item.slug === "approvals"))
-    || ((portal === "founder-admin" || portal === "sales-manager") && item.slug === "attendance");
+    || ((portal === "founder-admin" || portal === "sales-manager") && item.slug === "attendance")
+    || item.slug === "partner-kyc";
   if (!isSelfContainedPanel) rows = await rowsFor(db, userId, portal, item, q, (page - 1) * 30);
+  // Partners see their customers (retailers / distributors) for daily work, view-only: no export
+  // exists for these lists, and ProtectedData blocks copy / print / save in the browser.
+  const protectCustomerRows = ["distributor", "super-stockist", "retailer"].includes(portal) && (item.kind === "retailers" || item.kind === "partners");
   return (
     <>
       <PageHeading title={surfaceLabel(item, language)} description={description} action={headerAction || undefined} />
@@ -5662,6 +5699,7 @@ export async function OperationalWorkspace({
         </span>
       </section>
       {rows.length ? (
+        (() => { const table = (
         <div className={styles.tableWrap}>
           <table>
             <thead>
@@ -5701,7 +5739,7 @@ export async function OperationalWorkspace({
               ))}
             </tbody>
           </table>
-        </div>
+        </div>); return protectCustomerRows ? <ProtectedData language={language}>{table}</ProtectedData> : table; })()
       ) : (
         <EmptyState
           title={

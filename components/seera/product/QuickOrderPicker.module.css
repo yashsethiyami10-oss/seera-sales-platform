@@ -1,0 +1,24 @@
+.picker{display:grid;gap:12px;grid-column:1/-1}
+.repeat3d{min-height:54px;border:0;border-radius:14px;background:linear-gradient(160deg,#1e3a8a,#172554);color:#fff;font:inherit;font-weight:900;font-size:16px;cursor:pointer;box-shadow:0 5px 0 #0b1437,0 12px 20px #17255433;transition:transform .08s,box-shadow .08s}.repeat3d:active:not(:disabled){transform:translateY(4px);box-shadow:0 1px 0 #0b1437}
+.filters{display:grid;gap:8px}.filters input[type=search]{min-height:46px;padding:0 12px;border:1px solid #cbd5e1;border-radius:12px;font:inherit;box-sizing:border-box;width:100%}
+.brandTabs{display:flex;gap:6px;flex-wrap:wrap}.brandTabs button{min-height:38px;padding:0 14px;border:1px solid #d8dde5;border-radius:999px;background:#fff;font:inherit;font-weight:800;cursor:pointer}.brandTabs button[data-active=true]{background:var(--seera-primary,#b91c1c);border-color:var(--seera-primary,#b91c1c);color:#fff}
+.onlySelected{display:flex!important;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--seera-ink-soft,#475569)}.onlySelected input{width:18px;height:18px;min-height:0;accent-color:var(--seera-primary,#b91c1c)}
+.list{display:grid;gap:8px;margin:0;padding:0;list-style:none;max-height:min(62vh,640px);overflow:auto;padding-right:2px}
+.list li{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:14px;background:#fff;transition:border-color .15s,background-color .15s}.list li[data-selected=true]{border-color:#86d3ac;background:#f0faf5}.list li[data-unavailable=true]{opacity:.55}
+.name{flex:1;min-width:0;display:grid;gap:2px;justify-items:start;padding:0;border:0;background:none;text-align:left;font:inherit;color:var(--seera-ink,#172554);cursor:pointer}.name strong{font-size:14px;overflow-wrap:anywhere}.name small{font-size:12px;color:#64748b;font-weight:600}
+.stepper{flex:none;display:grid;grid-template-columns:40px 56px 40px;gap:4px}.stepper button{min-height:42px;border:0;border-radius:10px;background:#fff;color:var(--seera-primary,#b91c1c);font-size:22px;font-weight:900;cursor:pointer;box-shadow:0 3px 0 #e2d4d4,0 1px 5px #17255414;transition:transform .08s,box-shadow .08s}.stepper button:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 #e2d4d4}.stepper button:disabled{opacity:.35;cursor:default}.stepper input{min-height:42px;padding:0;text-align:center;border:1px solid #cbd5e1;border-radius:10px;font:inherit;font-weight:900;font-size:16px;width:100%;box-sizing:border-box}
+.empty{justify-content:center;color:#64748b}
+.bar{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom));z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:16px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 12px 30px #17255426}.bar>span{flex:1;min-width:140px;font-weight:800;color:var(--seera-ink,#172554)}.bar small{color:#64748b;font-weight:600}
+.clear{min-height:44px;padding:0 12px;border:1px solid #d8dde5;border-radius:12px;background:#fff;font:inherit;font-weight:800;cursor:pointer}
+.submit3d{min-height:50px;padding:0 20px;border:0;border-radius:14px;background:linear-gradient(160deg,#dc2626,#991b1b);color:#fff;font:inherit;font-weight:900;font-size:16px;cursor:pointer;box-shadow:0 5px 0 #6b1010,0 10px 20px #b91c1c33;transition:transform .08s,box-shadow .08s}.submit3d:active:not(:disabled){transform:translateY(4px);box-shadow:0 1px 0 #6b1010}.submit3d:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:480px){.submit3d{flex:1 1 100%}.stepper{grid-template-columns:38px 48px 38px}}
+/* Host panels (WorkflowActions .panel button) paint every button solid red; restate the picker's
+   own buttons with higher specificity so names, tabs and steppers keep their look. */
+.picker .brandTabs button{background:#fff;color:var(--seera-ink,#172554);border:1px solid #d8dde5;min-height:38px;align-self:auto}
+.picker .brandTabs button[data-active=true]{background:var(--seera-primary,#b91c1c);color:#fff;border-color:var(--seera-primary,#b91c1c)}
+.picker .list .name{background:none;color:var(--seera-ink,#172554);min-height:0;border-radius:0;align-self:auto;font-weight:400}
+.picker .list .name small{color:#64748b}
+.picker .stepper button{background:#fff;color:var(--seera-primary,#b91c1c);border-radius:10px;align-self:auto;min-height:42px}
+.picker .clear{background:#fff;color:var(--seera-ink,#172554);border:1px solid #d8dde5;align-self:auto}
+.picker .repeat3d{background:linear-gradient(160deg,#1e3a8a,#172554);align-self:auto}
+.picker .submit3d{background:linear-gradient(160deg,#dc2626,#991b1b);align-self:auto}

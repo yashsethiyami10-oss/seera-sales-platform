@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
 import Link from "@/components/seera/foundation/PortalLink";
 import { useEffect, useRef, useState } from "react";
+import { CelebrationBurst, TargetPulse } from "./Motivation";
 import styles from "./FieldJourney.module.css";
 import { queueOfflineOperation, syncClientQueue, listClientQueue } from "@/lib/phase-11/offline-client";
 import { captureGps, GpsBadge, type GpsStatus, type GpsPoint } from "./gps";
@@ -25,6 +26,56 @@ type BeatRetailer = {
 // a SKU with unitsPerCase<=1 simply has no case unit to offer (PC only), same as today.
 type Sku = { id: string; brand: string; productName: string; packLabel: string; price: string; rate: number; unitsPerCase: number; caseUnit: "BOX" | "BAG" | null };
 type Photo = { id: string; photoType: string; capturedAt: string; secureUrl?: string | null };
+type VisitStep = "CHOOSE" | "ORDER" | "NO_ORDER" | "COLLECTION" | "LATER" | "PHOTO" | "FOLLOW_UP";
+type FinishOutcome = "ORDER_BOOKED" | "NO_ORDER" | "FOLLOW_UP" | "COLLECTION" | "MARKET_INTELLIGENCE";
+type FinishPlan = { outcome: FinishOutcome; noOrderReason?: string; followUpAt?: string };
+const VISIT_STEPS: readonly VisitStep[] = ["CHOOSE", "ORDER", "NO_ORDER", "COLLECTION", "LATER", "PHOTO", "FOLLOW_UP"];
+const planStorageKey = (visitId: string) => `seera:field-visit:${visitId}:plan`;
+function readStoredPlan(visitId: string): FinishPlan | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(planStorageKey(visitId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as FinishPlan;
+    return parsed && typeof parsed.outcome === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+// Local calendar date N days from today as YYYY-MM-DD (never toISOString, which is UTC and turns
+// "tomorrow" into "today" for early-morning IST users).
+function dateAfterDays(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const NO_ORDER_REASONS: readonly [string, string][] = [
+  ["Stock already full", "स्टॉक पहले से भरा है"],
+  ["Owner not available", "मालिक उपलब्ध नहीं"],
+  ["Payment pending", "भुगतान बकाया"],
+  ["Price concern", "कीमत ज़्यादा लगी"],
+  ["Shop closed", "दुकान बंद"],
+  ["Buying other brand", "दूसरा ब्रांड ले रहे हैं"],
+];
+const COME_BACK_OPTIONS: readonly [number, string, string][] = [
+  [1, "Tomorrow", "कल"],
+  [3, "In 3 days", "3 दिन में"],
+  [7, "Next week", "अगले हफ्ते"],
+];
+const NO_PHOTO_REASONS: readonly [string, string, string][] = [
+  ["RETAILER_REFUSED", "Retailer refused", "रिटेलर ने मना किया"],
+  ["CAMERA_ISSUE", "Camera problem", "कैमरा खराब"],
+  ["EMERGENCY", "Emergency", "आपातकाल"],
+  ["OTHER", "Other", "अन्य"],
+];
+// Short, rotating cheers shown after every finished visit — chosen by visit count, never random,
+// so server and client render the same text.
+const CHEERS: readonly [string, string][] = [
+  ["Great work! Next shop is waiting.", "बहुत बढ़िया! अगली दुकान इंतज़ार कर रही है।"],
+  ["One more done — keep the streak going!", "एक और पूरा — ऐसे ही चलते रहो!"],
+  ["Every visit builds your target. Keep going!", "हर विज़िट से लक्ष्य पास आता है। लगे रहो!"],
+  ["Champion pace! Stay on the beat.", "चैंपियन रफ़्तार! बीट पर बने रहो।"],
+];
 type Visit = {
   id: string;
   retailerId: string;
@@ -634,34 +685,52 @@ function OrderLineItemsEditor({
                 </select>
               </label>
             )}
-            <label>
-              {hi ? "मात्रा" : "Quantity"} {line.uom !== "PC" ? `(${line.uom})` : ""}
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={line.quantity}
-                onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, quantity: Number(event.target.value) } : item)))}
-                required
-              />
-              {sku && line.uom !== "PC" && (
-                <small>{hi ? `= ${line.quantity * sku.unitsPerCase} PC` : `= ${line.quantity * sku.unitsPerCase} PC`}</small>
-              )}
-            </label>
-            <label>
-              {hi ? `बिक्री दर / ${line.uom} (GST सहित)` : `Selling Rate / ${line.uom} (Incl. GST)`}
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={line.rate || ""}
-                placeholder={hi ? "दर दर्ज करें" : "Enter rate"}
-                onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, rate: Number(event.target.value) } : item)))}
-                required
-              />
-            </label>
-            <label>
-              {hi ? "स्कीम — फ्री मात्रा (वैकल्पिक)" : "Scheme — free quantity (optional)"}
+            <div className={styles.qtyRateRow}>
+              <label>
+                {hi ? "मात्रा" : "Quantity"} {line.uom !== "PC" ? `(${line.uom})` : ""}
+                <div className={styles.stepper3d}>
+                  <button
+                    type="button"
+                    aria-label={hi ? "मात्रा घटाएँ" : "Decrease quantity"}
+                    onClick={() => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, quantity: Math.max(1, (item.quantity || 1) - 1) } : item)))}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    step="1"
+                    value={line.quantity}
+                    onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, quantity: Number(event.target.value) } : item)))}
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={hi ? "मात्रा बढ़ाएँ" : "Increase quantity"}
+                    onClick={() => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, quantity: (item.quantity || 0) + 1 } : item)))}
+                  >
+                    +
+                  </button>
+                </div>
+                {sku && line.uom !== "PC" && <small>= {line.quantity * sku.unitsPerCase} PC</small>}
+              </label>
+              <label>
+                {hi ? `दर / ${line.uom} (GST सहित)` : `Rate / ${line.uom} (incl. GST)`}
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0.01"
+                  step="0.01"
+                  value={line.rate || ""}
+                  placeholder={hi ? "दर दर्ज करें" : "Enter rate"}
+                  onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, rate: Number(event.target.value) } : item)))}
+                  required
+                />
+              </label>
+            </div>
+            <details className={styles.schemeToggle} open={line.freeQuantity > 0 || undefined}>
+              <summary>{hi ? "+ स्कीम / फ्री मात्रा" : "+ Scheme / free quantity"}</summary>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
                   type="number"
@@ -669,10 +738,12 @@ function OrderLineItemsEditor({
                   step="1"
                   value={line.freeQuantity || ""}
                   placeholder="0"
+                  aria-label={hi ? "फ्री मात्रा" : "Free quantity"}
                   onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, freeQuantity: Math.max(0, Number(event.target.value)) } : item)))}
                 />
                 <select
                   value={line.freeUom}
+                  aria-label={hi ? "फ्री इकाई" : "Free unit"}
                   onChange={(event) => setLines((current) => current.map((item) => (item.key === line.key ? { ...item, freeUom: event.target.value } : item)))}
                 >
                   <option value="PC">PC</option>
@@ -682,11 +753,10 @@ function OrderLineItemsEditor({
               {line.freeQuantity > 0 && (
                 <small>{hi ? `स्कीम: +${line.freeQuantity} ${line.freeUom} फ्री (कर/कुल में शामिल नहीं)` : `Scheme: +${line.freeQuantity} ${line.freeUom} FREE (not included in tax/total)`}</small>
               )}
-            </label>
-            <label>
-              {hi ? "कुल" : "Total"}
-              <input value={sku ? `₹${lineTotal.toFixed(2)}` : "—"} readOnly />
-            </label>
+            </details>
+            <p className={styles.lineTotal}>
+              {hi ? "कुल" : "Line total"}: <strong>{sku ? `₹${lineTotal.toFixed(2)}` : "—"}</strong>
+            </p>
             {lines.length > 1 && (
               <button
                 className={styles.removeLine}
@@ -782,11 +852,21 @@ async function runOrQueue(
 function DashboardHeader({
   language,
   dashboard,
+  compact = false,
 }: {
   language: "EN" | "HI";
   dashboard: Dashboard;
+  // During an active visit the screen belongs to the visit: a one-line target strip instead of
+  // the full ring, so the "what happened?" buttons are visible without scrolling.
+  compact?: boolean;
 }) {
   const hi = language === "HI";
+  if (compact)
+    return (
+      <section id="field-journey-top" className={styles.journey} data-slim="true">
+        <TargetPulse language={language} target={dashboard.target} today={dashboard.today} compact />
+      </section>
+    );
   return (
     <section id="field-journey-top" className={styles.journey}>
       <div className={styles.dashboard}>
@@ -823,39 +903,7 @@ function DashboardHeader({
                   : "Day not started"}
           </span>
         </div>
-        {dashboard.target && (
-          <div className={styles.targetCard}>
-            <div className={styles.targetHead}>
-              <span>{hi ? "मासिक लक्ष्य" : "Monthly target"}</span>
-              <strong>{dashboard.target.achievementPct}%</strong>
-            </div>
-            <div className={styles.progress} role="progressbar" aria-label={hi ? "मासिक लक्ष्य प्रगति" : "Monthly target progress"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, dashboard.target.achievementPct))}>
-              <span style={{ width: `${Math.min(100, Math.max(0, dashboard.target.achievementPct))}%` }} />
-            </div>
-            <p className={styles.meta}>
-              ₹{dashboard.target.achieved.toLocaleString("en-IN")} {hi ? "में से" : "of"} ₹{dashboard.target.value.toLocaleString("en-IN")} ·{" "}
-              {hi ? "रोज़ चाहिए" : "Need/day"} ₹{dashboard.target.requiredDailyRunRate.toLocaleString("en-IN")} · {dashboard.target.daysRemaining} {hi ? "दिन बाकी" : "days left"}
-            </p>
-          </div>
-        )}
-        <dl className={styles.statGrid} data-compact="true">
-          <div>
-            <dt>{hi ? "देखे गए" : "Visited"}</dt>
-            <dd>{dashboard.today.visited}<small> / {dashboard.today.planned}</small></dd>
-          </div>
-          <div>
-            <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
-            <dd>{dashboard.today.orders}</dd>
-          </div>
-          <div>
-            <dt>{hi ? "बुक मूल्य" : "Booked value"}</dt>
-            <dd>₹{dashboard.today.bookedValue.toLocaleString("en-IN")}</dd>
-          </div>
-          <div>
-            <dt>{hi ? "फॉलो-अप देय" : "Follow-ups due"}</dt>
-            <dd>{dashboard.today.followUpsDue}</dd>
-          </div>
-        </dl>
+        <TargetPulse language={language} target={dashboard.target} today={dashboard.today} />
         <details className={styles.moreStats}>
           <summary>{hi ? "सभी आँकड़े देखें" : "See all numbers"}</summary>
         {dashboard.target && (
@@ -1023,14 +1071,21 @@ export function FieldJourney({
     dayActionSubmittingRef = useRef(false),
     [busy, setBusy] = useState(false),
     [reasonRequest, setReasonRequest] = useState<ReasonRequest | null>(null),
-    [checkoutOutcome, setCheckoutOutcome] = useState<"ORDER_BOOKED" | "NO_ORDER" | "FOLLOW_UP" | "MARKET_INTELLIGENCE">(
-      rawVisit && rawVisit.orderCount > 0 ? "ORDER_BOOKED" : "NO_ORDER",
-    ),
     [busyLabel, setBusyLabel] = useState<string | null>(null),
     [message, setMessage] = useState<ActionMessage | null>(null),
-    [mode, setMode] = useState<"ORDER" | "COLLECTION" | "PHOTO" | "FOLLOW_UP">(
-      rawVisit && (rawVisit.orderCount > 0 || rawVisit.photos.length > 0) ? "PHOTO" : "ORDER",
+    // Guided visit (one obvious step at a time): CHOOSE what happened → the matching short step
+    // (ORDER / NO_ORDER / COLLECTION / LATER) → PHOTO → the visit finishes by itself the moment the
+    // photo is saved (or a no-photo reason is tapped). FOLLOW_UP stays as an optional side step.
+    [mode, setMode] = useState<VisitStep>(rawVisit && rawVisit.orderCount > 0 ? "PHOTO" : "CHOOSE"),
+    // What the visit will be closed as once the photo step is done. Persisted per visit in
+    // sessionStorage so an Android camera round-trip that reloads the page does not lose it.
+    [finishPlan, setFinishPlanState] = useState<FinishPlan | null>(
+      rawVisit && rawVisit.orderCount > 0 ? { outcome: "ORDER_BOOKED" } : null,
     ),
+    [visitNote, setVisitNote] = useState(""),
+    [routeDeviation, setRouteDeviation] = useState(""),
+    [comeBackDays, setComeBackDays] = useState<number | null>(null),
+    [celebration, setCelebration] = useState<{ title: string; line: string } | null>(null),
     [orderLines, setOrderLines] = useState<OrderLine[]>([blankOrderLine("initial")]),
     [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT"),
     // Collection capture (SR-011/SR-009): Sales Executives can never accept cash on behalf of the
@@ -1050,7 +1105,9 @@ export function FieldJourney({
     // loaded (app reopened after being killed, a stale tab, etc.) as distinct from a visit the
     // Executive just checked into during this same session (which sets rawVisit only after mount).
     // Only the recovery-worth case shows the explicit "open visit found" card below.
-    [hadOpenVisitOnLoad] = useState(() => Boolean(rawVisit)),
+    // The id (not just "was there one") so the card only ever shows for THAT recovered visit — a
+    // brand-new check-in later in the same page session is not an "open visit found".
+    [openVisitIdOnLoad] = useState(() => rawVisit?.id ?? null),
     [recoveryCardDismissed, setRecoveryCardDismissed] = useState(false),
     // Section-1 fix: idempotencyKey/checkInIdempotencyKey were previously generated fresh via
     // key() (crypto.randomUUID()) on EVERY call to submitAddCustomer — including a manual retry
@@ -1170,11 +1227,29 @@ export function FieldJourney({
     if (session) dayActionSubmittingRef.current = false;
   }, [session?.id]);
 
-  // Pre-select the obvious checkout outcome: "Order booked" once this visit has an order, else "No order".
   const visitOrderCount = visit?.orderCount ?? 0;
+  // finishPlan is read from async camera/upload callbacks that can outlive the render that created
+  // them (Android appRestoredResult listener), so a ref mirrors the latest value.
+  const finishPlanRef = useRef<FinishPlan | null>(finishPlan);
+  const setFinishPlan = (plan: FinishPlan | null) => {
+    finishPlanRef.current = plan;
+    setFinishPlanState(plan);
+    if (visit && typeof sessionStorage !== "undefined") {
+      if (plan) sessionStorage.setItem(planStorageKey(visit.id), JSON.stringify(plan));
+      else sessionStorage.removeItem(planStorageKey(visit.id));
+    }
+  };
+  // An order saved on this visit (from this screen, a reorder, or another tab) always means the
+  // visit closes as "Order booked" unless the rep explicitly picked something else afterwards.
   useEffect(() => {
-    setCheckoutOutcome(visitOrderCount > 0 ? "ORDER_BOOKED" : "NO_ORDER");
+    if (visit && visitOrderCount > 0 && !finishPlanRef.current) setFinishPlan({ outcome: "ORDER_BOOKED" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visit?.id, visitOrderCount]);
+  useEffect(() => {
+    if (!celebration) return;
+    const timer = setTimeout(() => setCelebration(null), 2600);
+    return () => clearTimeout(timer);
+  }, [celebration]);
   const effectivePhotos = visit ? [...visit.photos, ...localAddedPhotos].filter((p) => !locallyDeletedPhotoIds.has(p.id)) : [];
 
   const revokePhotoPreview = () => {
@@ -1208,14 +1283,21 @@ export function FieldJourney({
     const storageKey = visit ? `seera:field-visit:${visit.id}:mode` : null;
     const storedMode = storageKey ? sessionStorage.getItem(storageKey) : null;
     const pending = visit && pendingReorderLinesRef.current?.retailerId === visit.retailerId ? pendingReorderLinesRef.current : null;
+    const storedPlan = visit ? readStoredPlan(visit.id) : null;
+    const plan = storedPlan ?? (visit && visit.orderCount > 0 ? { outcome: "ORDER_BOOKED" as const } : null);
+    finishPlanRef.current = plan;
+    setFinishPlanState(plan);
+    setVisitNote("");
+    setRouteDeviation("");
+    setComeBackDays(null);
     setMode(
       pending
         ? "ORDER"
-        : visit && (visit.orderCount > 0 || visit.photos.length > 0)
+        : plan
           ? "PHOTO"
-          : storedMode === "PHOTO" || storedMode === "FOLLOW_UP"
-            ? storedMode
-            : "ORDER",
+          : storedMode && VISIT_STEPS.includes(storedMode as VisitStep) && storedMode !== "PHOTO"
+            ? (storedMode as VisitStep)
+            : "CHOOSE",
     );
     setOrderLines(pending ? pending.lines : [blankOrderLine()]);
     setPaymentType("CREDIT");
@@ -1356,6 +1438,70 @@ export function FieldJourney({
     }
   };
 
+  // The one way a visit is closed. Called automatically right after the visit photo is saved, by a
+  // no-photo reason chip, or by the "Finish visit" button — the same governed check-out action,
+  // idempotency key and GPS capture the old bottom-of-page checkout form used.
+  const finishVisit = async (plan: FinishPlan, photoExceptionReason?: string) => {
+    if (!visit) return;
+    if (checkoutSubmittingRef.current) return;
+    checkoutSubmittingRef.current = true;
+    const closingVisit = visit;
+    setBusy(true);
+    setBusyLabel(hi ? "विज़िट पूरी हो रही है…" : "Finishing visit…");
+    setGpsStatus("LOCATING");
+    await yieldToPaint();
+    const { status, point } = await captureGps();
+    setGpsStatus(status);
+    if (routeDeviation) await run("route-deviation", { visitId: closingVisit.id, reason: routeDeviation });
+    const result = await run(
+      "check-out",
+      {
+        visitId: closingVisit.id,
+        outcome: plan.outcome,
+        noOrderReason: plan.outcome === "NO_ORDER" ? plan.noOrderReason : undefined,
+        followUpAt: plan.followUpAt || undefined,
+        notes: visitNote,
+        photoExceptionReason,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        accuracy: point.accuracy,
+        // Deterministic per visit: every retry/double-tap/offline replay of THIS checkout is the
+        // same intent server-side (see executiveCheckOut's idempotent replay handling).
+        idempotencyKey: `checkout:${closingVisit.id}`,
+      },
+      { entityType: "SeeraVisit", actionType: "VISIT_CHECK_OUT" },
+      hi ? "विज़िट पूरी हुई।" : "Visit completed.",
+      hi ? "विज़िट पूरी हो रही है…" : "Finishing visit…",
+    );
+    if ("queued" in result || result.success) {
+      clearActiveVisitUrl();
+      sessionStorage.removeItem(`seera:field-visit:${closingVisit.id}:mode`);
+      sessionStorage.removeItem(planStorageKey(closingVisit.id));
+      setOptimisticVisitCleared(true);
+      if (!("queued" in result)) setAwaitingState({ kind: "NO_VISIT", visitId: closingVisit.id });
+      clearPendingReorder();
+      const done = dashboard.today.visited + 1;
+      const cheer = CHEERS[done % CHEERS.length]!;
+      setCelebration({
+        title:
+          plan.outcome === "ORDER_BOOKED"
+            ? hi ? `ऑर्डर बुक! आज की ${done}वीं विज़िट पूरी` : `Order booked! Visit ${done} done today`
+            : hi ? `विज़िट ${done} पूरी` : `Visit ${done} done`,
+        line: hi ? cheer[1] : cheer[0],
+      });
+    } else {
+      checkoutSubmittingRef.current = false;
+    }
+  };
+  const finishVisitRef = useRef(finishVisit);
+  finishVisitRef.current = finishVisit;
+  // Photo saved → if the rep already said what happened (order / no order / later / payment), the
+  // visit closes by itself; no scrolling to a separate checkout form.
+  const finishAfterPhoto = () => {
+    const plan = finishPlanRef.current;
+    if (plan) void finishVisitRef.current(plan);
+  };
+
   // Native-camera resume checkpoint. Android may recreate the WebView while the camera Activity
   // is foregrounded. The URL checkpoint lets the server reconstruct this exact open visit after
   // recreation; server-side work-session ownership remains authoritative.
@@ -1414,6 +1560,7 @@ export function FieldJourney({
     setBusyLabel(hi ? "फ़ोटो तैयार हो रही है…" : "Preparing photo…");
     setMessage(null);
     const captureReturnedAt = performance.now();
+    let saved = false;
 
     try {
       let blob: Blob | null = null;
@@ -1480,6 +1627,7 @@ export function FieldJourney({
       setPhotoPreview(null);
       setMessage({ ok: true, text: hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓" });
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
+      saved = true;
     } catch (error) {
       if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
       setMessage({
@@ -1490,6 +1638,7 @@ export function FieldJourney({
       setBusy(false);
       setBusyLabel(null);
     }
+    if (saved) finishAfterPhoto();
   };
 
   const openNativeCamera = async () => {
@@ -1706,7 +1855,8 @@ export function FieldJourney({
     new Promise<string | null>((resolve) => setReasonRequest({ title, options, resolve }));
   const header = (
     <>
-      <DashboardHeader language={language} dashboard={dashboard} />
+      <DashboardHeader language={language} dashboard={dashboard} compact={Boolean(visit)} />
+      {celebration && <CelebrationBurst title={celebration.title} line={celebration.line} onClose={() => setCelebration(null)} />}
       {reasonRequest && <ReasonDialog request={reasonRequest} language={language} onDone={() => setReasonRequest(null)} />}
     </>
   );
@@ -2755,7 +2905,7 @@ export function FieldJourney({
             </p>
           </div>
         </header>
-        {hadOpenVisitOnLoad && !recoveryCardDismissed && (
+        {openVisitIdOnLoad === visit.id && !recoveryCardDismissed && (
           <div
             style={{
               display: "grid", gap: 10, padding: 14, margin: "0 0 4px", borderRadius: 12,
@@ -2782,7 +2932,7 @@ export function FieldJourney({
                 type="button"
                 onClick={() => {
                   setRecoveryCardDismissed(true);
-                  document.getElementById("visit-checkout-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  setMode(finishPlan ? "PHOTO" : "CHOOSE");
                 }}
                 style={{ minHeight: 40, padding: "0 16px", border: "1px solid #b6e0f5", borderRadius: 9, background: "#fff", color: "#172033", fontWeight: 800, cursor: "pointer" }}
               >
@@ -2791,27 +2941,131 @@ export function FieldJourney({
             </div>
           </div>
         )}
-        <div className={styles.tabs}>
-          {(["ORDER", "PHOTO", "COLLECTION", "FOLLOW_UP"] as const).map((x) => (
-            <button type="button" key={x} data-active={mode === x} data-done={(x === "ORDER" && visit.orderCount > 0) || (x === "PHOTO" && effectivePhotos.length > 0)} onClick={() => setMode(x)}>
-              {x === "ORDER"
-                ? hi
-                  ? "ऑर्डर"
-                  : "Order"
-                : x === "COLLECTION"
-                  ? hi
-                    ? "कलेक्शन"
-                    : "Collection"
-                  : x === "PHOTO"
-                    ? hi
-                      ? "फ़ोटो"
-                      : "Photo"
-                    : hi
-                      ? "फॉलो-अप"
-                      : "Follow-up"}
-            </button>
-          ))}
-        </div>
+        <ol className={styles.stepper} aria-label={hi ? "विज़िट के चरण" : "Visit steps"}>
+          <li data-state={mode === "CHOOSE" || (mode !== "PHOTO" && !finishPlan) ? "current" : "done"}>
+            <i aria-hidden>1</i>
+            {hi ? "क्या हुआ?" : "What happened?"}
+          </li>
+          <li data-state={mode === "PHOTO" ? "current" : finishPlan ? "next" : "todo"}>
+            <i aria-hidden>2</i>
+            {hi ? "फ़ोटो" : "Photo"}
+          </li>
+          <li data-state="todo">
+            <i aria-hidden>3</i>
+            {hi ? "पूरा" : "Done"}
+          </li>
+        </ol>
+        {mode === "CHOOSE" && (
+          <div className={styles.choiceWrap}>
+            <strong className={styles.listTitle}>{hi ? "इस दुकान पर क्या हुआ?" : "What happened at this shop?"}</strong>
+            <div className={styles.choiceGrid}>
+              <button type="button" className={styles.choice3d} data-tone="order" disabled={busy} onClick={() => setMode("ORDER")}>
+                <b aria-hidden>📦</b>
+                <span>{hi ? "ऑर्डर लो" : "Take order"}</span>
+                <small>{hi ? "उत्पाद चुनें और सहेजें" : "Pick products, save"}</small>
+              </button>
+              <button type="button" className={styles.choice3d} data-tone="noorder" disabled={busy} onClick={() => setMode("NO_ORDER")}>
+                <b aria-hidden>✋</b>
+                <span>{hi ? "ऑर्डर नहीं" : "No order"}</span>
+                <small>{hi ? "एक टैप में कारण" : "Reason in one tap"}</small>
+              </button>
+              <button type="button" className={styles.choice3d} data-tone="money" disabled={busy} onClick={() => setMode("COLLECTION")}>
+                <b aria-hidden>₹</b>
+                <span>{hi ? "पेमेंट लो" : "Collect payment"}</span>
+                <small>{hi ? "बैंक / UPI / चेक" : "Bank / UPI / cheque"}</small>
+              </button>
+              <button type="button" className={styles.choice3d} data-tone="later" disabled={busy} onClick={() => setMode("LATER")}>
+                <b aria-hidden>⏰</b>
+                <span>{hi ? "बाद में आना है" : "Come back later"}</span>
+                <small>{hi ? "दिन चुनें" : "Pick a day"}</small>
+              </button>
+            </div>
+            <div className={styles.choiceLinks}>
+              <button
+                type="button"
+                className={styles.textLink}
+                disabled={busy}
+                onClick={() => {
+                  setFinishPlan({ outcome: "MARKET_INTELLIGENCE" });
+                  setMode("PHOTO");
+                }}
+              >
+                📝 {hi ? "सिर्फ़ बाज़ार जानकारी" : "Market info only"}
+              </button>
+              <button type="button" className={styles.textLink} disabled={busy} onClick={() => setMode("FOLLOW_UP")}>
+                🗓 {hi ? "फॉलो-अप काम जोड़ें" : "Add a follow-up task"}
+              </button>
+            </div>
+          </div>
+        )}
+        {mode !== "CHOOSE" && mode !== "PHOTO" && (
+          <button type="button" className={styles.backLink} disabled={busy} onClick={() => setMode("CHOOSE")}>
+            ← {hi ? "वापस: क्या हुआ?" : "Back: what happened?"}
+          </button>
+        )}
+        {mode === "NO_ORDER" && (
+          <div className={styles.choiceWrap}>
+            <strong className={styles.listTitle}>{hi ? "फिर कब आना है? (वैकल्पिक)" : "Come back when? (optional)"}</strong>
+            <div className={styles.reasonChips}>
+              {COME_BACK_OPTIONS.map(([days, en, hiLabel]) => (
+                <button key={days} type="button" data-active={comeBackDays === days} onClick={() => setComeBackDays(comeBackDays === days ? null : days)}>
+                  {hi ? hiLabel : en}
+                </button>
+              ))}
+            </div>
+            <strong className={styles.listTitle}>{hi ? "ऑर्डर क्यों नहीं मिला? (टैप करें)" : "Why no order? (tap one)"}</strong>
+            <div className={styles.reasonGrid}>
+              {NO_ORDER_REASONS.map(([en, hiLabel]) => (
+                <button
+                  key={en}
+                  type="button"
+                  className={styles.reason3d}
+                  disabled={busy}
+                  onClick={() => {
+                    setFinishPlan({ outcome: "NO_ORDER", noOrderReason: en, followUpAt: comeBackDays ? dateAfterDays(comeBackDays) : undefined });
+                    setMode("PHOTO");
+                  }}
+                >
+                  {hi ? hiLabel : en}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={styles.reason3d}
+                disabled={busy}
+                onClick={async () => {
+                  const reason = await askReason(hi ? "ऑर्डर क्यों नहीं मिला?" : "Why no order?");
+                  if (!reason) return;
+                  setFinishPlan({ outcome: "NO_ORDER", noOrderReason: reason, followUpAt: comeBackDays ? dateAfterDays(comeBackDays) : undefined });
+                  setMode("PHOTO");
+                }}
+              >
+                {hi ? "अन्य कारण…" : "Other reason…"}
+              </button>
+            </div>
+          </div>
+        )}
+        {mode === "LATER" && (
+          <div className={styles.choiceWrap}>
+            <strong className={styles.listTitle}>{hi ? "फिर कब आना है?" : "When should you come back?"}</strong>
+            <div className={styles.reasonGrid}>
+              {COME_BACK_OPTIONS.map(([days, en, hiLabel]) => (
+                <button
+                  key={days}
+                  type="button"
+                  className={styles.reason3d}
+                  disabled={busy}
+                  onClick={() => {
+                    setFinishPlan({ outcome: "FOLLOW_UP", followUpAt: dateAfterDays(days) });
+                    setMode("PHOTO");
+                  }}
+                >
+                  {hi ? hiLabel : en}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {mode === "ORDER" && (
           <form
             onSubmit={(e) => {
@@ -2874,6 +3128,7 @@ export function FieldJourney({
                   orderKeyRef.current = null;
                   clearPendingReorder();
                   if (!("queued" in outcome)) setAwaitingState({ kind: "ORDER", visitId: visit.id, minOrders: visit.orderCount + 1 });
+                  setFinishPlan({ outcome: "ORDER_BOOKED" });
                   setMode("PHOTO");
                 }
               })();
@@ -2914,7 +3169,8 @@ export function FieldJourney({
                 });
                 return;
               }
-              void run(
+              void (async () => {
+              const collected = await run(
                 "collection",
                 {
                   retailerId: visit.retailerId,
@@ -2928,6 +3184,12 @@ export function FieldJourney({
                 hi ? "कलेक्शन दर्ज किया गया।" : "Collection recorded.",
                 hi ? "कलेक्शन दर्ज हो रहा है…" : "Recording collection…",
               );
+              if ("queued" in collected || collected.success) {
+                // A payment on a visit that already has an order keeps closing as "Order booked".
+                if (finishPlanRef.current?.outcome !== "ORDER_BOOKED") setFinishPlan({ outcome: "COLLECTION" });
+                setMode("PHOTO");
+              }
+              })();
             }}
           >
             <p className={styles.note}>
@@ -2961,7 +3223,30 @@ export function FieldJourney({
           </form>
         )}
         {mode === "PHOTO" && (
-          <div>
+          <div className={styles.photoStep}>
+            <div className={styles.planSummary}>
+              <span>
+                {finishPlan?.outcome === "ORDER_BOOKED"
+                  ? `✅ ${hi ? "ऑर्डर बुक" : "Order booked"} · ₹${orderTotal > 0 ? orderTotal.toFixed(0) : ""}`.replace(/ · ₹$/, "")
+                  : finishPlan?.outcome === "NO_ORDER"
+                    ? `✋ ${hi ? "ऑर्डर नहीं" : "No order"} · ${finishPlan.noOrderReason ?? ""}`
+                    : finishPlan?.outcome === "FOLLOW_UP"
+                      ? `⏰ ${hi ? "बाद में आना है" : "Come back"} · ${finishPlan.followUpAt ?? ""}`
+                      : finishPlan?.outcome === "COLLECTION"
+                        ? `₹ ${hi ? "पेमेंट दर्ज" : "Payment recorded"}`
+                        : finishPlan?.outcome === "MARKET_INTELLIGENCE"
+                          ? `📝 ${hi ? "बाज़ार जानकारी" : "Market info"}`
+                          : hi ? "पहले बताएं क्या हुआ" : "First tell us what happened"}
+              </span>
+              <button type="button" className={styles.textLink} disabled={busy} onClick={() => setMode("CHOOSE")}>
+                {hi ? "बदलें" : "Change"}
+              </button>
+            </div>
+            <strong className={styles.listTitle}>
+              {finishPlan
+                ? hi ? "आख़िरी कदम: दुकान की फ़ोटो लें — विज़िट अपने आप पूरी होगी" : "Last step: take the shop photo — the visit finishes by itself"
+                : hi ? "दुकान की फ़ोटो" : "Shop photo"}
+            </strong>
             <div className={styles.photoGrid}>
               {effectivePhotos.map((photo) => (
                 <div className={styles.photoThumb} key={photo.id}>
@@ -3078,6 +3363,10 @@ export function FieldJourney({
                     setPhotoPreview(null);
                     if (fileRef.current) fileRef.current.value = "";
                     setMessage({ ok: true, text: hi ? "फ़ोटो जोड़ी गई ✓" : "Photo added ✓" });
+                    setBusy(false);
+                    setBusyLabel(null);
+                    finishAfterPhoto();
+                    return;
                   } catch (error) {
                     if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(inflightKey);
                     // Uploaded/finalized rows remain the ONLY authoritative "saved" state (matches
@@ -3098,13 +3387,15 @@ export function FieldJourney({
             />
             <button
               type="button"
+              className={styles.camera3d}
               disabled={busy}
               onClick={() => {
                 if (Capacitor.isNativePlatform()) void openNativeCamera();
                 else fileRef.current?.click();
               }}
             >
-              {hi ? "कैमरा खोलें" : "Open camera"}
+              <b aria-hidden>📷</b>
+              <span>{busy ? (busyLabel ?? (hi ? "हो रहा है…" : "Working…")) : effectivePhotos.length ? (hi ? "एक और फ़ोटो लें" : "Take another photo") : hi ? "कैमरा खोलें" : "Open camera"}</span>
             </button>
             {photoPreview && (
               <div>
@@ -3123,11 +3414,55 @@ export function FieldJourney({
                 </div>
               </div>
             )}
-            <p className={styles.note}>
-              {hi
-                ? "फ़ोटो नहीं ले सकते? चेकआउट पर कारण दर्ज करें (रिटेलर ने मना किया / कैमरा खराब / आपातकाल / प्रबंधक-स्वीकृत छूट / अन्य)।"
-                : "Can’t take a photo? Record a reason at checkout (Retailer refused / Camera issue / Emergency / Manager-approved exception / Other)."}
-            </p>
+            {finishPlan && effectivePhotos.length > 0 && (
+              <button type="button" className={styles.finish3d} disabled={busy} onClick={() => void finishVisit(finishPlan)}>
+                {busy ? (busyLabel ?? (hi ? "हो रहा है…" : "Working…")) : hi ? "✓ विज़िट पूरी करें → अगली दुकान" : "✓ Finish visit → next shop"}
+              </button>
+            )}
+            {!finishPlan && (
+              <button type="button" className={styles.finish3d} disabled={busy} onClick={() => setMode("CHOOSE")}>
+                {hi ? "पहले बताएं क्या हुआ →" : "Tell us what happened →"}
+              </button>
+            )}
+            {finishPlan && effectivePhotos.length === 0 && (
+              <div className={styles.choiceWrap}>
+                <strong className={styles.listTitle}>{hi ? "फ़ोटो नहीं ले सकते? कारण टैप करें — विज़िट पूरी हो जाएगी" : "Can’t take a photo? Tap a reason — the visit finishes"}</strong>
+                <div className={styles.reasonChips}>
+                  {NO_PHOTO_REASONS.map(([value, en, hiLabel]) => (
+                    <button key={value} type="button" disabled={busy} onClick={() => void finishVisit(finishPlan, value)}>
+                      {hi ? hiLabel : en}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <details className={styles.moreStats}>
+              <summary>{hi ? "टिप्पणी / रूट बदलाव (वैकल्पिक)" : "Note / route change (optional)"}</summary>
+              <div className={styles.extraFields}>
+                <label>
+                  {hi ? "विज़िट टिप्पणी" : "Visit note"}
+                  <input value={visitNote} onChange={(e) => setVisitNote(e.target.value)} />
+                </label>
+                <label>
+                  {hi ? "मार्ग विचलन (यदि लागू हो)" : "Route deviation (if applicable)"}
+                  <select value={routeDeviation} onChange={(e) => setRouteDeviation(e.target.value)}>
+                    <option value="">{hi ? "कोई विचलन नहीं" : "No deviation"}</option>
+                    <option value="NEW_OUTLET_OPPORTUNITY">{hi ? "नया आउटलेट अवसर" : "New outlet opportunity"}</option>
+                    <option value="URGENT_PAYMENT_FOLLOW_UP">{hi ? "अत्यावश्यक भुगतान फॉलो-अप" : "Urgent payment follow-up"}</option>
+                    <option value="SHOP_CLOSURE">{hi ? "दुकान बंद" : "Shop closure"}</option>
+                    <option value="ROAD_TRAFFIC">{hi ? "सड़क / यातायात" : "Road / traffic"}</option>
+                    <option value="MANAGER_INSTRUCTION">{hi ? "प्रबंधक निर्देश" : "Manager instruction"}</option>
+                    <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>
+                    <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+            {gpsStatus !== "IDLE" && (
+              <div className={styles.gpsRow}>
+                <GpsBadge language={language} status={gpsStatus} />
+              </div>
+            )}
           </div>
         )}
         {mode === "FOLLOW_UP" && (
@@ -3149,7 +3484,9 @@ export function FieldJourney({
                 { entityType: "SeeraFollowUp", actionType: "FOLLOW_UP_DRAFT" },
                 hi ? "फॉलो-अप सहेजा गया।" : "Follow-up saved.",
                 hi ? "फॉलो-अप सहेजा जा रहा है…" : "Saving follow-up…",
-              );
+              ).then((saved) => {
+                if ("queued" in saved || saved.success) setMode(finishPlanRef.current ? "PHOTO" : "CHOOSE");
+              });
             }}
           >
             <label>
@@ -3186,163 +3523,6 @@ export function FieldJourney({
             </button>
           </form>
         )}
-        <div className={styles.note}>
-          <strong>{hi ? "विज़िट सारांश" : "Visit summary"}</strong>
-          <p>
-            {hi ? "ऑर्डर कुल" : "Order total"}: ₹{orderTotal.toFixed(2)} ·{" "}
-            {hi ? "भुगतान" : "Payment"}: {paymentType} · {hi ? "फ़ोटो" : "Photos"}: {effectivePhotos.length}
-          </p>
-          {gpsStatus !== "IDLE" && (
-            <div className={styles.gpsRow}>
-              <GpsBadge language={language} status={gpsStatus} />
-            </div>
-          )}
-        </div>
-        <form
-          id="visit-checkout-section"
-          className={styles.checkout}
-          onSubmit={(e) => {
-            e.preventDefault();
-            // P0 21-Aug double-tap hardening (Part H): checked and set synchronously, before
-            // anything else — the real production incident this fixes was a second checkout
-            // submission racing the first (whether from a double-tap or a slow-response resend)
-            // and getting rejected with "Active visit unavailable" even though the first had
-            // already succeeded.
-            if (checkoutSubmittingRef.current) return;
-            checkoutSubmittingRef.current = true;
-            const f = new FormData(e.currentTarget),
-              deviation = String(f.get("routeDeviationReason") ?? ""),
-              // P0 21-Aug checkout idempotency (Part F/G): deterministically derived from the
-              // visit's own id, NOT a fresh random key per tap — a visit can only ever be
-              // legitimately checked out once, so every submission attempt for THIS visit
-              // (a genuine retry after a failure, a double-tap that slips past the ref guard
-              // above, or an offline-queue replay racing a direct send) carries the IDENTICAL key,
-              // letting the server treat all of them as the same intent instead of only literal
-              // simultaneous clicks.
-              checkoutIdempotencyKey = `checkout:${visit.id}`;
-            void (async () => {
-              setBusy(true);
-              setBusyLabel(hi ? "विज़िट पूरी हो रही है…" : "Completing visit…");
-              setGpsStatus("LOCATING");
-              await yieldToPaint();
-              const { status, point } = await captureGps();
-              setGpsStatus(status);
-              if (deviation) await run("route-deviation", { visitId: visit.id, reason: deviation });
-              const result = await run(
-                "check-out",
-                {
-                  visitId: visit.id,
-                  outcome: String(f.get("outcome")),
-                  noOrderReason: String(f.get("noOrderReason") ?? "") || undefined,
-                  followUpAt: String(f.get("followUpAt") ?? "") || undefined,
-                  notes: String(f.get("notes") ?? ""),
-                  photoExceptionReason: String(f.get("photoExceptionReason") ?? "") || undefined,
-                  latitude: point.latitude,
-                  longitude: point.longitude,
-                  accuracy: point.accuracy,
-                  idempotencyKey: checkoutIdempotencyKey,
-                },
-                { entityType: "SeeraVisit", actionType: "VISIT_CHECK_OUT" },
-                hi ? "विज़िट पूरी हुई।" : "Visit completed.",
-                hi ? "विज़िट पूरी हो रही है…" : "Completing visit…",
-              );
-              // Checkout has already durably succeeded server-side at this point (or is safely
-              // queued offline) — jump straight to the beat list using data already in props
-              // instead of waiting for the unrelated full-portal router.refresh() that run() also
-              // kicked off. That refresh still lands moments later in the background to reconcile
-              // dashboard/beat counters; the rawVisit?.id effect resets this flag once it does.
-              if ("queued" in result || result.success) {
-                clearActiveVisitUrl();
-                // P0 21-Aug stale-visit fix (Part K): clear the local optimistic visit + this
-                // visit's own sessionStorage mode marker immediately, synchronously with success —
-                // do not leave the just-closed visit's screen/state actionable while
-                // router.refresh() is still in flight in the background. checkoutSubmittingRef is
-                // deliberately NOT reset here: this visit is now closed and this exact form
-                // instance must never submit again (the next visit gets a fresh ref value via the
-                // reset effect below, keyed on visit?.id).
-                sessionStorage.removeItem(`seera:field-visit:${visit.id}:mode`);
-                setOptimisticVisitCleared(true);
-                if (!("queued" in result)) setAwaitingState({ kind: "NO_VISIT", visitId: visit.id });
-                clearPendingReorder();
-              } else {
-                // Only a genuine failure re-arms the guard — a legitimate retry (same
-                // checkoutIdempotencyKey) must be allowed to reach the server again.
-                checkoutSubmittingRef.current = false;
-              }
-            })();
-          }}
-        >
-          <strong className={styles.listTitle}>{hi ? "इस विज़िट का नतीजा?" : "How did this visit go?"}</strong>
-          <div className={styles.outcomeChips} role="radiogroup" aria-label={hi ? "विज़िट परिणाम" : "Visit outcome"}>
-            {([
-              ["ORDER_BOOKED", "✅ Order booked", "✅ ऑर्डर बुक"],
-              ["NO_ORDER", "✖ No order", "✖ कोई ऑर्डर नहीं"],
-              ["FOLLOW_UP", "⏰ Come back later", "⏰ बाद में आना है"],
-              ["MARKET_INTELLIGENCE", "📝 Market info only", "📝 सिर्फ़ बाज़ार जानकारी"],
-            ] as const).map(([value, en, hiLabel]) => (
-              <label key={value} data-active={checkoutOutcome === value}>
-                <input type="radio" name="outcome" value={value} checked={checkoutOutcome === value} onChange={() => setCheckoutOutcome(value)} />
-                {hi ? hiLabel : en}
-              </label>
-            ))}
-          </div>
-          {checkoutOutcome === "NO_ORDER" && (
-            <label>
-              {hi ? "ऑर्डर क्यों नहीं मिला? *" : "Why no order? *"}
-              <input name="noOrderReason" required list="seera-no-order-reasons" placeholder={hi ? "जैसे: स्टॉक भरा है" : "e.g. Stock is full"} />
-              <datalist id="seera-no-order-reasons">
-                <option value={hi ? "स्टॉक पहले से भरा है" : "Stock already full"} />
-                <option value={hi ? "मालिक उपलब्ध नहीं" : "Owner not available"} />
-                <option value={hi ? "भुगतान बकाया" : "Payment pending"} />
-                <option value={hi ? "कीमत ज़्यादा लगी" : "Price concern"} />
-              </datalist>
-            </label>
-          )}
-          {(checkoutOutcome === "FOLLOW_UP" || checkoutOutcome === "NO_ORDER") && (
-            <label>
-              {hi ? "फिर कब आना है? (वैकल्पिक)" : "When to come back? (optional)"}
-              <input name="followUpAt" type="date" />
-            </label>
-          )}
-          {effectivePhotos.length === 0 && (
-            <label>
-              {hi ? "फ़ोटो नहीं ली? कारण चुनें *" : "No photo taken? Choose a reason *"}
-              <select name="photoExceptionReason" defaultValue="" required>
-                <option value="" disabled>{hi ? "कारण चुनें… (या ऊपर Photo टैब में फ़ोटो लें)" : "Choose… (or take a photo in the Photo tab)"}</option>
-                <option value="RETAILER_REFUSED">{hi ? "रिटेलर ने मना किया" : "Retailer refused"}</option>
-                <option value="CAMERA_ISSUE">{hi ? "कैमरा / डिवाइस समस्या" : "Camera / device issue"}</option>
-                <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>
-                <option value="MANAGER_APPROVED">{hi ? "प्रबंधक-स्वीकृत छूट" : "Manager-approved exception"}</option>
-                <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
-              </select>
-            </label>
-          )}
-          <details className={styles.moreStats} style={{ gridColumn: "1/-1" }}>
-            <summary>{hi ? "टिप्पणी / रूट बदलाव जोड़ें (वैकल्पिक)" : "Add note / route change (optional)"}</summary>
-            <div className={styles.extraFields}>
-              <label>
-                {hi ? "विज़िट टिप्पणी" : "Visit note"}
-                <input name="notes" />
-              </label>
-            <label>
-              {hi ? "मार्ग विचलन (यदि लागू हो)" : "Route deviation (if applicable)"}
-              <select name="routeDeviationReason" defaultValue="">
-                <option value="">{hi ? "कोई विचलन नहीं" : "No deviation"}</option>
-                <option value="NEW_OUTLET_OPPORTUNITY">{hi ? "नया आउटलेट अवसर" : "New outlet opportunity"}</option>
-                <option value="URGENT_PAYMENT_FOLLOW_UP">{hi ? "अत्यावश्यक भुगतान फॉलो-अप" : "Urgent payment follow-up"}</option>
-                <option value="SHOP_CLOSURE">{hi ? "दुकान बंद" : "Shop closure"}</option>
-                <option value="ROAD_TRAFFIC">{hi ? "सड़क / यातायात" : "Road / traffic"}</option>
-                <option value="MANAGER_INSTRUCTION">{hi ? "प्रबंधक निर्देश" : "Manager instruction"}</option>
-                <option value="EMERGENCY">{hi ? "आपातकाल" : "Emergency"}</option>
-                <option value="OTHER">{hi ? "अन्य" : "Other"}</option>
-              </select>
-            </label>
-            </div>
-          </details>
-          <button className={styles.primary} disabled={busy}>
-            {busy ? (busyLabel ?? (hi ? "हो रहा है…" : "Working…")) : hi ? "✓ विज़िट पूरी करें → अगली दुकान" : "✓ Finish visit → next shop"}
-          </button>
-        </form>
         <ActionMessageBanner message={message} language={language} />
       </section>
     </>

@@ -1,0 +1,6 @@
+.protected{position:relative;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.protected img{pointer-events:none;-webkit-user-drag:none}
+.note{grid-column:1/-1;margin:0;font-size:12px;font-weight:700;color:#64748b}
+.printNote{display:none}
+@media print{.protected>*:not(.printNote){display:none!important}.printNote{display:block!important;font-weight:900}}
+.protected input,.protected textarea,.protected select{-webkit-user-select:text;user-select:text}

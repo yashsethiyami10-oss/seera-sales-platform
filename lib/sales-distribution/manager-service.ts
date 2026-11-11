@@ -1180,7 +1180,7 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
     db.seeraWorkSession.findMany({ where: { employeeId: { in: employeeIds }, startedAt: { gte: todayStart } }, orderBy: { startedAt: "asc" } }),
     db.seeraVisit.findMany({
       where: { workSession: { employeeId: { in: employeeIds } }, checkedInAt: { gte: todayStart } },
-      select: { outcome: true, retailerId: true, retailer: { select: { source: true } } },
+      select: { outcome: true, retailerId: true, retailer: { select: { source: true } }, workSession: { select: { employeeId: true } } },
     }),
     db.seeraSalesOrder.findMany({ where: { salespersonId: { in: employeeIds }, createdAt: { gte: todayStart } }, include: { lines: true } }),
     db.seeraTarget.findMany({ where: { employeeId: { in: employeeIds }, periodStart: { lte: now }, periodEnd: { gte: now }, metricType: "DELIVERED_VALUE" } }),
@@ -1265,9 +1265,32 @@ export async function managerDashboardSummary(db: PrismaClient, managerId: strin
       return [d.id, city ? `${firm} — ${city}` : firm];
     }),
   );
+  // Per-executive today numbers for the Manager's team leaderboard (same visit/order rows already
+  // read above — no extra query).
+  const visitsByEmployee = new Map<string, { visits: number; productive: number }>();
+  for (const v of todayVisits) {
+    const id = v.workSession?.employeeId;
+    if (!id || v.outcome === "SKIPPED") continue;
+    const row = visitsByEmployee.get(id) ?? { visits: 0, productive: 0 };
+    row.visits += 1;
+    if (v.outcome === "PRODUCTIVE") row.productive += 1;
+    visitsByEmployee.set(id, row);
+  }
+  const ordersByEmployee = new Map<string, { orders: number; bookedValue: number }>();
+  for (const o of todayOrders) {
+    if (!o.salespersonId) continue;
+    const row = ordersByEmployee.get(o.salespersonId) ?? { orders: 0, bookedValue: 0 };
+    row.orders += 1;
+    row.bookedValue += Number(o.total);
+    ordersByEmployee.set(o.salespersonId, row);
+  }
   const teamToday = employees.map((e) => {
     const session = sessionByEmployee.get(e.id);
     return {
+      visits: visitsByEmployee.get(e.id)?.visits ?? 0,
+      productive: visitsByEmployee.get(e.id)?.productive ?? 0,
+      orders: ordersByEmployee.get(e.id)?.orders ?? 0,
+      bookedValue: Math.round(ordersByEmployee.get(e.id)?.bookedValue ?? 0),
       employeeId: e.id,
       employeeName: e.name ?? e.email,
       dayStatus: !session ? ("NOT_STARTED" as const) : session.status === "ENDED" ? ("ENDED" as const) : ("ACTIVE" as const),
