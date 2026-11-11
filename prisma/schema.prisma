@@ -3902,3 +3902,48 @@ model SeeraMarketSurveyLink {
   @@index([surveyId, createdAt])
   @@map("seera_market_survey_links")
 }
+
+// Partner KYC (onboarding) documents — GST certificate, PAN, Aadhaar, cancelled cheque / bank
+// proof, signed application form, shop photo — attached to a distributor / super stockist
+// PROSPECT (before appointment) or an existing PARTNER. Uploaded as a phone photo or a PDF by any
+// field / office role that works the lead; file bytes live in the existing private StoredFile
+// store (DATABASE_PRIVATE, classification IDENTITY), never on a public URL. Removal is a soft
+// delete (removedAt) so the audit trail and the original file survive.
+model SeeraPartnerKycDocument {
+  id           String    @id @default(cuid())
+  subjectType  String
+  subjectId    String
+  docType      String
+  fileId       String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  note         String?
+  uploadedById String
+  createdAt    DateTime  @default(now())
+  removedAt    DateTime?
+  removedById  String?
+
+  @@index([subjectType, subjectId, docType])
+  @@index([uploadedById, createdAt])
+  @@map("seera_partner_kyc_documents")
+}
+
+// Typed KYC numbers for the same subject (one row per subject). Aadhaar is kept as the last four
+// digits only (UIDAI guidance: do not store full Aadhaar numbers).
+model SeeraPartnerKycDetails {
+  subjectType       String
+  subjectId         String
+  gstin             String?
+  pan               String?
+  aadhaarLast4      String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  ifsc              String?
+  bankName          String?
+  updatedById       String
+  updatedAt         DateTime @updatedAt
+
+  @@id([subjectType, subjectId])
+  @@map("seera_partner_kyc_details")
+}

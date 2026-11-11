@@ -1,0 +1,37 @@
+/* Target ring + celebration. Colours come from the SEERA tokens in app/globals.css. */
+@keyframes ringIn{from{transform:rotateX(38deg) rotateZ(-90deg) scale(.85);opacity:0}to{transform:rotateX(22deg) rotateZ(0) scale(1);opacity:1}}
+@keyframes ringFloat{0%,100%{transform:rotateX(22deg) translateY(0)}50%{transform:rotateX(22deg) translateY(-3px)}}
+@keyframes burstIn{0%{opacity:0;transform:translateY(30px) scale(.8)}60%{opacity:1;transform:translateY(-4px) scale(1.03)}100%{opacity:1;transform:none}}
+@keyframes badgeSpin{0%{transform:rotateY(-180deg) scale(.4)}70%{transform:rotateY(15deg) scale(1.08)}100%{transform:rotateY(0) scale(1)}}
+@keyframes confetti{0%{opacity:1;transform:translate(0,0) rotate(0)}100%{opacity:0;transform:translate(calc((var(--i) - 7) * 22px),-150px) rotate(calc(var(--i) * 70deg))}}
+@keyframes layerOut{0%,85%{opacity:1}100%{opacity:0}}
+
+.pulse{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;padding:16px;border-radius:18px;background:linear-gradient(140deg,#fff 0%,var(--seera-primary-soft,#fdeaea) 100%);border:1px solid #f3d0d0;box-shadow:0 14px 30px #b91c1c14,inset 0 1px 0 #fff}
+.pulse[data-tone=ahead]{background:linear-gradient(140deg,#fff 0%,#e7f7f0 100%);border-color:#b7e4cf;box-shadow:0 14px 30px #05966914,inset 0 1px 0 #fff}
+.ringStage{perspective:420px}
+.ring{--pct:0;position:relative;width:104px;height:104px;border-radius:50%;background:conic-gradient(var(--seera-primary,#b91c1c) calc(var(--pct) * 1%),#f1e4e4 0);box-shadow:0 10px 0 -2px #7f141433,0 18px 24px #7f141433;transform:rotateX(22deg);animation:ringIn .7s cubic-bezier(.2,.8,.2,1) both,ringFloat 4s ease-in-out .7s infinite;transform-style:preserve-3d}
+.pulse[data-tone=ahead] .ring{background:conic-gradient(var(--seera-success,#059669) calc(var(--pct) * 1%),#dcefe6 0);box-shadow:0 10px 0 -2px #05966933,0 18px 24px #05966933}
+.ringFace{position:absolute;inset:12px;display:grid;place-content:center;text-align:center;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#f8fafc 70%);box-shadow:inset 0 3px 8px #17255422}
+.ringFace strong{font-size:22px;line-height:1;font-weight:900;color:var(--seera-ink,#172554);font-variant-numeric:tabular-nums}
+.ringFace small{font-size:11px;font-weight:800;color:#64748b;letter-spacing:.03em}
+.copy{display:grid;gap:6px;min-width:0}
+.eyebrow{font-size:11px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--seera-primary,#b91c1c)}
+.pulse[data-tone=ahead] .eyebrow{color:#177245}
+.big{margin:0;font-size:22px;font-weight:900;color:var(--seera-ink,#172554);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.big span{font-size:14px;color:#64748b;font-weight:700}
+.line{margin:0;font-size:14px;font-weight:700;color:var(--seera-ink-soft,#475569)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips span{padding:4px 10px;border-radius:999px;background:#fff;border:1px solid #e8e2e2;font-size:12px;font-weight:800;color:var(--seera-ink,#172554)}
+.chips .muted{color:#94a3b8;font-weight:700}
+
+.burstLayer{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:16px;background:#0206175c;backdrop-filter:blur(2px);animation:layerOut 2.6s ease-in both;cursor:pointer}
+.burst{position:relative;display:grid;justify-items:center;gap:8px;width:min(100%,340px);padding:28px 20px 22px;border-radius:24px;background:#fff;text-align:center;box-shadow:0 24px 60px #17255433;animation:burstIn .45s cubic-bezier(.2,.8,.2,1) both}
+.burst strong{font-size:19px;color:var(--seera-ink,#172554)}
+.burst p{margin:0;font-size:14px;font-weight:700;color:#475569}
+.badge3d{display:grid;place-items:center;width:72px;height:72px;border-radius:50%;background:linear-gradient(145deg,#22c55e,#047857);color:#fff;font-size:36px;font-weight:900;box-shadow:0 8px 0 #065f46,0 16px 26px #04785766;animation:badgeSpin .7s cubic-bezier(.2,.8,.2,1) both}
+.confetti{position:absolute;left:50%;top:60px;width:0;height:0;pointer-events:none}
+.confetti i{position:absolute;width:9px;height:14px;border-radius:2px;background:hsl(calc(var(--i) * 26),85%,55%);animation:confetti 1.2s cubic-bezier(.15,.7,.3,1) both;animation-delay:calc(var(--i) * 18ms)}
+
+@media(max-width:420px){.pulse{grid-template-columns:1fr;justify-items:center;text-align:center}.chips{justify-content:center}.ring{width:96px;height:96px}}
+@media(prefers-reduced-motion:reduce){.ring,.burst,.badge3d,.confetti i,.burstLayer{animation:none}.ring{transform:none}}
+.strip{display:grid;gap:6px}.stripBar{height:12px;border-radius:99px;background:#f1e4e4;overflow:hidden;box-shadow:inset 0 2px 3px #0000001a}.stripBar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--seera-primary,#b91c1c),#f87171);box-shadow:inset 0 -2px 0 #00000022;transition:width .6s ease-out}.strip[data-tone=ahead] .stripBar span{background:linear-gradient(90deg,#047857,#34d399)}.stripText{font-size:13px;font-weight:800;color:var(--seera-ink,#172554)}
