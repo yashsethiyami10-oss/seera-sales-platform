@@ -73,6 +73,13 @@ export async function POST(request: Request) {
     await saveKycDetails(prisma, user.id, body.subjectType, body.subjectId, body.details);
     return NextResponse.json(await getKycSubject(prisma, user.id, body.subjectType, body.subjectId));
   } catch (error) {
+    // P2021 = table missing: the KYC migration has not been applied to this database yet. Say so
+    // plainly instead of a generic 500, so the rest of the app is unaffected and the fix is clear.
+    if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2021")
+      return NextResponse.json(
+        { error: { code: "KYC_NOT_SET_UP", message: "Partner KYC storage is not set up on this server yet — ask the admin to apply the latest database migration." } },
+        { status: 503 },
+      );
     return apiFailure(error, request);
   }
 }
