@@ -41,12 +41,60 @@ function netlifyDatabaseGate(env) {
     : { ok: true, message: `[SEERA PREFLIGHT] ${context} database: ${identity.endpoint}/${identity.database} (not production)` };
 }
 
-module.exports = { netlifyDatabaseGate, endpointOf, SEERA_PRODUCTION_ENDPOINT };
+// ---------------------------------------------------------------------------------------------
+// Additive schema step for Netlify builds. Netlify keeps DATABASE_URL secret and never runs
+// `prisma migrate deploy` (only Vercel production does, below), so new tables shipped with a
+// release never reached the database. This applies ONLY the migration files listed here, and only
+// after the identity gate above has passed. Every listed file must consist solely of
+// `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` statements (enforced by
+// additiveStatementsOnly + the netlify-database-preflight test), so running it on every build is a
+// no-op once the tables exist and can never alter or drop existing data. `prisma db execute` runs
+// the SQL as-is (no advisory lock, works through the Neon pooler) and records nothing in
+// _prisma_migrations, so a later full `migrate deploy` still applies and records these files —
+// they are idempotent. A failure is logged loudly but does not block the deploy: the features
+// that need these tables already return a clear "not set up yet" message instead of crashing.
+// ---------------------------------------------------------------------------------------------
+const ADDITIVE_MIGRATIONS = [
+  "20261110090000_seera_company_library",
+  "20261110090000_seera_partner_kyc_documents",
+];
+
+function additiveStatementsOnly(sql) {
+  const statements = String(sql)
+    .replace(/--[^\n]*/g, "")
+    .split(";")
+    .map((x) => x.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+  return statements.length > 0 && statements.every((x) => /^CREATE (TABLE|INDEX|UNIQUE INDEX) IF NOT EXISTS /i.test(x));
+}
+
+function applyAdditiveMigrations(env) {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const root = path.resolve(__dirname, "..", "..");
+  for (const name of ADDITIVE_MIGRATIONS) {
+    const file = path.join(root, "prisma", "migrations", name, "migration.sql");
+    if (!additiveStatementsOnly(fs.readFileSync(file, "utf8"))) {
+      console.error(`[SEERA PREFLIGHT] skipped ${name}: not purely additive (IF NOT EXISTS) SQL`);
+      continue;
+    }
+    const result = spawnSync(
+      process.platform === "win32" ? "npx.cmd" : "npx",
+      ["prisma", "db", "execute", "--file", file, "--schema", path.join(root, "prisma", "schema.prisma")],
+      { stdio: "inherit", env },
+    );
+    if (result.status === 0) console.log(`[SEERA PREFLIGHT] additive schema applied (idempotent): ${name}`);
+    else console.error(`[SEERA PREFLIGHT] WARNING additive schema step failed for ${name} (exit ${result.status}); deploy continues`);
+  }
+}
+
+module.exports = { netlifyDatabaseGate, endpointOf, SEERA_PRODUCTION_ENDPOINT, ADDITIVE_MIGRATIONS, additiveStatementsOnly };
 
 if (require.main === module) {
   const gate = netlifyDatabaseGate(process.env);
   if (gate.message) (gate.ok ? console.log : console.error)(gate.message);
   if (!gate.ok) process.exit(1);
+  if (process.env.NETLIFY === "true") applyAdditiveMigrations(process.env);
 
   const isVercelProduction =
     process.env.VERCEL === "1" && process.env.VERCEL_ENV === "production";

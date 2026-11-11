@@ -47,3 +47,25 @@ describe("Netlify database preflight gate", () => {
     expect(endpointOf(undefined)).toBeNull();
   });
 });
+
+// Additive schema step: every migration the Netlify build applies on its own must be purely
+// additive (CREATE ... IF NOT EXISTS only), so re-running it on every deploy can never alter or
+// drop production data.
+describe("Netlify additive schema step", () => {
+  const preflight = createRequire(import.meta.url)("../../scripts/seera/production-build-preflight.cjs");
+  const fs = createRequire(import.meta.url)("node:fs");
+  const pathMod = createRequire(import.meta.url)("node:path");
+  it("only lists purely additive, idempotent migrations", () => {
+    expect(preflight.ADDITIVE_MIGRATIONS.length).toBeGreaterThan(0);
+    for (const name of preflight.ADDITIVE_MIGRATIONS) {
+      const sql = fs.readFileSync(pathMod.resolve(__dirname, "../../prisma/migrations", name, "migration.sql"), "utf8");
+      expect(preflight.additiveStatementsOnly(sql)).toBe(true);
+    }
+  });
+  it("rejects anything that is not CREATE ... IF NOT EXISTS", () => {
+    expect(preflight.additiveStatementsOnly("CREATE TABLE IF NOT EXISTS a (x int); DROP TABLE b;")).toBe(false);
+    expect(preflight.additiveStatementsOnly("ALTER TABLE a ADD COLUMN x int;")).toBe(false);
+    expect(preflight.additiveStatementsOnly("CREATE TABLE a (x int);")).toBe(false);
+    expect(preflight.additiveStatementsOnly("")).toBe(false);
+  });
+});
