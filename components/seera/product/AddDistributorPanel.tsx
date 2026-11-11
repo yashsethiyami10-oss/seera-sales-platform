@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
+import { LocationAutofill } from "./LocationAutofill";
 
 const key = () => crypto.randomUUID();
 async function post(action: string, payload: unknown) {
@@ -118,6 +119,7 @@ export function AddDistributorPanel({
             {hi ? "क्षेत्र / पता" : "Area / Address"}
             <input name="address" required />
           </label>
+          <LocationAutofill language={language} auto={false} fields={{ address: "address", city: "city", state: "state", pincode: "pincode" }} />
           <label>
             {hi ? "शहर / कस्बा" : "Town / City"}
             <input name="city" required />
