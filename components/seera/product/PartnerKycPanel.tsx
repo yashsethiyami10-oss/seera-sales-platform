@@ -9,7 +9,7 @@ import styles from "./PartnerKyc.module.css";
 type Subject = { subjectType: "PROSPECT" | "PARTNER"; subjectId: string; name: string; kind: string; meta: string; requiredDone: number; requiredTotal: number };
 type KycDoc = { id: string; docType: string; originalName: string; mimeType: string; sizeBytes: number; note: string | null; createdAt: string };
 type Details = { gstin: string | null; pan: string | null; aadhaarLast4: string | null; bankAccountName: string | null; bankAccountNumber: string | null; ifsc: string | null; bankName: string | null };
-type SubjectDetail = { subjectType: Subject["subjectType"]; subjectId: string; name: string; kind: string; mobile: string | null; stage: string; documents: KycDoc[]; details: Details | null };
+type SubjectDetail = { subjectType: Subject["subjectType"]; subjectId: string; name: string; kind: string; mobile: string | null; stage: string; applicationFileCount?: number; documents: KycDoc[]; details: Details | null };
 
 const DOCS: { type: string; en: string; hi: string; icon: string; required: boolean; hint?: [string, string] }[] = [
   { type: "GST_CERTIFICATE", en: "GST certificate", hi: "GST प्रमाणपत्र", icon: "🧾", required: true },
@@ -174,6 +174,16 @@ export function PartnerKycPanel({ language, portal, initial }: { language: "EN" 
         </p>
       </header>
       {message && <p className={styles.message} data-ok={message.ok}>{message.text}</p>}
+      {detail && (detail.applicationFileCount ?? 0) > 0 && (
+        <div className={styles.fileRow} style={{ flexWrap: "wrap", justifyContent: "flex-start" }}>
+          <strong>{hi ? "ऑनलाइन आवेदन के साथ आए दस्तावेज़:" : "Documents sent with the online application:"}</strong>
+          {Array.from({ length: detail.applicationFileCount ?? 0 }, (_, i) => (
+            <a key={i} href={`/api/partner-applications/${encodeURIComponent(detail.subjectId)}/files/${i}`} target="_blank" rel="noopener noreferrer">
+              📎 {hi ? `फ़ाइल ${i + 1}` : `File ${i + 1}`}
+            </a>
+          ))}
+        </div>
+      )}
       <div className={styles.docGrid}>
         {DOCS.map((d) => {
           const uploaded = docsByType.get(d.type) ?? [];

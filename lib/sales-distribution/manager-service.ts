@@ -863,7 +863,7 @@ export async function createDistributorProspect(
     notes?: string;
     profile: Record<string, unknown>;
     followUpAt?: Date;
-    prospectType?: "DISTRIBUTOR" | "SUPER_STOCKIST";
+    prospectType?: "DISTRIBUTOR" | "SUPER_STOCKIST" | "DEPOT";
     confirmDuplicate?: boolean;
   },
 ) {
@@ -997,7 +997,10 @@ export async function activateDistributorProspect(
   await authorize(db, { actorId: managerId, permission: "prospect:create" });
   const prospect = await db.seeraProspect.findFirst({ where: { id: prospectId, ownerEmployeeId: managerId } });
   if (!prospect) throw new FoundationError("PROSPECT_SCOPE_DENIED", "Prospect outside Manager scope", 403);
-  const partner = await db.seeraPartner.findFirst({ where: { id: partnerId, type: prospect.prospectType as "DISTRIBUTOR" | "SUPER_STOCKIST" } });
+  // A Depot (C&F agent) is not a trading partner in the system, so it is never linked to a partner row.
+  if (prospect.prospectType !== "DISTRIBUTOR" && prospect.prospectType !== "SUPER_STOCKIST")
+    throw new FoundationError("PROSPECT_TYPE_NOT_ACTIVATABLE", "Only Distributor / Super Stockist prospects are activated against a partner", 409);
+  const partner = await db.seeraPartner.findFirst({ where: { id: partnerId, type: prospect.prospectType } });
   if (!partner) throw new FoundationError("PARTNER_NOT_FOUND", "Partner not found", 404);
   const updated = await db.seeraProspect.update({
     where: { id: prospect.id },

@@ -8,6 +8,7 @@ import styles from "./FieldJourney.module.css";
 import { queueOfflineOperation, syncClientQueue, listClientQueue } from "@/lib/phase-11/offline-client";
 import { captureGps, GpsBadge, type GpsStatus, type GpsPoint } from "./gps";
 import { ActionMessageBanner, type ActionMessage } from "./ErrorBanner";
+import { LocationAutofill } from "./LocationAutofill";
 
 type BeatRetailer = {
   id: string;
@@ -2143,6 +2144,7 @@ export function FieldJourney({
             {hi ? "क्षेत्र / पता *" : "Area / Address *"}
             <input name="area" required />
           </label>
+          <LocationAutofill language={language} fields={{ area: "area", pincode: "pincode" }} />
           <label>
             {hi ? "मालिक / संपर्क व्यक्ति" : "Owner / Contact person"}
             <input name="ownerName" />

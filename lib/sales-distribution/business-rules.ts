@@ -136,17 +136,21 @@ export function routeDistanceKm(points: { lat: number; lng: number }[]) {
   return roundQuantity(total);
 }
 
-// GPS-derived field distance: sums only plausible consecutive segments so eligible distance is
-// never inflated by a single GPS jump (a satellite glitch, a cell-tower-only fix, or a segment
-// that would imply an impossible speed for a field rep on ground transport). A segment is
-// excluded from the distance total — not deleted from the record — when either endpoint's
-// reported accuracy is too coarse to trust, or the implied average speed between two consecutive
-// timestamped samples exceeds a generous road-travel ceiling. This is intentionally NOT a
-// straight line between the first and last point (see routeDistanceKm above) — every accepted
-// consecutive pair is summed, so genuine route wandering still counts.
+// GPS-derived field distance from checkpoint samples (start day / check-in / check-out / end day).
+// A bad sample — invalid coordinate, coarse accuracy, or a glitch that implies an impossible speed —
+// is skipped (kept in the record, listed in excludedByReason), and the distance is measured from the
+// last trusted point to the next trusted one. So a rep who switches GPS off, or gets one poor fix,
+// mid-day still has the whole road between trusted checkpoints counted, instead of losing both legs
+// around the bad point. With continuous tracking (FieldGpsTracker) the dense points follow the real
+// road; a stretch with GPS off is counted as the straight line between the last and next trusted
+// point (Founder rule) and reported as GPS_GAP_BRIDGED / bridgedGapKm for visibility.
+// Every accepted leg is summed, so genuine route wandering still counts (see routeDistanceKm above
+// for the plain first-to-last alternative this deliberately is not).
 const MAX_PLAUSIBLE_SPEED_KMH = 100;
 const MAX_TRUSTED_ACCURACY_METERS = 150;
 const DUPLICATE_POINT_METERS = 5;
+const GAP_REVIEW_MINUTES = 60;
+const GAP_REVIEW_KM = 10;
 
 export type TimedGpsPoint = {
   lat: number;
@@ -158,59 +162,67 @@ export type TimedGpsPoint = {
 export function eligibleGpsDistanceKm(points: TimedGpsPoint[]) {
   const sorted = [...points].sort((a, b) => a.capturedAt.getTime() - b.capturedAt.getTime());
   let total = 0;
+  let bridgedKm = 0;
   const warnings: string[] = [];
   const excludedByReason: Record<string, number> = {};
   const exclude = (reason: string) => {
     warnings.push(reason);
     excludedByReason[reason] = (excludedByReason[reason] ?? 0) + 1;
   };
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1], next = sorted[i];
-    if (!prev || !next) continue;
-    if (![prev.lat, prev.lng, next.lat, next.lng].every(Number.isFinite) ||
-      Math.abs(prev.lat) > 90 || Math.abs(next.lat) > 90 ||
-      Math.abs(prev.lng) > 180 || Math.abs(next.lng) > 180) {
+  const validCoordinate = (p: TimedGpsPoint) =>
+    [p.lat, p.lng].every(Number.isFinite) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
+  const trustedAccuracy = (p: TimedGpsPoint) => p.accuracy == null || p.accuracy <= MAX_TRUSTED_ACCURACY_METERS;
+  let anchor: TimedGpsPoint | null = null;
+  for (const point of sorted) {
+    if (!validCoordinate(point)) {
       exclude("INVALID_COORDINATE");
       continue;
     }
-    if (
-      (prev.accuracy != null && prev.accuracy > MAX_TRUSTED_ACCURACY_METERS) ||
-      (next.accuracy != null && next.accuracy > MAX_TRUSTED_ACCURACY_METERS)
-    ) {
+    if (!trustedAccuracy(point)) {
       exclude("POOR_ACCURACY");
       continue;
     }
-    const segmentKm = haversineKm(prev, next);
-    if (segmentKm * 1000 <= DUPLICATE_POINT_METERS) {
+    if (!anchor) {
+      anchor = point;
+      continue;
+    }
+    const segmentKm = haversineKm(anchor, point);
+    // Standing still, GPS fixes wander by about their own accuracy; a move smaller than that (capped
+    // at 25 m) is not travel, so continuous tracking never inflates distance while parked at a shop.
+    const jitterMeters = Math.max(DUPLICATE_POINT_METERS, Math.min(25, Math.max(anchor.accuracy ?? 0, point.accuracy ?? 0)));
+    if (segmentKm * 1000 <= jitterMeters) {
       exclude("DUPLICATE_OR_SAME_LOCATION");
       continue;
     }
-    const elapsedMs = next.capturedAt.getTime() - prev.capturedAt.getTime();
+    const elapsedMs = point.capturedAt.getTime() - anchor.capturedAt.getTime();
     if (elapsedMs <= 0) {
       exclude("NON_MONOTONIC_TIMESTAMP");
       continue;
     }
-    const hoursElapsed = Math.max(
-      elapsedMs / 3_600_000,
-      1 / 3600,
-    );
-    const impliedSpeedKmh = segmentKm / hoursElapsed;
-    if (impliedSpeedKmh > MAX_PLAUSIBLE_SPEED_KMH) {
+    const hoursElapsed = Math.max(elapsedMs / 3_600_000, 1 / 3600);
+    if (segmentKm / hoursElapsed > MAX_PLAUSIBLE_SPEED_KMH) {
       exclude("IMPOSSIBLE_SPEED");
       continue;
     }
+    if (elapsedMs >= GAP_REVIEW_MINUTES * 60_000 && segmentKm >= GAP_REVIEW_KM) {
+      warnings.push("GPS_GAP_BRIDGED");
+      bridgedKm += segmentKm;
+    }
     total += segmentKm;
+    anchor = point;
   }
   const excludedSegments = Object.values(excludedByReason).reduce((sum, count) => sum + count, 0);
   return {
     distanceKm: roundQuantity(total),
+    bridgedGapKm: roundQuantity(bridgedKm),
     excludedSegments,
     excludedByReason,
     warnings: [...new Set(warnings)],
-    reviewRequired: warnings.some((warning) => warning !== "DUPLICATE_OR_SAME_LOCATION"),
+    // GPS_GAP_BRIDGED is informational: a GPS-off stretch is counted as the straight line by policy.
+    reviewRequired: warnings.some((warning) => warning !== "DUPLICATE_OR_SAME_LOCATION" && warning !== "GPS_GAP_BRIDGED"),
     sampleCount: sorted.length,
     method: "CHECKPOINT_HAVERSINE_ESTIMATE" as const,
-    calculationVersion: "v3-checkpoint-haversine-quality",
+    calculationVersion: "v4-checkpoint-haversine-bridged",
   };
 }
 

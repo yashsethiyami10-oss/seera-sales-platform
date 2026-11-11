@@ -447,7 +447,7 @@ const unitLabel = (u, n) => u === "pc" ? (n === 1 ? "pc" : "pcs") : (n === 1 ? u
 let qty = {};
 try { qty = JSON.parse(localStorage.getItem("seera-ss-plan") || "{}") || {}; } catch (e) { qty = {}; }
 const saveQty = () => { try { localStorage.setItem("seera-ss-plan", JSON.stringify(qty)); } catch (e) {} };
-const ORDER_WA = "";
+const ORDER_WA = "918905340449";
 const WHO_FIELDS = ["ssFirm", "ssName", "ssPhone", "ssTown", "ssDate", "ssRemarks"];
 let who = {};
 try { who = JSON.parse(localStorage.getItem("seera-ss-who") || "{}") || {}; } catch (e) { who = {}; }

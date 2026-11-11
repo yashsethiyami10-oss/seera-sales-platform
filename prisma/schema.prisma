@@ -1802,6 +1802,26 @@ enum EmployeeDocumentType {
   POLICY
 }
 
+// Company document library shown to Sales Executives, Sales Managers and the Founder/Admin
+// (Company documents section). Built-in templates ship with the app; rows here are the extra
+// documents the Founder/Admin uploads later. category: DISTRIBUTOR | SUPER_STOCKIST | DEPOT |
+// SALES_TEAM | GENERAL. Archived rows stay for audit but are hidden from the library.
+model SeeraCompanyLibraryDocument {
+  id           String    @id @default(cuid())
+  title        String
+  category     String
+  description  String?
+  fileId       String
+  uploadedById String
+  archivedAt   DateTime?
+  archivedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([category, archivedAt, createdAt])
+  @@map("seera_company_library_documents")
+}
+
 model SeeraEmployeeDocument {
   id             String               @id @default(cuid())
   employeeId     String

@@ -9,6 +9,7 @@ import { captureGps, GpsBadge, type GpsStatus } from "./gps";
 import { EmptyOptionHint } from "./EmptyOptionHint";
 import { SkuSelect } from "./SkuSelect";
 import { send as governedSend, GovernedError } from "./governed-fetch";
+import { LocationAutofill } from "./LocationAutofill";
 
 type Option = { value: string; label: string; meta?: string };
 type SkuOption = Option & { unit?: string; brand: string };
@@ -365,6 +366,7 @@ export function ManagerFieldActions({
           >
             <label>{hi ? "दुकान / फर्म का नाम *" : "Firm / Shop name *"}<input name="businessName" required /></label>
             <label>{hi ? "क्षेत्र / पता *" : "Area / Address *"}<input name="area" required /></label>
+            <LocationAutofill language={language} fields={{ area: "area" }} />
             <label>{hi ? "मालिक" : "Owner"}<input name="ownerName" /></label>
             <label>{hi ? "मोबाइल" : "Mobile"}<input name="mobile" inputMode="tel" /></label>
             <label>

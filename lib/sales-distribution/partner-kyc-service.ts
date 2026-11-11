@@ -57,13 +57,16 @@ async function subjectAccess(db: PrismaClient, actorId: string, subjectType: Kyc
     if (!prospect) throw new FoundationError("KYC_SUBJECT_NOT_FOUND", "Prospect not found", 404);
     const owner = prospect.ownerEmployeeId === actorId && permissions.has("prospect:create");
     if (!admin && !owner) throw new FoundationError("KYC_SCOPE_DENIED", "You can only manage KYC for your own prospects", 403);
-    return { name: prospect.businessName, kind: prospect.prospectType, mobile: prospect.normalizedMobile, stage: prospect.stage };
+    // Files attached through the online partner application (partner-application-service) live
+    // on the prospect profile; surfaced here so the KYC page shows them instead of asking again.
+    const applicationFileCount = ((prospect.profile ?? {}) as { documentFileIds?: unknown[] }).documentFileIds?.length ?? 0;
+    return { name: prospect.businessName, kind: prospect.prospectType, mobile: prospect.normalizedMobile, stage: prospect.stage, applicationFileCount };
   }
   if (subjectType === "PARTNER") {
     if (!admin) throw new FoundationError("KYC_SCOPE_DENIED", "Partner KYC needs network management access", 403);
     const partner = await db.seeraPartner.findUnique({ where: { id: subjectId } });
     if (!partner) throw new FoundationError("KYC_SUBJECT_NOT_FOUND", "Partner not found", 404);
-    return { name: partner.tradeName ?? partner.legalName, kind: partner.type, mobile: null as string | null, stage: partner.lifecycle };
+    return { name: partner.tradeName ?? partner.legalName, kind: partner.type, mobile: null as string | null, stage: partner.lifecycle, applicationFileCount: 0 };
   }
   throw new FoundationError("KYC_SUBJECT_INVALID", "Unknown KYC subject", 400);
 }

@@ -38,7 +38,7 @@ GOOGLE_FONTS = """<link rel="preconnect" href="https://fonts.googleapis.com">
 
 # Company WhatsApp number for orders, digits with country code (e.g. "919876543210"). Empty = the
 # viewer picks the chat in WhatsApp.
-ORDER_WHATSAPP = ""
+ORDER_WHATSAPP = "918905340449"
 
 PDF_NAME = "Seera_Super_Stockist_Price_List_2026.pdf"
 SITE_DIR = pl.ROOT / "public" / "rate-list"
