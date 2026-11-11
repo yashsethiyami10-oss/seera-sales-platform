@@ -164,8 +164,8 @@ async function PriceList({ db, userId, language }: { db: PrismaClient; userId: s
     <section className={styles.section}>
       <p className={styles.note}>
         {hi
-          ? "यह रेट लिस्ट सीधे कंपनी के मास्टर रेट से आती है — कंपनी रेट बदलते ही यहाँ और ऑर्डर में अपने-आप बदल जाती है। रेट बेसिक (GST अलग) हैं।"
-          : "This list reads the Company's governed master rates — when the Company changes a rate it updates here and in orders automatically. Rates are basic (GST extra)."}
+          ? "यह रेट लिस्ट सीधे कंपनी के मास्टर रेट से आती है — कंपनी रेट बदलते ही यहाँ और ऑर्डर में अपने-आप बदल जाती है। रेट GST सहित हैं (नीचे छोटे अक्षरों में बेसिक रेट)।"
+          : "This list reads the Company's governed master rates — when the Company changes a rate it updates here and in orders automatically. Rates include GST (basic rate shown below in small text)."}
         {latest && <> {hi ? "नवीनतम बदलाव:" : "Latest change:"} <b>{latest.toLocaleDateString("en-IN", { dateStyle: "medium" })}</b>.</>}
       </p>
       <div className={`${styles.actions} ${styles.noPrint}`}>
@@ -179,8 +179,8 @@ async function PriceList({ db, userId, language }: { db: PrismaClient; userId: s
             <thead>
               <tr>
                 <th>{hi ? "उत्पाद" : "Product"}</th>
-                <th>{hi ? "S.S. रेट" : "S.S. rate"}</th>
-                <th>{hi ? "वितरक रेट" : "Distributor"}</th>
+                <th>{hi ? "S.S. रेट (GST सहित)" : "S.S. rate (incl. GST)"}</th>
+                <th>{hi ? "वितरक रेट (GST सहित)" : "Distributor (incl. GST)"}</th>
                 <th className={styles.wide}>MRP</th>
                 <th className={styles.wide}>GST</th>
               </tr>
@@ -206,9 +206,11 @@ function BrandRows({ brand, rows, language }: { brand: string; rows: LivePriceRo
         <tr key={r.skuId}>
           <td>{r.productName}<div className={styles.muted}>{r.packSize} {r.unitType} · {r.unitsPerCase} / {hi ? "केस" : "case"} · {r.code}</div>
             <div className={`${styles.muted} ${styles.narrow}`}>MRP {inr(r.mrp)} · GST {r.taxRatePercent == null ? "—" : `${r.taxRatePercent}%`}</div></td>
-          <td className={styles.num}>{inr(r.ssRate)}</td>
           <td className={styles.num}>
-            {inr(r.distributorRate)}
+            <RateCell incl={r.ssRateInclGst} basic={r.ssRate} mode={r.priceMode} language={language} />
+          </td>
+          <td className={styles.num}>
+            <RateCell incl={r.distributorRateInclGst} basic={r.distributorRate} mode={r.priceMode} language={language} />
             {r.distributorRateSource === "DERIVED_FROM_COMPANY_TO_SS" && <div className={styles.muted}>{hi ? "S.S. रेट से" : "via S.S. rate"}</div>}
           </td>
           <td className={`${styles.num} ${styles.wide}`}>{inr(r.mrp)}</td>
@@ -278,5 +280,23 @@ async function Applications({ db, userId, language }: { db: PrismaClient; userId
         </details>
       ))}
     </section>
+  );
+}
+
+function RateCell({ incl, basic, mode, language }: { incl: number | null; basic: number | null; mode: "GST_INCLUSIVE" | "GST_EXCLUSIVE"; language: Lang }) {
+  const hi = language === "HI";
+  if (basic == null) return <>—</>;
+  if (incl == null)
+    return (
+      <>
+        {inr(basic)}
+        <div className={styles.muted}>{hi ? "बेसिक · GST % सेट नहीं" : "basic · GST % not set"}</div>
+      </>
+    );
+  return (
+    <>
+      <strong>{inr(incl)}</strong>
+      {mode === "GST_EXCLUSIVE" && <div className={styles.muted}>{hi ? "बेसिक" : "basic"} {inr(basic)}</div>}
+    </>
   );
 }

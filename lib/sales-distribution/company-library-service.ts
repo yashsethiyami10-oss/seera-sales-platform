@@ -5,6 +5,7 @@ import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { BUILTIN_LIBRARY_DOCUMENTS, LIBRARY_CATEGORIES, type LibraryCategory } from "./company-library";
 import { resolveDistributorPurchaseRate } from "./distributor-pricing";
+import { priceModeForBrand } from "./document-lines";
 
 // Company documents library. Readers: anyone on the Sales Executive or Sales Manager portal, plus
 // the Founder/Admin (settings:manage). Writers (upload / archive): settings:manage only.
@@ -125,7 +126,17 @@ export type LivePriceRow = {
   skuId: string; code: string; productName: string; brand: string; packSize: number; unitType: string; unitsPerCase: number;
   mrp: number; taxRatePercent: number | null; ssRate: number | null; distributorRate: number | null;
   distributorRateSource: "SS_TO_DISTRIBUTOR" | "DERIVED_FROM_COMPANY_TO_SS" | null; effectiveFrom: Date | null;
+  // GST-inclusive rates (what the partner actually pays). MUV rates are already GST-inclusive;
+  // every other brand's governed rate is basic, so GST is added. null when the SKU has no GST rate.
+  ssRateInclGst: number | null; distributorRateInclGst: number | null; priceMode: "GST_INCLUSIVE" | "GST_EXCLUSIVE";
 };
+
+const money = (n: number) => Math.round(n * 100) / 100;
+export function inclusiveOfGst(rate: number | null, taxRatePercent: number | null, priceMode: "GST_INCLUSIVE" | "GST_EXCLUSIVE") {
+  if (rate == null) return null;
+  if (priceMode === "GST_INCLUSIVE") return rate;
+  return taxRatePercent == null ? null : money(rate * (1 + taxRatePercent / 100));
+}
 
 export async function livePriceList(db: PrismaClient, actorId: string, now = new Date()): Promise<LivePriceRow[]> {
   await assertCanViewCompanyLibrary(db, actorId);
@@ -138,11 +149,17 @@ export async function livePriceList(db: PrismaClient, actorId: string, now = new
     const ss = sku.prices[0];
     const dist = await resolveDistributorPurchaseRate(db, sku.id, sku.code, now);
     const tax = sku.taxRate == null ? null : Number(sku.taxRate);
+    const taxRatePercent = tax == null ? null : (tax <= 1 ? tax * 100 : tax);
+    const priceMode = priceModeForBrand(sku.brand);
+    const ssRate = ss ? Number(ss.amount) : null;
+    const distributorRate = dist?.amount ?? null;
     return {
       skuId: sku.id, code: sku.code, productName: sku.productName, brand: sku.brand, packSize: Number(sku.packSize), unitType: sku.unitType,
-      unitsPerCase: sku.unitsPerCase, mrp: Number(sku.mrp), taxRatePercent: tax == null ? null : (tax <= 1 ? tax * 100 : tax),
-      ssRate: ss ? Number(ss.amount) : null, distributorRate: dist?.amount ?? null, distributorRateSource: dist?.source ?? null,
-      effectiveFrom: ss?.effectiveFrom ?? null,
+      unitsPerCase: sku.unitsPerCase, mrp: Number(sku.mrp), taxRatePercent,
+      ssRate, distributorRate, distributorRateSource: dist?.source ?? null,
+      effectiveFrom: ss?.effectiveFrom ?? null, priceMode,
+      ssRateInclGst: inclusiveOfGst(ssRate, taxRatePercent, priceMode),
+      distributorRateInclGst: inclusiveOfGst(distributorRate, taxRatePercent, priceMode),
     };
   }));
 }
