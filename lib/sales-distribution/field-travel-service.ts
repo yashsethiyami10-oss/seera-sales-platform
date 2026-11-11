@@ -94,6 +94,67 @@ export async function recordGpsSample(
   });
 }
 
+// Continuous route tracking while the field day is ACTIVE and GPS is on. The phone (see
+// components/seera/product/FieldGpsTracker.tsx) watches position while the Seera App is open and
+// sends batches here; they are stored as ordinary SeeraGpsSample rows (source "TRACK") next to the
+// checkpoint samples, so recomputeSessionDistance() sums the real route when GPS stayed on and
+// falls back to the straight line between the last and next trusted point when it was switched off.
+// Points are validated against the caller's own ACTIVE session and its time window; a retried batch
+// (same capturedAt values) is de-duplicated, never double counted.
+const TRACK_BATCH_LIMIT = 300;
+export async function recordGpsTrackPoints(
+  db: PrismaClient,
+  actorId: string,
+  input: { workSessionId: string; points: { latitude: number; longitude: number; accuracy?: number | null; capturedAt: string | Date }[] },
+) {
+  const session = await db.seeraWorkSession.findFirst({ where: { id: input.workSessionId, employeeId: actorId } });
+  if (!session) throw new FoundationError("WORK_SESSION_NOT_FOUND", "Work session not found", 404);
+  if (session.status !== "ACTIVE") throw new FoundationError("WORK_SESSION_NOT_ACTIVE", "Field day is not active", 409);
+  const now = Date.now();
+  const earliest = session.startedAt.getTime() - 60_000;
+  const valid = input.points.slice(0, TRACK_BATCH_LIMIT).flatMap((p) => {
+    const at = new Date(p.capturedAt);
+    const t = at.getTime();
+    if (!Number.isFinite(t) || t < earliest || t > now + 120_000) return [];
+    if (!Number.isFinite(p.latitude) || !Number.isFinite(p.longitude) || Math.abs(p.latitude) > 90 || Math.abs(p.longitude) > 180) return [];
+    const accuracy = p.accuracy != null && Number.isFinite(p.accuracy) ? Math.min(Math.max(p.accuracy, 0), 99_999) : null;
+    return [{ at, latitude: p.latitude, longitude: p.longitude, accuracy }];
+  }).sort((a, b) => a.at.getTime() - b.at.getTime());
+  if (!valid.length) return { stored: 0, ignored: input.points.length };
+  const existing = await db.seeraGpsSample.findMany({
+    where: { workSessionId: session.id, source: "TRACK", capturedAt: { in: valid.map((v) => v.at) } },
+    select: { capturedAt: true },
+  });
+  const seen = new Set(existing.map((e) => e.capturedAt.getTime()));
+  const fresh = valid.filter((v) => !seen.has(v.at.getTime()) && seen.add(v.at.getTime()));
+  if (!fresh.length) return { stored: 0, ignored: input.points.length - valid.length };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const last = await db.seeraGpsSample.findFirst({ where: { workSessionId: session.id }, orderBy: { sequence: "desc" }, select: { sequence: true } });
+      const base = last?.sequence ?? 0;
+      await db.seeraGpsSample.createMany({
+        data: fresh.map((v, i) => ({
+          employeeId: actorId,
+          workSessionId: session.id,
+          capturedAt: v.at,
+          latitude: v.latitude,
+          longitude: v.longitude,
+          accuracy: v.accuracy,
+          source: "TRACK",
+          sequence: base + i + 1,
+          trackingStatus: v.accuracy != null && v.accuracy > 150 ? "LOW_ACCURACY" : "OK",
+        })),
+      });
+      return { stored: fresh.length, ignored: input.points.length - fresh.length };
+    } catch (error) {
+      // A checkpoint sample (check-in etc.) written at the same moment can take the same sequence
+      // numbers; retry with the new maximum.
+      if (attempt < 3 && (error as { code?: string }).code === "P2002") continue;
+      throw error;
+    }
+  }
+}
+
 // Recomputes eligible field distance for a (now-ended) work session from its stored GPS samples,
 // filtering noisy/impossible jumps, and upserts the same SeeraTravelEstimate record the rest of
 // the codebase already reads — callers never need a second "which distance is real" source.
