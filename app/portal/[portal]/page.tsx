@@ -14,6 +14,10 @@ import { accountsDashboardSummary } from "@/lib/sales-distribution/financial-ser
 import { FounderAttentionDashboard } from "@/components/seera/product/FounderAttentionDashboard";
 import { founderAttentionDashboard } from "@/lib/sales-distribution/founder-service";
 import { FounderHomeToday } from "@/components/seera/product/FounderHomeToday";
+import { TargetPulse, type TargetPulseProps } from "@/components/seera/product/Motivation";
+import { executiveDashboard } from "@/lib/sales-distribution/field-portal-service";
+import { PartnerQuickHome } from "@/components/seera/product/PartnerQuickHome";
+import { partnerSalesSnapshot, type PartnerSnapshot } from "@/lib/sales-distribution/partner-insight-service";
 import { moneyDeskHome } from "@/lib/finance/money-desk-service";
 import { prisma } from "@/lib/database/client";
 import {
@@ -186,6 +190,8 @@ export default async function PortalShell({
           errorName: error instanceof Error ? error.name : "UnknownError",
         });
       }
+    // Sales snapshot for the partner home (own-party scope only; degrades to the quick actions alone).
+    let partnerSnapshot: PartnerSnapshot | null = null;
     let superStockistSummary: Awaited<ReturnType<typeof superStockistDashboardSummary>> | null = null;
     if (portal === "super-stockist" && permissions.has("super_stockist_orders:view"))
       try {
@@ -193,7 +199,10 @@ export default async function PortalShell({
           where: { userId: user.id, active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
           select: { partnerId: true },
         });
-        if (link) superStockistSummary = await superStockistDashboardSummary(prisma, user.id, link.partnerId);
+        if (link) {
+          superStockistSummary = await superStockistDashboardSummary(prisma, user.id, link.partnerId);
+          partnerSnapshot = await partnerSalesSnapshot(prisma, user.id, link.partnerId, "SUPER_STOCKIST").catch(() => null);
+        }
       } catch (error) {
         console.error("[SEERA] super stockist dashboard summary unavailable", {
           errorName: error instanceof Error ? error.name : "UnknownError",
@@ -206,7 +215,10 @@ export default async function PortalShell({
           where: { userId: user.id, active: true, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] },
           select: { partnerId: true },
         });
-        if (link) distributorSummary = await distributorDashboardSummary(prisma, user.id, link.partnerId);
+        if (link) {
+          distributorSummary = await distributorDashboardSummary(prisma, user.id, link.partnerId);
+          partnerSnapshot = await partnerSalesSnapshot(prisma, user.id, link.partnerId, "DISTRIBUTOR").catch(() => null);
+        }
       } catch (error) {
         console.error("[SEERA] distributor dashboard summary unavailable", {
           errorName: error instanceof Error ? error.name : "UnknownError",
@@ -243,6 +255,33 @@ export default async function PortalShell({
           errorName: error instanceof Error ? error.name : "UnknownError",
         });
       }
+    // Target + motivation ring, always first on the field home screens so the month's target is
+    // never more than a glance away. Degrades to nothing if the read fails, like every widget here.
+    let pulse: Omit<TargetPulseProps, "language"> | null = null;
+    if (portal === "sales-executive" && permissions.has("field_day:manage_self"))
+      try {
+        const d = await executiveDashboard(prisma, user.id);
+        pulse = { target: d.target, today: { visited: d.today.visited, planned: d.today.planned, orders: d.today.orders, bookedValue: d.today.bookedValue } };
+      } catch (error) {
+        console.error("[SEERA] executive target pulse unavailable", {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    if (portal === "sales-manager" && managerSummary) {
+      const now = new Date();
+      const daysRemaining = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
+      const t = managerSummary.target;
+      pulse = {
+        title: language === "HI" ? "टीम का मासिक लक्ष्य" : "Team monthly target",
+        target: t.value > 0 ? { value: t.value, achieved: t.delivered, achievementPct: t.achievementPct ?? 0, daysRemaining, requiredDailyRunRate: t.requiredDailyRunRate } : null,
+        today: {
+          visited: managerSummary.today.visited,
+          planned: managerSummary.today.planned,
+          orders: managerSummary.today.orders,
+          bookedValue: managerSummary.today.companyDirectValue + managerSummary.today.distributorValue,
+        },
+      };
+    }
     const title = experience?.title ?? messages[portal]?.[language] ?? "Seera";
     return (
       <main
@@ -284,12 +323,16 @@ export default async function PortalShell({
           {["sales-executive", "distributor", "super-stockist"].includes(portal) && (
             <OfflineStatus language={language} />
           )}
+          {pulse && <TargetPulse language={language} {...pulse} />}
           {/* Field roles: the "Start today's work" entry and their daily cards come first. */}
           {(portal === "sales-executive" || portal === "sales-manager") && (
             <ProductHome portal={portal} permissions={permissions} language={language} />
           )}
           {managerSummary && (
             <ManagerDashboardSummary language={language} summary={managerSummary} portal={portal} mappedDistributors={assignableDistributors} />
+          )}
+          {(portal === "distributor" || portal === "super-stockist") && !deliveryOnly && (superStockistSummary || distributorSummary) && (
+            <PartnerQuickHome language={language} portal={portal} snapshot={partnerSnapshot} permissions={permissions} />
           )}
           {superStockistSummary && (
             <SuperStockistDashboardSummary language={language} summary={superStockistSummary} portal={portal} />

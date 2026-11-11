@@ -133,6 +133,7 @@ const founder: SurfaceItem[] = [
     "prospects",
     "prospect:create",
   ),
+  item("partner-kyc", "Partner KYC documents", "पार्टनर KYC दस्तावेज़", "🪪", "documents", "network:manage"),
   item("network-stock", "Network stock", "नेटवर्क स्टॉक", "▦", "inventory"),
   item("field-force", "Field force", "फील्ड टीम", "♟", "team"),
   item("daily-working", "Daily working", "दैनिक कार्य", "◷", "field"),
@@ -362,6 +363,7 @@ const manager: SurfaceItem[] = [
   g(G.fieldWorking, item("partner-visits", "Distributor / S.S. visits", "वितरक / एस.एस. विज़िट", "⌖", "field", "manager_field:operate")),
   g(G.fieldWorking, item("market-survey", "Market survey", "मार्केट सर्वे", "✎", "market_survey", "market_survey:create")),
   g(G.fieldWorking, item("distributor-search", "Distributor search", "वितरक खोज", "◎", "prospects", "prospect:create")),
+  g(G.fieldWorking, item("partner-kyc", "Partner KYC documents", "पार्टनर KYC दस्तावेज़", "🪪", "documents", "prospect:create")),
   g(G.distributorOversight, item("distributor-oversight", "Distributors", "वितरक", "◇", "partners", "network:manage")),
   g(G.sales, item("delivered-sales", "Delivered sales", "वितरित बिक्री", "✓", "orders", "field_reports:view_self")),
   g(G.followUps, item("collections", "Collections", "संग्रह", "₹", "finance", "payment_promise:create")),
@@ -428,6 +430,7 @@ const executive: SurfaceItem[] = [
     "prospects",
     "prospect:create",
   ),
+  item("partner-kyc", "Partner KYC documents", "पार्टनर KYC दस्तावेज़", "🪪", "documents", "prospect:create"),
   item(
     "targets",
     "Target progress",
@@ -619,10 +622,10 @@ const MORE: [string, string] = ["MORE", "अधिक"];
 const FIELD_GROUPS: Record<string, Record<string, [string, string]>> = {
   "sales-executive": {
     today: TODAY, beat: TODAY, retailers: TODAY, orders: TODAY, collections: TODAY, instructions: TODAY,
-    "market-survey": PROGRESS, prospects: PROGRESS, "company-documents": PROGRESS, targets: PROGRESS, "delivered-sales": PROGRESS, dsr: PROGRESS,
+    "market-survey": PROGRESS, prospects: PROGRESS, "partner-kyc": PROGRESS, "company-documents": PROGRESS, targets: PROGRESS, "delivered-sales": PROGRESS, dsr: PROGRESS,
   },
   "sales-manager": {
-    "my-day": TODAY, "beat-planner": TODAY, retailing: TODAY, "joint-working": TODAY, "partner-visits": TODAY, "market-survey": TODAY, "distributor-search": TODAY, instructions: TODAY,
+    "my-day": TODAY, "beat-planner": TODAY, retailing: TODAY, "joint-working": TODAY, "partner-visits": TODAY, "market-survey": TODAY, "distributor-search": TODAY, "partner-kyc": TODAY, instructions: TODAY,
     team: TEAM, "team-review": TEAM, attendance: TEAM, approvals: TEAM, "ta-verification": TEAM, visits: TEAM, "photo-compliance": TEAM, alerts: TEAM,
     "distributor-oversight": PROGRESS, "company-documents": PROGRESS, "delivered-sales": PROGRESS, collections: PROGRESS, dsr: PROGRESS, "new-retailers": PROGRESS, analytics: PROGRESS,
   },

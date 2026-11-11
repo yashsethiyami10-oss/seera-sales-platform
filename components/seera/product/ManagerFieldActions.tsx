@@ -522,16 +522,21 @@ export function ManagerFieldActions({
               })();
             }}
           >
-            <label>
-              {hi ? "परिणाम" : "Outcome"}
-              <select name="outcome" value={outcome} onChange={(event) => setOutcome(event.target.value)}>
-                <option value="ORDER_BOOKED">ORDER_BOOKED</option>
-                <option value="NO_ORDER">NO_ORDER</option>
-                <option value="FOLLOW_UP">FOLLOW_UP</option>
-                <option value="COLLECTION">COLLECTION</option>
-                <option value="MARKET_INTELLIGENCE">MARKET_INTELLIGENCE</option>
-              </select>
-            </label>
+            <strong className={journeyStyles.listTitle}>{hi ? "इस दुकान पर क्या हुआ?" : "What happened at this shop?"}</strong>
+            <div className={journeyStyles.outcomeChips} role="radiogroup" aria-label={hi ? "विज़िट परिणाम" : "Visit outcome"}>
+              {([
+                ["ORDER_BOOKED", "📦 Order booked", "📦 ऑर्डर बुक"],
+                ["NO_ORDER", "✋ No order", "✋ ऑर्डर नहीं"],
+                ["FOLLOW_UP", "⏰ Come back later", "⏰ बाद में आना है"],
+                ["COLLECTION", "₹ Payment collected", "₹ पेमेंट लिया"],
+                ["MARKET_INTELLIGENCE", "📝 Market info only", "📝 सिर्फ़ बाज़ार जानकारी"],
+              ] as const).map(([value, en, hiLabel]) => (
+                <label key={value} data-active={outcome === value}>
+                  <input type="radio" name="outcome" value={value} checked={outcome === value} onChange={() => setOutcome(value)} />
+                  {hi ? hiLabel : en}
+                </label>
+              ))}
+            </div>
             {outcome === "ORDER_BOOKED" ? (
               <>
                 {orderLines.map((line, index) => {
@@ -599,7 +604,18 @@ export function ManagerFieldActions({
                 </label>
               </>
             ) : (
-              <label>{hi ? "बिना ऑर्डर का कारण" : "No-order reason"}<input name="reason" /></label>
+              <label>
+                {hi ? "बिना ऑर्डर का कारण" : "No-order reason"}
+                <input name="reason" list="manager-no-order-reasons" placeholder={hi ? "टैप करें या लिखें" : "Tap a suggestion or type"} required={outcome === "NO_ORDER"} />
+                <datalist id="manager-no-order-reasons">
+                  <option value="Stock already full" />
+                  <option value="Owner not available" />
+                  <option value="Payment pending" />
+                  <option value="Price concern" />
+                  <option value="Shop closed" />
+                  <option value="Buying other brand" />
+                </datalist>
+              </label>
             )}
             <label>{hi ? "टिप्पणी" : "Notes"}<input name="notes" /></label>
             <label>

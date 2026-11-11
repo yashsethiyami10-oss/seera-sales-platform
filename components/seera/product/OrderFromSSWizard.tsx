@@ -2,7 +2,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import styles from "./WorkflowActions.module.css";
-import { SkuSelect, type SkuOption } from "./SkuSelect";
+import type { SkuOption } from "./SkuSelect";
+import { QuickOrderPicker } from "./QuickOrderPicker";
 
 const key = () => crypto.randomUUID();
 async function post(action: string, payload: unknown) {
@@ -24,16 +25,19 @@ export function OrderFromSSWizard({
   superStockistName,
   skus,
   recentOrders,
+  lastOrderLines = [],
 }: {
   language: "EN" | "HI";
   distributorId: string;
   superStockistName: string | null;
   skus: SkuOption[];
   recentOrders: SSOrderStatusCard[];
+  // Lines of the most recent order to this S.S., for one-tap "Repeat last order".
+  lastOrderLines?: { skuId: string; quantity: number }[];
 }) {
   const hi = language === "HI",
     router = useRouter(),
-    [lines, setLines] = useState([{ key: key(), skuId: "", quantity: 1 }]),
+    [quantities, setQuantities] = useState<Record<string, number>>({}),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [submittedOrderNumber, setSubmittedOrderNumber] = useState<string | null>(null),
@@ -52,7 +56,9 @@ export function OrderFromSSWizard({
       </section>
     );
 
-  const validLines = lines.filter((l) => l.skuId && l.quantity > 0);
+  const validLines = Object.entries(quantities)
+    .filter(([, quantity]) => quantity > 0)
+    .map(([skuId, quantity]) => ({ skuId, quantity }));
 
   return (
     <div className={styles.cardStack}>
@@ -80,7 +86,7 @@ export function OrderFromSSWizard({
               onClick={() => {
                 setSubmittedOrderNumber(null);
                 setSubmittedAmounts(null);
-                setLines([{ key: key(), skuId: "", quantity: 1 }]);
+                setQuantities({});
               }}
             >
               {hi ? "एक और ऑर्डर करें" : "Place another order"}
@@ -97,7 +103,7 @@ export function OrderFromSSWizard({
               void post("create-distributor-replenishment", {
                 distributorId,
                 idempotencyKey: key(),
-                lines: validLines.map(({ skuId, quantity }) => ({ skuId, quantity })),
+                lines: validLines,
               })
                 .then((order) => {
                   setSubmittedOrderNumber(order.orderNumber ?? null);
@@ -113,43 +119,15 @@ export function OrderFromSSWizard({
                 ? "Seera दरें मूल हैं (GST अलग से जुड़ेगा); MUV दरें अंतिम/GST सहित हैं (कोई अतिरिक्त GST नहीं जुड़ेगा) — प्रत्येक उत्पाद के आगे दर मोड दिखाया गया है।"
                 : "Seera rates are Basic — GST is added on submit. MUV rates are already Final/GST-inclusive — no GST is added on top. The rate mode is shown next to each product."}
             </p>
-            {lines.map((line, index) => (
-              <fieldset key={line.key} style={{ border: "1px solid #ead8d2", borderRadius: 9, padding: 10, display: "grid", gap: 8 }}>
-                <legend>{hi ? `उत्पाद ${index + 1}` : `Product ${index + 1}`}</legend>
-                <label>
-                  {hi ? "SEERA / MUV — उत्पाद" : "SEERA / MUV — Product"}
-                  <SkuSelect
-                    language={language}
-                    skus={skus}
-                    value={line.skuId}
-                    onChange={(v) => setLines((c) => c.map((x) => (x.key === line.key ? { ...x, skuId: v } : x)))}
-                    required
-                  />
-                </label>
-                <label>
-                  {hi ? "मात्रा" : "Quantity"}
-                  <input
-                    type="number"
-                    min={1}
-                    step="1"
-                    value={line.quantity}
-                    onChange={(e) => setLines((c) => c.map((x) => (x.key === line.key ? { ...x, quantity: Number(e.target.value) } : x)))}
-                    required
-                  />
-                </label>
-                {lines.length > 1 && (
-                  <button type="button" onClick={() => setLines((c) => c.filter((x) => x.key !== line.key))}>
-                    {hi ? "हटाएँ" : "Remove"}
-                  </button>
-                )}
-              </fieldset>
-            ))}
-            <button type="button" onClick={() => setLines((c) => [...c, { key: key(), skuId: "", quantity: 1 }])}>
-              {hi ? "+ उत्पाद जोड़ें" : "+ Add product"}
-            </button>
-            <button disabled={busy || !validLines.length} className={styles.primaryBig}>
-              {hi ? "ऑर्डर सबमिट करें" : "SUBMIT ORDER"}
-            </button>
+            <QuickOrderPicker
+              language={language}
+              skus={skus}
+              quantities={quantities}
+              onChange={setQuantities}
+              lastOrderLines={lastOrderLines}
+              busy={busy}
+              submitLabel={hi ? "ऑर्डर भेजें" : "Send order"}
+            />
             {error && <p role="status" className={styles.cardError}>{error}</p>}
           </form>
         )}

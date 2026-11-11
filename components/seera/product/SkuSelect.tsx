@@ -2,7 +2,8 @@
 // SEERA and MUV must never share one flat/mixed dropdown (Founder decision) — every product
 // selector in the Distributor portal (Order from S.S., Quotations, Returns, stock actions) renders
 // through this one grouped <select> so the separation stays consistent everywhere it's used.
-export type SkuOption = { value: string; label: string; brand: string; meta?: string; unavailable?: boolean };
+// `rate` (optional) is only used for an on-screen estimate; the server always re-prices.
+export type SkuOption = { value: string; label: string; brand: string; meta?: string; unavailable?: boolean; rate?: number };
 
 export function SkuSelect({
   name,

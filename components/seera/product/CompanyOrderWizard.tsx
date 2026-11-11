@@ -195,11 +195,14 @@ export function CompanyOrderWizard({
   superStockistId,
   catalog,
   recentOrders,
+  lastOrderLines = [],
 }: {
   language: "EN" | "HI";
   superStockistId: string;
   catalog: CompanyCatalogItem[];
   recentOrders: CompanyOrderStatusCard[];
+  // Most recent non-cancelled company order's lines, for one-tap "Repeat last order".
+  lastOrderLines?: { skuId: string; quantity: number; commercialUom?: string }[];
 }) {
   const hi = language === "HI",
     router = useRouter(),
@@ -279,6 +282,23 @@ export function CompanyOrderWizard({
           <small>{hi ? "कंपनी से ऑर्डर" : "ORDER FROM COMPANY"}</small>
           <h2>{hi ? "नया कंपनी ऑर्डर" : "New Company order"}</h2>
         </div>
+        {(() => {
+          const repeatable = lastOrderLines.filter((l) => l.quantity > 0 && byId.get(l.skuId) && !byId.get(l.skuId)!.unavailable);
+          if (!repeatable.length) return null;
+          return (
+            <button
+              type="button"
+              className={styles.primaryBig}
+              style={{ gridColumn: "1/-1", background: "linear-gradient(160deg,#1e3a8a,#172554)", boxShadow: "0 5px 0 #0b1437" }}
+              onClick={() => {
+                setCart(repeatable.map((l) => ({ skuId: l.skuId, quantity: Math.round(l.quantity), commercialUom: l.commercialUom ?? byId.get(l.skuId)!.orderUnit })));
+                window.setTimeout(() => document.getElementById("company-order-cart")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+              }}
+            >
+              ↻ {hi ? `पिछला ऑर्डर दोहराएँ (${repeatable.length} उत्पाद)` : `Repeat last order (${repeatable.length} products)`}
+            </button>
+          );
+        })()}
         <div className={styles.brandToggle}>
           {brands.map((b) => (
             <button key={b} type="button" data-active={b === brand} onClick={() => setBrand(b)}>
@@ -349,7 +369,7 @@ export function CompanyOrderWizard({
       </section>
 
       {cartWithDetail.length > 0 && (
-        <section className={styles.panel}>
+        <section className={styles.panel} id="company-order-cart">
           <div>
             <small>{hi ? "समीक्षा" : "REVIEW"}</small>
             <h2>{hi ? "ऑर्डर कार्ट" : "Review cart"}</h2>
