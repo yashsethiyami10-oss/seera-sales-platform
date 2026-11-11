@@ -99,17 +99,7 @@ export function FieldGpsTracker({ workSessionId, language }: { workSessionId: st
     };
   }, [workSessionId]);
 
-  if (state === "ok") return null;
-  const hi = language === "HI";
-  return (
-    <div role="status" style={{ margin: "0 0 12px", padding: "10px 12px", borderRadius: 10, background: "#fef2f2", borderLeft: "4px solid #dc2626", fontWeight: 700, fontSize: 14 }}>
-      {state === "denied"
-        ? hi
-          ? "GPS / लोकेशन की अनुमति बंद है — रास्ता ट्रैक नहीं हो रहा। TA के लिए सेटिंग में लोकेशन चालू करें।"
-          : "Location permission is off — your route is not being tracked. Turn location on for full TA distance."
-        : hi
-          ? "GPS उपलब्ध नहीं है — रास्ता ट्रैक नहीं हो रहा। फ़ोन में लोकेशन चालू करें।"
-          : "GPS is unavailable — your route is not being tracked. Turn on location on your phone."}
-    </div>
-  );
+  // Location problems are shown by GpsGate (always mounted on field portals), not twice here.
+  void state;
+  return null;
 }

@@ -104,6 +104,7 @@ type Dashboard = {
   } | null;
   today: {
     planned: number;
+    counterTarget?: number;
     visited: number;
     productive: number;
     skipped: number;

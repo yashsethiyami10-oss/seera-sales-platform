@@ -51,13 +51,15 @@
 
     <!-- Permissions — kept to exactly what the field workflow uses: photo capture
          (components/seera/product/FieldJourney.tsx, <input capture>), checkpoint GPS
-         (components/seera/product/gps.tsx, one-shot getCurrentPosition, never background
-         tracking), and network access. No contacts/microphone/call-log/SMS permissions. -->
+         and route tracking while the app is open (gps.tsx, FieldGpsTracker.tsx — no background
+         location permission), and network access. No contacts/microphone/call-log/SMS permissions. -->
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Only Android 9 and older need this for DownloadManager to save PDFs into Downloads. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <uses-feature
         android:name="android.hardware.camera"

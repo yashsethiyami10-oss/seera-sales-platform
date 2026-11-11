@@ -1089,6 +1089,13 @@ export async function resolveFollowUp(
 // Manager-published SeeraJourneyPlan and matched against the retailer's own beat/market/territory
 // field depending on which geography level the plan targets. Executives never edit this — it's a
 // read of what the Manager published, plus their normal retailer book for any un-planned day.
+// Counters (shops) a Sales Executive is expected to visit in a day — shown as "visited / 30".
+export const DAILY_COUNTER_TARGET = 30;
+
+function routeMatchForPlans(plans: { beatId: string | null; geographyId: string }[]) {
+  return plans.map((plan) => (plan.beatId ? { beatId: plan.beatId } : { marketId: plan.geographyId }));
+}
+
 export async function executiveBeat(
   db: PrismaClient,
   actorId: string,
@@ -1139,11 +1146,11 @@ export async function executiveBeat(
   // already published goes silently empty the moment this deploys.
   const legacyPlans = plans.filter((plan) => plan.stops.length === 0);
   const stopRetailerIds = [...new Set(plans.flatMap((plan) => plan.stops.map((s) => s.retailerId)))];
-  const beatIds = [...new Set(legacyPlans.map((plan) => plan.beatId).filter((id): id is string => Boolean(id)))];
-  const territoryIds = [...new Set(legacyPlans.map((plan) => plan.territoryId).filter((id): id is string => Boolean(id)))];
-  const geographyIds = [...new Set(legacyPlans.map((plan) => plan.geographyId))];
-  const hasLegacyGeographyMatch = beatIds.length > 0 || territoryIds.length > 0 || geographyIds.length > 0;
-  const hasAnyPlanMatch = stopRetailerIds.length > 0 || hasLegacyGeographyMatch;
+  // A legacy plan (no frozen stops) matches only its own route: the plan's Beat when it has one,
+  // otherwise its market. It never widens to the whole territory — that pulled in shops that are
+  // not on today's route (Founder report, Nov 2026).
+  const legacyRouteMatch = routeMatchForPlans(legacyPlans);
+  const hasLegacyGeographyMatch = legacyRouteMatch.length > 0;
   const [visitsToday, stopRetailers, legacyRetailers] = await Promise.all([
     db.seeraVisit.findMany({
       where: {
@@ -1163,25 +1170,15 @@ export async function executiveBeat(
     // never remain visitable/orderable just because an old plan's stop snapshot still names them —
     // that's not "the beat changed", it's "this retailer no longer legitimately exists".
     stopRetailerIds.length ? db.seeraRetailer.findMany({ where: { id: { in: stopRetailerIds }, lifecycle: "ACTIVE" } }) : Promise.resolve([]),
+    // No route for the day = no route list. Previously every active shop of the Executive was
+    // shown (and counted as "planned") when no plan existed, so off-route shops appeared as today's
+    // work. Unplanned shops are still reachable through search / Add Customer.
     hasLegacyGeographyMatch
       ? db.seeraRetailer.findMany({
-          where: {
-            salespersonId: actorId,
-            lifecycle: "ACTIVE",
-            OR: [
-              { beatId: { in: beatIds } },
-              { marketId: { in: geographyIds } },
-              { territoryId: { in: territoryIds } },
-            ],
-          },
+          where: { salespersonId: actorId, lifecycle: "ACTIVE", OR: legacyRouteMatch },
           orderBy: { businessName: "asc" },
         })
-      : range === "today" && !hasAnyPlanMatch
-        ? db.seeraRetailer.findMany({
-            where: { salespersonId: actorId, lifecycle: "ACTIVE" },
-            orderBy: { businessName: "asc" },
-          })
-        : Promise.resolve([]),
+      : Promise.resolve([]),
   ]);
   // stopRetailerIds is already in stop-sequence order (built from stops sorted by `sequence`
   // above) — preserved here rather than re-sorted by name, since sequence is the Manager's
@@ -1280,6 +1277,7 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
           OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
         },
         orderBy: { effectiveFrom: "desc" },
+        include: { stops: { select: { retailerId: true } } },
       }),
     ]);
   timing.stage("batch1_independent_reads");
@@ -1294,22 +1292,13 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
       target?.periodStart ?? new Date(now.getFullYear(), now.getMonth(), 1),
       target?.periodEnd ?? now,
     ),
+    // "Planned" = exactly the shops on today's route list (frozen stops when the plan has them,
+    // otherwise its Beat / market) — the same rule as executiveBeat, never all shops / territory.
     plannedToday
-      ? db.seeraRetailer.count({
-          where: {
-            salespersonId: actorId,
-            lifecycle: "ACTIVE",
-            // Final Master Revision (Beat/Route add-on, 22-Aug) fix: same geography-level mismatch
-            // as executiveBeat above — beatId/territoryId must match the plan's OWN beatId/
-            // territoryId (Beat/Territory-level), not its leaf geographyId.
-            OR: [
-              ...(plannedToday.beatId ? [{ beatId: plannedToday.beatId }] : []),
-              { marketId: plannedToday.geographyId },
-              ...(plannedToday.territoryId ? [{ territoryId: plannedToday.territoryId }] : []),
-            ],
-          },
-        })
-      : Promise.resolve(retailers),
+      ? plannedToday.stops.length
+        ? db.seeraRetailer.count({ where: { id: { in: plannedToday.stops.map((s) => s.retailerId) }, lifecycle: "ACTIVE" } })
+        : db.seeraRetailer.count({ where: { salespersonId: actorId, lifecycle: "ACTIVE", OR: routeMatchForPlans([plannedToday]) } })
+      : Promise.resolve(0),
     // Part B reporting split (COMPANY_DIRECT vs DISTRIBUTOR) — small lookup, only the distinct
     // seller partner ids already present on today's orders, batched here rather than a per-order
     // query.
@@ -1346,6 +1335,7 @@ export async function executiveDashboard(db: PrismaClient, actorId: string, now 
       : null,
     today: {
       planned: plannedCount,
+      counterTarget: DAILY_COUNTER_TARGET,
       visited: todayVisits.length,
       productive: todayVisits.filter((v) => v.outcome === "PRODUCTIVE").length,
       skipped: todayVisits.filter((v) => v.outcome === "SKIPPED").length,

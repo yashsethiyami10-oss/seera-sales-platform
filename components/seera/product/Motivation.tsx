@@ -11,7 +11,7 @@ export type TargetPulseProps = {
   language: "EN" | "HI";
   // Monthly target in rupees; null when no target is assigned yet.
   target: { value: number; achieved: number; achievementPct: number; daysRemaining: number; requiredDailyRunRate: number } | null;
-  today: { visited: number; planned: number; orders: number; bookedValue: number };
+  today: { visited: number; planned: number; orders: number; bookedValue: number; counterTarget?: number };
   // Overrides the default headline (e.g. "Team target" on the manager screen).
   title?: string;
   // One-line strip (used while a visit is open).
@@ -43,11 +43,11 @@ export function motivationLine(input: Pick<TargetPulseProps, "target" | "today" 
 export function TargetPulse({ language, target, today, title, compact = false }: TargetPulseProps) {
   const hi = language === "HI";
   const hasTarget = Boolean(target && target.value > 0);
+  // Daily counter goal (30 shops) — not the route's planned count.
+  const counterGoal = today.counterTarget ?? 30;
   const pct = hasTarget
     ? Math.max(0, Math.min(100, target!.achievementPct))
-    : today.planned > 0
-      ? Math.max(0, Math.min(100, Math.round((today.visited / today.planned) * 100)))
-      : 0;
+    : Math.max(0, Math.min(100, Math.round((today.visited / counterGoal) * 100)));
   const motivation = motivationLine({ language, target, today });
   if (compact)
     return (
@@ -56,7 +56,7 @@ export function TargetPulse({ language, target, today, title, compact = false }:
           <span style={{ width: `${pct}%` }} />
         </div>
         <span className={styles.stripText}>
-          {hasTarget ? `🎯 ${Math.round(target!.achievementPct)}% ${hi ? "लक्ष्य" : "of target"}` : `🏪 ${today.visited}/${today.planned || "–"} ${hi ? "विज़िट" : "visits"}`} · 📦 {today.orders} · {inr(today.bookedValue)}
+          {hasTarget ? `🎯 ${Math.round(target!.achievementPct)}% ${hi ? "लक्ष्य" : "of target"}` : `🏪 ${today.visited}/${counterGoal} ${hi ? "विज़िट" : "visits"}`} · 📦 {today.orders} · {inr(today.bookedValue)}
         </span>
       </div>
     );
@@ -73,7 +73,7 @@ export function TargetPulse({ language, target, today, title, compact = false }:
           aria-label={hasTarget ? (hi ? "मासिक लक्ष्य" : "Monthly target") : hi ? "आज की विज़िट" : "Today’s visits"}
         >
           <div className={styles.ringFace}>
-            <strong>{hasTarget ? `${Math.round(target!.achievementPct)}%` : `${today.visited}/${today.planned || "–"}`}</strong>
+            <strong>{hasTarget ? `${Math.round(target!.achievementPct)}%` : `${today.visited}/${counterGoal}`}</strong>
             <small>{hasTarget ? (hi ? "लक्ष्य" : "of target") : hi ? "विज़िट" : "visits"}</small>
           </div>
         </div>
@@ -92,7 +92,7 @@ export function TargetPulse({ language, target, today, title, compact = false }:
         <p className={styles.line}>{motivation.text}</p>
         <div className={styles.chips}>
           <span>📦 {today.orders} {hi ? "ऑर्डर" : "orders"}</span>
-          <span>🏪 {today.visited} {hi ? "विज़िट" : "visits"}</span>
+          <span>🏪 {today.visited}/{counterGoal} {hi ? "विज़िट" : "visits"}</span>
           {hasTarget && <span>⏳ {target!.daysRemaining} {hi ? "दिन बाकी" : "days left"}</span>}
           {!hasTarget && <span className={styles.muted}>{hi ? "मासिक लक्ष्य अभी सेट नहीं" : "Monthly target not set yet"}</span>}
         </div>
