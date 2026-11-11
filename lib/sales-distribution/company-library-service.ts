@@ -56,7 +56,7 @@ export async function listUploadedLibraryDocuments(db: PrismaClient, actorId: st
   }
 }
 
-function validateFile(input: { originalName: string; mimeType: string; bytes: Uint8Array }) {
+export function validateLibraryFile(input: { originalName: string; mimeType: string; bytes: Uint8Array }) {
   const b = input.bytes;
   if (!b.length || b.length > MAX_BYTES) throw new FoundationError("INVALID_DOCUMENT_FILE", "File must be between 1 byte and 25 MB", 400);
   if (!/^(application\/pdf|image\/(png|jpeg))$/.test(input.mimeType)) throw new FoundationError("UNSUPPORTED_DOCUMENT_FILE", "Only PDF, PNG or JPEG files are supported", 400);
@@ -75,7 +75,7 @@ export async function uploadCompanyLibraryDocument(db: PrismaClient, actorId: st
   if (title.length < 3 || title.length > 160) throw new FoundationError("INVALID_TITLE", "Title must be 3–160 characters", 400);
   if (!LIBRARY_CATEGORIES.includes(input.category as LibraryCategory)) throw new FoundationError("INVALID_CATEGORY", "Unknown document category", 400);
   const description = input.description?.trim().slice(0, 500) || null;
-  validateFile(input);
+  validateLibraryFile(input);
   try {
     return await db.$transaction(async (tx) => {
       const sha256 = createHash("sha256").update(input.bytes).digest("hex");

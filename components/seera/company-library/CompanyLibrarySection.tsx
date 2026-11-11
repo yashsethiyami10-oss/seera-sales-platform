@@ -9,6 +9,8 @@ import {
 } from "@/lib/sales-distribution/company-library";
 import { listUploadedLibraryDocuments, livePriceList, type LivePriceRow } from "@/lib/sales-distribution/company-library-service";
 import { ArchiveLibraryDocumentButton, LibraryUploadForm, PrintPriceListButton } from "./CompanyLibraryActions";
+import { PartnerApplicationForm } from "./PartnerApplicationForm";
+import { listPartnerApplications } from "@/lib/sales-distribution/partner-application-service";
 import styles from "./CompanyLibrary.module.css";
 
 type Lang = "EN" | "HI";
@@ -20,7 +22,7 @@ const label = (category: string, language: Lang) => {
 const size = (bytes: number) => (bytes > 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`);
 
 export async function CompanyLibrarySection({
-  db, userId, portal, slug, language, query, canManage,
+  db, userId, portal, slug, language, query, canManage, canApply,
 }: {
   db: PrismaClient;
   userId: string;
@@ -29,10 +31,13 @@ export async function CompanyLibrarySection({
   language: Lang;
   query: Record<string, string | undefined>;
   canManage: boolean;
+  canApply: boolean;
 }) {
   const hi = language === "HI";
   const base = `/portal/${portal}/${slug}`;
-  const tab = query.tab === "price-list" ? "price-list" : "documents";
+  const tabs = ["documents", "price-list", ...(canApply ? ["apply"] : []), ...(canApply || canManage ? ["applications"] : [])];
+  const tab = tabs.includes(query.tab ?? "") ? (query.tab as string) : "documents";
+  const appType = query.type === "SUPER_STOCKIST" || query.type === "DEPOT" ? query.type : "DISTRIBUTOR";
   return (
     <>
       <PageHeading
@@ -50,9 +55,30 @@ export async function CompanyLibrarySection({
         <Link className={`${styles.tab} ${tab === "price-list" ? styles.tabOn : ""}`} href={`${base}?tab=price-list`}>
           {hi ? "लाइव रेट लिस्ट" : "Live price list"}
         </Link>
+        {tabs.includes("apply") && (
+          <Link className={`${styles.tab} ${tab === "apply" ? styles.tabOn : ""}`} href={`${base}?tab=apply`}>
+            {hi ? "ऑनलाइन फ़ॉर्म भरें" : "Fill form online"}
+          </Link>
+        )}
+        {tabs.includes("applications") && (
+          <Link className={`${styles.tab} ${tab === "applications" ? styles.tabOn : ""}`} href={`${base}?tab=applications`}>
+            {hi ? "जमा आवेदन" : "Submitted applications"}
+          </Link>
+        )}
       </nav>
       {tab === "price-list" ? (
         <PriceList db={db} userId={userId} language={language} />
+      ) : tab === "apply" ? (
+        <section className={styles.section}>
+          <p className={styles.note}>
+            {hi
+              ? "आवेदक के साथ बैठकर फ़ोन पर भरें। जमा होते ही यह आपकी वितरक खोज (प्रॉस्पेक्ट) में \"Evaluation\" चरण में आ जाएगा — पेपर फ़ॉर्म की ज़रूरत नहीं।"
+              : "Fill this on the phone with the applicant. On submit it lands in your Distributor search (prospects) at stage \"Evaluation\" — no paper form needed."}
+          </p>
+          <PartnerApplicationForm language={language} initialType={appType} />
+        </section>
+      ) : tab === "applications" ? (
+        <Applications db={db} userId={userId} language={language} />
       ) : (
         <Documents db={db} userId={userId} language={language} canManage={canManage} />
       )}
@@ -190,5 +216,67 @@ function BrandRows({ brand, rows, language }: { brand: string; rows: LivePriceRo
         </tr>
       ))}
     </>
+  );
+}
+
+const APPLICATION_LABELS: [string, string, string][] = [
+  ["tradeName", "Trade name", "ट्रेड नाम"], ["constitution", "Constitution", "फर्म का प्रकार"], ["yearEstablished", "Established", "स्थापना"],
+  ["gstStatus", "GST status", "GST स्थिति"], ["gstin", "GSTIN", "GSTIN"], ["pan", "PAN", "PAN"], ["address", "Address", "पता"],
+  ["city", "Village / Town / City", "गाँव / कस्बा / शहर"], ["district", "District", "ज़िला"], ["state", "State", "राज्य"], ["pincode", "PIN", "पिन"],
+  ["ownerName", "Owner", "मालिक"], ["fatherName", "Father's name", "पिता का नाम"], ["alternateMobile", "Alternate mobile", "दूसरा मोबाइल"],
+  ["email", "Email", "ईमेल"], ["aadhaarLast4", "Aadhaar (last 4)", "आधार (आख़िरी 4)"], ["yearsInBusiness", "Years in business", "व्यवसाय के साल"],
+  ["turnover", "Turnover", "टर्नओवर"], ["brandsHandled", "Brands handled", "ब्रांड"], ["reach", "Reach", "पहुँच"], ["godown", "Godown", "गोदाम"],
+  ["vehicles", "Vehicles", "गाड़ियाँ"], ["staff", "Staff", "स्टाफ़"], ["depotDetails", "Depot details", "डिपो विवरण"],
+  ["areasApplied", "Areas applied", "क्षेत्र"], ["mappedSuperStockist", "Mapped S.S.", "मैप्ड एस.एस."], ["openingOrderValue", "Opening order", "पहला ऑर्डर"],
+  ["monthlyPurchase", "Monthly purchase", "मासिक ख़रीद"], ["securityDeposit", "Security deposit", "डिपॉज़िट"], ["bankName", "Bank", "बैंक"],
+  ["accountHolder", "Account holder", "खाताधारक"], ["accountNumber", "Account no.", "खाता संख्या"], ["ifsc", "IFSC", "IFSC"],
+  ["references", "References", "रेफ़रेंस"], ["remarks", "Remarks", "टिप्पणी"],
+];
+
+async function Applications({ db, userId, language }: { db: PrismaClient; userId: string; language: Lang }) {
+  const hi = language === "HI";
+  const rows = await listPartnerApplications(db, userId);
+  if (!rows.length) return <p className={styles.muted}>{hi ? "अभी कोई ऑनलाइन आवेदन नहीं है।" : "No online applications yet."}</p>;
+  return (
+    <section className={styles.section}>
+      {rows.map((r) => (
+        <details className={styles.doc} key={r.id}>
+          <summary style={{ cursor: "pointer" }}>
+            <strong>{r.firmName}</strong> · {label(r.type === "SUPER_STOCKIST" ? "SUPER_STOCKIST" : r.type === "DEPOT" ? "DEPOT" : "DISTRIBUTOR", language)} · {r.mobile}
+            <div className={styles.meta}>
+              <span className={styles.pill}>{r.stage}</span>
+              <span>{r.submittedAt.toLocaleDateString("en-IN", { dateStyle: "medium" })} · {hi ? "द्वारा" : "by"} {r.submittedBy}</span>
+            </div>
+          </summary>
+          <dl style={{ display: "grid", gridTemplateColumns: "minmax(110px,170px) 1fr", gap: "4px 12px", margin: "8px 0 0", fontSize: 13 }}>
+            {APPLICATION_LABELS.filter(([k]) => r.application[k] != null && r.application[k] !== "").map(([k, en, h]) => (
+              <div key={k} style={{ display: "contents" }}>
+                <dt style={{ color: "#475569", fontWeight: 700 }}>{hi ? h : en}</dt>
+                <dd style={{ margin: 0, overflowWrap: "anywhere" }}>{String(r.application[k])}</dd>
+              </div>
+            ))}
+            {typeof r.application.latitude === "number" && typeof r.application.longitude === "number" && (
+              <div style={{ display: "contents" }}>
+                <dt style={{ color: "#475569", fontWeight: 700 }}>GPS</dt>
+                <dd style={{ margin: 0 }}>
+                  <a href={`https://www.google.com/maps?q=${r.application.latitude},${r.application.longitude}`} target="_blank" rel="noreferrer">
+                    {(r.application.latitude as number).toFixed(5)}, {(r.application.longitude as number).toFixed(5)}
+                  </a>
+                </dd>
+              </div>
+            )}
+          </dl>
+          {r.documentCount > 0 && (
+            <div className={styles.actions}>
+              {Array.from({ length: r.documentCount }, (_, i) => (
+                <a key={i} className={styles.ghost} style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }} href={`/api/partner-applications/${encodeURIComponent(r.id)}/files/${i}`}>
+                  {hi ? "दस्तावेज़" : "Document"} {i + 1}
+                </a>
+              ))}
+            </div>
+          )}
+        </details>
+      ))}
+    </section>
   );
 }

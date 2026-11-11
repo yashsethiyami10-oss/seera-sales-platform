@@ -600,6 +600,7 @@ export default async function WorkspacePage({
         language={language}
         query={query}
         canManage={!denied("settings:manage")}
+        canApply={!denied("prospect:create")}
       />
     );
   if (product?.kind === "market_survey")

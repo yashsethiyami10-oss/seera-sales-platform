@@ -31,3 +31,4 @@
 .err{color:#b91c1c;font-weight:700}
 .note{margin:0;border-left:4px solid #f59e0b;background:#fffbeb;padding:10px 12px;border-radius:8px;font-size:13px}
 @media print{.tabs,.actions,.upload,.noPrint{display:none!important}.priceWrap{border:0}}
+.upload h3{margin:10px 0 0;font-size:15px;color:#172554;border-left:4px solid #f97316;padding-left:8px}
