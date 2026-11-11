@@ -53,6 +53,7 @@ type Dashboard = {
   } | null;
   today: {
     planned: number;
+    counterTarget?: number;
     visited: number;
     productive: number;
     skipped: number;
@@ -841,7 +842,7 @@ function DashboardHeader({
         <dl className={styles.statGrid} data-compact="true">
           <div>
             <dt>{hi ? "देखे गए" : "Visited"}</dt>
-            <dd>{dashboard.today.visited}<small> / {dashboard.today.planned}</small></dd>
+            <dd>{dashboard.today.visited}<small> / {dashboard.today.counterTarget ?? 30}</small></dd>
           </div>
           <div>
             <dt>{hi ? "ऑर्डर" : "Orders"}</dt>
