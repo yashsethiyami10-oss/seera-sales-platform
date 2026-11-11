@@ -1,5 +1,6 @@
 "use client";
 
+import { rememberTrackedFix } from "./gps";
 import { useEffect, useState } from "react";
 
 // Route tracking for an ACTIVE field day. While the Seera App is open and GPS is on, the phone
@@ -48,6 +49,7 @@ export function FieldGpsTracker({ workSessionId, language }: { workSessionId: st
           accuracy: Number.isFinite(pos.coords.accuracy) ? Math.round(pos.coords.accuracy) : null,
           capturedAt: new Date(pos.timestamp || Date.now()).toISOString(),
         };
+        rememberTrackedFix(point);
         if (last) {
           const moved = metersBetween(last, point);
           const waited = Date.parse(point.capturedAt) - Date.parse(last.capturedAt);
