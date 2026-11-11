@@ -95,10 +95,15 @@ describe("mobile camera memory and reload regression (P0 21-Aug live-UAT fix)", 
     expect(imagePipeline).toContain("Photo could not be prepared. Please retake.");
   });
 
-  it("I: resumes an authoritative ordered or photographed visit at Photo after reload", () => {
+  // Guided visit (11-Nov): an ordered visit, or one whose outcome was already chosen before an
+  // Android camera reload (persisted per visit in sessionStorage), resumes at the Photo step. A
+  // visit with only a photo and no chosen outcome resumes at "What happened?" — the Photo step
+  // cannot finish a visit without an outcome.
+  it("I: resumes an authoritative ordered (or outcome-chosen) visit at Photo after reload", () => {
     expect(workspace).toContain("_count: { select: { orders: true } }");
     expect(workspace).toContain("orderCount: visit._count.orders");
-    expect(fieldJourney).toContain("visit.orderCount > 0 || visit.photos.length > 0");
+    expect(fieldJourney).toContain('storedPlan ?? (visit && visit.orderCount > 0 ? { outcome: "ORDER_BOOKED" as const } : null)');
+    expect(fieldJourney).toContain("const storedPlan = visit ? readStoredPlan(visit.id) : null;");
     expect(fieldJourney).toContain("seera:field-visit:${visit.id}:mode");
     expect(fieldJourney).toContain('? "PHOTO"');
   });
