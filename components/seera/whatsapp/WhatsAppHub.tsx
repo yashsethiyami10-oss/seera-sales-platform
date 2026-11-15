@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { renderPreview, VARIABLE_SOURCES, type VariableMapping, type VariableSource } from "@/lib/seera-whatsapp/rules";
+import type { AreaGroup } from "@/lib/seera-whatsapp/areas";
 import s from "./WhatsAppHub.module.css";
 
 // Seera WhatsApp Hub — Founder / Admin. Templates are created and approved in Meta WhatsApp
@@ -9,7 +10,7 @@ import s from "./WhatsAppHub.module.css";
 
 type Template = { name: string; language: string; status: string; category: string | null; headerFormat: string | null; bodyText: string | null; variableNames: string[]; syncedAt: string };
 type Campaign = {
-  id: string; name: string; templateName: string; language: string; category: string | null; audience: { partyTypes: string[]; distributorIds?: string[] };
+  id: string; name: string; templateName: string; language: string; category: string | null; audience: { partyTypes: string[]; distributorIds?: string[]; areaKeys?: string[] };
   variableMap: VariableMapping[]; headerMediaUrl: string | null; status: string; repeatEveryDays: number | null; nextRunAt: string | null; lastRunAt: string | null; runCount: number;
   lastRunSummary: { audience?: number; queued?: number; skipped?: number; error?: string } | null; stats: Record<string, number>;
 };
@@ -106,6 +107,7 @@ function Overview({ boot, t, busy, run, goto }: { boot: Boot; t: T; busy: boolea
           <li>{t("Create the template in Meta WhatsApp Manager → Message templates (use {{1}}, {{2}} for name, city etc.) and wait for Approved.", "Meta WhatsApp Manager → Message templates में टेम्पलेट बनाएँ ({{1}}, {{2}} नाम, शहर के लिए) और Approved होने दें।")}</li>
           <li>{t("Press Sync templates here — approved ones appear in the campaign form.", "यहाँ Sync templates दबाएँ — मंज़ूर टेम्पलेट कैंपेन में दिखेंगे।")}</li>
           <li>{t("New campaign → choose retailers / distributors / super stockists → fill each {{variable}} → Test on your phone.", "नया कैंपेन → रिटेलर / डिस्ट्रीब्यूटर / सुपर स्टॉकिस्ट चुनें → हर {{variable}} भरें → अपने फ़ोन पर टेस्ट करें।")}</li>
+          <li>{t("Area-wise: tick a whole state (e.g. Uttar Pradesh) or single cities (Gangapur, Bhilwara…). Use 'City / area' or 'Different text for each city / state' in a {{variable}} so each shop gets its own city's message.", "इलाके के हिसाब से: पूरा राज्य (जैसे उत्तर प्रदेश) या अलग शहर (गंगापुर, भीलवाड़ा…) चुनें। {{variable}} में 'शहर' या 'हर शहर / राज्य के लिए अलग टेक्स्ट' चुनें ताकि हर दुकान को अपने शहर का मैसेज जाए।")}</li>
           <li>{t("Start now or schedule, and choose 'repeat every N days' for regular offers.", "अभी शुरू करें या समय तय करें, और नियमित ऑफ़र के लिए 'हर N दिन दोहराएँ' चुनें।")}</li>
           <li>{t("Replies land in the Inbox. You can answer free-text within 24 hours of their message. STOP replies are opted out automatically.", "जवाब इनबॉक्स में आते हैं। उनके मैसेज के 24 घंटे तक जवाब दे सकते हैं। STOP लिखने वाले अपने आप हट जाते हैं।")}</li>
         </ol>
@@ -129,11 +131,12 @@ function Overview({ boot, t, busy, run, goto }: { boot: Boot; t: T; busy: boolea
   );
 }
 
-const emptyForm = { id: undefined as string | undefined, name: "", templateKey: "", partyTypes: ["RETAILER"] as string[], distributorIds: [] as string[], variableMap: [] as VariableMapping[], headerMediaUrl: "", repeat: false, repeatEveryDays: 7, startAt: "" };
+const emptyForm = { id: undefined as string | undefined, name: "", templateKey: "", partyTypes: ["RETAILER"] as string[], distributorIds: [] as string[], areaKeys: [] as string[], variableMap: [] as VariableMapping[], headerMediaUrl: "", repeat: true, repeatEveryDays: 4, startAt: "" };
 
 function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; busy: boolean; run: Run }) {
   const [form, setForm] = useState<typeof emptyForm | null>(null);
-  const [preview, setPreview] = useState<{ total: number; optedOut: number; byType: Record<string, number>; sample: { name: string; text: string }[] } | null>(null);
+  const [preview, setPreview] = useState<{ total: number; optedOut: number; byType: Record<string, number>; byArea?: Record<string, number>; sample: { name: string; area?: string; text: string }[] } | null>(null);
+  const [areas, setAreas] = useState<AreaGroup[] | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const approved = boot.templates.filter((x) => x.status === "APPROVED");
   const tpl = form ? boot.templates.find((x) => `${x.name}|${x.language}` === form.templateKey) : undefined;
@@ -143,7 +146,7 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
     const [templateName, language] = (form!.templateKey || "|").split("|");
     return {
       name: form!.name, templateName: templateName!, language: language!,
-      audience: { partyTypes: form!.partyTypes, ...(form!.distributorIds.length ? { distributorIds: form!.distributorIds } : {}) },
+      audience: { partyTypes: form!.partyTypes, ...(form!.distributorIds.length ? { distributorIds: form!.distributorIds } : {}), ...(form!.areaKeys.length ? { areaKeys: form!.areaKeys } : {}) },
       variableMap: form!.variableMap, headerMediaUrl: form!.headerMediaUrl || null, repeatEveryDays: form!.repeat ? form!.repeatEveryDays : null,
     };
   };
@@ -154,7 +157,19 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
     const h = setTimeout(() => { api<typeof preview>({ action: "preview", audience: p.audience, templateName: tpl?.name, language: tpl?.language, variableMap: form.variableMap }).then(setPreview).catch(() => setPreview(null)); }, 400);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form?.partyTypes.join(), form?.distributorIds.join(), form?.templateKey, JSON.stringify(form?.variableMap)]);
+  }, [form?.partyTypes.join(), form?.distributorIds.join(), form?.areaKeys.join(), form?.templateKey, JSON.stringify(form?.variableMap)]);
+
+  // State → city list for the area picker (counts follow the chosen party types / distributors).
+  useEffect(() => {
+    if (!form || !form.partyTypes.length) { setAreas(null); return; }
+    const h = setTimeout(() => {
+      api<{ areas: AreaGroup[] }>({ action: "areas", audience: { partyTypes: form.partyTypes, ...(form.distributorIds.length ? { distributorIds: form.distributorIds } : {}) } })
+        .then((r) => setAreas(r.areas))
+        .catch(() => setAreas(null));
+    }, 300);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form?.partyTypes.join(), form?.distributorIds.join()]);
 
   const pickTemplate = (key: string) => {
     const x = boot.templates.find((y) => `${y.name}|${y.language}` === key);
@@ -162,8 +177,8 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
   };
   const livePreview = useMemo(() => {
     if (!tpl) return "";
-    const sample = { CONTACT_NAME: "Ramesh Sharma", BUSINESS_NAME: "Sharma General Store", OWNER_NAME: "Ramesh Sharma", CITY: "Jaipur", DISTRIBUTOR_NAME: "Seera Distributor", PARTY_CODE: "RT-0012" } as Record<string, string>;
-    return renderPreview(tpl.bodyText, Object.fromEntries((form?.variableMap ?? []).map((m) => [m.variable, m.source === "CUSTOM" ? (m.value || `{{${m.variable}}}`) : sample[m.source]!])));
+    const sample = { CONTACT_NAME: "Ramesh Sharma", BUSINESS_NAME: "Sharma General Store", OWNER_NAME: "Ramesh Sharma", CITY: "Jaipur", STATE: "Rajasthan", DISTRIBUTOR_NAME: "Seera Distributor", PARTY_CODE: "RT-0012" } as Record<string, string>;
+    return renderPreview(tpl.bodyText, Object.fromEntries((form?.variableMap ?? []).map((m) => [m.variable, m.source === "CUSTOM" || m.source === "AREA_TEXT" ? (m.value || `{{${m.variable}}}`) : sample[m.source]!])));
   }, [tpl, form?.variableMap]);
 
   const save = async (andStart: boolean) => {
@@ -195,7 +210,9 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
           </select>
         </label>
       )}
-      {preview && <div className={s.ok}>👥 <b>{preview.total - preview.optedOut}</b> {t("will receive it", "को जाएगा")} {Object.entries(preview.byType).map(([k, v]) => `· ${PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k} ${v}`).join(" ")}{preview.optedOut ? ` · ${preview.optedOut} ${t("opted out (skipped)", "STOP किए (छोड़े जाएँगे)")}` : ""}</div>}
+      {form.partyTypes.length > 0 && <AreaPicker areas={areas} selected={form.areaKeys} onChange={(areaKeys) => setForm({ ...form, areaKeys })} t={t} />}
+      {preview && <div className={s.ok}>👥 <b>{preview.total - preview.optedOut}</b> {t("will receive it", "को जाएगा")} {Object.entries(preview.byType).map(([k, v]) => `· ${PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k} ${v}`).join(" ")}{preview.optedOut ? ` · ${preview.optedOut} ${t("opted out (skipped)", "STOP किए (छोड़े जाएँगे)")}` : ""}
+        {preview.byArea && Object.keys(preview.byArea).length > 1 && <div className={s.muted} style={{ marginTop: 4 }}>📍 {Object.entries(preview.byArea).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => `${k} ${v}`).join(" · ")}{Object.keys(preview.byArea).length > 12 ? " …" : ""}</div>}</div>}
       {tpl && tpl.variableNames.map((v, i) => {
         const m = form.variableMap[i] ?? { variable: v, source: "CUSTOM" as VariableSource };
         const set = (patch: Partial<VariableMapping>) => setForm({ ...form, variableMap: form.variableMap.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
@@ -206,14 +223,18 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
               {Object.entries(VARIABLE_SOURCES).map(([k, l]) => <option key={k} value={k}>{hi ? l.hi : l.en}</option>)}
             </select>
             {m.source === "CUSTOM" && <input className={s.input} style={{ flex: 1, minWidth: 180 }} value={m.value ?? ""} onChange={(e) => set({ value: e.target.value })} placeholder={t("Text for everyone, e.g. 10% off on 5 cases", "सबके लिए टेक्स्ट, जैसे 5 पेटी पर 10% छूट")} />}
+            {m.source === "AREA_TEXT" && <AreaTextEditor mapping={m} areas={areas} selected={form.areaKeys} onChange={(patch) => set(patch)} t={t} />}
           </div>
         );
       })}
       {mediaHeader && <label className={s.field}>{t(`${tpl!.headerFormat} header — public https link`, `${tpl!.headerFormat} हेडर — पब्लिक https लिंक`)}<input className={s.input} value={form.headerMediaUrl} onChange={(e) => setForm({ ...form, headerMediaUrl: e.target.value })} placeholder="https://…" /></label>}
-      {tpl && <div><div className={s.muted}>{t("Preview", "झलक")}</div><div className={s.bubble}>{livePreview}</div>{preview?.sample?.[0] && <div className={s.muted} style={{ marginTop: 6 }}>{t("Real example", "असली उदाहरण")} ({preview.sample[0].name}): {preview.sample[0].text}</div>}</div>}
+      {tpl && <div><div className={s.muted}>{t("Preview", "झलक")}</div><div className={s.bubble}>{livePreview}</div>
+        {preview?.sample?.length ? <div style={{ marginTop: 8, display: "grid", gap: 6 }}><div className={s.muted}>{t("Real examples — one per area", "असली उदाहरण — हर इलाके का एक")}</div>
+          {preview.sample.map((x, i) => <div key={i} className={s.muted} style={{ borderLeft: "3px solid #25d366", paddingLeft: 8 }}><b>{x.area || "—"}</b> · {x.name}: {x.text}</div>)}</div> : null}</div>}
       <div className={s.switch}>
         <label className={s.row}><input type="checkbox" checked={form.repeat} onChange={(e) => setForm({ ...form, repeat: e.target.checked })} /> <b>{t("Repeat every", "हर")}</b></label>
-        <div className={s.row}><input className={s.input} style={{ width: 80 }} type="number" min={1} max={90} value={form.repeatEveryDays} disabled={!form.repeat} onChange={(e) => setForm({ ...form, repeatEveryDays: Math.max(1, Math.min(90, Number(e.target.value) || 1)) })} /> {t("days", "दिन में दोहराएँ")}</div>
+        <div className={s.row}><input className={s.input} style={{ width: 80 }} type="number" min={1} max={90} value={form.repeatEveryDays} disabled={!form.repeat} onChange={(e) => setForm({ ...form, repeatEveryDays: Math.max(1, Math.min(90, Number(e.target.value) || 1)) })} /> {t("days", "दिन में दोहराएँ")}
+          {[3, 4, 5, 7].map((d) => <button key={d} type="button" className={`${s.chip} ${form.repeat && form.repeatEveryDays === d ? s.chipOn : ""}`} onClick={() => setForm({ ...form, repeat: true, repeatEveryDays: d })}>{t(`${d} days`, `${d} दिन`)}</button>)}</div>
       </div>
       <label className={s.field}>{t("Start at (empty = now)", "कब शुरू करें (खाली = अभी)")}<input className={s.input} type="datetime-local" value={form.startAt} onChange={(e) => setForm({ ...form, startAt: e.target.value })} /></label>
       <div className={s.card} style={{ background: "#f8fafc" }}>
@@ -239,7 +260,7 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
         return (
           <div key={c.id} className={s.card}>
             <div className={s.row} style={{ justifyContent: "space-between" }}>
-              <div><h3>{c.name}</h3><div className={s.muted}>{c.templateName} · {c.audience.partyTypes.map((k) => PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k).join(", ")}{c.repeatEveryDays ? ` · 🔁 ${t(`every ${c.repeatEveryDays} days`, `हर ${c.repeatEveryDays} दिन`)}` : ""}</div></div>
+              <div><h3>{c.name}</h3><div className={s.muted}>{c.templateName} · {c.audience.partyTypes.map((k) => PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k).join(", ")}{c.audience.areaKeys?.length ? ` · 📍 ${t(`${c.audience.areaKeys.length} area(s)`, `${c.audience.areaKeys.length} इलाके`)}` : ` · 📍 ${t("all areas", "सभी इलाके")}`}{c.repeatEveryDays ? ` · 🔁 ${t(`every ${c.repeatEveryDays} days`, `हर ${c.repeatEveryDays} दिन`)}` : ""}</div></div>
               <span className={`${s.pill} ${pill(c.status)}`}>{c.status}</span>
             </div>
             <div className={s.muted}>{t("Runs", "बार चला")}: {c.runCount} · {t("Last", "पिछला")}: {fmt(c.lastRunAt)} · {t("Next", "अगला")}: {fmt(c.nextRunAt)}</div>
@@ -254,7 +275,7 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
             {c.lastRunSummary?.error && <div className={s.err}>{c.lastRunSummary.error}</div>}
             <div className={s.row}>
               {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btn} disabled={busy} onClick={() => run(() => api({ action: "schedule", id: c.id }), t("Started ✓", "शुरू हुआ ✓"))}>▶ {c.status === "PAUSED" ? t("Resume", "फिर चालू") : t("Start now", "अभी शुरू")}</button>}
-              {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btnGhost} onClick={() => setForm({ ...emptyForm, id: c.id, name: c.name, templateKey: `${c.templateName}|${c.language}`, partyTypes: c.audience.partyTypes, distributorIds: c.audience.distributorIds ?? [], variableMap: c.variableMap ?? [], headerMediaUrl: c.headerMediaUrl ?? "", repeat: !!c.repeatEveryDays, repeatEveryDays: c.repeatEveryDays ?? 7 })}>✎ {t("Edit", "बदलें")}</button>}
+              {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btnGhost} onClick={() => setForm({ ...emptyForm, id: c.id, name: c.name, templateKey: `${c.templateName}|${c.language}`, partyTypes: c.audience.partyTypes, distributorIds: c.audience.distributorIds ?? [], areaKeys: c.audience.areaKeys ?? [], variableMap: c.variableMap ?? [], headerMediaUrl: c.headerMediaUrl ?? "", repeat: !!c.repeatEveryDays, repeatEveryDays: c.repeatEveryDays ?? 7 })}>✎ {t("Edit", "बदलें")}</button>}
               {c.status === "SCHEDULED" && <button type="button" className={s.btnGhost} disabled={busy} onClick={() => run(() => api({ action: "campaign_state", id: c.id, state: "PAUSE" }), t("Paused", "रोका गया"))}>⏸ {t("Pause", "रोकें")}</button>}
               {!["CANCELLED", "COMPLETED"].includes(c.status) && <button type="button" className={s.btnDanger} disabled={busy} onClick={() => confirm(t("Cancel this campaign? Messages not yet sent will be dropped.", "यह कैंपेन रद्द करें? जो मैसेज नहीं गए वो नहीं जाएँगे।")) && run(() => api({ action: "campaign_state", id: c.id, state: "CANCEL" }), t("Cancelled", "रद्द हुआ"))}>✕ {t("Cancel", "रद्द करें")}</button>}
             </div>
@@ -262,6 +283,92 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
         );
       })}
     </>
+  );
+}
+
+// Area-wise audience: tick whole states or single cities. Nothing ticked = every area.
+function AreaPicker({ areas, selected, onChange, t }: { areas: AreaGroup[] | null; selected: string[]; onChange: (keys: string[]) => void; t: T }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  if (!areas) return <div className={s.muted}>📍 {t("Loading areas…", "इलाके लोड हो रहे हैं…")}</div>;
+  const sel = new Set(selected);
+  const term = q.trim().toLowerCase();
+  const toggle = (key: string, extraRemove: string[] = []) => {
+    const next = new Set(sel);
+    extraRemove.forEach((k) => next.delete(k));
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onChange([...next]);
+  };
+  const total = areas.reduce((n, g) => n + g.total, 0);
+  return (
+    <div className={s.card} style={{ background: "#f8fafc" }}>
+      <div className={s.row} style={{ justifyContent: "space-between" }}>
+        <b>📍 {t("Area-wise — which cities?", "इलाके के हिसाब से — कौन से शहर?")}</b>
+        <button type="button" className={`${s.chip} ${selected.length === 0 ? s.chipOn : ""}`} onClick={() => onChange([])}>{selected.length === 0 ? "✓ " : ""}{t(`All areas (${total})`, `सभी इलाके (${total})`)}</button>
+      </div>
+      <div className={s.muted}>{t("Tick a whole state or single cities. Every message still carries that shop's own city name.", "पूरा राज्य या अलग-अलग शहर चुनें। हर मैसेज में उस दुकान का अपना शहर ही जाएगा।")}</div>
+      {areas.length > 3 || areas.some((g) => g.cities.length > 8) ? <input className={s.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search city…", "शहर खोजें…")} /> : null}
+      {areas.map((g) => {
+        const cities = g.cities.filter((c) => !term || c.city.toLowerCase().includes(term) || g.state.toLowerCase().includes(term));
+        if (!cities.length) return null;
+        const wholeState = sel.has(g.stateKey);
+        const expanded = open[g.stateKey] ?? (term !== "" || g.cities.length <= 12);
+        const shown = expanded ? cities : cities.slice(0, 12);
+        return (
+          <div key={g.stateKey} style={{ display: "grid", gap: 6, paddingTop: 6, borderTop: "1px solid #e2e8f0" }}>
+            <label className={s.row} style={{ fontWeight: 800 }}>
+              <input type="checkbox" checked={wholeState} onChange={() => toggle(g.stateKey, g.cities.map((c) => c.key))} />
+              {g.state} <span className={s.muted}>({g.total} · {g.cities.length} {t("cities", "शहर")})</span>
+            </label>
+            <div className={s.chips}>
+              {shown.map((c) => {
+                const on = wholeState || sel.has(c.key);
+                return (
+                  <button key={c.key} type="button" disabled={wholeState} className={`${s.chip} ${on ? s.chipOn : ""}`} onClick={() => toggle(c.key)} title={c.optedOut ? `${c.optedOut} STOP` : undefined}>
+                    {on ? "✓ " : ""}{c.city} <span style={{ opacity: 0.7 }}>{c.count}</span>
+                  </button>
+                );
+              })}
+              {!expanded && cities.length > 12 && <button type="button" className={s.btnGhost} onClick={() => setOpen({ ...open, [g.stateKey]: true })}>+{cities.length - 12} {t("more", "और")}</button>}
+            </div>
+          </div>
+        );
+      })}
+      {areas.some((g) => g.cities.some((c) => c.city === "City not known")) && (
+        <div className={s.muted}>ℹ️ {t("'City not known' = shops saved without a city, distributor or territory. Ask executives to tap 📍 'Fill address from my location' when adding shops.", "'शहर नहीं पता' = ऐसी दुकानें जिनमें शहर / डिस्ट्रीब्यूटर / टेरिटरी नहीं है। दुकान जोड़ते समय 📍 'मेरी लोकेशन से पता भरें' दबवाएँ।")}</div>
+      )}
+    </div>
+  );
+}
+
+// AREA_TEXT variable: one text per chosen state / city, plus a fallback for everywhere else.
+function AreaTextEditor({ mapping, areas, selected, onChange, t }: { mapping: VariableMapping; areas: AreaGroup[] | null; selected: string[]; onChange: (patch: Partial<VariableMapping>) => void; t: T }) {
+  const values = mapping.areaValues ?? {};
+  const rows: { key: string; label: string }[] = [];
+  for (const g of areas ?? []) {
+    if (!selected.length || selected.includes(g.stateKey)) rows.push({ key: g.stateKey, label: `${g.state} — ${t("whole state", "पूरा राज्य")}` });
+    for (const c of g.cities) if (selected.length ? selected.includes(c.key) : g.cities.length > 1) rows.push({ key: c.key, label: `${c.city} (${c.count})` });
+  }
+  const setValue = (key: string, v: string) => {
+    const next = { ...values, [key]: v };
+    if (!v.trim()) delete next[key];
+    onChange({ areaValues: next });
+  };
+  return (
+    <div style={{ flex: "1 1 100%", display: "grid", gap: 6, padding: 10, border: "1px dashed #cbd5e1", borderRadius: 10 }}>
+      <div className={s.muted}>{t("City text beats state text; anything left empty uses the fallback.", "शहर का टेक्स्ट राज्य से ऊपर; खाली छोड़ा तो नीचे वाला टेक्स्ट जाएगा।")}</div>
+      {rows.slice(0, 60).map((r) => (
+        <label key={r.key} className={s.row}>
+          <span style={{ minWidth: 170, fontSize: 13, fontWeight: r.key.startsWith("state:") ? 800 : 600 }}>{r.label}</span>
+          <input className={s.input} style={{ flex: 1, minWidth: 180 }} value={values[r.key] ?? ""} onChange={(e) => setValue(r.key, e.target.value)} placeholder={t("e.g. free delivery from Sahu Kirana", "जैसे साहू किराना से फ्री डिलीवरी")} />
+        </label>
+      ))}
+      <label className={s.row}>
+        <span style={{ minWidth: 170, fontSize: 13, fontWeight: 800 }}>{t("All other areas *", "बाकी सभी इलाके *")}</span>
+        <input className={s.input} style={{ flex: 1, minWidth: 180 }} value={mapping.value ?? ""} onChange={(e) => onChange({ value: e.target.value })} placeholder={t("Text for every other area", "बाकी सब इलाकों के लिए टेक्स्ट")} />
+      </label>
+    </div>
   );
 }
 

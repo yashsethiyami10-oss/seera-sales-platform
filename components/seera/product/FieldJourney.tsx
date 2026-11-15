@@ -2149,7 +2149,12 @@ export function FieldJourney({
             {hi ? "क्षेत्र / पता *" : "Area / Address *"}
             <input name="area" required />
           </label>
-          <LocationAutofill language={language} fields={{ area: "area", pincode: "pincode" }} />
+          {/* Structured city / district / state from GPS — saved with the shop so area-wise WhatsApp
+              campaigns can group it by city (the free "area" text alone cannot be grouped). */}
+          <input type="hidden" name="city" />
+          <input type="hidden" name="district" />
+          <input type="hidden" name="state" />
+          <LocationAutofill language={language} fields={{ area: "area", pincode: "pincode", city: "city", district: "district", state: "state" }} />
           <label>
             {hi ? "मालिक / संपर्क व्यक्ति" : "Owner / Contact person"}
             <input name="ownerName" />
@@ -2246,7 +2251,12 @@ export function FieldJourney({
       "create-retailer-and-check-in",
       {
         businessName: String(f.get("businessName")),
-        address: { area: String(f.get("area")) },
+        address: {
+          area: String(f.get("area")),
+          ...(String(f.get("city") ?? "").trim() ? { city: String(f.get("city")).trim() } : {}),
+          ...(String(f.get("district") ?? "").trim() ? { district: String(f.get("district")).trim() } : {}),
+          ...(String(f.get("state") ?? "").trim() ? { state: String(f.get("state")).trim() } : {}),
+        },
         ownerName: String(f.get("ownerName") ?? "") || undefined,
         mobile: String(f.get("mobile") ?? "") || undefined,
         alternateMobile: String(f.get("alternateMobile") ?? "") || undefined,

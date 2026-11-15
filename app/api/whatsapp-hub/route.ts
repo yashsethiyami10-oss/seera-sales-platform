@@ -9,6 +9,7 @@ import { PARTY_TYPES, VARIABLE_SOURCES } from "@/lib/seera-whatsapp/rules";
 import {
   getSettings,
   getThread,
+  listAreas,
   listCampaigns,
   listTemplates,
   listThreads,
@@ -32,9 +33,18 @@ const partyType = z.enum(PARTY_TYPES as unknown as [string, ...string[]]);
 const audience = z.object({
   partyTypes: z.array(partyType).min(1).max(3),
   distributorIds: z.array(z.string().max(64)).max(200).optional(),
+  // Area-wise: "state|city" keys and/or "state:<state>" for a whole state.
+  areaKeys: z.array(z.string().max(160)).max(500).optional(),
 });
 const variableMap = z
-  .array(z.object({ variable: z.string().max(60), source: z.enum(Object.keys(VARIABLE_SOURCES) as [string, ...string[]]), value: z.string().max(900).optional() }))
+  .array(
+    z.object({
+      variable: z.string().max(60),
+      source: z.enum(Object.keys(VARIABLE_SOURCES) as [string, ...string[]]),
+      value: z.string().max(900).optional(),
+      areaValues: z.record(z.string().max(160), z.string().max(900)).refine((o) => Object.keys(o).length <= 300, "Too many areas").optional(),
+    }),
+  )
   .max(20);
 const campaign = z.object({
   name: z.string().max(120),
@@ -52,6 +62,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("phone_profile") }),
   z.object({ action: z.literal("settings"), patch: z.object({ sendEnabled: z.boolean().optional(), quietHoursEnabled: z.boolean().optional(), quietStartMinute: z.number().optional(), quietEndMinute: z.number().optional(), marketingGapDays: z.number().optional() }).strict() }),
   z.object({ action: z.literal("preview"), audience, templateName: z.string().max(512).optional(), language: z.string().max(15).optional(), variableMap: variableMap.optional() }),
+  z.object({ action: z.literal("areas"), audience: audience.omit({ areaKeys: true }) }),
   z.object({ action: z.literal("save_campaign"), id: z.string().max(64).optional(), campaign }),
   z.object({ action: z.literal("test_send"), phone: z.string().max(20), campaign }),
   z.object({ action: z.literal("schedule"), id: z.string().max(64), startAt: z.string().datetime().nullish() }),
@@ -98,6 +109,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ settings: await updateSettings(prisma, id, b.patch) });
       case "preview":
         return NextResponse.json(await previewAudience(prisma, id, b as never));
+      case "areas":
+        return NextResponse.json({ areas: await listAreas(prisma, id, b.audience as never) });
       case "save_campaign":
         return NextResponse.json({ campaign: await saveCampaign(prisma, id, { ...(b.campaign as CampaignInput), id: b.id }) });
       case "test_send":

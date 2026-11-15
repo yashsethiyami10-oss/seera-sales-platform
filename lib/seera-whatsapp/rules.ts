@@ -13,6 +13,9 @@ export type Recipient = {
   city: string | null;
   distributorName: string | null;
   code: string | null;
+  // Area-wise sending / personalisation (see areas.ts). Optional so older callers still compile.
+  state?: string | null;
+  areaKey?: string;
 };
 
 // Where each template variable's text comes from. CUSTOM uses the campaign's own fixed text.
@@ -21,12 +24,25 @@ export const VARIABLE_SOURCES = {
   BUSINESS_NAME: { en: "Shop / firm name", hi: "दुकान / फ़र्म का नाम" },
   OWNER_NAME: { en: "Owner name", hi: "मालिक का नाम" },
   CITY: { en: "City / area", hi: "शहर / इलाका" },
+  STATE: { en: "State", hi: "राज्य" },
+  AREA_TEXT: { en: "Different text for each city / state", hi: "हर शहर / राज्य के लिए अलग टेक्स्ट" },
   DISTRIBUTOR_NAME: { en: "Their distributor (retailers)", hi: "उनका डिस्ट्रीब्यूटर (रिटेलर)" },
   PARTY_CODE: { en: "Party code", hi: "पार्टी कोड" },
   CUSTOM: { en: "Fixed text I type", hi: "मेरा लिखा हुआ टेक्स्ट" },
 } as const;
 export type VariableSource = keyof typeof VARIABLE_SOURCES;
-export type VariableMapping = { variable: string; source: VariableSource; value?: string };
+// areaValues (AREA_TEXT only): text per city key ("rajasthan|gangapur") or per state
+// ("state:uttar-pradesh"); `value` is the fallback for every other area.
+export type VariableMapping = { variable: string; source: VariableSource; value?: string; areaValues?: Record<string, string> };
+
+// City text wins over state text, which wins over the fallback.
+export function areaText(r: Pick<Recipient, "areaKey" | "state">, areaValues: Record<string, string> | undefined, fallback?: string): string {
+  const byCity = r.areaKey ? areaValues?.[r.areaKey]?.trim() : undefined;
+  if (byCity) return byCity;
+  const stateKey = `state:${(r.state ?? "unknown").toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, "-").replace(/^-|-$/g, "")}`;
+  const byState = areaValues?.[stateKey]?.trim();
+  return byState || fallback?.trim() || "";
+}
 
 export type ParsedTemplate = {
   headerFormat: string | null; // TEXT | IMAGE | VIDEO | DOCUMENT | null
@@ -62,7 +78,7 @@ const clip = (s: string) => s.replace(/[\n\t]+/g, " ").replace(/\s{4,}/g, "   ")
 
 // Fills one variable for one recipient. Meta rejects empty parameters, so a missing value falls
 // back to a sensible word rather than an empty string.
-export function variableValue(source: VariableSource, r: Recipient, custom?: string): string {
+export function variableValue(source: VariableSource, r: Recipient, custom?: string, areaValues?: Record<string, string>): string {
   switch (source) {
     case "CONTACT_NAME":
       return clip(r.ownerName?.trim() || r.businessName || "Partner");
@@ -72,6 +88,10 @@ export function variableValue(source: VariableSource, r: Recipient, custom?: str
       return clip(r.ownerName?.trim() || r.businessName || "Partner");
     case "CITY":
       return clip(r.city?.trim() || "your area");
+    case "STATE":
+      return clip(r.state?.trim() || "your state");
+    case "AREA_TEXT":
+      return clip(areaText(r, areaValues, custom) || "-");
     case "DISTRIBUTOR_NAME":
       return clip(r.distributorName?.trim() || "Seera");
     case "PARTY_CODE":
