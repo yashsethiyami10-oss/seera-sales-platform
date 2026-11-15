@@ -134,6 +134,9 @@ const founder: SurfaceItem[] = [
     "prospect:create",
   ),
   item("partner-kyc", "Partner KYC documents", "पार्टनर KYC दस्तावेज़", "🪪", "documents", "network:manage"),
+  // WhatsApp Hub: Meta-approved templates to retailers / distributors / super stockists, repeat
+  // campaigns, and the reply inbox. Founder + Company Admin (notifications:manage).
+  item("whatsapp-hub", "WhatsApp Hub", "व्हाट्सऐप हब", "💬", "notifications", "notifications:manage"),
   item("network-stock", "Network stock", "नेटवर्क स्टॉक", "▦", "inventory"),
   item("field-force", "Field force", "फील्ड टीम", "♟", "team"),
   item("daily-working", "Daily working", "दैनिक कार्य", "◷", "field"),

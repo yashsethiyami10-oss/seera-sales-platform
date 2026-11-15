@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { applyStatus as hubApplyStatus, recordInbound as hubRecordInbound } from "@/lib/seera-whatsapp/service";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/database/client";
 import { recordAudit } from "@/lib/foundation/audit-service";
@@ -123,11 +124,15 @@ export async function POST(request: Request) {
         const statuses: any[] = Array.isArray(value?.statuses) ? value.statuses : [];
         for (const status of statuses) {
           await processStatusEvent(status);
+          // WhatsApp Hub campaign/reply ticks (separate table from the outbox).
+          await hubApplyStatus(prisma, status).catch((e) => console.error("whatsapp_hub.status_failed", { error: e instanceof Error ? e.message : String(e) }));
         }
 
         const messages: any[] = Array.isArray(value?.messages) ? value.messages : [];
         for (const message of messages) {
           await processInboundMessage(message, value?.contacts?.[0]);
+          // Store the reply in the WhatsApp Hub inbox (and honour STOP / START).
+          await hubRecordInbound(prisma, message, value?.contacts?.[0]).catch((e) => console.error("whatsapp_hub.inbound_failed", { error: e instanceof Error ? e.message : String(e) }));
         }
       }
     }

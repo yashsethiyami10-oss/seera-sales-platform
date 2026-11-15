@@ -1,0 +1,130 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/database/client";
+import { apiFailure } from "@/lib/foundation/api-response";
+import { resolveRequestIdentity } from "@/lib/foundation/request-auth";
+import { enforceRateLimit } from "@/lib/foundation/rate-limit";
+import { configProblems, fetchPhoneProfile, waConfig } from "@/lib/seera-whatsapp/meta";
+import { PARTY_TYPES, VARIABLE_SOURCES } from "@/lib/seera-whatsapp/rules";
+import {
+  getSettings,
+  getThread,
+  listCampaigns,
+  listTemplates,
+  listThreads,
+  overview,
+  previewAudience,
+  replyInThread,
+  requireHub,
+  saveCampaign,
+  scheduleCampaign,
+  setCampaignState,
+  setOptOut,
+  syncTemplates,
+  testSend,
+  updateSettings,
+  type CampaignInput,
+} from "@/lib/seera-whatsapp/service";
+
+// Seera WhatsApp Hub (Founder / Admin). POST only; middleware rejects cross-origin POSTs to
+// /api/*, and every service call re-checks notifications:manage for the caller itself.
+const partyType = z.enum(PARTY_TYPES as unknown as [string, ...string[]]);
+const audience = z.object({
+  partyTypes: z.array(partyType).min(1).max(3),
+  distributorIds: z.array(z.string().max(64)).max(200).optional(),
+});
+const variableMap = z
+  .array(z.object({ variable: z.string().max(60), source: z.enum(Object.keys(VARIABLE_SOURCES) as [string, ...string[]]), value: z.string().max(900).optional() }))
+  .max(20);
+const campaign = z.object({
+  name: z.string().max(120),
+  templateName: z.string().min(1).max(512),
+  language: z.string().min(2).max(15),
+  audience,
+  variableMap,
+  headerMediaUrl: z.string().max(1000).nullish(),
+  repeatEveryDays: z.number().int().min(1).max(90).nullish(),
+});
+
+const body = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("bootstrap") }),
+  z.object({ action: z.literal("sync_templates") }),
+  z.object({ action: z.literal("phone_profile") }),
+  z.object({ action: z.literal("settings"), patch: z.object({ sendEnabled: z.boolean().optional(), quietHoursEnabled: z.boolean().optional(), quietStartMinute: z.number().optional(), quietEndMinute: z.number().optional(), marketingGapDays: z.number().optional() }).strict() }),
+  z.object({ action: z.literal("preview"), audience, templateName: z.string().max(512).optional(), language: z.string().max(15).optional(), variableMap: variableMap.optional() }),
+  z.object({ action: z.literal("save_campaign"), id: z.string().max(64).optional(), campaign }),
+  z.object({ action: z.literal("test_send"), phone: z.string().max(20), campaign }),
+  z.object({ action: z.literal("schedule"), id: z.string().max(64), startAt: z.string().datetime().nullish() }),
+  z.object({ action: z.literal("campaign_state"), id: z.string().max(64), state: z.enum(["PAUSE", "CANCEL"]) }),
+  z.object({ action: z.literal("threads"), q: z.string().max(80).optional() }),
+  z.object({ action: z.literal("thread"), phone: z.string().max(20) }),
+  z.object({ action: z.literal("reply"), phone: z.string().max(20), text: z.string().min(1).max(4000) }),
+  z.object({ action: z.literal("opt_out"), phone: z.string().max(20), optOut: z.boolean(), reason: z.string().max(100).optional() }),
+  z.object({ action: z.literal("opt_outs") }),
+]);
+
+export async function POST(request: Request) {
+  try {
+    const { user } = await resolveRequestIdentity();
+    enforceRateLimit(`whatsapp-hub:${user.id}`, 120, 60_000);
+    const b = body.parse(await request.json());
+    const id = user.id;
+    switch (b.action) {
+      case "bootstrap": {
+        await requireHub(prisma, id);
+        const [stats, settings, templates, campaigns, distributors] = await Promise.all([
+          overview(prisma, id),
+          getSettings(prisma),
+          listTemplates(prisma),
+          listCampaigns(prisma),
+          prisma.seeraPartner.findMany({ where: { type: "DISTRIBUTOR" }, select: { id: true, tradeName: true, legalName: true }, orderBy: { legalName: "asc" }, take: 300 }),
+        ]);
+        const c = waConfig();
+        return NextResponse.json({
+          stats,
+          settings,
+          templates,
+          campaigns,
+          distributors: distributors.map((d) => ({ id: d.id, name: d.tradeName ?? d.legalName })),
+          config: { problems: configProblems(), connected: !!(c.phoneNumberId && c.accessToken) },
+        });
+      }
+      case "sync_templates":
+        return NextResponse.json({ templates: await syncTemplates(prisma, id) });
+      case "phone_profile":
+        await requireHub(prisma, id);
+        return NextResponse.json({ profile: await fetchPhoneProfile() });
+      case "settings":
+        return NextResponse.json({ settings: await updateSettings(prisma, id, b.patch) });
+      case "preview":
+        return NextResponse.json(await previewAudience(prisma, id, b as never));
+      case "save_campaign":
+        return NextResponse.json({ campaign: await saveCampaign(prisma, id, { ...(b.campaign as CampaignInput), id: b.id }) });
+      case "test_send":
+        enforceRateLimit(`whatsapp-hub-test:${id}`, 10, 60_000);
+        return NextResponse.json(await testSend(prisma, id, { ...(b.campaign as CampaignInput), phone: b.phone }));
+      case "schedule":
+        return NextResponse.json({ campaign: await scheduleCampaign(prisma, id, b.id, b.startAt ? new Date(b.startAt) : null) });
+      case "campaign_state":
+        return NextResponse.json(await setCampaignState(prisma, id, b.id, b.state));
+      case "threads":
+        return NextResponse.json({ threads: await listThreads(prisma, id, b.q) });
+      case "thread":
+        return NextResponse.json(await getThread(prisma, id, b.phone));
+      case "reply":
+        enforceRateLimit(`whatsapp-hub-reply:${id}`, 30, 60_000);
+        return NextResponse.json(await replyInThread(prisma, id, b.phone, b.text));
+      case "opt_out":
+        return NextResponse.json(await setOptOut(prisma, id, b.phone, b.optOut, b.reason));
+      case "opt_outs":
+        await requireHub(prisma, id);
+        return NextResponse.json({ optOuts: await prisma.seeraWaOptOut.findMany({ orderBy: { createdAt: "desc" }, take: 500 }) });
+    }
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2021")
+      return NextResponse.json({ error: { code: "WA_HUB_NOT_SET_UP", message: "WhatsApp Hub tables are not on this server yet — the latest database migration has to be applied." } }, { status: 503 });
+    if (error instanceof Error && error.name === "MetaApiError")
+      return NextResponse.json({ error: { code: "META_API", message: `Meta: ${error.message}` } }, { status: 502 });
+    return apiFailure(error, request);
+  }
+}
