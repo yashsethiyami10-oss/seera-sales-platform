@@ -55,6 +55,7 @@ describe("WhatsApp Hub rules", () => {
 
   it("detects STOP / START in English and Hindi", () => {
     expect(inboundKeyword("STOP")).toBe("STOP");
+    expect(inboundKeyword("Stop promotions")).toBe("STOP");
     expect(inboundKeyword(" बंद करो। ")).toBe("STOP");
     expect(inboundKeyword("Band karo")).toBe("STOP");
     expect(inboundKeyword("start")).toBe("START");

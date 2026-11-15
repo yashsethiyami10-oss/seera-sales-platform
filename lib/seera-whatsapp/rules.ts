@@ -128,7 +128,7 @@ export function decide(p: PolicyInput): PolicyDecision {
 }
 
 // ---- Inbound keywords ----
-const STOP_WORDS = ["stop", "unsubscribe", "stop all", "band karo", "band", "बंद", "बंद करो", "ruko", "mat bhejo", "no more"];
+const STOP_WORDS = ["stop", "stop promotions", "stop promotion", "unsubscribe", "stop all", "band karo", "band", "बंद", "बंद करो", "ruko", "mat bhejo", "no more"];
 const START_WORDS = ["start", "subscribe", "shuru", "शुरू", "resume"];
 export function inboundKeyword(text: string | null | undefined): "STOP" | "START" | null {
   const t = (text ?? "").trim().toLowerCase().replace(/[.!।]+$/g, "");
