@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { downloadUrl, shareFile } from "@/lib/seera/file-actions";
 import { useSearchParams } from "next/navigation";
 import styles from "./WorkflowActions.module.css";
 
@@ -97,26 +98,21 @@ export function PartyLedgerStatement({ portal }: { portal: string }) {
 
   const pdfUrl = statement ? `/api/finance/statements/ledger-pdf?${new URLSearchParams({ partyType, partyId, from, to }).toString()}` : null;
 
+  // Download / share go through lib/seera/file-actions: inside the Seera Android app the PDF is
+  // saved to Downloads/Seera (a target="_blank" link did nothing in the app's WebView) and Share
+  // opens WhatsApp directly with the PDF attached; in a browser it is a normal download / share sheet.
+  async function handleDownload() {
+    if (!pdfUrl || !statement) return;
+    setShareNote("Preparing PDF… / PDF तैयार हो रही है…");
+    const r = await downloadUrl(pdfUrl, `Ledger-${statement.party.name}.pdf`);
+    setShareNote(r.message || null);
+  }
+
   async function handleShare() {
     if (!pdfUrl || !statement) return;
-    setShareNote(null);
-    try {
-      const res = await fetch(pdfUrl);
-      const blob = await res.blob();
-      const file = new File([blob], `Ledger-${statement.party.name}.pdf`, { type: "application/pdf" });
-      const nav = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title?: string }) => Promise<void> };
-      if (nav.canShare && nav.canShare({ files: [file] }) && nav.share) {
-        await nav.share({ files: [file], title: `Ledger Statement — ${statement.party.name}` });
-      } else {
-        setShareNote("Native sharing isn't available in this browser/device — the PDF has been downloaded instead; share it manually via WhatsApp or email.");
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = file.name; a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch {
-      setShareNote("Could not prepare the statement for sharing — try Download PDF instead.");
-    }
+    setShareNote("Preparing PDF… / PDF तैयार हो रही है…");
+    const r = await shareFile(pdfUrl, { fileName: `Ledger-${statement.party.name}.pdf`, title: `Ledger Statement — ${statement.party.name}`, text: `Ledger Statement — ${statement.party.name} (${from} to ${to})`, whatsapp: true });
+    setShareNote(r.message || null);
   }
 
   return (
@@ -156,12 +152,12 @@ export function PartyLedgerStatement({ portal }: { portal: string }) {
       {statement && (
         <>
           <div className="money-desk-no-print" style={{ display: "flex", gap: "0.5rem", margin: "0.75rem 0" }}>
-            {pdfUrl && <a href={pdfUrl} target="_blank" rel="noreferrer"><button type="button">DOWNLOAD PDF</button></a>}
+            {pdfUrl && <button type="button" onClick={() => void handleDownload()}>DOWNLOAD PDF</button>}
             <button type="button" onClick={() => window.print()}>PRINT</button>
             <button type="button" onClick={() => exportCsv(`ledger-${statement.party.name}`, filteredRows.map((r) => ({ Date: fmtDate(r.date), Particulars: r.particulars, Voucher: r.voucher, Debit: r.debit, Credit: r.credit, Balance: r.balance, "Source Type": r.sourceType, "Source Reference": r.sourceId, Territory: r.territory ?? "", "Cost Centre": r.costCentre ?? "", Treasury: r.treasury ?? "" })))}>DOWNLOAD CSV</button>
-            <button type="button" onClick={handleShare}>SHARE</button>
+            <button type="button" onClick={() => void handleShare()}>SHARE ON WHATSAPP</button>
           </div>
-          {shareNote && <p role="status" data-ok="false">{shareNote}</p>}
+          {shareNote && <p role="status" data-ok={shareNote.startsWith("✓") ? "true" : "false"}>{shareNote}</p>}
 
           <div className="money-desk-ledger-print">
             <h3 style={{ marginBottom: 0 }}>SEERA — LEDGER STATEMENT</h3>

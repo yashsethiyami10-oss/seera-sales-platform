@@ -20,7 +20,7 @@ describe("Android field-workflow resume", () => {
   });
 
   it("increments the Android version for the native resilience fix", () => {
-    expect(gradle).toContain("versionCode 3");
-    expect(gradle).toContain('versionName "1.0.2"');
+    expect(gradle).toContain("versionCode 4");
+    expect(gradle).toContain('versionName "1.0.3"');
   });
 });

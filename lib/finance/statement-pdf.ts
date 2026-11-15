@@ -62,12 +62,14 @@ const safeFile = (name: string) => path.join(process.cwd(), "node_modules", "@fo
 // Invoice", "Payment Received", etc.) — Voucher/Ref No. is widened accordingly so a real invoice
 // reference is never illegibly truncated on a professional financial document.
 const LEDGER_COLS: { key: string; label: string; width: number; right?: boolean }[] = [
-  { key: "date", label: "Date", width: 56 },
-  { key: "particulars", label: "Particulars", width: 110 },
-  { key: "voucher", label: "Voucher / Ref No.", width: 150 },
-  { key: "debit", label: "Debit (Dr)", width: 72, right: true },
-  { key: "credit", label: "Credit (Cr)", width: 72, right: true },
-  { key: "balance", label: "Balance", width: 55, right: true },
+  // Widths sum to LWIDTH (515). Amount columns are sized for crore-level values ("Rs. 1,72,83,950.46
+  // Dr"); anything still wider is shrunk to fit its own column (fitSize), never drawn over the next.
+  { key: "date", label: "Date", width: 52 },
+  { key: "particulars", label: "Particulars", width: 98 },
+  { key: "voucher", label: "Voucher / Ref No.", width: 123 },
+  { key: "debit", label: "Debit (Dr)", width: 78, right: true },
+  { key: "credit", label: "Credit (Cr)", width: 78, right: true },
+  { key: "balance", label: "Balance", width: 86, right: true },
 ];
 
 export async function renderLedgerStatementPdf(input: {
@@ -150,6 +152,12 @@ export async function renderLedgerStatementPdf(input: {
     if (current) lines.push(current);
     return lines.length ? lines : [""];
   };
+  // Largest size <= `size` at which `str` fits in `maxWidth` (floor 5.5pt).
+  const fitSize = (str: string, font: PDFFont, size: number, maxWidth: number) => {
+    let sz = size;
+    while (sz > 5.5 && font.widthOfTextAtSize(str, sz) > maxWidth) sz -= 0.25;
+    return sz;
+  };
   const fmt = (v: number) => `${money(Math.abs(v))}${v === 0 ? "" : v > 0 === (input.normalSide === "DEBIT") ? " Dr" : " Cr"}`;
 
   // ---- Header: logo + brand, document title, statement period ----
@@ -181,20 +189,28 @@ export async function renderLedgerStatementPdf(input: {
   // it from honestly; fabricating one would be exactly the kind of invented figure this mission
   // forbids. Opening/Total Debit/Total Credit/Closing are the real, available account summary.
   const partyLines = [input.party.address, input.party.mobile ? `Mobile: ${input.party.mobile}` : null, input.party.gstin ? `GSTIN: ${input.party.gstin}` : null, input.party.territory ? `Territory: ${input.party.territory}` : null].filter((v): v is string => Boolean(v));
-  const boxHeight = Math.max(16 + partyLines.length * 11 + 24, 78);
+  const innerW = colWidth - 16;
+  // Long names wrap inside their own box instead of running into the summary box next to it.
+  const nameLines = wrap(input.party.name, bold, 10, innerW).slice(0, 3);
+  const partyBodyLines = [`(${input.party.type.replace(/_/g, " ")})`, ...partyLines.flatMap((l) => wrap(l, latin, 8.5, innerW))];
+  const summaryLines: { label: string; strong?: boolean }[] = [
+    { label: `Opening Balance: ${fmt(input.openingBalance)}`, strong: true },
+    { label: `Total Debit: ${money(input.totals.debit)}` },
+    { label: `Total Credit: ${money(input.totals.credit)}` },
+    { label: "Closing / Current Outstanding:", strong: true },
+    { label: fmt(input.totals.closingBalance), strong: true },
+  ];
+  const boxHeight = Math.max(16 + nameLines.length * 13 + partyBodyLines.length * 11 + 12, 16 + summaryLines.length * 12 + 14, 78);
   page.drawRectangle({ x: LMARGIN, y: y - boxHeight, width: colWidth, height: boxHeight, borderColor: L_RULE, borderWidth: 0.8, color: rgb(1, 1, 1) });
   page.drawRectangle({ x: LMARGIN + colWidth + colGap, y: y - boxHeight, width: colWidth, height: boxHeight, borderColor: L_RULE, borderWidth: 0.8, color: rgb(1, 1, 1) });
   let py = y - 13;
   text("PARTY", LMARGIN + 8, py, { size: 7.5, strong: true, color: L_MUTED }); py -= 13;
-  text(`${input.party.name} (${input.party.type.replace(/_/g, " ")})`, LMARGIN + 8, py, { size: 10, strong: true }); py -= 13;
-  for (const l of partyLines) { text(l, LMARGIN + 8, py, { size: 8.5 }); py -= 11; }
+  for (const l of nameLines) { text(l, LMARGIN + 8, py, { size: 10, strong: true }); py -= 13; }
+  partyBodyLines.forEach((l, i) => { text(l, LMARGIN + 8, py, { size: i === 0 ? 7.5 : 8.5, color: i === 0 ? L_MUTED : L_INK }); py -= 11; });
   let sy = y - 13;
   const sx = LMARGIN + colWidth + colGap + 8;
   text("ACCOUNT SUMMARY", sx, sy, { size: 7.5, strong: true, color: L_MUTED }); sy -= 13;
-  text(`Opening Balance: ${fmt(input.openingBalance)}`, sx, sy, { size: 8.5, strong: true }); sy -= 12;
-  text(`Total Debit: ${money(input.totals.debit)}`, sx, sy, { size: 8.5 }); sy -= 11;
-  text(`Total Credit: ${money(input.totals.credit)}`, sx, sy, { size: 8.5 }); sy -= 11;
-  text(`Closing / Current Outstanding: ${fmt(input.totals.closingBalance)}`, sx, sy, { size: 8.5, strong: true }); sy -= 12;
+  for (const l of summaryLines) { text(l.label, sx, sy, { size: fitSize(l.label, l.strong ? bold : latin, 8.5, innerW), strong: l.strong }); sy -= 12; }
   y -= boxHeight + 18;
 
   // ---- Transaction table ----
@@ -218,15 +234,15 @@ export async function renderLedgerStatementPdf(input: {
     const rowY = y - 10;
     const values: Record<string, string> = {
       date: new Date(row.date).toLocaleDateString("en-IN"),
-      particulars: truncate(row.particulars, latin, 7.5, 103),
-      voucher: truncate(row.voucher, latin, 7.5, 143),
+      particulars: truncate(row.particulars, latin, 7.5, 98 - 7),
+      voucher: truncate(row.voucher, latin, 7.5, 123 - 7),
       debit: row.debit > 0 ? money(row.debit) : "—",
       credit: row.credit > 0 ? money(row.credit) : "—",
       balance: fmt(row.balance),
     };
     positioned.forEach((c) => {
       const v = values[c.key] ?? "";
-      const size = 7.5;
+      const size = fitSize(v, latin, 7.5, c.width - 7);
       const w = latin.widthOfTextAtSize(v, size);
       const tx = c.right ? c.x + c.width - 4 - w : c.x + 3;
       text(v, tx, rowY, { size });
@@ -239,12 +255,21 @@ export async function renderLedgerStatementPdf(input: {
   // ---- Totals block ----
   ensureRoom(60);
   y -= 10;
-  const totalsX = LMARGIN + LWIDTH - 210;
+  const totalsX = LMARGIN + LWIDTH - 300;
   const totalsRight = LMARGIN + LWIDTH;
   const totalsRow = (label: string, value: string, opts: { strong?: boolean; size?: number } = {}) => {
-    text(label, totalsX, y, { size: opts.size ?? 9, color: opts.strong ? L_INK : L_MUTED, strong: opts.strong });
-    rightText(value, totalsRight, y, { size: opts.size ?? 9, strong: opts.strong });
-    y -= (opts.size ?? 9) + 6;
+    const size = opts.size ?? 9;
+    const font = opts.strong ? bold : latin;
+    // Label and value never collide: if both do not fit on one line, the value goes on its own line.
+    if (font.widthOfTextAtSize(label, size) + font.widthOfTextAtSize(value, size) + 16 > totalsRight - totalsX) {
+      text(label, totalsX, y, { size, color: opts.strong ? L_INK : L_MUTED, strong: opts.strong });
+      y -= size + 4;
+      rightText(value, totalsRight, y, { size: fitSize(value, font, size, totalsRight - totalsX), strong: opts.strong });
+    } else {
+      text(label, totalsX, y, { size, color: opts.strong ? L_INK : L_MUTED, strong: opts.strong });
+      rightText(value, totalsRight, y, { size, strong: opts.strong });
+    }
+    y -= size + 6;
   };
   page.drawLine({ start: { x: totalsX - 8, y: y + 4 }, end: { x: totalsRight, y: y + 4 }, thickness: 0.8, color: L_RULE });
   y -= 6;
@@ -254,9 +279,11 @@ export async function renderLedgerStatementPdf(input: {
   y -= 12;
   totalsRow("CLOSING BALANCE", fmt(input.totals.closingBalance), { strong: true, size: 12 });
   y -= 6;
-  ensureRoom(16);
-  text(`Amount in words: ${amountInWords(Math.abs(input.totals.closingBalance))}${input.totals.closingBalance === 0 ? "" : input.totals.closingBalance > 0 === (input.normalSide === "DEBIT") ? " (Receivable / Dr)" : " (Payable / Cr)"}`, LMARGIN, y, { size: 8, strong: true, color: L_MUTED });
-  y -= 20;
+  const words = `Amount in words: ${amountInWords(Math.abs(input.totals.closingBalance))}${input.totals.closingBalance === 0 ? "" : input.totals.closingBalance > 0 === (input.normalSide === "DEBIT") ? " (Receivable / Dr)" : " (Payable / Cr)"}`;
+  const wordLines = wrap(words, bold, 8, LWIDTH);
+  ensureRoom(wordLines.length * 11 + 6);
+  for (const l of wordLines) { text(l, LMARGIN, y, { size: 8, strong: true, color: L_MUTED }); y -= 11; }
+  y -= 10;
 
   // ---- Signatory block — same real configured signature/seal every other document uses ----
   ensureRoom(70);
@@ -274,7 +301,7 @@ export async function renderLedgerStatementPdf(input: {
     y -= 11;
     if (input.branding.signatoryDesignation) { rightText(input.branding.signatoryDesignation, sigX + sigWidth, y, { size: 7.5, color: L_MUTED }); y -= 11; }
   } else {
-    text("Computer-generated statement — Authorised Signatory / Seal", sigX, y, { size: 7, color: L_MUTED });
+    rightText("Computer-generated statement — Authorised Signatory / Seal", sigX + sigWidth, y, { size: 7, color: L_MUTED });
     y -= 16;
   }
 

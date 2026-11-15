@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { downloadUrl, shareFile } from "@/lib/seera/file-actions";
 
 // Executive's "Today's Counter Report" card: download the day's counters + orders as a branded PDF
-// and send it to the distributor on WhatsApp. Download is a plain link (the Android app hands it to
-// DownloadManager, so the file lands in Downloads, ready to attach in WhatsApp); "Send on WhatsApp"
-// uses the phone's share sheet with the PDF attached where the browser supports file sharing.
+// and send it to the distributor on WhatsApp. In the Seera Android app, Download saves it to
+// Downloads/Seera and opens it, and "Send on WhatsApp" opens WhatsApp directly with the PDF
+// attached (lib/seera/file-actions.ts). In a browser: normal download / the phone's share sheet.
 export function DailyCounterReportCard({
   language,
   distributorOptions,
@@ -23,43 +24,25 @@ export function DailyCounterReportCard({
   const params = new URLSearchParams({ date, ...(distributorId ? { distributorId } : {}) });
   const href = `/api/field/daily-counter-report?${params.toString()}`;
 
+  const working = (text: string) => setState({ busy: true, note: text });
+  const done = (r: { ok: boolean; message: string }) => setState({ busy: false, ok: r.ok, note: r.message || null });
+
+  async function download() {
+    working(hi ? "PDF तैयार हो रही है…" : "Preparing PDF…");
+    done(await downloadUrl(href, `Seera-Daily-Counter-Report-${date}.pdf`));
+  }
+
   async function share() {
-    setState({ busy: true, note: hi ? "PDF तैयार हो रही है…" : "Preparing PDF…" });
-    try {
-      const res = await fetch(href);
-      if (!res.ok) throw new Error(String(res.status));
-      const blob = await res.blob();
-      const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? `Seera-Daily-Counter-Report-${date}.pdf`;
-      const file = new File([blob], name, { type: "application/pdf" });
-      const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean; share?: (d: { files: File[]; title?: string; text?: string }) => Promise<void> };
-      const distributor = distributorOptions.find((d) => d.value === distributorId)?.label;
-      if (nav.canShare?.({ files: [file] }) && nav.share) {
-        await nav.share({ files: [file], title: "Seera Daily Counter Report", text: `Seera Daily Counter Report — ${date}${distributor ? ` — ${distributor}` : ""}` });
-        setState({ busy: false, note: null });
-        return;
-      }
-      // No file sharing here (e.g. inside the Android app): save the PDF, then the Executive
-      // attaches it in WhatsApp from Downloads.
-      const a = document.createElement("a");
-      a.href = href;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setState({
-        busy: false,
-        ok: true,
-        note: hi
-          ? "PDF डाउनलोड हो गई — WhatsApp खोलें → वितरक की चैट → 📎 → Document → Downloads से यह PDF भेजें।"
-          : "PDF downloaded — open WhatsApp → distributor's chat → 📎 → Document → pick this PDF from Downloads.",
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        setState({ busy: false, note: null });
-        return;
-      }
-      setState({ busy: false, ok: false, note: hi ? "PDF नहीं बन सकी — इंटरनेट जाँचें और फिर कोशिश करें।" : "Could not prepare the PDF — check the internet and try again." });
-    }
+    working(hi ? "PDF तैयार हो रही है… WhatsApp खुलेगा" : "Preparing PDF… WhatsApp will open");
+    const distributor = distributorOptions.find((d) => d.value === distributorId)?.label;
+    done(
+      await shareFile(href, {
+        fileName: `Seera-Daily-Counter-Report-${date}.pdf`,
+        title: "Seera Daily Counter Report",
+        text: `Seera Daily Counter Report — ${date}${distributor ? ` — ${distributor}` : ""}`,
+        whatsapp: true,
+      }),
+    );
   }
 
   const btn: React.CSSProperties = { minHeight: 44, borderRadius: 12, fontWeight: 800, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 14 };
@@ -92,9 +75,9 @@ export function DailyCounterReportCard({
         </label>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <a href={href} download style={{ ...btn, background: "#12214f", color: "#fff", border: "1px solid #12214f" }}>
+        <button type="button" disabled={state.busy} onClick={() => void download()} style={{ ...btn, background: "#12214f", color: "#fff", border: "1px solid #12214f" }}>
           ⬇ {hi ? "PDF डाउनलोड" : "Download PDF"}
-        </a>
+        </button>
         <button type="button" disabled={state.busy} onClick={() => void share()} style={{ ...btn, background: "#e9f9ef", color: "#0f7a3d", border: "1px solid #9fdcb5" }}>
           🟢 {state.busy ? (hi ? "तैयार हो रही है…" : "Preparing…") : hi ? "WhatsApp पर भेजें" : "Send on WhatsApp"}
         </button>

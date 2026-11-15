@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { installNativeDownloadHandling } from "./file-actions";
 
 // Mounted once in AppShell (every /portal/* page). A no-op in every normal browser context —
 // the entire body only runs when this exact page is loaded inside the Capacitor Android WebView
@@ -14,6 +15,22 @@ import { useEffect, useState } from "react";
 // second press within 2s at the true root (double-back-to-exit is standard Android UX).
 export function NativeShellBridge() {
   const [showExitHint, setShowExitHint] = useState(false);
+  const [fileNote, setFileNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Every download link / CSV export in the portal, saved natively inside the Android app.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const uninstall = installNativeDownloadHandling((r) => {
+      if (!r.message) return;
+      setFileNote({ ok: r.ok, text: r.message });
+      clearTimeout(timer);
+      timer = setTimeout(() => setFileNote(null), r.ok ? 3500 : 6000);
+    });
+    return () => {
+      uninstall();
+      clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -58,6 +75,30 @@ export function NativeShellBridge() {
     };
   }, []);
 
+  if (fileNote)
+    return (
+      <div
+        role="status"
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: fileNote.ok ? "rgba(15, 122, 61, 0.95)" : "rgba(185, 28, 28, 0.95)",
+          color: "#fff",
+          padding: "10px 18px",
+          borderRadius: "14px",
+          fontSize: "14px",
+          fontWeight: 600,
+          maxWidth: "90vw",
+          textAlign: "center",
+          zIndex: 9999,
+          pointerEvents: "none",
+        }}
+      >
+        {fileNote.text}
+      </div>
+    );
   if (!showExitHint) return null;
   return (
     <div

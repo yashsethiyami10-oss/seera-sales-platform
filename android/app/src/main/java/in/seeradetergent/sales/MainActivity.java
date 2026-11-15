@@ -43,6 +43,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Native save / WhatsApp share for PDFs and exports (see SeeraFilesPlugin). Must be
+        // registered before super.onCreate() creates the Capacitor bridge.
+        registerPlugin(SeeraFilesPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Explicit Android App Links / deep links always win. Otherwise, after a process restart
