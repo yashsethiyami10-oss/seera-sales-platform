@@ -73,6 +73,8 @@ export type PhoneProfile = {
   displayPhoneNumber: string | null;
   verifiedName: string | null;
   nameStatus: string | null;
+  newDisplayName: string | null;
+  newNameStatus: string | null;
   qualityRating: string | null;
   codeVerificationStatus: string | null;
   messagingLimitTier: string | null;
@@ -83,13 +85,15 @@ export async function fetchPhoneProfile(): Promise<PhoneProfile> {
   const { phoneNumberId } = waConfig();
   if (!phoneNumberId) throw new FoundationError("WHATSAPP_NOT_CONFIGURED", "WHATSAPP_PHONE_NUMBER_ID is not set", 503);
   const r = await graph<Record<string, unknown>>(
-    `/${phoneNumberId}?fields=display_phone_number,verified_name,name_status,quality_rating,code_verification_status,messaging_limit_tier,is_official_business_account`,
+    `/${phoneNumberId}?fields=display_phone_number,verified_name,name_status,new_display_name,new_name_status,quality_rating,code_verification_status,messaging_limit_tier,is_official_business_account`,
   );
   const s = (k: string) => (typeof r[k] === "string" ? (r[k] as string) : null);
   return {
     displayPhoneNumber: s("display_phone_number"),
     verifiedName: s("verified_name"),
     nameStatus: s("name_status"),
+    newDisplayName: s("new_display_name"),
+    newNameStatus: s("new_name_status"),
     qualityRating: s("quality_rating"),
     codeVerificationStatus: s("code_verification_status"),
     messagingLimitTier: s("messaging_limit_tier"),
