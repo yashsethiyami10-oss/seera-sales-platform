@@ -113,7 +113,9 @@ export function buildTemplatePayload(t: TemplateSend) {
   const fmt = (t.headerFormat ?? "").toUpperCase();
   if (t.headerMediaUrl && ["IMAGE", "VIDEO", "DOCUMENT"].includes(fmt)) {
     const key = fmt.toLowerCase();
-    components.push({ type: "header", parameters: [{ type: key, [key]: { link: t.headerMediaUrl } }] });
+    // A document needs a filename, otherwise WhatsApp shows the recipient a meaningless name.
+    const filename = key === "document" ? decodeURIComponent(t.headerMediaUrl.split("?")[0]!.split("/").pop() || "document.pdf") : undefined;
+    components.push({ type: "header", parameters: [{ type: key, [key]: { link: t.headerMediaUrl, ...(filename ? { filename } : {}) } }] });
   }
   if (t.values.length) {
     components.push({
