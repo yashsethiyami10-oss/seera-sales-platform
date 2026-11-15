@@ -74,6 +74,7 @@ import { TravelPolicyActions } from "./TravelPolicyActions";
 import { TravelAdjustmentActions } from "./TravelAdjustmentActions";
 import { ProspectPipelineActions } from "./ProspectPipelineActions";
 import { PartnerKycPanel } from "./PartnerKycPanel";
+import { WhatsAppHub } from "@/components/seera/whatsapp/WhatsAppHub";
 import { ProtectedData } from "./ProtectedData";
 import { geographySuggestions, managerBeatPlans, GEOGRAPHY_TYPES, activeManagerTeamAssignments, activeExecutiveDistributorAssignments, territoriesAndBeats, activeExecutiveTerritoryAssignments } from "@/lib/sales-distribution/operational-service";
 import { companyDirectEligibilityRoster } from "@/lib/sales-distribution/distributor-management-service";
@@ -3046,6 +3047,9 @@ export async function OperationalWorkspace({
         />
       </>
     );
+  } else if (item.slug === "whatsapp-hub") {
+    // Self-contained: WhatsAppHub talks to /api/whatsapp-hub, which re-checks notifications:manage.
+    workflow = <WhatsAppHub language={language} />;
   } else if (item.slug === "partner-kyc") {
     // Self-contained: PartnerKycPanel loads its own subject list / documents from
     // /api/partner-kyc, which re-checks the actor's scope on every call.
@@ -5665,7 +5669,8 @@ export async function OperationalWorkspace({
     || ((portal === "founder-admin" || portal === "accounts") && (item.slug === "money-desk" || item.slug === "finance-os"))
     || (portal === "founder-admin" && (item.slug === "sales" || item.slug === "orders" || item.slug === "approvals"))
     || ((portal === "founder-admin" || portal === "sales-manager") && item.slug === "attendance")
-    || item.slug === "partner-kyc";
+    || item.slug === "partner-kyc"
+    || item.slug === "whatsapp-hub";
   if (!isSelfContainedPanel) rows = await rowsFor(db, userId, portal, item, q, (page - 1) * 30);
   // Partners see their customers (retailers / distributors) for daily work, view-only: no export
   // exists for these lists, and ProtectedData blocks copy / print / save in the browser.

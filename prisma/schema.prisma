@@ -3967,3 +3967,135 @@ model SeeraPartnerKycDetails {
   @@id([subjectType, subjectId])
   @@map("seera_partner_kyc_details")
 }
+
+// ---------------------------------------------------------------------------
+// Seera WhatsApp Hub (2026-11-13): Founder/Admin broadcasts to retailers, distributors and
+// super stockists using Meta-approved templates, plus a two-way inbox. Seera's own number and
+// data only (env WHATSAPP_* of this deployment); a standalone system with no shared tables.
+// ---------------------------------------------------------------------------
+
+// Meta's own view of each template, refreshed by "Sync from Meta" — never inferred locally.
+model SeeraWaTemplate {
+  id            String   @id @default(cuid())
+  metaId        String?
+  name          String
+  language      String
+  status        String
+  category      String?
+  headerFormat  String?
+  bodyText      String?
+  variableNames String[]
+  components    Json?
+  syncedAt      DateTime @default(now())
+
+  @@unique([name, language])
+  @@map("seera_wa_templates")
+}
+
+model SeeraWaCampaign {
+  id             String    @id @default(cuid())
+  name           String
+  templateName   String
+  language       String
+  category       String?
+  // { partyTypes: ["RETAILER"|"DISTRIBUTOR"|"SUPER_STOCKIST"], distributorIds?: string[], territoryIds?: string[] }
+  audience       Json
+  // one entry per template variable, in order: { variable, source, value? }
+  variableMap    Json
+  headerMediaUrl String?
+  // DRAFT -> SCHEDULED (runs at nextRunAt; repeats every repeatEveryDays) -> COMPLETED ; PAUSED ; CANCELLED
+  status         String    @default("DRAFT")
+  repeatEveryDays Int?
+  nextRunAt      DateTime?
+  lastRunAt      DateTime?
+  runCount       Int       @default(0)
+  lastRunSummary Json?
+  createdById    String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, nextRunAt])
+  @@map("seera_wa_campaigns")
+}
+
+// One row per intended message: the queue and the ledger. Status advances from the webhook.
+model SeeraWaMessage {
+  id                String    @id @default(cuid())
+  idempotencyKey    String    @unique
+  campaignId        String?
+  runNumber         Int       @default(0)
+  templateName      String
+  language          String
+  category          String?
+  partyType         String?
+  partyId           String?
+  recipientName     String?
+  phone             String
+  params            Json
+  headerMediaUrl    String?
+  // QUEUED -> SENDING -> SENT -> DELIVERED -> READ ; FAILED (retried) -> DEAD ; SKIPPED (policy)
+  status            String    @default("QUEUED")
+  skipReason        String?
+  attempts          Int       @default(0)
+  scheduledFor      DateTime  @default(now())
+  lastError         String?
+  providerMessageId String?   @unique
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([campaignId, runNumber])
+  @@index([phone, sentAt])
+  @@map("seera_wa_messages")
+}
+
+// Inbox: every inbound message (and staff replies) per phone number.
+model SeeraWaInboxMessage {
+  id          String   @id @default(cuid())
+  direction   String // IN | OUT
+  waMessageId String?  @unique
+  phone       String
+  profileName String?
+  partyType   String?
+  partyId     String?
+  partyName   String?
+  type        String
+  text        String?
+  raw         Json?
+  isRead      Boolean  @default(false)
+  status      String?
+  sentById    String?
+  createdAt   DateTime @default(now())
+
+  @@index([phone, createdAt])
+  @@index([direction, isRead, createdAt])
+  @@map("seera_wa_inbox_messages")
+}
+
+model SeeraWaOptOut {
+  phone       String   @id
+  reason      String?
+  source      String // STOP_REPLY | MANUAL
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@map("seera_wa_opt_outs")
+}
+
+// Single row (id "global"). A missing row means: sending OFF, default quiet hours.
+model SeeraWaSettings {
+  id                String   @id
+  sendEnabled       Boolean  @default(false)
+  quietHoursEnabled Boolean  @default(true)
+  quietStartMinute  Int      @default(1260)
+  quietEndMinute    Int      @default(540)
+  marketingGapDays  Int      @default(2)
+  updatedById       String?
+  updatedAt         DateTime @updatedAt
+
+  @@map("seera_wa_settings")
+}
