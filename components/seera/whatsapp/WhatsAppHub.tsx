@@ -22,7 +22,7 @@ type Boot = {
 };
 type Thread = { phone: string; name: string | null; partyType: string | null; lastText: string | null; lastAt: string; unread: number; optedOut: boolean };
 type ThreadDetail = { phone: string; messages: { id: string; direction: string; text: string | null; at: string; status: string | null }[]; templatesSent: { template: string; status: string; at: string }[]; canReply: boolean; optedOut: boolean; partyName: string | null };
-type Profile = { displayPhoneNumber: string | null; verifiedName: string | null; nameStatus: string | null; qualityRating: string | null; messagingLimitTier: string | null; isOfficialBusinessAccount: boolean | null };
+type Profile = { displayPhoneNumber: string | null; verifiedName: string | null; nameStatus: string | null; newDisplayName: string | null; newNameStatus: string | null; qualityRating: string | null; messagingLimitTier: string | null; isOfficialBusinessAccount: boolean | null };
 
 async function api<T>(body: unknown): Promise<T> {
   const r = await fetch("/api/whatsapp-hub", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -588,11 +588,14 @@ function SettingsTab({ boot, t, busy, run }: { boot: Boot; t: T; busy: boolean; 
             <tr><th>{t("Number", "नंबर")}</th><td>{profile.displayPhoneNumber ?? "—"}</td></tr>
             <tr><th>{t("Display name", "डिस्प्ले नाम")}</th><td><b>{profile.verifiedName ?? "—"}</b></td></tr>
             <tr><th>{t("Name status", "नाम की स्थिति")}</th><td><span className={`${s.pill} ${profile.nameStatus === "APPROVED" ? s.pillGreen : profile.nameStatus?.includes("DECLINED") ? s.pillRed : s.pillAmber}`}>{profile.nameStatus ?? "—"}</span></td></tr>
+            <tr><th>{t("Requested new name", "माँगा गया नया नाम")}</th><td><b>{profile.newDisplayName ?? "—"}</b></td></tr>
+            <tr><th>{t("New name review", "नए नाम की समीक्षा")}</th><td>{profile.newNameStatus ? <span className={`${s.pill} ${profile.newNameStatus === "APPROVED" ? s.pillGreen : profile.newNameStatus.includes("DECLINED") || profile.newNameStatus.includes("REJECT") ? s.pillRed : s.pillAmber}`}>{profile.newNameStatus}</span> : "—"}</td></tr>
             <tr><th>{t("Quality", "गुणवत्ता")}</th><td>{profile.qualityRating ?? "—"}</td></tr>
             <tr><th>{t("Daily limit tier", "रोज़ की सीमा")}</th><td>{profile.messagingLimitTier ?? "—"}</td></tr>
             <tr><th>{t("Green tick", "ग्रीन टिक")}</th><td>{profile.isOfficialBusinessAccount ? "✓" : "—"}</td></tr>
           </tbody></table>
         )}
+        {profile?.newNameStatus === "APPROVED" && profile.newDisplayName !== profile.verifiedName && <div className={s.warn}>{t("The new name is approved but not live yet — the number must be re-registered on the Cloud API for it to show.", "नया नाम मंज़ूर है पर अभी लागू नहीं — दिखाने के लिए नंबर को Cloud API पर दोबारा रजिस्टर करना होगा।")}</div>}
         <ol className={s.steps}>
           <li>{t("Open business.facebook.com → WhatsApp Manager → Phone numbers → Seera's number → Profile.", "business.facebook.com → WhatsApp Manager → Phone numbers → सीरा का नंबर → Profile खोलें।")}</li>
           <li>{t("Display name → Edit → enter the exact brand name (e.g. \"Seera Detergent\") — it must match your website / GST / packaging.", "Display name → Edit → ब्रांड का सही नाम (जैसे \"Seera Detergent\") — वेबसाइट / GST / पैकिंग से मेल खाना चाहिए।")}</li>
