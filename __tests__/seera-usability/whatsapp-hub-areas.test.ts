@@ -44,3 +44,27 @@ describe("WhatsApp Hub — area-wise audience", () => {
     expect(variableValue("STATE", r)).toBe("Rajasthan");
   });
 });
+
+import { parseContactLines } from "@/lib/seera-whatsapp/rules";
+import { normalizeIndianMobile } from "@/lib/messaging/phone";
+
+describe("WhatsApp Hub — manually added numbers (bulk paste)", () => {
+  it("reads number, name, shop, city, state from pasted lines and skips bad ones", () => {
+    const text = [
+      "Phone, Name, Shop, City, State",
+      "9876543210, Ramesh, Sharma Store, Gangapur, Rajasthan",
+      "+91 98123 45678\tSuresh\t\tJhansi\tUP",
+      "Mahesh, 09900112233",
+      "9876543210, duplicate line",
+      "12345, not a number",
+      "",
+    ].join("\n");
+    const { rows, invalid } = parseContactLines(text, (raw) => normalizeIndianMobile(raw));
+    expect(rows).toEqual([
+      { phone: "919876543210", name: "Ramesh", businessName: "Sharma Store", city: "Gangapur", state: "Rajasthan" },
+      { phone: "919812345678", name: "Suresh", businessName: null, city: "Jhansi", state: "UP" },
+      { phone: "919900112233", name: "Mahesh", businessName: null, city: null, state: null },
+    ]);
+    expect(invalid).toEqual(["12345, not a number"]);
+  });
+});

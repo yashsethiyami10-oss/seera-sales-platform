@@ -10,14 +10,14 @@ import s from "./WhatsAppHub.module.css";
 
 type Template = { name: string; language: string; status: string; category: string | null; headerFormat: string | null; bodyText: string | null; variableNames: string[]; syncedAt: string };
 type Campaign = {
-  id: string; name: string; templateName: string; language: string; category: string | null; audience: { partyTypes: string[]; distributorIds?: string[]; areaKeys?: string[] };
+  id: string; name: string; templateName: string; language: string; category: string | null; audience: { partyTypes: string[]; distributorIds?: string[]; areaKeys?: string[]; manualGroups?: string[] };
   variableMap: VariableMapping[]; headerMediaUrl: string | null; status: string; repeatEveryDays: number | null; nextRunAt: string | null; lastRunAt: string | null; runCount: number;
   lastRunSummary: { audience?: number; queued?: number; skipped?: number; error?: string } | null; stats: Record<string, number>;
 };
 type Settings = { sendEnabled: boolean; quietHoursEnabled: boolean; quietStartMinute: number; quietEndMinute: number; marketingGapDays: number };
 type Boot = {
   stats: { last7Days: Record<string, number>; unread: number; activeCampaigns: number; optOuts: number; approvedTemplates: number };
-  settings: Settings; templates: Template[]; campaigns: Campaign[]; distributors: { id: string; name: string }[];
+  settings: Settings; templates: Template[]; campaigns: Campaign[]; distributors: { id: string; name: string }[]; contactGroups?: { name: string; count: number }[];
   config: { problems: string[]; connected: boolean };
 };
 type Thread = { phone: string; name: string | null; partyType: string | null; lastText: string | null; lastAt: string; unread: number; optedOut: boolean };
@@ -31,7 +31,9 @@ async function api<T>(body: unknown): Promise<T> {
   return d as T;
 }
 
-const PARTY = { RETAILER: ["Retailers", "रिटेलर"], DISTRIBUTOR: ["Distributors", "डिस्ट्रीब्यूटर"], SUPER_STOCKIST: ["Super stockists", "सुपर स्टॉकिस्ट"] } as const;
+const PARTY = { RETAILER: ["Retailers", "रिटेलर"], DISTRIBUTOR: ["Distributors", "डिस्ट्रीब्यूटर"], SUPER_STOCKIST: ["Super stockists", "सुपर स्टॉकिस्ट"], MANUAL: ["Numbers I added", "खुद जोड़े नंबर"] } as const;
+const NO_GROUP = "__none__";
+const groupLabel = (g: string, t: T) => (g === NO_GROUP ? t("No group", "बिना ग्रुप") : g);
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const toMin = (v: string) => { const [h, m] = v.split(":").map(Number); return (h ?? 0) * 60 + (m ?? 0); };
@@ -40,7 +42,9 @@ const pill = (st: string) => (["APPROVED", "SCHEDULED", "SENT", "DELIVERED", "RE
 export function WhatsAppHub({ language }: { language: "EN" | "HI" }) {
   const hi = language === "HI";
   const t = (en: string, h: string) => (hi ? h : en);
-  const [tab, setTab] = useState<"overview" | "campaigns" | "inbox" | "settings">("overview");
+  const [tab, setTab] = useState<"overview" | "campaigns" | "contacts" | "inbox" | "settings">("overview");
+  // "Send a campaign to this group" from Contacts opens a new campaign pre-set to that group.
+  const [campaignSeed, setCampaignSeed] = useState<{ manualGroups: string[] } | null>(null);
   const [boot, setBoot] = useState<Boot | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -61,7 +65,7 @@ export function WhatsAppHub({ language }: { language: "EN" | "HI" }) {
   return (
     <div className={s.hub}>
       <div className={s.tabs}>
-        {([["overview", "📊", t("Overview", "सारांश")], ["campaigns", "📣", t("Campaigns", "कैंपेन")], ["inbox", "💬", t("Inbox", "इनबॉक्स")], ["settings", "⚙️", t("Settings", "सेटिंग")]] as const).map(([k, icon, label]) => (
+        {([["overview", "📊", t("Overview", "सारांश")], ["campaigns", "📣", t("Campaigns", "कैंपेन")], ["contacts", "📇", t("Contacts", "नंबर")], ["inbox", "💬", t("Inbox", "इनबॉक्स")], ["settings", "⚙️", t("Settings", "सेटिंग")]] as const).map(([k, icon, label]) => (
           <button key={k} type="button" className={`${s.tab} ${tab === k ? s.tabOn : ""}`} onClick={() => setTab(k)}>
             {icon} {label} {k === "inbox" && boot.stats.unread > 0 && <span className={s.badge}>{boot.stats.unread}</span>}
           </button>
@@ -70,7 +74,8 @@ export function WhatsAppHub({ language }: { language: "EN" | "HI" }) {
       {err && <div className={s.err}>{err}</div>}
       {note && <div className={s.ok}>{note}</div>}
       {tab === "overview" && <Overview boot={boot} t={t} busy={busy} run={run} goto={setTab} />}
-      {tab === "campaigns" && <Campaigns boot={boot} t={t} hi={hi} busy={busy} run={run} />}
+      {tab === "campaigns" && <Campaigns boot={boot} t={t} hi={hi} busy={busy} run={run} seed={campaignSeed} onSeedUsed={() => setCampaignSeed(null)} />}
+      {tab === "contacts" && <Contacts t={t} onChange={load} onSendToGroup={(g) => { setCampaignSeed({ manualGroups: g ? [g] : [] }); setTab("campaigns"); }} />}
       {tab === "inbox" && <Inbox t={t} onChange={load} />}
       {tab === "settings" && <SettingsTab boot={boot} t={t} busy={busy} run={run} />}
     </div>
@@ -131,10 +136,11 @@ function Overview({ boot, t, busy, run, goto }: { boot: Boot; t: T; busy: boolea
   );
 }
 
-const emptyForm = { id: undefined as string | undefined, name: "", templateKey: "", partyTypes: ["RETAILER"] as string[], distributorIds: [] as string[], areaKeys: [] as string[], variableMap: [] as VariableMapping[], headerMediaUrl: "", repeat: true, repeatEveryDays: 4, startAt: "" };
+const emptyForm = { id: undefined as string | undefined, name: "", templateKey: "", partyTypes: ["RETAILER"] as string[], distributorIds: [] as string[], areaKeys: [] as string[], manualGroups: [] as string[], variableMap: [] as VariableMapping[], headerMediaUrl: "", repeat: true, repeatEveryDays: 4, startAt: "" };
 
-function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; busy: boolean; run: Run }) {
-  const [form, setForm] = useState<typeof emptyForm | null>(null);
+function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t: T; hi: boolean; busy: boolean; run: Run; seed?: { manualGroups: string[] } | null; onSeedUsed?: () => void }) {
+  const [form, setForm] = useState<typeof emptyForm | null>(seed ? { ...emptyForm, partyTypes: ["MANUAL"], manualGroups: seed.manualGroups } : null);
+  useEffect(() => { if (seed) onSeedUsed?.(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
   const [preview, setPreview] = useState<{ total: number; optedOut: number; byType: Record<string, number>; byArea?: Record<string, number>; sample: { name: string; area?: string; text: string }[] } | null>(null);
   const [areas, setAreas] = useState<AreaGroup[] | null>(null);
   const [testPhone, setTestPhone] = useState("");
@@ -146,7 +152,7 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
     const [templateName, language] = (form!.templateKey || "|").split("|");
     return {
       name: form!.name, templateName: templateName!, language: language!,
-      audience: { partyTypes: form!.partyTypes, ...(form!.distributorIds.length ? { distributorIds: form!.distributorIds } : {}), ...(form!.areaKeys.length ? { areaKeys: form!.areaKeys } : {}) },
+      audience: { partyTypes: form!.partyTypes, ...(form!.distributorIds.length ? { distributorIds: form!.distributorIds } : {}), ...(form!.areaKeys.length ? { areaKeys: form!.areaKeys } : {}), ...(form!.partyTypes.includes("MANUAL") && form!.manualGroups.length ? { manualGroups: form!.manualGroups } : {}) },
       variableMap: form!.variableMap, headerMediaUrl: form!.headerMediaUrl || null, repeatEveryDays: form!.repeat ? form!.repeatEveryDays : null,
     };
   };
@@ -157,19 +163,19 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
     const h = setTimeout(() => { api<typeof preview>({ action: "preview", audience: p.audience, templateName: tpl?.name, language: tpl?.language, variableMap: form.variableMap }).then(setPreview).catch(() => setPreview(null)); }, 400);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form?.partyTypes.join(), form?.distributorIds.join(), form?.areaKeys.join(), form?.templateKey, JSON.stringify(form?.variableMap)]);
+  }, [form?.partyTypes.join(), form?.distributorIds.join(), form?.areaKeys.join(), form?.manualGroups.join(), form?.templateKey, JSON.stringify(form?.variableMap)]);
 
   // State → city list for the area picker (counts follow the chosen party types / distributors).
   useEffect(() => {
     if (!form || !form.partyTypes.length) { setAreas(null); return; }
     const h = setTimeout(() => {
-      api<{ areas: AreaGroup[] }>({ action: "areas", audience: { partyTypes: form.partyTypes, ...(form.distributorIds.length ? { distributorIds: form.distributorIds } : {}) } })
+      api<{ areas: AreaGroup[] }>({ action: "areas", audience: { partyTypes: form.partyTypes, ...(form.distributorIds.length ? { distributorIds: form.distributorIds } : {}), ...(form.partyTypes.includes("MANUAL") && form.manualGroups.length ? { manualGroups: form.manualGroups } : {}) } })
         .then((r) => setAreas(r.areas))
         .catch(() => setAreas(null));
     }, 300);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form?.partyTypes.join(), form?.distributorIds.join()]);
+  }, [form?.partyTypes.join(), form?.distributorIds.join(), form?.manualGroups.join()]);
 
   const pickTemplate = (key: string) => {
     const x = boot.templates.find((y) => `${y.name}|${y.language}` === key);
@@ -209,6 +215,16 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
             {boot.distributors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </label>
+      )}
+      {form.partyTypes.includes("MANUAL") && (
+        <div className={s.field}>{t("Which of my added numbers? (none ticked = all of them)", "कौन से जोड़े हुए नंबर? (कुछ नहीं चुना = सभी)")}
+          {(boot.contactGroups ?? []).length === 0 ? <div className={s.muted}>{t("No numbers added yet — add them in the 📇 Contacts tab.", "अभी कोई नंबर नहीं जोड़ा — 📇 नंबर टैब में जोड़ें।")}</div> : (
+            <div className={s.chips}>{(boot.contactGroups ?? []).map((g) => {
+              const on = form.manualGroups.includes(g.name);
+              return <button key={g.name} type="button" className={`${s.chip} ${on ? s.chipOn : ""}`} onClick={() => setForm({ ...form, manualGroups: on ? form.manualGroups.filter((x) => x !== g.name) : [...form.manualGroups, g.name] })}>{on ? "✓ " : ""}{groupLabel(g.name, t)} <span style={{ opacity: 0.7 }}>{g.count}</span></button>;
+            })}</div>
+          )}
+        </div>
       )}
       {form.partyTypes.length > 0 && <AreaPicker areas={areas} selected={form.areaKeys} onChange={(areaKeys) => setForm({ ...form, areaKeys })} t={t} />}
       {preview && <div className={s.ok}>👥 <b>{preview.total - preview.optedOut}</b> {t("will receive it", "को जाएगा")} {Object.entries(preview.byType).map(([k, v]) => `· ${PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k} ${v}`).join(" ")}{preview.optedOut ? ` · ${preview.optedOut} ${t("opted out (skipped)", "STOP किए (छोड़े जाएँगे)")}` : ""}
@@ -275,7 +291,7 @@ function Campaigns({ boot, t, hi, busy, run }: { boot: Boot; t: T; hi: boolean; 
             {c.lastRunSummary?.error && <div className={s.err}>{c.lastRunSummary.error}</div>}
             <div className={s.row}>
               {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btn} disabled={busy} onClick={() => run(() => api({ action: "schedule", id: c.id }), t("Started ✓", "शुरू हुआ ✓"))}>▶ {c.status === "PAUSED" ? t("Resume", "फिर चालू") : t("Start now", "अभी शुरू")}</button>}
-              {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btnGhost} onClick={() => setForm({ ...emptyForm, id: c.id, name: c.name, templateKey: `${c.templateName}|${c.language}`, partyTypes: c.audience.partyTypes, distributorIds: c.audience.distributorIds ?? [], areaKeys: c.audience.areaKeys ?? [], variableMap: c.variableMap ?? [], headerMediaUrl: c.headerMediaUrl ?? "", repeat: !!c.repeatEveryDays, repeatEveryDays: c.repeatEveryDays ?? 7 })}>✎ {t("Edit", "बदलें")}</button>}
+              {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btnGhost} onClick={() => setForm({ ...emptyForm, id: c.id, name: c.name, templateKey: `${c.templateName}|${c.language}`, partyTypes: c.audience.partyTypes, distributorIds: c.audience.distributorIds ?? [], areaKeys: c.audience.areaKeys ?? [], manualGroups: c.audience.manualGroups ?? [], variableMap: c.variableMap ?? [], headerMediaUrl: c.headerMediaUrl ?? "", repeat: !!c.repeatEveryDays, repeatEveryDays: c.repeatEveryDays ?? 7 })}>✎ {t("Edit", "बदलें")}</button>}
               {c.status === "SCHEDULED" && <button type="button" className={s.btnGhost} disabled={busy} onClick={() => run(() => api({ action: "campaign_state", id: c.id, state: "PAUSE" }), t("Paused", "रोका गया"))}>⏸ {t("Pause", "रोकें")}</button>}
               {!["CANCELLED", "COMPLETED"].includes(c.status) && <button type="button" className={s.btnDanger} disabled={busy} onClick={() => confirm(t("Cancel this campaign? Messages not yet sent will be dropped.", "यह कैंपेन रद्द करें? जो मैसेज नहीं गए वो नहीं जाएँगे।")) && run(() => api({ action: "campaign_state", id: c.id, state: "CANCEL" }), t("Cancelled", "रद्द हुआ"))}>✕ {t("Cancel", "रद्द करें")}</button>}
             </div>
@@ -369,6 +385,102 @@ function AreaTextEditor({ mapping, areas, selected, onChange, t }: { mapping: Va
         <input className={s.input} style={{ flex: 1, minWidth: 180 }} value={mapping.value ?? ""} onChange={(e) => onChange({ value: e.target.value })} placeholder={t("Text for every other area", "बाकी सब इलाकों के लिए टेक्स्ट")} />
       </label>
     </div>
+  );
+}
+
+type Contact = { id: string; phone: string; name: string | null; businessName: string | null; city: string | null; state: string | null; groupName: string | null; notes: string | null; optedOut: boolean; createdAt: string };
+const emptyContact = { id: undefined as string | undefined, phone: "", name: "", businessName: "", city: "", state: "", groupName: "", notes: "" };
+
+// Numbers added by hand (expo leads, new wholesalers, a list from a distributor…). They can be
+// sent campaigns like any retailer: choose "Numbers I added" in a campaign, optionally by group.
+function Contacts({ t, onChange, onSendToGroup }: { t: T; onChange: () => void; onSendToGroup: (group: string | null) => void }) {
+  const [data, setData] = useState<{ total: number; contacts: Contact[]; groups: { name: string; count: number }[] } | null>(null);
+  const [q, setQ] = useState("");
+  const [group, setGroup] = useState("");
+  const [form, setForm] = useState({ ...emptyContact });
+  const [bulk, setBulk] = useState({ text: "", groupName: "", city: "", state: "" });
+  const [picked, setPicked] = useState<string[]>([]);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; invalid?: string[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try { setData(await api({ action: "contacts", q: q || undefined, group: group || undefined })); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+  }, [q, group]);
+  useEffect(() => { const h = setTimeout(() => void load(), 250); return () => clearTimeout(h); }, [load]);
+  const act = async (fn: () => Promise<{ text: string; invalid?: string[] }>) => {
+    setBusy(true); setMsg(null);
+    try { const r = await fn(); setMsg({ ok: true, ...r }); await load(); onChange(); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+  };
+  const groups = data?.groups ?? [];
+  const groupNames = groups.map((g) => g.name).filter((g) => g !== NO_GROUP);
+  const saveOne = () => act(async () => {
+    const { id, ...contact } = form;
+    await api({ action: "save_contact", id, contact });
+    setForm({ ...emptyContact, groupName: form.groupName });
+    return { text: id ? t("Number updated ✓", "नंबर बदला ✓") : t("Number added ✓", "नंबर जुड़ गया ✓") };
+  });
+  const importBulk = () => act(async () => {
+    const r = await api<{ added: number; updated: number; invalid: string[] }>({ action: "import_contacts", text: bulk.text, groupName: bulk.groupName || null, city: bulk.city || null, state: bulk.state || null });
+    setBulk({ ...bulk, text: "" });
+    return { text: t(`${r.added} added, ${r.updated} already there (updated)${r.invalid.length ? `, ${r.invalid.length} lines had no valid number` : ""}`, `${r.added} जुड़े, ${r.updated} पहले से थे (अपडेट)${r.invalid.length ? `, ${r.invalid.length} लाइनों में सही नंबर नहीं` : ""}`), invalid: r.invalid };
+  });
+  const bulkCount = bulk.text.split(/\r?\n/).filter((l) => l.replace(/\D/g, "").length >= 10).length;
+  return (
+    <>
+      {msg && <div className={msg.ok ? s.ok : s.err}>{msg.text}{msg.invalid?.length ? <div className={s.muted}>{msg.invalid.slice(0, 8).join(" · ")}{msg.invalid.length > 8 ? " …" : ""}</div> : null}</div>}
+      <datalist id="wa-contact-groups">{groupNames.map((g) => <option key={g} value={g} />)}</datalist>
+      <div className={s.card}>
+        <h3>{form.id ? `✎ ${t("Edit number", "नंबर बदलें")}` : `＋ ${t("Add a number", "नंबर जोड़ें")}`}</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 }}>
+          <label className={s.field}>{t("Mobile / WhatsApp *", "मोबाइल / व्हाट्सऐप *")}<input className={s.input} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="98XXXXXXXX" inputMode="tel" /></label>
+          <label className={s.field}>{t("Name", "नाम")}<input className={s.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("Ramesh Sharma", "रमेश शर्मा")} /></label>
+          <label className={s.field}>{t("Shop / firm", "दुकान / फ़र्म")}<input className={s.input} value={form.businessName} onChange={(e) => setForm({ ...form, businessName: e.target.value })} /></label>
+          <label className={s.field}>{t("City", "शहर")}<input className={s.input} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Gangapur" /></label>
+          <label className={s.field}>{t("State", "राज्य")}<input className={s.input} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} placeholder="Rajasthan / UP" /></label>
+          <label className={s.field}>{t("Group (optional)", "ग्रुप (ज़रूरी नहीं)")}<input className={s.input} list="wa-contact-groups" value={form.groupName} onChange={(e) => setForm({ ...form, groupName: e.target.value })} placeholder={t("e.g. Expo leads", "जैसे मेला लीड")} /></label>
+        </div>
+        <div className={s.row}>
+          <button type="button" className={s.btn} disabled={busy || form.phone.replace(/\D/g, "").length < 10} onClick={saveOne}>{form.id ? t("Save", "सेव करें") : t("Add number", "नंबर जोड़ें")}</button>
+          {form.id && <button type="button" className={s.btnGhost} onClick={() => setForm({ ...emptyContact })}>{t("Cancel", "रद्द")}</button>}
+        </div>
+      </div>
+      <div className={s.card}>
+        <h3>📋 {t("Add many at once (paste)", "एक साथ कई नंबर (पेस्ट करें)")}</h3>
+        <div className={s.muted}>{t("One per line: number, name, shop, city, state — only the number is required. Copy straight from Excel / Google Sheets works too.", "हर लाइन में एक: नंबर, नाम, दुकान, शहर, राज्य — सिर्फ़ नंबर ज़रूरी है। Excel / Google Sheet से सीधे कॉपी भी चलेगा।")}</div>
+        <textarea className={s.textarea} rows={6} value={bulk.text} onChange={(e) => setBulk({ ...bulk, text: e.target.value })} placeholder={"9876543210, Ramesh, Sharma Store, Gangapur, Rajasthan\n9812345678, Suresh, , Jhansi, UP\n9900112233"} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8 }}>
+          <label className={s.field}>{t("Put them in group", "इन्हें ग्रुप में डालें")}<input className={s.input} list="wa-contact-groups" value={bulk.groupName} onChange={(e) => setBulk({ ...bulk, groupName: e.target.value })} placeholder={t("e.g. Jhansi wholesalers", "जैसे झाँसी थोक")} /></label>
+          <label className={s.field}>{t("City for lines without one", "जिन लाइनों में शहर नहीं")}<input className={s.input} value={bulk.city} onChange={(e) => setBulk({ ...bulk, city: e.target.value })} /></label>
+          <label className={s.field}>{t("State for lines without one", "जिन लाइनों में राज्य नहीं")}<input className={s.input} value={bulk.state} onChange={(e) => setBulk({ ...bulk, state: e.target.value })} /></label>
+        </div>
+        <div className={s.row}><button type="button" className={s.btn} disabled={busy || !bulk.text.trim()} onClick={importBulk}>⬆ {t(`Add ${bulkCount || ""} numbers`, `${bulkCount || ""} नंबर जोड़ें`)}</button></div>
+        <div className={s.muted}>⚠️ {t("Only add people who agreed to hear from Seera — numbers that report or block lower the WhatsApp number's quality rating.", "सिर्फ़ उन्हीं को जोड़ें जो Seera से मैसेज लेने को राज़ी हों — रिपोर्ट / ब्लॉक होने से व्हाट्सऐप नंबर की रेटिंग गिरती है।")}</div>
+      </div>
+      <div className={s.card}>
+        <div className={s.row} style={{ justifyContent: "space-between" }}>
+          <h3>📇 {t("My numbers", "मेरे नंबर")} ({data?.total ?? "…"})</h3>
+          <button type="button" className={s.btn} disabled={!data?.total} onClick={() => onSendToGroup(group || null)}>📣 {group ? t(`Send campaign to “${groupLabel(group, t)}”`, `“${groupLabel(group, t)}” को कैंपेन भेजें`) : t("Send campaign to these numbers", "इन नंबरों को कैंपेन भेजें")}</button>
+        </div>
+        <div className={s.chips}>
+          <button type="button" className={`${s.chip} ${!group ? s.chipOn : ""}`} onClick={() => setGroup("")}>{t("All", "सभी")}</button>
+          {groups.map((g) => <button key={g.name} type="button" className={`${s.chip} ${group === g.name ? s.chipOn : ""}`} onClick={() => setGroup(g.name)}>{groupLabel(g.name, t)} <span style={{ opacity: 0.7 }}>{g.count}</span></button>)}
+        </div>
+        <input className={s.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search name / shop / city / number", "नाम / दुकान / शहर / नंबर खोजें")} />
+        {picked.length > 0 && <div className={s.row}><button type="button" className={s.btnDanger} disabled={busy} onClick={() => confirm(t(`Delete ${picked.length} number(s)?`, `${picked.length} नंबर हटाएँ?`)) && act(async () => { const r = await api<{ deleted: number }>({ action: "delete_contacts", ids: picked }); setPicked([]); return { text: t(`${r.deleted} deleted`, `${r.deleted} हटाए`) }; })}>🗑 {t(`Delete ${picked.length} selected`, `${picked.length} चुने हुए हटाएँ`)}</button></div>}
+        {data && data.contacts.length === 0 ? <div className={s.muted}>{t("No numbers yet.", "अभी कोई नंबर नहीं।")}</div> : (
+          <table className={s.table}><thead><tr><th><input type="checkbox" checked={!!data?.contacts.length && picked.length === data.contacts.length} onChange={(e) => setPicked(e.target.checked ? (data?.contacts ?? []).map((c) => c.id) : [])} /></th><th>{t("Name / shop", "नाम / दुकान")}</th><th>{t("Number", "नंबर")}</th><th>{t("City", "शहर")}</th><th>{t("Group", "ग्रुप")}</th><th /></tr></thead>
+            <tbody>{data?.contacts.map((c) => (
+              <tr key={c.id}>
+                <td><input type="checkbox" checked={picked.includes(c.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, c.id] : picked.filter((x) => x !== c.id))} /></td>
+                <td><b>{c.businessName || c.name || "—"}</b>{c.businessName && c.name ? <div className={s.muted}>{c.name}</div> : null}</td>
+                <td>+{c.phone}{c.optedOut && <span className={`${s.pill} ${s.pillRed}`} style={{ marginLeft: 6 }}>STOP</span>}</td>
+                <td>{[c.city, c.state].filter(Boolean).join(", ") || "—"}</td>
+                <td>{c.groupName ?? "—"}</td>
+                <td><button type="button" className={s.btnGhost} onClick={() => { setForm({ id: c.id, phone: c.phone.slice(2), name: c.name ?? "", businessName: c.businessName ?? "", city: c.city ?? "", state: c.state ?? "", groupName: c.groupName ?? "", notes: c.notes ?? "" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>✎</button></td>
+              </tr>
+            ))}</tbody></table>
+        )}
+      </div>
+    </>
   );
 }
 

@@ -1,8 +1,36 @@
 // Pure rules for the Seera WhatsApp Hub: template parsing, variable sources, quiet hours,
 // send policy and STOP/START keywords. No database or network here, so every rule is unit-tested.
 
-export type PartyType = "RETAILER" | "DISTRIBUTOR" | "SUPER_STOCKIST";
-export const PARTY_TYPES: readonly PartyType[] = ["RETAILER", "DISTRIBUTOR", "SUPER_STOCKIST"];
+// MANUAL = numbers added by hand in the Hub's Contacts tab (SeeraWaContact).
+export type PartyType = "RETAILER" | "DISTRIBUTOR" | "SUPER_STOCKIST" | "MANUAL";
+export const PARTY_TYPES: readonly PartyType[] = ["RETAILER", "DISTRIBUTOR", "SUPER_STOCKIST", "MANUAL"];
+
+// Bulk paste for manual contacts: one contact per line, comma / tab / "|" separated:
+//   number, name, shop, city, state     (everything after the number is optional)
+// A line with only a number is fine. Returns parsed rows and the lines that had no valid number.
+export type PastedContact = { phone: string; name: string | null; businessName: string | null; city: string | null; state: string | null };
+export function parseContactLines(text: string, normalize: (raw: string) => string | null): { rows: PastedContact[]; invalid: string[] } {
+  const rows: PastedContact[] = [];
+  const invalid: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^(phone|mobile|number|नंबर)\b/i.test(line)) continue;
+    const parts = line.split(/[,\t|;]/).map((p) => p.trim());
+    // The number may be in any column (e.g. "Ramesh, 98xxxxxxx"); take the first that parses.
+    const idx = parts.findIndex((p) => normalize(p));
+    if (idx < 0) {
+      invalid.push(line.slice(0, 80));
+      continue;
+    }
+    const phone = normalize(parts[idx]!)!;
+    if (seen.has(phone)) continue;
+    seen.add(phone);
+    const rest = parts.filter((_, i) => i !== idx).map((p) => (p ? p.slice(0, 120) : null));
+    rows.push({ phone, name: rest[0] ?? null, businessName: rest[1] ?? null, city: rest[2] ?? null, state: rest[3] ?? null });
+  }
+  return { rows, invalid };
+}
 
 export type Recipient = {
   partyType: PartyType;
