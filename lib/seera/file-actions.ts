@@ -117,9 +117,14 @@ export async function shareFile(source: string | Blob, opts: { fileName?: string
       return { ok: true, message: r.app === "chooser" ? "Choose WhatsApp to send / WhatsApp चुनें" : "✓ WhatsApp opened / WhatsApp खुल गया" };
     }
     if (isNativeApp()) {
-      // Old app: no share bridge — save it instead and ask for the update.
-      if (typeof source === "string") window.location.href = source;
-      return { ok: false, message: "Update the Seera app to send PDFs directly on WhatsApp. / सीधे WhatsApp पर भेजने के लिए Seera ऐप अपडेट करें।" };
+      // Old app (no SeeraFiles plugin): its DownloadManager hook saves the PDF to Downloads, then
+      // WhatsApp is opened (wa.me leaves the app and opens WhatsApp) so the user attaches it with 📎.
+      if (typeof source !== "string") return { ok: false, message: "Update the Seera app to share this file. / यह फ़ाइल भेजने के लिए Seera ऐप अपडेट करें।" };
+      window.location.href = source;
+      window.setTimeout(() => {
+        window.location.href = `https://wa.me/?text=${encodeURIComponent(opts.text ?? "Seera")}`;
+      }, 2500);
+      return { ok: true, message: "PDF is downloading — WhatsApp will open: choose the chat → 📎 → Document → Downloads. / PDF डाउनलोड हो रही है — WhatsApp खुलेगा: चैट चुनें → 📎 → Document → Downloads से PDF भेजें।" };
     }
     const file = new File([blob], fileName, { type: mimeType });
     const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean };
@@ -165,8 +170,37 @@ export function looksLikeFileLink(a: HTMLAnchorElement): boolean {
 }
 
 export function installNativeDownloadHandling(notify: (r: FileResult) => void): () => void {
-  if (installed || !hasNativeFiles()) return () => {};
+  if (installed || !isNativeApp()) return () => {};
   installed = true;
+  if (!hasNativeFiles()) {
+    // Old app (v1.0.2, no SeeraFiles plugin): the WebView ignores target="_blank" links, but a
+    // same-window navigation to an attachment URL reaches the shell's DownloadManager hook, which
+    // saves the file to Downloads with a notification. So send every file link there.
+    const legacyClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return;
+      const a = (e.target as Element | null)?.closest?.("a");
+      if (!a || !(a instanceof HTMLAnchorElement) || a.href.startsWith("blob:") || !looksLikeFileLink(a)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      notify({ ok: true, message: "Downloading… see the notification / डाउनलोड हो रहा है… नोटिफ़िकेशन देखें" });
+      window.location.href = a.href;
+    };
+    const origLegacyClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function legacyPatchedClick(this: HTMLAnchorElement) {
+      if (!this.href.startsWith("blob:") && looksLikeFileLink(this)) {
+        window.location.href = this.href;
+        return;
+      }
+      if (this.href.startsWith("blob:")) notify({ ok: false, message: "Update the Seera app to save this export. / यह एक्सपोर्ट सेव करने के लिए Seera ऐप अपडेट करें।" });
+      return origLegacyClick.call(this);
+    };
+    document.addEventListener("click", legacyClick, true);
+    return () => {
+      document.removeEventListener("click", legacyClick, true);
+      HTMLAnchorElement.prototype.click = origLegacyClick;
+      installed = false;
+    };
+  }
   const blobs = new Map<string, Blob>();
   const origCreate = URL.createObjectURL.bind(URL);
   URL.createObjectURL = ((obj: Blob | MediaSource) => {
