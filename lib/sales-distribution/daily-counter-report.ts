@@ -3,6 +3,8 @@ import { authorize } from "@/lib/foundation/authorization-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { istBusinessDayRange, istBusinessDayStart } from "./attendance-service";
 import { executiveAuthorizedDistributors } from "./scope";
+import { managerTeamEmployeeIds } from "./manager-service";
+import { effectivePermissions } from "@/lib/foundation/authorization-service";
 
 // Daily Counter Report — every counter (shop) the Executive covered on one IST business day, with
 // what each one ordered, so the Executive can download it as a PDF and send it to the distributor
@@ -86,12 +88,26 @@ const partnerTown = (p: { addresses: unknown }) => {
   return str(one?.city) ?? str(one?.town) ?? str(one?.district);
 };
 
+export async function assertCanViewCounterReport(db: PrismaClient, viewerId: string, employeeId: string | null): Promise<string> {
+  if (!employeeId || employeeId === viewerId) {
+    await authorize(db, { actorId: viewerId, permission: "field_reports:view_self" });
+    return viewerId;
+  }
+  const perms = await effectivePermissions(db, viewerId);
+  if (perms.has("system:super_admin") || perms.has("portal:admin")) return employeeId;
+  if (perms.has("manager_team:view") && (await managerTeamEmployeeIds(db, viewerId)).includes(employeeId)) return employeeId;
+  await db.auditLog.create({ data: { actorId: viewerId, action: "daily_counter_report.denied", entityType: "User", entityId: employeeId, outcome: "DENIED", reason: "NOT_OWNER_ADMIN_OR_ASSIGNED_MANAGER" } }).catch(() => undefined);
+  throw new FoundationError("ACCESS_DENIED", "Only this executive, their assigned manager, the Admin or the Founder can open this report", 403);
+}
+
 export async function executiveDailyCounterReport(
   db: PrismaClient,
-  actorId: string,
-  input: { date?: Date; distributorId?: string | null } = {},
+  viewerId: string,
+  input: { date?: Date; distributorId?: string | null; employeeId?: string | null } = {},
 ): Promise<DailyCounterReport> {
-  await authorize(db, { actorId, permission: "field_reports:view_self" });
+  // Whose report: the signed-in executive's own by default. Someone else's only for the Founder /
+  // Company Admin, or the manager that executive is assigned to — never another executive / manager.
+  const actorId = await assertCanViewCounterReport(db, viewerId, input.employeeId ?? null);
   const businessDayStart = istBusinessDayStart(input.date ?? new Date());
   const [dayStart, dayEnd] = istBusinessDayRange(businessDayStart);
 

@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 const query = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   distributorId: z.string().trim().max(64).optional(),
+  employeeId: z.string().trim().max(64).optional(),
 });
 
 // Read-only GET: the signed-in Executive's OWN Daily Counter Report as a PDF, ready to send to the
@@ -21,13 +22,14 @@ export async function GET(request: Request) {
     const { user } = await resolveRequestIdentity();
     enforceRateLimit(`daily-counter-report:${user.id}`, 20, 60_000);
     const url = new URL(request.url);
-    const { date, distributorId } = query.parse({
+    const { date, distributorId, employeeId } = query.parse({
       date: url.searchParams.get("date") || undefined,
       distributorId: url.searchParams.get("distributorId") || undefined,
+      employeeId: url.searchParams.get("employeeId") || undefined,
     });
     // Noon IST of the requested day — unambiguous whatever the server's own time zone is.
     const at = date ? new Date(`${date}T12:00:00+05:30`) : new Date();
-    const report = await executiveDailyCounterReport(prisma, user.id, { date: at, distributorId });
+    const report = await executiveDailyCounterReport(prisma, user.id, { date: at, distributorId, employeeId });
     const bytes = await renderDailyCounterReportPdf(report);
     const filename = dailyCounterReportFilename(report);
     return new Response(Buffer.from(bytes), {
