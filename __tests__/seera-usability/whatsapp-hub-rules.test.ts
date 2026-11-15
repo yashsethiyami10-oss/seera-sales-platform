@@ -78,6 +78,8 @@ describe("WhatsApp Hub rules", () => {
       { type: "header", parameters: [{ type: "image", image: { link: "https://x/y.jpg" } }] },
       { type: "body", parameters: [{ type: "text", text: "Sharma" }] },
     ]);
+    const doc = buildTemplatePayload({ to: "91", name: "c", language: "hi", named: false, variableNames: [], values: [], headerFormat: "DOCUMENT", headerMediaUrl: "https://x.in/whatsapp/Seera_MUV_Catalogue_2026.pdf" });
+    expect(doc.template.components).toEqual([{ type: "header", parameters: [{ type: "document", document: { link: "https://x.in/whatsapp/Seera_MUV_Catalogue_2026.pdf", filename: "Seera_MUV_Catalogue_2026.pdf" } }] }]);
     const named = buildTemplatePayload({ to: "91", name: "n", language: "en", named: true, variableNames: ["shop"], values: ["A"] });
     expect(named.template.components).toEqual([{ type: "body", parameters: [{ type: "text", parameter_name: "shop", text: "A" }] }]);
     expect(buildTemplatePayload({ to: "91", name: "n", language: "en", named: false, variableNames: [], values: [] }).template).not.toHaveProperty("components");
