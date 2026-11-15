@@ -58,6 +58,7 @@ const ADDITIVE_MIGRATIONS = [
   "20261110090000_seera_company_library",
   "20261110090000_seera_partner_kyc_documents",
   "20261113090000_seera_whatsapp_hub",
+  "20261116090000_seera_whatsapp_contacts",
 ];
 
 function additiveStatementsOnly(sql) {

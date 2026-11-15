@@ -64,6 +64,12 @@ const nextConfig: NextConfig = {
     // Built-in Company documents (lib/sales-distribution/company-library.ts) are read from disk at
     // request time — same tracing gap as the fonts above, so include them explicitly.
     "/api/company-library/builtin/**/*": ["./content/company-library/*.pdf"],
+    // Executive's Daily Counter Report PDF — same embedded fonts, plus the Seera logo it reads.
+    "/api/field/daily-counter-report": [
+      "./node_modules/@fontsource/noto-sans/files/*.woff",
+      "./node_modules/@fontsource/noto-sans-devanagari/files/*.woff",
+      "./public/seera logo.png",
+    ],
   },
 
   images: {

@@ -4086,6 +4086,26 @@ model SeeraWaOptOut {
   @@map("seera_wa_opt_outs")
 }
 
+// Numbers the Founder / Admin adds by hand (expo leads, wholesalers not yet in the system, etc.)
+// so campaigns can reach them too. Not a retailer / partner master — just a WhatsApp contact.
+// city / state feed the same area-wise picker as retailers; groupName is a free list label.
+model SeeraWaContact {
+  id           String   @id @default(cuid())
+  phone        String   @unique // canonical 91XXXXXXXXXX
+  name         String?
+  businessName String?
+  city         String?
+  state        String?
+  groupName    String?
+  notes        String?
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([groupName])
+  @@map("seera_wa_contacts")
+}
+
 // Single row (id "global"). A missing row means: sending OFF, default quiet hours.
 model SeeraWaSettings {
   id                String   @id

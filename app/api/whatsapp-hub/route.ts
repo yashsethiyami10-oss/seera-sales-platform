@@ -9,6 +9,11 @@ import { PARTY_TYPES, VARIABLE_SOURCES } from "@/lib/seera-whatsapp/rules";
 import {
   getSettings,
   getThread,
+  deleteContacts,
+  importContacts,
+  listAreas,
+  listContacts,
+  saveContact,
   listCampaigns,
   listTemplates,
   listThreads,
@@ -30,11 +35,31 @@ import {
 // /api/*, and every service call re-checks notifications:manage for the caller itself.
 const partyType = z.enum(PARTY_TYPES as unknown as [string, ...string[]]);
 const audience = z.object({
-  partyTypes: z.array(partyType).min(1).max(3),
+  partyTypes: z.array(partyType).min(1).max(4),
   distributorIds: z.array(z.string().max(64)).max(200).optional(),
+  // Area-wise: "state|city" keys and/or "state:<state>" for a whole state.
+  areaKeys: z.array(z.string().max(160)).max(500).optional(),
+  // With MANUAL: only these contact groups ("__none__" = contacts without a group).
+  manualGroups: z.array(z.string().max(60)).max(100).optional(),
+});
+const contact = z.object({
+  phone: z.string().max(20),
+  name: z.string().max(120).nullish(),
+  businessName: z.string().max(120).nullish(),
+  city: z.string().max(120).nullish(),
+  state: z.string().max(60).nullish(),
+  groupName: z.string().max(60).nullish(),
+  notes: z.string().max(300).nullish(),
 });
 const variableMap = z
-  .array(z.object({ variable: z.string().max(60), source: z.enum(Object.keys(VARIABLE_SOURCES) as [string, ...string[]]), value: z.string().max(900).optional() }))
+  .array(
+    z.object({
+      variable: z.string().max(60),
+      source: z.enum(Object.keys(VARIABLE_SOURCES) as [string, ...string[]]),
+      value: z.string().max(900).optional(),
+      areaValues: z.record(z.string().max(160), z.string().max(900)).refine((o) => Object.keys(o).length <= 300, "Too many areas").optional(),
+    }),
+  )
   .max(20);
 const campaign = z.object({
   name: z.string().max(120),
@@ -52,6 +77,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("phone_profile") }),
   z.object({ action: z.literal("settings"), patch: z.object({ sendEnabled: z.boolean().optional(), quietHoursEnabled: z.boolean().optional(), quietStartMinute: z.number().optional(), quietEndMinute: z.number().optional(), marketingGapDays: z.number().optional() }).strict() }),
   z.object({ action: z.literal("preview"), audience, templateName: z.string().max(512).optional(), language: z.string().max(15).optional(), variableMap: variableMap.optional() }),
+  z.object({ action: z.literal("areas"), audience: audience.omit({ areaKeys: true }) }),
   z.object({ action: z.literal("save_campaign"), id: z.string().max(64).optional(), campaign }),
   z.object({ action: z.literal("test_send"), phone: z.string().max(20), campaign }),
   z.object({ action: z.literal("schedule"), id: z.string().max(64), startAt: z.string().datetime().nullish() }),
@@ -61,6 +87,10 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reply"), phone: z.string().max(20), text: z.string().min(1).max(4000) }),
   z.object({ action: z.literal("opt_out"), phone: z.string().max(20), optOut: z.boolean(), reason: z.string().max(100).optional() }),
   z.object({ action: z.literal("opt_outs") }),
+  z.object({ action: z.literal("contacts"), q: z.string().max(80).optional(), group: z.string().max(60).optional() }),
+  z.object({ action: z.literal("save_contact"), id: z.string().max(64).optional(), contact }),
+  z.object({ action: z.literal("import_contacts"), text: z.string().min(1).max(200_000), groupName: z.string().max(60).nullish(), city: z.string().max(120).nullish(), state: z.string().max(60).nullish() }),
+  z.object({ action: z.literal("delete_contacts"), ids: z.array(z.string().max(64)).min(1).max(500) }),
 ]);
 
 export async function POST(request: Request) {
@@ -72,12 +102,14 @@ export async function POST(request: Request) {
     switch (b.action) {
       case "bootstrap": {
         await requireHub(prisma, id);
-        const [stats, settings, templates, campaigns, distributors] = await Promise.all([
+        const [stats, settings, templates, campaigns, distributors, contactGroups] = await Promise.all([
           overview(prisma, id),
           getSettings(prisma),
           listTemplates(prisma),
           listCampaigns(prisma),
           prisma.seeraPartner.findMany({ where: { type: "DISTRIBUTOR" }, select: { id: true, tradeName: true, legalName: true }, orderBy: { legalName: "asc" }, take: 300 }),
+          // Manual contact groups for the campaign form; [] until the contacts table exists.
+          prisma.seeraWaContact.groupBy({ by: ["groupName"], _count: { _all: true }, orderBy: { groupName: "asc" } }).catch(() => []),
         ]);
         const c = waConfig();
         return NextResponse.json({
@@ -86,6 +118,7 @@ export async function POST(request: Request) {
           templates,
           campaigns,
           distributors: distributors.map((d) => ({ id: d.id, name: d.tradeName ?? d.legalName })),
+          contactGroups: contactGroups.map((g) => ({ name: g.groupName ?? "__none__", count: g._count._all })),
           config: { problems: configProblems(), connected: !!(c.phoneNumberId && c.accessToken) },
         });
       }
@@ -98,6 +131,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ settings: await updateSettings(prisma, id, b.patch) });
       case "preview":
         return NextResponse.json(await previewAudience(prisma, id, b as never));
+      case "areas":
+        return NextResponse.json({ areas: await listAreas(prisma, id, b.audience as never) });
       case "save_campaign":
         return NextResponse.json({ campaign: await saveCampaign(prisma, id, { ...(b.campaign as CampaignInput), id: b.id }) });
       case "test_send":
@@ -116,6 +151,15 @@ export async function POST(request: Request) {
         return NextResponse.json(await replyInThread(prisma, id, b.phone, b.text));
       case "opt_out":
         return NextResponse.json(await setOptOut(prisma, id, b.phone, b.optOut, b.reason));
+      case "contacts":
+        return NextResponse.json(await listContacts(prisma, id, b.q, b.group));
+      case "save_contact":
+        return NextResponse.json({ contact: await saveContact(prisma, id, { ...b.contact, id: b.id }) });
+      case "import_contacts":
+        enforceRateLimit(`whatsapp-hub-import:${id}`, 10, 60_000);
+        return NextResponse.json(await importContacts(prisma, id, b));
+      case "delete_contacts":
+        return NextResponse.json(await deleteContacts(prisma, id, b.ids));
       case "opt_outs":
         await requireHub(prisma, id);
         return NextResponse.json({ optOuts: await prisma.seeraWaOptOut.findMany({ orderBy: { createdAt: "desc" }, take: 500 }) });

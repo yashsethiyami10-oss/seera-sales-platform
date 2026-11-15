@@ -5,9 +5,11 @@ import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { normalizeIndianMobile } from "@/lib/messaging/phone";
 import { fetchTemplates, MetaApiError, sendTemplate, sendText } from "./meta";
+import { cleanCity, groupAreas, normalizeState, resolveArea, stateKeyOf } from "./areas";
 import {
   decide,
   inboundKeyword,
+  parseContactLines,
   isQuietTime,
   nextRunAfter,
   parseTemplateComponents,
@@ -118,13 +120,10 @@ async function approvedTemplate(db: PrismaClient, name: string, language: string
 }
 
 // ---------------- Audience ----------------
-export type Audience = { partyTypes: PartyType[]; distributorIds?: string[]; territoryIds?: string[] };
-
-function cityOf(json: unknown): string | null {
-  const a = (json ?? {}) as Record<string, unknown>;
-  const v = a.city ?? a.area ?? a.locality ?? a.district ?? a.market;
-  return typeof v === "string" && v.trim() ? v.trim() : null;
-}
+// areaKeys: area-wise sending — city keys ("rajasthan|gangapur") and/or whole states
+// ("state:uttar-pradesh"). Empty / absent = every area.
+// manualGroups: with MANUAL, only contacts in these groups (empty / absent = every manual contact).
+export type Audience = { partyTypes: PartyType[]; distributorIds?: string[]; territoryIds?: string[]; areaKeys?: string[]; manualGroups?: string[] };
 
 export async function resolveAudience(db: PrismaClient, audience: Audience): Promise<Recipient[]> {
   const types = (audience.partyTypes ?? []).filter((t) => PARTY_TYPES.includes(t));
@@ -138,19 +137,25 @@ export async function resolveAudience(db: PrismaClient, audience: Audience): Pro
         ...(distributors ? { distributorId: { in: distributors } } : {}),
         ...(territory ? { territoryId: { in: territory } } : {}),
       },
-      select: { id: true, code: true, businessName: true, ownerName: true, mobile: true, whatsapp: true, address: true, distributorId: true },
+      select: { id: true, code: true, businessName: true, ownerName: true, mobile: true, whatsapp: true, address: true, pincode: true, distributorId: true, territoryId: true },
     });
     const distIds = [...new Set(retailers.map((r) => r.distributorId).filter((x): x is string => !!x))];
-    const distNames = new Map(
-      (await db.seeraPartner.findMany({ where: { id: { in: distIds } }, select: { id: true, tradeName: true, legalName: true } })).map((d) => [d.id, d.tradeName ?? d.legalName]),
-    );
+    const territoryIds = [...new Set(retailers.map((r) => r.territoryId).filter((x): x is string => !!x))];
+    const [dists, territories] = await Promise.all([
+      db.seeraPartner.findMany({ where: { id: { in: distIds } }, select: { id: true, tradeName: true, legalName: true, addresses: true } }),
+      territoryIds.length ? db.seeraGeographyNode.findMany({ where: { id: { in: territoryIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+    ]);
+    const distById = new Map(dists.map((d) => [d.id, d]));
+    const territoryName = new Map(territories.map((t) => [t.id, t.name]));
     for (const r of retailers) {
       const phone = normalizeIndianMobile(r.whatsapp) ?? normalizeIndianMobile(r.mobile);
       if (!phone) continue;
-      out.push({ partyType: "RETAILER", partyId: r.id, phone, businessName: r.businessName, ownerName: r.ownerName, city: cityOf(r.address), distributorName: r.distributorId ? (distNames.get(r.distributorId) ?? null) : null, code: r.code });
+      const dist = r.distributorId ? distById.get(r.distributorId) : undefined;
+      const area = resolveArea({ address: r.address, pincode: r.pincode, territoryName: r.territoryId ? territoryName.get(r.territoryId) : null, distributorAddress: dist?.addresses });
+      out.push({ partyType: "RETAILER", partyId: r.id, phone, businessName: r.businessName, ownerName: r.ownerName, city: area.city, state: area.state, areaKey: area.key, distributorName: dist ? (dist.tradeName ?? dist.legalName) : null, code: r.code });
     }
   }
-  const partnerTypes = types.filter((t) => t !== "RETAILER") as ("DISTRIBUTOR" | "SUPER_STOCKIST")[];
+  const partnerTypes = types.filter((t) => t === "DISTRIBUTOR" || t === "SUPER_STOCKIST") as ("DISTRIBUTOR" | "SUPER_STOCKIST")[];
   if (partnerTypes.length) {
     const partners = await db.seeraPartner.findMany({
       where: {
@@ -165,18 +170,43 @@ export async function resolveAudience(db: PrismaClient, audience: Audience): Pro
       const c = (p.primaryContact ?? {}) as { mobile?: string; whatsapp?: string; ownerName?: string; name?: string };
       const phone = normalizeIndianMobile(c.whatsapp) ?? normalizeIndianMobile(c.mobile);
       if (!phone) continue;
-      out.push({ partyType: p.type as PartyType, partyId: p.id, phone, businessName: p.tradeName ?? p.legalName, ownerName: c.ownerName ?? c.name ?? null, city: cityOf(p.addresses), distributorName: null, code: p.code });
+      const area = resolveArea({ address: Array.isArray(p.addresses) ? p.addresses[0] : p.addresses });
+      out.push({ partyType: p.type as PartyType, partyId: p.id, phone, businessName: p.tradeName ?? p.legalName, ownerName: c.ownerName ?? c.name ?? null, city: area.city, state: area.state, areaKey: area.key, distributorName: null, code: p.code });
     }
   }
+  // Manually added numbers last, so a number that is also a retailer / partner keeps that
+  // richer record (and still gets only one message — see the de-duplication below).
+  if (types.includes("MANUAL")) {
+    const groups = audience.manualGroups?.length ? audience.manualGroups : null;
+    const contacts = await db.seeraWaContact.findMany({
+      where: groups ? { OR: [{ groupName: { in: groups.filter((g) => g !== NO_GROUP) } }, ...(groups.includes(NO_GROUP) ? [{ groupName: null }] : [])] } : {},
+      orderBy: { createdAt: "asc" },
+    });
+    for (const c of contacts) {
+      const area = resolveArea({ address: { city: c.city, state: c.state }, pincode: null });
+      out.push({ partyType: "MANUAL", partyId: c.id, phone: c.phone, businessName: c.businessName || c.name || "Partner", ownerName: c.name, city: area.city, state: area.state, areaKey: area.key, distributorName: null, code: null });
+    }
+  }
+  // Area-wise: keep only the chosen cities / whole states.
+  const areaKeys = audience.areaKeys?.length ? new Set(audience.areaKeys) : null;
+  const inArea = (r: Recipient) => !areaKeys || areaKeys.has(r.areaKey ?? "") || areaKeys.has(stateKeyOf(r.state ?? null));
   // One message per phone number: a number listed on two parties gets it once.
   const seen = new Set<string>();
-  return out.filter((r) => (seen.has(r.phone) ? false : (seen.add(r.phone), true)));
+  return out.filter((r) => inArea(r) && (seen.has(r.phone) ? false : (seen.add(r.phone), true)));
+}
+
+// State → city list with counts (and opted-out counts) for the campaign's area picker.
+export async function listAreas(db: PrismaClient, actorId: string, audience: Omit<Audience, "areaKeys">) {
+  await requireHub(db, actorId);
+  const recipients = await resolveAudience(db, { ...audience, areaKeys: undefined });
+  const optedOut = new Set((await db.seeraWaOptOut.findMany({ where: { phone: { in: recipients.map((r) => r.phone) } }, select: { phone: true } })).map((o) => o.phone));
+  return groupAreas(recipients.map((r) => ({ areaKey: r.areaKey ?? "", city: r.city, state: r.state ?? null, partyType: r.partyType, optedOut: optedOut.has(r.phone) })));
 }
 
 function paramsFor(mapping: VariableMapping[], variableNames: string[], r: Recipient): string[] {
   return variableNames.map((v) => {
     const m = mapping.find((x) => x.variable === v);
-    return variableValue((m?.source ?? "CONTACT_NAME") as VariableSource, r, m?.value);
+    return variableValue((m?.source ?? "CONTACT_NAME") as VariableSource, r, m?.value, m?.areaValues);
   });
 }
 
@@ -190,13 +220,21 @@ export async function previewAudience(db: PrismaClient, actorId: string, input: 
   if (input.templateName && input.language) {
     const t = await db.seeraWaTemplate.findUnique({ where: { name_language: { name: input.templateName, language: input.language } } });
     if (t) {
-      sample = recipients.slice(0, 3).map((r) => {
+      // One real example per area (up to 6), so the per-city personalisation can be checked.
+      const perArea = new Map<string, Recipient>();
+      for (const r of recipients) if (!perArea.has(r.areaKey ?? "") && perArea.size < 6) perArea.set(r.areaKey ?? "", r);
+      sample = [...perArea.values()].map((r) => {
         const values = paramsFor(input.variableMap ?? [], t.variableNames, r);
-        return { name: r.businessName, partyType: r.partyType, text: renderPreview(t.bodyText, Object.fromEntries(t.variableNames.map((v, i) => [v, values[i]!]))) };
+        return { name: r.businessName, partyType: r.partyType, area: [r.city, r.state].filter(Boolean).join(", "), text: renderPreview(t.bodyText, Object.fromEntries(t.variableNames.map((v, i) => [v, values[i]!]))) };
       });
     }
   }
-  return { total: recipients.length, optedOut: recipients.filter((r) => optedOut.has(r.phone)).length, byType, sample };
+  const byArea: Record<string, number> = {};
+  for (const r of recipients) {
+    const label = r.city ?? "City not known";
+    byArea[label] = (byArea[label] ?? 0) + 1;
+  }
+  return { total: recipients.length, optedOut: recipients.filter((r) => optedOut.has(r.phone)).length, byType, byArea, sample };
 }
 
 // ---------------- Campaigns ----------------
@@ -218,6 +256,8 @@ async function validateCampaign(db: PrismaClient, input: CampaignInput) {
     const m = input.variableMap.find((x) => x.variable === v);
     if (!m || !(m.source in VARIABLE_SOURCES)) throw new FoundationError("WA_VARIABLE_UNMAPPED", `Choose what goes into {{${v}}}`, 400);
     if (m.source === "CUSTOM" && !m.value?.trim()) throw new FoundationError("WA_VARIABLE_EMPTY", `Type the text for {{${v}}}`, 400);
+    if (m.source === "AREA_TEXT" && !m.value?.trim())
+      throw new FoundationError("WA_VARIABLE_EMPTY", `Type the "all other areas" text for {{${v}}} — it goes to every city you did not write a separate text for`, 400);
   }
   const fmt = (t.headerFormat ?? "").toUpperCase();
   if (["IMAGE", "VIDEO", "DOCUMENT"].includes(fmt) && !/^https:\/\/\S+$/.test(input.headerMediaUrl ?? ""))
@@ -310,7 +350,7 @@ export async function testSend(db: PrismaClient, actorId: string, input: Campaig
   const t = await validateCampaign(db, { ...input, name: input.name || "Test" });
   const phone = normalizeIndianMobile(input.phone);
   if (!phone) throw new FoundationError("WA_TEST_PHONE", "Enter a valid 10-digit Indian mobile number", 400);
-  const sample: Recipient = { partyType: "RETAILER", partyId: "test", phone, businessName: "Sharma General Store", ownerName: "Ramesh Sharma", city: "Jaipur", distributorName: "Seera Distributor", code: "RT-TEST" };
+  const sample: Recipient = { partyType: "RETAILER", partyId: "test", phone, businessName: "Sharma General Store", ownerName: "Ramesh Sharma", city: "Jaipur", state: "Rajasthan", areaKey: "rajasthan|jaipur", distributorName: "Seera Distributor", code: "RT-TEST" };
   const values = paramsFor(input.variableMap, t.variableNames, sample);
   const msg = await db.seeraWaMessage.create({
     data: { idempotencyKey: `test:${randomUUID()}`, templateName: t.name, language: t.language, category: t.category, partyType: "TEST", phone, recipientName: "Test", params: values, headerMediaUrl: input.headerMediaUrl ?? null, status: "SENDING", createdById: actorId },
@@ -496,7 +536,94 @@ export async function matchParty(db: PrismaClient, phone: string): Promise<{ par
        OR right(regexp_replace(COALESCE("primaryContact"->>'whatsapp', ''), '\\D', '', 'g'), 10) = ${ten}
     LIMIT 1`;
   if (rows[0]) return { partyType: rows[0].type, partyId: rows[0].id, partyName: rows[0].name };
+  const manual = await db.seeraWaContact.findFirst({ where: { phone: { endsWith: ten } }, select: { id: true, name: true, businessName: true } }).catch(() => null);
+  if (manual) return { partyType: "MANUAL", partyId: manual.id, partyName: manual.businessName || manual.name || `+91${ten}` };
   return null;
+}
+
+// ---------------- Manual contacts ----------------
+export const NO_GROUP = "__none__";
+export type ContactInput = { phone: string; name?: string | null; businessName?: string | null; city?: string | null; state?: string | null; groupName?: string | null; notes?: string | null };
+const tidy = (v: string | null | undefined, max = 120) => (v?.trim() ? v.trim().replace(/\s+/g, " ").slice(0, max) : null);
+const contactData = (c: Omit<ContactInput, "phone">) => ({
+  name: tidy(c.name),
+  businessName: tidy(c.businessName),
+  city: cleanCity(c.city) ?? null,
+  state: normalizeState(c.state) ?? null,
+  groupName: tidy(c.groupName, 60),
+  notes: tidy(c.notes, 300),
+});
+
+export async function listContacts(db: PrismaClient, actorId: string, q?: string, group?: string) {
+  await requireHub(db, actorId);
+  const term = q?.trim();
+  const digits = term?.replace(/\D/g, "") ?? "";
+  const where: Prisma.SeeraWaContactWhereInput = {
+    ...(group ? (group === NO_GROUP ? { groupName: null } : { groupName: group }) : {}),
+    ...(term
+      ? { OR: [{ name: { contains: term, mode: "insensitive" } }, { businessName: { contains: term, mode: "insensitive" } }, { city: { contains: term, mode: "insensitive" } }, ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : [])] }
+      : {}),
+  };
+  const [rows, total, groups, optOuts] = await Promise.all([
+    db.seeraWaContact.findMany({ where, orderBy: { createdAt: "desc" }, take: 300 }),
+    db.seeraWaContact.count({ where }),
+    db.seeraWaContact.groupBy({ by: ["groupName"], _count: { _all: true }, orderBy: { groupName: "asc" } }),
+    db.seeraWaOptOut.findMany({ select: { phone: true } }),
+  ]);
+  const out = new Set(optOuts.map((o) => o.phone));
+  return {
+    total,
+    contacts: rows.map((c) => ({ ...c, optedOut: out.has(c.phone), createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })),
+    groups: groups.map((g) => ({ name: g.groupName ?? NO_GROUP, count: g._count._all })),
+  };
+}
+
+export async function saveContact(db: PrismaClient, actorId: string, input: ContactInput & { id?: string }) {
+  await requireHub(db, actorId);
+  const phone = normalizeIndianMobile(input.phone);
+  if (!phone) throw new FoundationError("WA_CONTACT_PHONE", "Enter a valid 10-digit Indian mobile number", 400);
+  const data = { phone, ...contactData(input) };
+  if (input.id) {
+    const clash = await db.seeraWaContact.findUnique({ where: { phone } });
+    if (clash && clash.id !== input.id) throw new FoundationError("WA_CONTACT_DUPLICATE", "This number is already in your contacts", 409);
+    const saved = await db.seeraWaContact.update({ where: { id: input.id }, data });
+    await recordAudit(db, { actorId, action: "whatsapp_hub.contact_updated", entityType: "SeeraWaContact", entityId: saved.id });
+    return saved;
+  }
+  const saved = await db.seeraWaContact.upsert({ where: { phone }, create: { ...data, createdById: actorId }, update: data });
+  await recordAudit(db, { actorId, action: "whatsapp_hub.contact_saved", entityType: "SeeraWaContact", entityId: saved.id });
+  return saved;
+}
+
+// Paste many numbers at once. Existing numbers are updated only where the paste has a value, so
+// pasting a bare number list into a group never wipes names typed earlier.
+export async function importContacts(db: PrismaClient, actorId: string, input: { text: string; groupName?: string | null; city?: string | null; state?: string | null }) {
+  await requireHub(db, actorId);
+  const { rows, invalid } = parseContactLines(input.text, (raw) => normalizeIndianMobile(raw));
+  if (rows.length > 2000) throw new FoundationError("WA_CONTACT_BULK_LIMIT", "Paste at most 2000 numbers at a time", 400);
+  const existing = new Map((await db.seeraWaContact.findMany({ where: { phone: { in: rows.map((r) => r.phone) } } })).map((c) => [c.phone, c]));
+  let added = 0, updated = 0;
+  for (const r of rows) {
+    const data = contactData({ name: r.name, businessName: r.businessName, city: r.city ?? input.city, state: r.state ?? input.state, groupName: input.groupName });
+    const prev = existing.get(r.phone);
+    if (prev) {
+      const patch = Object.fromEntries(Object.entries(data).filter(([, v]) => v != null));
+      if (Object.keys(patch).length) await db.seeraWaContact.update({ where: { id: prev.id }, data: patch });
+      updated++;
+    } else {
+      await db.seeraWaContact.create({ data: { phone: r.phone, ...data, createdById: actorId } });
+      added++;
+    }
+  }
+  await recordAudit(db, { actorId, action: "whatsapp_hub.contacts_imported", entityType: "SeeraWaContact", details: { added, updated, invalid: invalid.length, group: input.groupName ?? null } });
+  return { added, updated, invalid };
+}
+
+export async function deleteContacts(db: PrismaClient, actorId: string, ids: string[]) {
+  await requireHub(db, actorId);
+  const r = await db.seeraWaContact.deleteMany({ where: { id: { in: ids } } });
+  await recordAudit(db, { actorId, action: "whatsapp_hub.contacts_deleted", entityType: "SeeraWaContact", details: { count: r.count } });
+  return { deleted: r.count };
 }
 
 export async function recordInbound(db: PrismaClient, message: Record<string, any>, contact?: { profile?: { name?: string }; wa_id?: string }) {

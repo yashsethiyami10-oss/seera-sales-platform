@@ -57,6 +57,49 @@ export function captureGps(): Promise<{ status: GpsStatus; point: GpsPoint }> {
   });
 }
 
+// Address auto-fill needs the shop's EXACT spot, not "roughly here": a quick network/Wi-Fi fix can
+// be 1–3 km off, which is exactly how the neighbouring village's name used to show up. This keeps
+// listening (high accuracy, fresh fixes only) until the GPS settles within PRECISE_TARGET_M, or
+// returns the best fix seen when the time runs out.
+const PRECISE_TARGET_M = 25;
+const PRECISE_MAX_WAIT_MS = 15_000;
+
+export function capturePreciseGps(): Promise<{ status: GpsStatus; point: GpsPoint }> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      resolve({ status: "UNAVAILABLE", point: {} });
+      return;
+    }
+    // The route tracker's last fix is only good enough here when it is fresh AND sharp.
+    if (lastTrackedFix && Date.now() - lastTrackedFix.at < 10_000 && (lastTrackedFix.point.accuracy ?? Infinity) <= PRECISE_TARGET_M) {
+      resolve({ status: "OK", point: lastTrackedFix.point });
+      return;
+    }
+    let best: GpsPoint | null = null;
+    let settled = false;
+    let watchId: number | null = null;
+    const finish = (result?: { status: GpsStatus; point: GpsPoint }) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(guard);
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      resolve(result ?? (best ? { status: statusFor(best.accuracy), point: best } : { status: "UNAVAILABLE", point: {} }));
+    };
+    const guard = window.setTimeout(() => finish(), PRECISE_MAX_WAIT_MS);
+    watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const point = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy };
+        if (!best || (point.accuracy ?? Infinity) < (best.accuracy ?? Infinity)) best = point;
+        if ((point.accuracy ?? Infinity) <= PRECISE_TARGET_M) finish({ status: "OK", point });
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) finish({ status: "PERMISSION_DENIED", point: {} });
+      },
+      { enableHighAccuracy: true, timeout: PRECISE_MAX_WAIT_MS, maximumAge: 0 },
+    );
+  });
+}
+
 export function GpsBadge({ language, status }: { language: "EN" | "HI"; status: GpsStatus }) {
   const hi = language === "HI";
   const text: Record<GpsStatus, string> = {

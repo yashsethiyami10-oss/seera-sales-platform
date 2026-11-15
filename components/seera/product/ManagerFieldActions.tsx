@@ -347,7 +347,12 @@ export function ManagerFieldActions({
                 payload: {
                   newRetailer: {
                     businessName: String(form.get("businessName")),
-                    address: { area: String(form.get("area")) },
+                    address: {
+                      area: String(form.get("area")),
+                      ...(String(form.get("city") ?? "").trim() ? { city: String(form.get("city")).trim() } : {}),
+                      ...(String(form.get("district") ?? "").trim() ? { district: String(form.get("district")).trim() } : {}),
+                      ...(String(form.get("state") ?? "").trim() ? { state: String(form.get("state")).trim() } : {}),
+                    },
                     ownerName: String(form.get("ownerName") ?? "") || undefined,
                     mobile: String(form.get("mobile") ?? "") || undefined,
                     customerType: String(form.get("customerType") ?? "") || undefined,
@@ -366,7 +371,10 @@ export function ManagerFieldActions({
           >
             <label>{hi ? "दुकान / फर्म का नाम *" : "Firm / Shop name *"}<input name="businessName" required /></label>
             <label>{hi ? "क्षेत्र / पता *" : "Area / Address *"}<input name="area" required /></label>
-            <LocationAutofill language={language} fields={{ area: "area" }} />
+            <input type="hidden" name="city" />
+            <input type="hidden" name="district" />
+            <input type="hidden" name="state" />
+            <LocationAutofill language={language} fields={{ area: "area", city: "city", district: "district", state: "state" }} />
             <label>{hi ? "मालिक" : "Owner"}<input name="ownerName" /></label>
             <label>{hi ? "मोबाइल" : "Mobile"}<input name="mobile" inputMode="tel" /></label>
             <label>
