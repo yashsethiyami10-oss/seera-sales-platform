@@ -20,8 +20,8 @@ type Boot = {
   settings: Settings; templates: Template[]; campaigns: Campaign[]; distributors: { id: string; name: string }[]; contactGroups?: { name: string; count: number }[];
   config: { problems: string[]; connected: boolean };
 };
-type Thread = { phone: string; name: string | null; partyType: string | null; lastText: string | null; lastAt: string; unread: number; optedOut: boolean };
-type ThreadDetail = { phone: string; messages: { id: string; direction: string; text: string | null; at: string; status: string | null }[]; templatesSent: { template: string; status: string; at: string }[]; canReply: boolean; optedOut: boolean; partyName: string | null };
+type Thread = { phone: string; name: string | null; partyType: string | null; lastText: string | null; lastAt: string; unread: number; optedOut: boolean; needsAttention?: string | null };
+type ThreadDetail = { phone: string; messages: { id: string; direction: string; text: string | null; type?: string; at: string; status: string | null; buttons?: string[]; rule?: string | null }[]; templatesSent: { template: string; status: string; at: string }[]; canReply: boolean; optedOut: boolean; partyName: string | null };
 type Profile = { displayPhoneNumber: string | null; verifiedName: string | null; nameStatus: string | null; newDisplayName: string | null; newNameStatus: string | null; qualityRating: string | null; messagingLimitTier: string | null; isOfficialBusinessAccount: boolean | null };
 
 async function api<T>(body: unknown): Promise<T> {
@@ -43,7 +43,7 @@ const pill = (st: string) => (["APPROVED", "SCHEDULED", "SENT", "DELIVERED", "RE
 export function WhatsAppHub({ language }: { language: "EN" | "HI" }) {
   const hi = language === "HI";
   const t = (en: string, h: string) => (hi ? h : en);
-  const [tab, setTab] = useState<"overview" | "campaigns" | "contacts" | "inbox" | "settings">("overview");
+  const [tab, setTab] = useState<"overview" | "campaigns" | "contacts" | "inbox" | "auto" | "settings">("overview");
   // "Send a campaign to this group" from Contacts opens a new campaign pre-set to that group.
   const [campaignSeed, setCampaignSeed] = useState<{ manualGroups: string[] } | null>(null);
   const [boot, setBoot] = useState<Boot | null>(null);
@@ -66,7 +66,7 @@ export function WhatsAppHub({ language }: { language: "EN" | "HI" }) {
   return (
     <div className={s.hub}>
       <div className={s.tabs}>
-        {([["overview", "📊", t("Overview", "सारांश")], ["campaigns", "📣", t("Campaigns", "कैंपेन")], ["contacts", "📇", t("Contacts", "नंबर")], ["inbox", "💬", t("Inbox", "इनबॉक्स")], ["settings", "⚙️", t("Settings", "सेटिंग")]] as const).map(([k, icon, label]) => (
+        {([["overview", "📊", t("Overview", "सारांश")], ["campaigns", "📣", t("Campaigns", "कैंपेन")], ["contacts", "📇", t("Contacts", "नंबर")], ["inbox", "💬", t("Inbox", "इनबॉक्स")], ["auto", "🤖", t("Auto-reply", "ऑटो जवाब")], ["settings", "⚙️", t("Settings", "सेटिंग")]] as const).map(([k, icon, label]) => (
           <button key={k} type="button" className={`${s.tab} ${tab === k ? s.tabOn : ""}`} onClick={() => setTab(k)}>
             {icon} {label} {k === "inbox" && boot.stats.unread > 0 && <span className={s.badge}>{boot.stats.unread}</span>}
           </button>
@@ -78,6 +78,7 @@ export function WhatsAppHub({ language }: { language: "EN" | "HI" }) {
       {tab === "campaigns" && <Campaigns boot={boot} t={t} hi={hi} busy={busy} run={run} seed={campaignSeed} onSeedUsed={() => setCampaignSeed(null)} />}
       {tab === "contacts" && <Contacts t={t} onChange={load} onSendToGroup={(g) => { setCampaignSeed({ manualGroups: g ? [g] : [] }); setTab("campaigns"); }} />}
       {tab === "inbox" && <Inbox t={t} onChange={load} />}
+      {tab === "auto" && <AutoReplyTab t={t} />}
       {tab === "settings" && <SettingsTab boot={boot} t={t} busy={busy} run={run} />}
     </div>
   );
@@ -518,6 +519,7 @@ function Inbox({ t, onChange }: { t: T; onChange: () => void }) {
             <button key={th.phone} type="button" className={`${s.thread} ${active?.phone === th.phone ? s.threadOn : ""}`} onClick={() => open(th.phone)}>
               <div className={s.row} style={{ justifyContent: "space-between" }}><b>{th.name ?? `+${th.phone}`}</b>{th.unread > 0 && <span className={s.badge}>{th.unread}</span>}</div>
               <span className={s.muted}>{th.partyType ?? t("Unknown number", "अनजान नंबर")} · +{th.phone}{th.optedOut ? " · STOP" : ""}</span>
+              {th.needsAttention && <span className={`${s.pill} ${s.pillAmber}`}>⚠️ {t("Team must act", "टीम ध्यान दे")}: {th.needsAttention}</span>}
               <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{th.lastText}</span>
               <span className={s.muted}>{fmt(th.lastAt)}</span>
             </button>
@@ -533,7 +535,7 @@ function Inbox({ t, onChange }: { t: T; onChange: () => void }) {
               {active.optedOut && <div className={s.warn}>{t("This number has opted out — campaigns skip it.", "इस नंबर ने STOP किया है — कैंपेन इसे छोड़ देंगे।")}</div>}
               <div className={s.chat}>
                 {active.messages.map((m) => (
-                  <div key={m.id} className={m.direction === "IN" ? s.msgIn : s.msgOut}>{m.text ?? "—"}<div className={s.msgMeta}>{fmt(m.at)}{m.direction === "OUT" && m.status ? ` · ${m.status}` : ""}</div></div>
+                  <div key={m.id} className={m.direction === "IN" ? s.msgIn : s.msgOut}>{m.type === "auto" && <div className={s.msgMeta} style={{ fontWeight: 800 }}>🤖 {t("Auto-reply", "ऑटो जवाब")}{m.rule ? ` · ${m.rule}` : ""}</div>}{m.text ?? "—"}{m.buttons && m.buttons.length > 0 && <div className={s.chips} style={{ marginTop: 6 }}>{m.buttons.map((b) => <span key={b} className={s.chip} style={{ fontSize: 13, padding: "4px 10px" }}>{b}</span>)}</div>}<div className={s.msgMeta}>{fmt(m.at)}{m.direction === "OUT" && m.status ? ` · ${m.status}` : ""}</div></div>
                 ))}
               </div>
               {active.templatesSent.length > 0 && <div className={s.muted}>{t("Campaign messages to this number", "इस नंबर पर कैंपेन मैसेज")}: {active.templatesSent.slice(0, 5).map((x) => `${x.template} (${x.status}, ${fmt(x.at)})`).join(" · ")}</div>}
@@ -630,6 +632,86 @@ function SettingsTab({ boot, t, busy, run }: { boot: Boot; t: T; busy: boolean; 
         {boot.config.problems.length === 0 ? <div className={s.ok}>✓ {t("Everything is configured.", "सब सेट है।")}</div> : <div className={s.warn}><ul>{boot.config.problems.map((p) => <li key={p}>{p}</li>)}</ul></div>}
         <div className={s.muted}>{t("Webhook URL to set in Meta App → WhatsApp → Configuration (subscribe to 'messages'):", "Meta App → WhatsApp → Configuration में यह Webhook URL लगाएँ ('messages' सब्सक्राइब करें):")} <code>https://www.seeradetergent.in/api/webhooks/whatsapp</code></div>
       </div>
+    </>
+  );
+}
+
+type AutoRuleRow = { id: string; kind: string; name: string; keywords: string[]; replyText: string; mediaType: string | null; mediaUrl: string | null; buttons: string[]; alertTeam: boolean; active: boolean; priority: number; cooldownMinutes: number; hits: number };
+const KIND_LABEL: Record<string, [string, string]> = { RULE: ["When they write…", "जब वो लिखें…"], FALLBACK: ["Anything else", "बाक़ी हर संदेश"], STOP: ["After STOP", "STOP के बाद"], START: ["After START", "START के बाद"] };
+
+// Auto-reply: rules that answer partners instantly, with buttons that keep the conversation going.
+function AutoReplyTab({ t }: { t: T }) {
+  const [data, setData] = useState<{ enabled: boolean; rules: AutoRuleRow[] } | null>(null);
+  const [edit, setEdit] = useState<(Partial<AutoRuleRow> & { kwText?: string }) | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [probe, setProbe] = useState("");
+  const [probeOut, setProbeOut] = useState<{ rule: string; kind: string; reply: string; buttons: string[]; mediaUrl: string | null; active: boolean } | null | undefined>(undefined);
+  const load = useCallback(async () => { try { setData(await api({ action: "auto_list" })); } catch (e) { setErr((e as Error).message); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (fn: () => Promise<unknown>, ok?: string) => { setErr(null); setNote(null); try { await fn(); if (ok) setNote(ok); await load(); } catch (e) { setErr((e as Error).message); } };
+  if (!data) return <div className={s.muted}>{err ?? t("Loading…", "लोड हो रहा है…")}</div>;
+  const save = () => act(async () => {
+    await api({ action: "auto_save", rule: { id: edit!.id, kind: edit!.kind ?? "RULE", name: edit!.name ?? "", keywords: (edit!.kwText ?? "").split(/[,\n]/).map((k) => k.trim()).filter(Boolean), replyText: edit!.replyText ?? "", mediaType: edit!.mediaUrl ? (edit!.mediaType ?? "DOCUMENT") : null, mediaUrl: edit!.mediaUrl || null, buttons: (edit!.buttons ?? []).filter((b) => b.trim()), alertTeam: !!edit!.alertTeam, active: edit!.active ?? true, priority: edit!.priority ?? 100, cooldownMinutes: edit!.cooldownMinutes } });
+    setEdit(null);
+  }, t("Saved ✓", "सेव हुआ ✓"));
+  return (
+    <>
+      {err && <div className={s.err}>{err}</div>}
+      {note && <div className={s.ok}>{note}</div>}
+      <div className={s.card}>
+        <div className={s.switch}>
+          <div><b>{data.enabled ? t("Auto-reply is ON", "ऑटो जवाब चालू है") : t("Auto-reply is OFF", "ऑटो जवाब बंद है")}</b>
+            <div className={s.muted}>{t("Every reply from a partner gets the matching answer at once. If someone from the team replied in the last 30 minutes, the bot stays quiet.", "पार्टनर का कोई भी जवाब आते ही सही जवाब तुरंत जाता है। अगर टीम ने पिछले 30 मिनट में ख़ुद जवाब दिया है तो बॉट चुप रहता है।")}</div></div>
+          <button type="button" className={data.enabled ? s.btnDanger : s.btn} onClick={() => act(() => api({ action: "auto_toggle", enabled: !data.enabled }))}>{data.enabled ? t("Turn OFF", "बंद करें") : t("Turn ON", "चालू करें")}</button>
+        </div>
+        <div className={s.row}>
+          <input className={s.input} style={{ flex: 1, minWidth: 220 }} value={probe} onChange={(e) => setProbe(e.target.value)} placeholder={t("Try it: type what a partner might write, e.g. 'rate kya hai'", "आज़माइए: पार्टनर क्या लिख सकता है, जैसे 'रेट क्या है'")} />
+          <button type="button" className={s.btnGhost} disabled={!probe.trim()} onClick={async () => { try { setProbeOut((await api<{ match: typeof probeOut }>({ action: "auto_test", text: probe })).match); } catch (e) { setErr((e as Error).message); } }}>🔍 {t("Which reply goes?", "कौन सा जवाब जाएगा?")}</button>
+        </div>
+        {probeOut !== undefined && (probeOut ? (
+          <div><div className={s.muted}>{t("Matched", "मिला")}: <b>{probeOut.rule}</b>{!probeOut.active && ` · ${t("(this rule is OFF)", "(ये नियम बंद है)")}`}{probeOut.mediaUrl ? " · 📎" : ""}</div>
+            <div className={s.bubble}>{probeOut.reply}</div>
+            {probeOut.buttons.length > 0 && <div className={s.chips} style={{ marginTop: 6 }}>{probeOut.buttons.map((b) => <span key={b} className={s.chip}>{b}</span>)}</div>}</div>
+        ) : <div className={s.warn}>{t("No reply would go.", "कोई जवाब नहीं जाएगा।")}</div>)}
+      </div>
+      <div className={s.row}><button type="button" className={s.btn} onClick={() => setEdit({ kind: "RULE", name: "", kwText: "", replyText: "", buttons: [], alertTeam: false, active: true, priority: 80 })}>＋ {t("New reply rule", "नया जवाब नियम")}</button></div>
+      {edit && (
+        <div className={s.card}>
+          <h3>{edit.id ? t("Edit reply", "जवाब बदलें") : t("New reply rule", "नया जवाब नियम")}</h3>
+          <label className={s.field}>{t("Name (for you)", "नाम (आपके लिए)")}<input className={s.input} value={edit.name ?? ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></label>
+          {(edit.kind ?? "RULE") === "RULE" && <label className={s.field}>{t("When the message has any of these words / button texts (comma separated)", "जब संदेश में इनमें से कोई शब्द / बटन हो (कॉमा से अलग)")}<textarea className={s.textarea} value={edit.kwText ?? ""} onChange={(e) => setEdit({ ...edit, kwText: e.target.value })} placeholder="ऑर्डर, order, माल भेजो" /></label>}
+          <label className={s.field}>{t("Reply ({name} = their name)", "जवाब ({name} = उनका नाम)")}<textarea className={s.textarea} style={{ minHeight: 110 }} value={edit.replyText ?? ""} onChange={(e) => setEdit({ ...edit, replyText: e.target.value })} /></label>
+          <div className={s.field}>{t("Buttons under the reply (max 3, 20 letters each) — tapping one triggers the next reply", "जवाब के नीचे बटन (ज़्यादा से ज़्यादा 3, हर एक 20 अक्षर) — दबाते ही अगला जवाब")}
+            <div className={s.row}>{[0, 1, 2].map((i) => <input key={i} className={s.input} style={{ maxWidth: 220 }} maxLength={20} value={edit.buttons?.[i] ?? ""} onChange={(e) => { const b = [...(edit.buttons ?? ["", "", ""])]; while (b.length < 3) b.push(""); b[i] = e.target.value; setEdit({ ...edit, buttons: b }); }} />)}</div></div>
+          <div className={s.row}>
+            <select className={s.select} style={{ maxWidth: 160 }} value={edit.mediaType ?? "DOCUMENT"} onChange={(e) => setEdit({ ...edit, mediaType: e.target.value })}><option value="DOCUMENT">📄 PDF</option><option value="IMAGE">🖼 {t("Image", "फ़ोटो")}</option></select>
+            <input className={s.input} style={{ flex: 1, minWidth: 240 }} value={edit.mediaUrl ?? ""} onChange={(e) => setEdit({ ...edit, mediaUrl: e.target.value })} placeholder={t("Attachment link (optional) https://…", "अटैचमेंट लिंक (चाहें तो) https://…")} />
+          </div>
+          <label className={s.row}><input type="checkbox" checked={!!edit.alertTeam} onChange={(e) => setEdit({ ...edit, alertTeam: e.target.checked })} /> {t("Flag this chat for the team in Inbox (orders, calls, complaints)", "इनबॉक्स में टीम के लिए निशान लगाएँ (ऑर्डर, कॉल, शिकायत)")}</label>
+          <label className={s.row}><input type="checkbox" checked={edit.active ?? true} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> {t("Active", "चालू")}</label>
+          <div className={s.row}><button type="button" className={s.btn} onClick={save}>{t("Save", "सेव करें")}</button><button type="button" className={s.btnGhost} onClick={() => setEdit(null)}>{t("Cancel", "रद्द")}</button></div>
+        </div>
+      )}
+      {data.rules.map((r) => (
+        <div key={r.id} className={s.card} style={{ opacity: r.active ? 1 : 0.55 }}>
+          <div className={s.row} style={{ justifyContent: "space-between" }}>
+            <div><h3>{r.name}</h3><div className={s.muted}>{r.kind === "RULE" ? `${t("When they write", "जब वो लिखें")}: ${r.keywords.slice(0, 8).join(", ")}${r.keywords.length > 8 ? "…" : ""}` : t((KIND_LABEL[r.kind] ?? ["", ""])[0], (KIND_LABEL[r.kind] ?? ["", ""])[1])}</div></div>
+            <div className={s.row}>
+              {r.alertTeam && <span className={`${s.pill} ${s.pillAmber}`}>⚠️ {t("flags team", "टीम को निशान")}</span>}
+              <span className={s.pill}>{r.hits} {t("sent", "भेजे")}</span>
+              <span className={`${s.pill} ${r.active ? s.pillGreen : s.pillRed}`}>{r.active ? t("ON", "चालू") : t("OFF", "बंद")}</span>
+            </div>
+          </div>
+          <div className={s.bubble}>{r.replyText}</div>
+          {(r.buttons.length > 0 || r.mediaUrl) && <div className={s.chips}>{r.mediaUrl && <span className={s.chip}>📎 {r.mediaType === "IMAGE" ? t("image", "फ़ोटो") : "PDF"}</span>}{r.buttons.map((b) => <span key={b} className={s.chip}>{b}</span>)}</div>}
+          <div className={s.row}>
+            <button type="button" className={s.btnGhost} onClick={() => setEdit({ ...r, kwText: r.keywords.join(", ") })}>✎ {t("Edit", "बदलें")}</button>
+            <button type="button" className={s.btnGhost} onClick={() => act(() => api({ action: "auto_save", rule: { ...r, active: !r.active } }))}>{r.active ? t("Turn off", "बंद करें") : t("Turn on", "चालू करें")}</button>
+            {r.kind === "RULE" && <button type="button" className={s.btnDanger} onClick={() => confirm(t("Delete this rule?", "ये नियम हटाएँ?")) && act(() => api({ action: "auto_delete", id: r.id }))}>✕</button>}
+          </div>
+        </div>
+      ))}
     </>
   );
 }

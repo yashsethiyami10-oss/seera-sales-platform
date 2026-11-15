@@ -90,3 +90,38 @@ describe("WhatsApp Hub rules", () => {
     expect(configProblems({ WHATSAPP_PHONE_NUMBER_ID: "1", WHATSAPP_ACCESS_TOKEN: "t", WHATSAPP_BUSINESS_ACCOUNT_ID: "w", WHATSAPP_WEBHOOK_VERIFY_TOKEN: "v", WHATSAPP_APP_SECRET: "s", SEERA_OUTBOX_DISPATCH_ENABLED: "true" } as unknown as NodeJS.ProcessEnv)).toEqual([]);
   });
 });
+
+import { normalizeReply, pickAutoReply } from "@/lib/seera-whatsapp/rules";
+import { buildInteractivePayload } from "@/lib/seera-whatsapp/meta";
+describe("WhatsApp Hub auto-reply matching", () => {
+  const rules = [
+    { id: "o", kind: "RULE", name: "order", keywords: ["ऑर्डर करना है", "ऑर्डर", "order"], active: true, priority: 10 },
+    { id: "r", kind: "RULE", name: "rate", keywords: ["रेट लिस्ट", "रेट", "rate", "price"], active: true, priority: 20 },
+    { id: "h", kind: "RULE", name: "hi", keywords: ["hi", "नमस्ते"], active: true, priority: 70 },
+    { id: "x", kind: "RULE", name: "off", keywords: ["sample"], active: false, priority: 5 },
+    { id: "f", kind: "FALLBACK", name: "fallback", keywords: [], active: true, priority: 900 },
+  ];
+  it("normalises emoji and punctuation", () => {
+    expect(normalizeReply("📦 ऑर्डर करना है!")).toBe("ऑर्डर करना है");
+    expect(normalizeReply("  Rate???  ")).toBe("rate");
+  });
+  it("matches template buttons exactly and free text by keyword", () => {
+    expect(pickAutoReply(rules, "📦 ऑर्डर करना है")?.id).toBe("o");
+    expect(pickAutoReply(rules, "📘 रेट लिस्ट")?.id).toBe("r");
+    expect(pickAutoReply(rules, "bhai rate kya hai")?.id).toBe("r");
+    expect(pickAutoReply(rules, "मुझे 5 पेटी ऑर्डर देना है")?.id).toBe("o");
+    expect(pickAutoReply(rules, "Hi")?.id).toBe("h");
+  });
+  it("short words must be whole words, off rules never match, unknown → null", () => {
+    expect(pickAutoReply(rules, "this is fine")?.id).toBeUndefined(); // 'hi' inside 'this'
+    expect(pickAutoReply(rules, "sample bhejo")).toBeNull();
+    expect(pickAutoReply(rules, "kal aana")).toBeNull();
+    expect(pickAutoReply(rules, "")).toBeNull();
+  });
+  it("builds reply buttons (max 3, 20 chars) with a PDF header", () => {
+    const p = buildInteractivePayload("91", "body", ["a", "b", "c", "d"], { type: "document", link: "https://x.in/c/Cat.pdf" });
+    expect(p.interactive.action.buttons).toHaveLength(3);
+    expect(p.interactive.header).toEqual({ type: "document", document: { link: "https://x.in/c/Cat.pdf", filename: "Cat.pdf" } });
+    expect(buildInteractivePayload("91", "b", ["123456789012345678901234"]).interactive.action.buttons[0]!.reply.title).toHaveLength(20);
+  });
+});

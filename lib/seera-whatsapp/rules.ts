@@ -197,3 +197,37 @@ export function nextRunAfter(from: Date, repeatEveryDays: number | null): Date |
   if (!repeatEveryDays || repeatEveryDays < 1) return null;
   return new Date(from.getTime() + repeatEveryDays * 86_400_000);
 }
+
+// ---- Auto-reply matching ----
+export type AutoRule = { id: string; kind: string; name: string; keywords: string[]; active: boolean; priority: number };
+
+// Lower-case, strip emoji / punctuation / Devanagari danda, collapse spaces, so "ऑर्डर करना है 👍"
+// and "ऑर्डर करना है" compare equal.
+export function normalizeReply(text: string | null | undefined): string {
+  return (text ?? "")
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, " ")
+    .replace(/[.,!?;:'"`()[\]{}|/\\\-_*~।॥]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Picks the rule for an incoming message: an exact keyword match (template buttons) wins, then
+// the first keyword contained in the message, by priority (lower = earlier). Null = use fallback.
+export function pickAutoReply<T extends AutoRule>(rules: T[], text: string | null | undefined): T | null {
+  const t = normalizeReply(text);
+  if (!t) return null;
+  const live = rules.filter((r) => r.active && r.kind === "RULE").sort((a, b) => a.priority - b.priority);
+  const words = ` ${t} `;
+  for (const r of live) if (r.keywords.some((k) => normalizeReply(k) === t)) return r;
+  for (const r of live) {
+    for (const k of r.keywords) {
+      const n = normalizeReply(k);
+      if (!n) continue;
+      // short Latin keywords ("hi", "ok") must be whole words; longer / Hindi ones may be inside text
+      if (/^[a-z0-9 ]{1,3}$/.test(n) ? words.includes(` ${n} `) : t.includes(n)) return r;
+    }
+  }
+  return null;
+}

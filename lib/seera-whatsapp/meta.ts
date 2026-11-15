@@ -151,3 +151,36 @@ export async function sendText(to: string, text: string): Promise<string> {
   });
   return r.messages?.[0]?.id ?? "";
 }
+
+// Reply buttons (max 3, title max 20 chars) — the partner taps one and the next auto-reply follows.
+export function buildInteractivePayload(to: string, body: string, buttons: string[], header?: { type: "image" | "document"; link: string; filename?: string } | null) {
+  const btns = buttons.map((b) => b.trim()).filter(Boolean).slice(0, 3);
+  const h = header ? (header.type === "image" ? { type: "image", image: { link: header.link } } : { type: "document", document: { link: header.link, filename: header.filename ?? (header.link.split("?")[0]!.split("/").pop() || "document.pdf") } }) : undefined;
+  return {
+    messaging_product: "whatsapp",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      ...(h ? { header: h } : {}),
+      body: { text: body.slice(0, 1024) },
+      action: { buttons: btns.map((title, i) => ({ type: "reply", reply: { id: `b${i + 1}`, title: title.slice(0, 20) } })) },
+    },
+  };
+}
+
+export async function sendInteractive(to: string, body: string, buttons: string[], header?: { type: "image" | "document"; link: string } | null): Promise<string> {
+  const { phoneNumberId } = waConfig();
+  if (!phoneNumberId) throw new FoundationError("WHATSAPP_NOT_CONFIGURED", "WHATSAPP_PHONE_NUMBER_ID is not set", 503);
+  const r = await graph<{ messages?: { id?: string }[] }>(`/${phoneNumberId}/messages`, { method: "POST", body: JSON.stringify(buildInteractivePayload(to, body, buttons, header)) });
+  return r.messages?.[0]?.id ?? "";
+}
+
+// An image or document with a caption (used when an auto-reply carries media but no buttons).
+export async function sendMedia(to: string, kind: "image" | "document", link: string, caption: string): Promise<string> {
+  const { phoneNumberId } = waConfig();
+  if (!phoneNumberId) throw new FoundationError("WHATSAPP_NOT_CONFIGURED", "WHATSAPP_PHONE_NUMBER_ID is not set", 503);
+  const media = kind === "image" ? { link, caption: caption.slice(0, 1024) } : { link, caption: caption.slice(0, 1024), filename: decodeURIComponent(link.split("?")[0]!.split("/").pop() || "document.pdf") };
+  const r = await graph<{ messages?: { id?: string }[] }>(`/${phoneNumberId}/messages`, { method: "POST", body: JSON.stringify({ messaging_product: "whatsapp", to, type: kind, [kind]: media }) });
+  return r.messages?.[0]?.id ?? "";
+}
