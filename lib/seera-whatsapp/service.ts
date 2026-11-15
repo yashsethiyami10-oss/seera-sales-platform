@@ -123,7 +123,8 @@ async function approvedTemplate(db: PrismaClient, name: string, language: string
 // areaKeys: area-wise sending — city keys ("rajasthan|gangapur") and/or whole states
 // ("state:uttar-pradesh"). Empty / absent = every area.
 // manualGroups: with MANUAL, only contacts in these groups (empty / absent = every manual contact).
-export type Audience = { partyTypes: PartyType[]; distributorIds?: string[]; territoryIds?: string[]; areaKeys?: string[]; manualGroups?: string[] };
+// excludeAreaKeys: send to everyone EXCEPT these cities / states (e.g. "state:uttar-pradesh").
+export type Audience = { partyTypes: PartyType[]; distributorIds?: string[]; territoryIds?: string[]; areaKeys?: string[]; excludeAreaKeys?: string[]; manualGroups?: string[] };
 
 export async function resolveAudience(db: PrismaClient, audience: Audience): Promise<Recipient[]> {
   const types = (audience.partyTypes ?? []).filter((t) => PARTY_TYPES.includes(t));
@@ -174,6 +175,36 @@ export async function resolveAudience(db: PrismaClient, audience: Audience): Pro
       out.push({ partyType: p.type as PartyType, partyId: p.id, phone, businessName: p.tradeName ?? p.legalName, ownerName: c.ownerName ?? c.name ?? null, city: area.city, state: area.state, areaKey: area.key, distributorName: null, code: p.code });
     }
   }
+  // Market Survey shops / wholesalers. A shop that refused WhatsApp contact in the survey is left out;
+  // one already linked to a retailer is covered by that retailer record (same phone, de-duplicated).
+  if (types.includes("SURVEY")) {
+    const surveys = await db.seeraMarketSurvey.findMany({
+      where: { mobile: { not: null }, consentStatus: { not: "REFUSED" } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, reference: true, shopName: true, contactName: true, mobile: true, market: true, address: true },
+    });
+    for (const sv of surveys) {
+      const phone = normalizeIndianMobile(sv.mobile);
+      if (!phone) continue;
+      const area = resolveArea({ address: { city: sv.market, line: sv.address } });
+      out.push({ partyType: "SURVEY", partyId: sv.id, phone, businessName: sv.shopName, ownerName: sv.contactName, city: area.city, state: area.state, areaKey: area.key, distributorName: null, code: sv.reference });
+    }
+  }
+  // Distributor / super-stockist / wholesaler prospects from Distributor search (not rejected).
+  if (types.includes("PROSPECT")) {
+    const prospects = await db.seeraProspect.findMany({
+      where: { status: { notIn: [...EXCLUDED_LIFECYCLES] }, approvedPartnerId: null },
+      select: { id: true, businessName: true, normalizedMobile: true, alternateMobile: true, profile: true },
+    });
+    for (const p of prospects) {
+      const phone = normalizeIndianMobile(p.normalizedMobile) ?? normalizeIndianMobile(p.alternateMobile);
+      if (!phone) continue;
+      const prof = (p.profile ?? {}) as Record<string, unknown>;
+      const owner = typeof prof.ownerName === "string" ? prof.ownerName : typeof prof.contactName === "string" ? prof.contactName : null;
+      const area = resolveArea({ address: prof });
+      out.push({ partyType: "PROSPECT", partyId: p.id, phone, businessName: p.businessName, ownerName: owner, city: area.city, state: area.state, areaKey: area.key, distributorName: null, code: null });
+    }
+  }
   // Manually added numbers last, so a number that is also a retailer / partner keeps that
   // richer record (and still gets only one message — see the de-duplication below).
   if (types.includes("MANUAL")) {
@@ -189,7 +220,10 @@ export async function resolveAudience(db: PrismaClient, audience: Audience): Pro
   }
   // Area-wise: keep only the chosen cities / whole states.
   const areaKeys = audience.areaKeys?.length ? new Set(audience.areaKeys) : null;
-  const inArea = (r: Recipient) => !areaKeys || areaKeys.has(r.areaKey ?? "") || areaKeys.has(stateKeyOf(r.state ?? null));
+  const excluded = audience.excludeAreaKeys?.length ? new Set(audience.excludeAreaKeys) : null;
+  const inArea = (r: Recipient) =>
+    (!areaKeys || areaKeys.has(r.areaKey ?? "") || areaKeys.has(stateKeyOf(r.state ?? null))) &&
+    (!excluded || !(excluded.has(r.areaKey ?? "") || excluded.has(stateKeyOf(r.state ?? null))));
   // One message per phone number: a number listed on two parties gets it once.
   const seen = new Set<string>();
   return out.filter((r) => inArea(r) && (seen.has(r.phone) ? false : (seen.add(r.phone), true)));
@@ -198,7 +232,7 @@ export async function resolveAudience(db: PrismaClient, audience: Audience): Pro
 // State → city list with counts (and opted-out counts) for the campaign's area picker.
 export async function listAreas(db: PrismaClient, actorId: string, audience: Omit<Audience, "areaKeys">) {
   await requireHub(db, actorId);
-  const recipients = await resolveAudience(db, { ...audience, areaKeys: undefined });
+  const recipients = await resolveAudience(db, { ...audience, areaKeys: undefined, excludeAreaKeys: undefined });
   const optedOut = new Set((await db.seeraWaOptOut.findMany({ where: { phone: { in: recipients.map((r) => r.phone) } }, select: { phone: true } })).map((o) => o.phone));
   return groupAreas(recipients.map((r) => ({ areaKey: r.areaKey ?? "", city: r.city, state: r.state ?? null, partyType: r.partyType, optedOut: optedOut.has(r.phone) })));
 }
@@ -538,6 +572,12 @@ export async function matchParty(db: PrismaClient, phone: string): Promise<{ par
   if (rows[0]) return { partyType: rows[0].type, partyId: rows[0].id, partyName: rows[0].name };
   const manual = await db.seeraWaContact.findFirst({ where: { phone: { endsWith: ten } }, select: { id: true, name: true, businessName: true } }).catch(() => null);
   if (manual) return { partyType: "MANUAL", partyId: manual.id, partyName: manual.businessName || manual.name || `+91${ten}` };
+  const pr = await db.seeraProspect.findFirst({ where: { OR: [{ normalizedMobile: { endsWith: ten } }, { alternateMobile: { endsWith: ten } }] }, select: { id: true, businessName: true } });
+  if (pr) return { partyType: "PROSPECT", partyId: pr.id, partyName: pr.businessName };
+  const sv = await db.$queryRaw<{ id: string; name: string }[]>`
+    SELECT id, "shopName" AS name FROM seera_market_surveys
+    WHERE right(regexp_replace(COALESCE(mobile, ''), '\\D', '', 'g'), 10) = ${ten} ORDER BY "createdAt" DESC LIMIT 1`;
+  if (sv[0]) return { partyType: "SURVEY", partyId: sv[0].id, partyName: sv[0].name };
   return null;
 }
 

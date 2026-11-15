@@ -35,10 +35,12 @@ import {
 // /api/*, and every service call re-checks notifications:manage for the caller itself.
 const partyType = z.enum(PARTY_TYPES as unknown as [string, ...string[]]);
 const audience = z.object({
-  partyTypes: z.array(partyType).min(1).max(4),
+  partyTypes: z.array(partyType).min(1).max(6),
   distributorIds: z.array(z.string().max(64)).max(200).optional(),
   // Area-wise: "state|city" keys and/or "state:<state>" for a whole state.
   areaKeys: z.array(z.string().max(160)).max(500).optional(),
+  // Everyone except these cities / states.
+  excludeAreaKeys: z.array(z.string().max(160)).max(500).optional(),
   // With MANUAL: only these contact groups ("__none__" = contacts without a group).
   manualGroups: z.array(z.string().max(60)).max(100).optional(),
 });
@@ -77,7 +79,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("phone_profile") }),
   z.object({ action: z.literal("settings"), patch: z.object({ sendEnabled: z.boolean().optional(), quietHoursEnabled: z.boolean().optional(), quietStartMinute: z.number().optional(), quietEndMinute: z.number().optional(), marketingGapDays: z.number().optional() }).strict() }),
   z.object({ action: z.literal("preview"), audience, templateName: z.string().max(512).optional(), language: z.string().max(15).optional(), variableMap: variableMap.optional() }),
-  z.object({ action: z.literal("areas"), audience: audience.omit({ areaKeys: true }) }),
+  z.object({ action: z.literal("areas"), audience: audience.omit({ areaKeys: true, excludeAreaKeys: true }) }),
   z.object({ action: z.literal("save_campaign"), id: z.string().max(64).optional(), campaign }),
   z.object({ action: z.literal("test_send"), phone: z.string().max(20), campaign }),
   z.object({ action: z.literal("schedule"), id: z.string().max(64), startAt: z.string().datetime().nullish() }),
