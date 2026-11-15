@@ -9,6 +9,7 @@ import { queueOfflineOperation, syncClientQueue, listClientQueue } from "@/lib/p
 import { captureGps, GpsBadge, type GpsStatus, type GpsPoint } from "./gps";
 import { ActionMessageBanner, type ActionMessage } from "./ErrorBanner";
 import { LocationAutofill } from "./LocationAutofill";
+import { DailyCounterReportCard } from "./DailyCounterReportCard";
 
 type BeatRetailer = {
   id: string;
@@ -1857,6 +1858,9 @@ export function FieldJourney({
   const header = (
     <>
       <DashboardHeader language={language} dashboard={dashboard} compact={Boolean(visit)} />
+      {!visit && dashboard.dayStatus !== "NOT_STARTED" && (
+        <DailyCounterReportCard language={language} distributorOptions={distributorOptions} defaultDistributorId={session?.workingDistributorId ?? null} />
+      )}
       {celebration && <CelebrationBurst title={celebration.title} line={celebration.line} onClose={() => setCelebration(null)} />}
       {reasonRequest && <ReasonDialog request={reasonRequest} language={language} onDone={() => setReasonRequest(null)} />}
     </>

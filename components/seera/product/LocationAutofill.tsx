@@ -1,22 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { captureGps } from "./gps";
+import { capturePreciseGps } from "./gps";
 
-type Place = { landmark: string | null; locality: string | null; village: string | null; town: string | null; city: string | null; district: string | null; state: string | null; pincode: string | null; formatted: string };
+type Place = { landmark: string | null; street?: string | null; locality: string | null; village: string | null; town: string | null; city: string | null; district: string | null; state: string | null; pincode: string | null; formatted: string };
 type Target = "address" | "area" | "city" | "state" | "pincode" | "district" | "landmark";
 
 const values = (p: Place): Record<Target, string> => {
+  // The settlement the shop is actually IN (city / town / village) — never a neighbouring one.
   const place = p.city ?? p.town ?? p.village ?? p.district ?? "";
-  const near = [p.landmark, p.locality].filter(Boolean).join(", ");
+  const exact = [p.landmark, p.street, p.locality].filter((v, i, all): v is string => !!v && all.indexOf(v) === i && v !== place);
   return {
     address: p.formatted,
-    area: [near, p.village && p.village !== place ? p.village : null, place].filter(Boolean).join(", "),
+    area: [...exact, place].filter(Boolean).join(", "),
     city: place,
     state: p.state ?? "",
     pincode: p.pincode ?? "",
     district: p.district ?? "",
-    landmark: p.landmark ?? p.locality ?? "",
+    landmark: p.landmark ?? p.street ?? p.locality ?? "",
   };
 };
 
@@ -30,8 +31,8 @@ export function LocationAutofill({ language, fields, auto = true }: { language: 
   const run = async (overwrite: boolean) => {
     const form = ref.current?.closest("form");
     if (!form) return;
-    setState({ busy: true, text: hi ? "लोकेशन ढूँढ रहे हैं…" : "Finding your location…" });
-    const gps = await captureGps();
+    setState({ busy: true, text: hi ? "सटीक लोकेशन ढूँढ रहे हैं… (15 सेकंड तक)" : "Finding your exact location… (up to 15 s)" });
+    const gps = await capturePreciseGps();
     if (gps.point.latitude == null || gps.point.longitude == null) {
       setState({ busy: false, text: hi ? "GPS नहीं मिला — लोकेशन चालू करके फिर कोशिश करें।" : "No GPS fix — turn location on and try again.", ok: false });
       return;
@@ -48,7 +49,16 @@ export function LocationAutofill({ language, fields, auto = true }: { language: 
           input.dispatchEvent(new Event("input", { bubbles: true }));
         }
       }
-      setState({ busy: false, text: `${hi ? "भरा गया" : "Filled"}: ${place.formatted}`, ok: true });
+      const accuracy = gps.point.accuracy != null ? Math.round(gps.point.accuracy) : null;
+      const weak = accuracy != null && accuracy > 100;
+      const accuracyText = accuracy != null ? ` (±${accuracy} m)` : "";
+      setState({
+        busy: false,
+        text: weak
+          ? `${hi ? "GPS कमज़ोर" : "Weak GPS"}${accuracyText} — ${place.formatted}. ${hi ? "खुले में जाकर फिर बटन दबाएँ या पता जाँच लें।" : "Step outside and tap again, or check the address."}`
+          : `${hi ? "भरा गया" : "Filled"}${accuracyText}: ${place.formatted}`,
+        ok: !weak,
+      });
     } catch {
       setState({ busy: false, text: hi ? "जगह का नाम नहीं मिला — हाथ से भरें।" : "Could not get the place name — please type it.", ok: false });
     }

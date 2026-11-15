@@ -14,6 +14,26 @@ describe("GPS → place details for address auto-fill", () => {
     expect(p?.formatted).toBe("Gupta General Store, Sipri Bazar, Jhansi, Uttar Pradesh – 284003");
   });
 
+  it("inside a town never shows the neighbouring village OpenStreetMap also reports", () => {
+    const p = parseNominatim({ address: { house_number: "12", road: "Station Road", village: "Pas Wala Gaon", town: "Koshiyhal", state_district: "Udaipur", state: "Rajasthan", postcode: "313001" } });
+    expect(p).toMatchObject({ street: "12 Station Road", town: "Koshiyhal", village: null });
+    expect(p?.formatted).toBe("12 Station Road, Koshiyhal, Udaipur, Rajasthan – 313001");
+    expect(p?.formatted).not.toContain("Pas Wala Gaon");
+  });
+
+  it("uses Google's exact formatted address, but not a bare plus code", () => {
+    const exact = parseGoogle({ status: "OK", results: [{ formatted_address: "Shop 4, Sadar Bazar, Koshiyhal, Rajasthan 313001, India", address_components: [
+      { long_name: "Koshiyhal", types: ["locality"] },
+      { long_name: "Rajasthan", types: ["administrative_area_level_1"] },
+    ] }] });
+    expect(exact?.formatted).toBe("Shop 4, Sadar Bazar, Koshiyhal, Rajasthan 313001");
+    const plus = parseGoogle({ status: "OK", results: [{ formatted_address: "7JQ8+2X Koshiyhal, Rajasthan, India", types: ["plus_code"], address_components: [
+      { long_name: "Koshiyhal", types: ["locality"] },
+      { long_name: "Rajasthan", types: ["administrative_area_level_1"] },
+    ] }] });
+    expect(plus?.formatted).toBe("Koshiyhal, Rajasthan");
+  });
+
   it("reads Google results when a key is configured", () => {
     const p = parseGoogle({ status: "OK", results: [{ formatted_address: "x", address_components: [
       { long_name: "Elite Chauraha", types: ["point_of_interest", "establishment"] },
