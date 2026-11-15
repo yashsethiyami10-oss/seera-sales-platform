@@ -4119,3 +4119,28 @@ model SeeraWaSettings {
 
   @@map("seera_wa_settings")
 }
+
+// WhatsApp Hub auto-replies: when a partner replies (text or a template button), the matching rule
+// answers at once inside the 24h service window. kind: RULE | FALLBACK | STOP | START | CONFIG
+// (CONFIG row = master on/off switch). buttons = up to 3 quick-reply buttons sent with the answer.
+model SeeraWaAutoReply {
+  id              String   @id @default(cuid())
+  kind            String   @default("RULE")
+  name            String
+  keywords        String[]
+  replyText       String
+  mediaType       String? // IMAGE | DOCUMENT
+  mediaUrl        String?
+  buttons         String[]
+  alertTeam       Boolean  @default(false)
+  active          Boolean  @default(true)
+  priority        Int      @default(100)
+  cooldownMinutes Int      @default(2)
+  hits            Int      @default(0)
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([kind, active, priority])
+  @@map("seera_wa_auto_replies")
+}

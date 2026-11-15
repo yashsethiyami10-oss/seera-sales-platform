@@ -28,6 +28,11 @@ import {
   syncTemplates,
   testSend,
   updateSettings,
+  listAutoReplies,
+  saveAutoReply,
+  deleteAutoReply,
+  setAutoReplyEnabled,
+  testAutoReply,
   type CampaignInput,
 } from "@/lib/seera-whatsapp/service";
 
@@ -89,6 +94,11 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reply"), phone: z.string().max(20), text: z.string().min(1).max(4000) }),
   z.object({ action: z.literal("opt_out"), phone: z.string().max(20), optOut: z.boolean(), reason: z.string().max(100).optional() }),
   z.object({ action: z.literal("opt_outs") }),
+  z.object({ action: z.literal("auto_list") }),
+  z.object({ action: z.literal("auto_toggle"), enabled: z.boolean() }),
+  z.object({ action: z.literal("auto_test"), text: z.string().max(500) }),
+  z.object({ action: z.literal("auto_delete"), id: z.string().max(64) }),
+  z.object({ action: z.literal("auto_save"), rule: z.object({ id: z.string().max(64).optional(), kind: z.string().max(12).optional(), name: z.string().max(80), keywords: z.array(z.string().max(80)).max(60), replyText: z.string().max(1000), mediaType: z.string().max(12).nullish(), mediaUrl: z.string().max(1000).nullish(), buttons: z.array(z.string().max(40)).max(3), alertTeam: z.boolean(), active: z.boolean(), priority: z.number().optional(), cooldownMinutes: z.number().optional() }) }),
   z.object({ action: z.literal("contacts"), q: z.string().max(80).optional(), group: z.string().max(60).optional() }),
   z.object({ action: z.literal("save_contact"), id: z.string().max(64).optional(), contact }),
   z.object({ action: z.literal("import_contacts"), text: z.string().min(1).max(200_000), groupName: z.string().max(60).nullish(), city: z.string().max(120).nullish(), state: z.string().max(60).nullish() }),
@@ -162,6 +172,16 @@ export async function POST(request: Request) {
         return NextResponse.json(await importContacts(prisma, id, b));
       case "delete_contacts":
         return NextResponse.json(await deleteContacts(prisma, id, b.ids));
+      case "auto_list":
+        return NextResponse.json(await listAutoReplies(prisma, id));
+      case "auto_toggle":
+        return NextResponse.json(await setAutoReplyEnabled(prisma, id, b.enabled));
+      case "auto_test":
+        return NextResponse.json({ match: await testAutoReply(prisma, id, b.text) });
+      case "auto_delete":
+        return NextResponse.json(await deleteAutoReply(prisma, id, b.id));
+      case "auto_save":
+        return NextResponse.json({ rule: await saveAutoReply(prisma, id, b.rule) });
       case "opt_outs":
         await requireHub(prisma, id);
         return NextResponse.json({ optOuts: await prisma.seeraWaOptOut.findMany({ orderBy: { createdAt: "desc" }, take: 500 }) });

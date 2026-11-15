@@ -4,11 +4,12 @@ import { effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { normalizeIndianMobile } from "@/lib/messaging/phone";
-import { fetchTemplates, MetaApiError, sendTemplate, sendText } from "./meta";
+import { fetchTemplates, MetaApiError, sendInteractive, sendMedia, sendTemplate, sendText } from "./meta";
 import { cleanCity, groupAreas, normalizeState, resolveArea, stateKeyOf } from "./areas";
 import {
   decide,
   inboundKeyword,
+  pickAutoReply,
   parseContactLines,
   isQuietTime,
   nextRunAfter,
@@ -690,6 +691,11 @@ export async function recordInbound(db: PrismaClient, message: Record<string, an
   const kw = inboundKeyword(message.type === "button" ? message.button?.text : message.type === "text" ? message.text?.body : null);
   if (kw === "STOP") await db.seeraWaOptOut.upsert({ where: { phone }, create: { phone, source: "STOP_REPLY", reason: text?.slice(0, 100) ?? "STOP" }, update: {} });
   if (kw === "START") await db.seeraWaOptOut.deleteMany({ where: { phone, source: "STOP_REPLY" } });
+  if (message.type !== "reaction") {
+    await autoReply(db, { phone, text, keyword: kw, party, profileName: contact?.profile?.name ?? null }).catch((e) =>
+      console.error("whatsapp_hub.auto_reply_failed", { error: e instanceof Error ? e.message : String(e) }),
+    );
+  }
   return true;
 }
 
@@ -697,22 +703,27 @@ export async function recordInbound(db: PrismaClient, message: Record<string, an
 export async function listThreads(db: PrismaClient, actorId: string, q?: string) {
   await requireHub(db, actorId);
   const recent = await db.seeraWaInboxMessage.findMany({ orderBy: { createdAt: "desc" }, take: 3000 });
-  const threads = new Map<string, { phone: string; name: string | null; partyType: string | null; lastText: string | null; lastAt: string; lastDirection: string; unread: number; lastInboundAt: string | null }>();
+  const threads = new Map<string, { phone: string; name: string | null; partyType: string | null; lastText: string | null; lastAt: string; lastDirection: string; unread: number; lastInboundAt: string | null; needsAttention: string | null; humanSeen: boolean }>();
   for (const m of recent) {
     let t = threads.get(m.phone);
     if (!t) {
-      t = { phone: m.phone, name: m.partyName ?? m.profileName, partyType: m.partyType, lastText: m.text, lastAt: m.createdAt.toISOString(), lastDirection: m.direction, unread: 0, lastInboundAt: null };
+      t = { phone: m.phone, name: m.partyName ?? m.profileName, partyType: m.partyType, lastText: m.text, lastAt: m.createdAt.toISOString(), lastDirection: m.direction, unread: 0, lastInboundAt: null, needsAttention: null, humanSeen: false };
       threads.set(m.phone, t);
     }
     if (!t.name) t.name = m.partyName ?? m.profileName;
     if (m.direction === "IN" && !m.isRead) t.unread++;
     if (m.direction === "IN" && !t.lastInboundAt) t.lastInboundAt = m.createdAt.toISOString();
+    // newest-first: an alerting auto-reply with no staff reply after it = the team must act
+    if (m.direction === "OUT" && m.sentById) t.humanSeen = true;
+    const raw = m.raw as { alert?: boolean; ruleName?: string } | null;
+    if (!t.humanSeen && !t.needsAttention && m.type === "auto" && raw?.alert) t.needsAttention = raw.ruleName ?? "Follow up";
   }
   const needle = q?.trim().toLowerCase();
   const optOuts = new Set((await db.seeraWaOptOut.findMany({ select: { phone: true } })).map((o) => o.phone));
   return [...threads.values()]
     .filter((t) => !needle || t.phone.includes(needle) || (t.name ?? "").toLowerCase().includes(needle))
-    .map((t) => ({ ...t, optedOut: optOuts.has(t.phone) }));
+    .map(({ humanSeen: _h, ...t }) => ({ ...t, optedOut: optOuts.has(t.phone) }))
+    .sort((a, b) => Number(!!b.needsAttention) - Number(!!a.needsAttention) || b.lastAt.localeCompare(a.lastAt));
 }
 
 export async function getThread(db: PrismaClient, actorId: string, phone: string) {
@@ -724,7 +735,7 @@ export async function getThread(db: PrismaClient, actorId: string, phone: string
   const optOut = await db.seeraWaOptOut.findUnique({ where: { phone } });
   return {
     phone,
-    messages: messages.map((m) => ({ id: m.id, direction: m.direction, text: m.text, type: m.type, at: m.createdAt.toISOString(), status: m.status })),
+    messages: messages.map((m) => ({ id: m.id, direction: m.direction, text: m.text, type: m.type, at: m.createdAt.toISOString(), status: m.status, buttons: m.type === "auto" ? ((m.raw as { buttons?: string[] } | null)?.buttons ?? []) : [], rule: m.type === "auto" ? ((m.raw as { ruleName?: string } | null)?.ruleName ?? null) : null })),
     templatesSent: campaignMsgs.map((m) => ({ template: m.templateName, status: m.status, at: (m.sentAt ?? m.createdAt).toISOString() })),
     canReply: withinServiceWindow(lastIn?.createdAt ?? null, new Date()),
     optedOut: !!optOut,
@@ -766,4 +777,122 @@ export async function overview(db: PrismaClient, actorId: string) {
     db.seeraWaTemplate.count({ where: { status: "APPROVED" } }),
   ]);
   return { last7Days: Object.fromEntries(byStatus.map((s) => [s.status, s._count._all])), unread, activeCampaigns: active, optOuts, approvedTemplates: templates };
+}
+
+// ---------------- Auto-replies ----------------
+const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.seeradetergent.in").replace(/\/$/, "").replace("://seeradetergent.in", "://www.seeradetergent.in");
+const MENU = ["📦 ऑर्डर करना है", "📘 रेट लिस्ट", "📞 कॉल कीजिए"];
+const HUMAN_QUIET_MS = 30 * 60_000; // a staff reply in the last 30 min means a person is chatting — the bot stays quiet
+
+type AutoSeed = { kind: string; name: string; keywords: string[]; replyText: string; mediaType?: string; mediaUrl?: string; buttons: string[]; alertTeam?: boolean; priority: number; cooldownMinutes?: number; active?: boolean };
+export const DEFAULT_AUTO_REPLIES: AutoSeed[] = [
+  { kind: "CONFIG", name: "Auto-reply switch", keywords: [], replyText: "-", buttons: [], priority: 0, active: true },
+  { kind: "RULE", name: "ऑर्डर", priority: 10, alertTeam: true, keywords: ["ऑर्डर करना है", "ऑर्डर पक्का", "ऑर्डर भेजना है", "स्टॉक भेजो", "स्टॉक चाहिए", "पूरी रेंज भेजो", "ऑर्डर", "माल भेजो", "order", "stock", "maal bhejo", "order karna hai"],
+    replyText: "🙏 धन्यवाद {name} जी! आपका ऑर्डर का संदेश मिल गया।\n\nकृपया बताइए:\n1️⃣ कौन सा प्रोडक्ट — सीरा जंबो ब्लू / सीरा व्हाइट / पाउडर\n2️⃣ कितने बॉक्स\n\nहमारी टीम आज ही आपसे संपर्क करके आपके डिस्ट्रीब्यूटर से माल पहुँचवाएगी 🚚", buttons: ["📘 रेट लिस्ट", "📞 कॉल कीजिए"] },
+  { kind: "RULE", name: "रेट लिस्ट / कैटलॉग", priority: 20, keywords: ["रेट लिस्ट", "रेट लिस्ट चाहिए", "रेट बताओ", "रेट", "दाम", "कीमत", "कैटलॉग", "ज़्यादा जानकारी", "जानकारी", "rate", "price", "rate list", "catalogue", "catalog", "details", "kitne ka hai"],
+    replyText: "📘 ये रहा सीरा · MUV प्रोडक्ट कैटलॉग 2026।\nआख़िरी पेज पर पूरी रेट लिस्ट और ऑर्डर फ़ॉर्म है — क्वांटिटी लिखिए, फ़ोटो खींचिए और भेज दीजिए।\n\nसीरा जंबो ब्लू 180 g · सीरा व्हाइट 160 g · आत्मनिर्भर पाउडर 120 g — सिर्फ़ ₹10 💪",
+    mediaType: "DOCUMENT", mediaUrl: `${SITE}/whatsapp/Seera_MUV_Catalogue_2026.pdf`, buttons: ["📦 ऑर्डर करना है", "📞 कॉल कीजिए"] },
+  { kind: "RULE", name: "सैंपल", priority: 30, alertTeam: true, keywords: ["सैंपल चाहिए", "सैंपल", "ट्रायल", "sample", "trial"],
+    replyText: "बिल्कुल {name} जी! 👍\nसैंपल के लिए अपनी दुकान का नाम और पता भेजिए — या 📍 लोकेशन शेयर कर दीजिए। हमारा प्रतिनिधि जल्द आपकी दुकान पर पहुँचेगा।", buttons: ["📦 ऑर्डर करना है", "📘 रेट लिस्ट"] },
+  { kind: "RULE", name: "कॉल", priority: 40, alertTeam: true, keywords: ["कॉल कीजिए", "कॉल करो", "बात करनी है", "फ़ोन करो", "कॉल", "call", "call me", "phone", "baat karni hai"],
+    replyText: "📞 ज़रूर {name} जी! हमारी टीम जल्द ही इसी नंबर पर आपको कॉल करेगी (सुबह 9 से शाम 7 बजे)।\nकिसी और नंबर पर बात करनी हो तो वो नंबर यहीं भेज दीजिए।", buttons: [] },
+  { kind: "RULE", name: "शिकायत / सवाल", priority: 50, alertTeam: true, keywords: ["शिकायत बतानी है", "शिकायत", "सवाल पूछना है", "सुझाव देना है", "समस्या", "ख़राब", "खराब", "complaint", "problem", "kharab", "issue"],
+    replyText: "🙏 {name} जी, हम सुन रहे हैं।\nअपनी बात विस्तार से लिखिए, और हो सके तो पैक या बिल की फ़ोटो 📸 भेजिए। फ़ाउंडर टीम ख़ुद देखकर 24 घंटे के अंदर जवाब देगी।", buttons: [] },
+  { kind: "RULE", name: "धन्यवाद / हाँ", priority: 60, keywords: ["स्वागत है", "समझ गया", "भरोसा है", "मंज़ूर है", "साथ हैं", "अच्छा है", "धन्यवाद", "शुक्रिया", "बढ़िया", "हाँ", "ठीक है", "thanks", "thank you", "ok", "okay", "nice", "good", "badhiya", "haan", "theek hai"],
+    replyText: "🙏 बहुत-बहुत धन्यवाद {name} जी! सीरा परिवार हमेशा आपके साथ है।\nकुछ भी चाहिए तो नीचे दबाइए 👇", buttons: MENU },
+  { kind: "RULE", name: "नमस्ते", priority: 70, keywords: ["नमस्ते", "नमस्कार", "राम राम", "जय श्री राम", "hi", "hello", "hey", "namaste", "namaskar", "ram ram", "hii"],
+    replyText: "🙏 नमस्ते {name} जी! सीरा — सर्व शक्तिमान में आपका स्वागत है।\nबताइए, हम आपकी क्या मदद करें? 👇", buttons: MENU },
+  { kind: "FALLBACK", name: "बाक़ी हर संदेश", priority: 900, cooldownMinutes: 720, keywords: [],
+    replyText: "🙏 धन्यवाद {name} जी, आपका संदेश मिल गया। हमारी टीम जल्द ही जवाब देगी।\nतब तक नीचे से चुनिए 👇", buttons: MENU },
+  { kind: "STOP", name: "STOP की पुष्टि", priority: 1, keywords: [], replyText: "✅ ठीक है, अब आपको सीरा के ऑफ़र वाले मैसेज नहीं भेजे जाएँगे।\nदोबारा शुरू करने के लिए START लिखें।", buttons: [] },
+  { kind: "START", name: "START की पुष्टि", priority: 2, keywords: [], replyText: "🎉 स्वागत है {name} जी! अब आपको सीरा के ऑफ़र और जानकारी फिर से मिलती रहेगी।", buttons: [] },
+];
+
+async function loadAutoReplies(db: PrismaClient) {
+  let rows = await db.seeraWaAutoReply.findMany({ orderBy: [{ kind: "asc" }, { priority: "asc" }] });
+  if (!rows.length) {
+    await db.seeraWaAutoReply.createMany({ data: DEFAULT_AUTO_REPLIES.map((r) => ({ ...r, cooldownMinutes: r.cooldownMinutes ?? 2, active: r.active ?? true, alertTeam: r.alertTeam ?? false })) });
+    rows = await db.seeraWaAutoReply.findMany({ orderBy: [{ kind: "asc" }, { priority: "asc" }] });
+  }
+  return rows;
+}
+
+const fillName = (t: string, name: string | null) => t.replace(/\{name\}/g, (name ?? "").trim() || "भाई").replace(/\s+जी/g, (m) => m);
+
+type InboundCtx = { phone: string; text: string | null; keyword: "STOP" | "START" | null; party: { partyType: string; partyId: string; partyName: string } | null; profileName: string | null };
+
+// Answers one incoming message. Returns the rule used, or a reason it stayed quiet.
+export async function autoReply(db: PrismaClient, ctx: InboundCtx, now = new Date()): Promise<{ sent: boolean; rule?: string; reason?: string }> {
+  const rows = await loadAutoReplies(db);
+  const cfg = rows.find((r) => r.kind === "CONFIG");
+  if (cfg && !cfg.active) return { sent: false, reason: "AUTO_REPLY_OFF" };
+  const human = await db.seeraWaInboxMessage.findFirst({ where: { phone: ctx.phone, direction: "OUT", sentById: { not: null }, createdAt: { gte: new Date(now.getTime() - HUMAN_QUIET_MS) } }, select: { id: true } });
+  if (human) return { sent: false, reason: "TEAM_IS_CHATTING" };
+  let rule = ctx.keyword ? rows.find((r) => r.kind === ctx.keyword && r.active) : null;
+  if (!ctx.keyword) rule = pickAutoReply(rows, ctx.text) ?? rows.find((r) => r.kind === "FALLBACK" && r.active) ?? null;
+  if (!rule) return { sent: false, reason: "NO_RULE" };
+  const last = await db.seeraWaInboxMessage.findFirst({ where: { phone: ctx.phone, direction: "OUT", type: "auto", createdAt: { gte: new Date(now.getTime() - rule.cooldownMinutes * 60_000) } }, orderBy: { createdAt: "desc" }, select: { raw: true } });
+  if (last && (last.raw as { ruleId?: string } | null)?.ruleId === rule.id) return { sent: false, rule: rule.name, reason: "COOLDOWN" };
+  const name = ctx.party?.partyName ?? ctx.profileName;
+  const body = fillName(rule.replyText, ctx.profileName ?? ctx.party?.partyName ?? null);
+  const media = rule.mediaUrl && rule.mediaType ? { type: (rule.mediaType === "IMAGE" ? "image" : "document") as "image" | "document", link: rule.mediaUrl } : null;
+  const id = rule.buttons.length ? await sendInteractive(ctx.phone, body, rule.buttons, media) : media ? await sendMedia(ctx.phone, media.type, media.link, body) : await sendText(ctx.phone, body.slice(0, 4000));
+  await db.seeraWaInboxMessage.create({
+    data: {
+      direction: "OUT", waMessageId: id || null, phone: ctx.phone, type: "auto", text: body.slice(0, 4000), isRead: true, status: "SENT",
+      partyType: ctx.party?.partyType ?? null, partyId: ctx.party?.partyId ?? null, partyName: name ?? null,
+      raw: { ruleId: rule.id, ruleName: rule.name, alert: rule.alertTeam, buttons: rule.buttons, media: rule.mediaUrl } as Prisma.InputJsonValue,
+    },
+  });
+  await db.seeraWaAutoReply.update({ where: { id: rule.id }, data: { hits: { increment: 1 } } });
+  return { sent: true, rule: rule.name };
+}
+
+export async function listAutoReplies(db: PrismaClient, actorId: string) {
+  await requireHub(db, actorId);
+  const rows = await loadAutoReplies(db);
+  const order: Record<string, number> = { RULE: 0, FALLBACK: 1, STOP: 2, START: 3 };
+  return { enabled: rows.find((r) => r.kind === "CONFIG")?.active ?? true, rules: rows.filter((r) => r.kind !== "CONFIG").sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || a.priority - b.priority) };
+}
+
+export type AutoReplyInput = { id?: string; kind?: string; name: string; keywords: string[]; replyText: string; mediaType?: string | null; mediaUrl?: string | null; buttons: string[]; alertTeam: boolean; active: boolean; priority?: number; cooldownMinutes?: number };
+export async function saveAutoReply(db: PrismaClient, actorId: string, input: AutoReplyInput) {
+  await requireHub(db, actorId);
+  if (!input.replyText.trim()) throw new FoundationError("WA_AUTO_EMPTY", "Write the reply text", 400);
+  if (input.buttons.filter(Boolean).length > 3) throw new FoundationError("WA_AUTO_BUTTONS", "At most 3 buttons", 400);
+  if (input.buttons.some((b) => b.trim().length > 20)) throw new FoundationError("WA_AUTO_BUTTON_LONG", "Each button can have at most 20 characters", 400);
+  if (input.mediaUrl && !/^https:\/\/\S+$/.test(input.mediaUrl)) throw new FoundationError("WA_AUTO_MEDIA", "Attachment must be a public https link", 400);
+  const kind = input.kind && ["RULE", "FALLBACK", "STOP", "START"].includes(input.kind) ? input.kind : "RULE";
+  if (kind === "RULE" && !input.keywords.some((k) => k.trim())) throw new FoundationError("WA_AUTO_KEYWORDS", "Add at least one word or button text to match", 400);
+  const data = {
+    kind, name: input.name.trim().slice(0, 80) || "Rule", keywords: input.keywords.map((k) => k.trim()).filter(Boolean).slice(0, 60), replyText: input.replyText.trim().slice(0, 1000),
+    mediaType: input.mediaUrl ? (input.mediaType === "IMAGE" ? "IMAGE" : "DOCUMENT") : null, mediaUrl: input.mediaUrl?.trim() || null,
+    buttons: input.buttons.map((b) => b.trim()).filter(Boolean).slice(0, 3), alertTeam: input.alertTeam, active: input.active,
+    priority: Math.max(1, Math.min(999, Math.round(input.priority ?? 100))), cooldownMinutes: Math.max(0, Math.min(10080, Math.round(input.cooldownMinutes ?? (kind === "FALLBACK" ? 720 : 2)))), updatedById: actorId,
+  };
+  const row = input.id ? await db.seeraWaAutoReply.update({ where: { id: input.id }, data }) : await db.seeraWaAutoReply.create({ data });
+  await recordAudit(db, { actorId, action: input.id ? "whatsapp_hub.auto_reply_updated" : "whatsapp_hub.auto_reply_created", entityType: "SeeraWaAutoReply", entityId: row.id });
+  return row;
+}
+export async function deleteAutoReply(db: PrismaClient, actorId: string, id: string) {
+  await requireHub(db, actorId);
+  const r = await db.seeraWaAutoReply.findUnique({ where: { id } });
+  if (!r || r.kind !== "RULE") throw new FoundationError("WA_AUTO_KEEP", "Only your own rules can be deleted — turn the built-in ones off instead", 400);
+  await db.seeraWaAutoReply.delete({ where: { id } });
+  return { ok: true };
+}
+export async function setAutoReplyEnabled(db: PrismaClient, actorId: string, enabled: boolean) {
+  await requireHub(db, actorId);
+  await loadAutoReplies(db);
+  await db.seeraWaAutoReply.updateMany({ where: { kind: "CONFIG" }, data: { active: enabled, updatedById: actorId } });
+  await recordAudit(db, { actorId, action: enabled ? "whatsapp_hub.auto_reply_on" : "whatsapp_hub.auto_reply_off", entityType: "SeeraWaAutoReply" });
+  return { enabled };
+}
+// "If a partner writes this, what goes back?" — no message is sent.
+export async function testAutoReply(db: PrismaClient, actorId: string, text: string) {
+  await requireHub(db, actorId);
+  const rows = await loadAutoReplies(db);
+  const kw = inboundKeyword(text);
+  const rule = kw ? rows.find((r) => r.kind === kw) : pickAutoReply(rows, text) ?? rows.find((r) => r.kind === "FALLBACK");
+  return rule ? { rule: rule.name, kind: rule.kind, reply: fillName(rule.replyText, "रमेश"), buttons: rule.buttons, mediaUrl: rule.mediaUrl, active: rule.active } : null;
 }
