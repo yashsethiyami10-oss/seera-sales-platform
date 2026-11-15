@@ -55,13 +55,13 @@ jobs:
         # from a fresh one, even after unzipping, with no change to what actually gets built.
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          mv android/app/build/outputs/apk/debug/app-debug.apk "android/app/build/outputs/apk/debug/seera-uat-v1.0.2-${SHORT_SHA}.apk"
-          echo "APK_NAME=seera-uat-v1.0.2-${SHORT_SHA}.apk" >> "$GITHUB_ENV"
+          mv android/app/build/outputs/apk/debug/app-debug.apk "android/app/build/outputs/apk/debug/seera-uat-v1.0.3-${SHORT_SHA}.apk"
+          echo "APK_NAME=seera-uat-v1.0.3-${SHORT_SHA}.apk" >> "$GITHUB_ENV"
           echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
 
       - name: Upload UAT APK
         uses: actions/upload-artifact@v4
         with:
-          name: seera-android-uat-v1.0.2-${{ env.SHORT_SHA }}
+          name: seera-android-uat-v1.0.3-${{ env.SHORT_SHA }}
           path: android/app/build/outputs/apk/debug/${{ env.APK_NAME }}
           if-no-files-found: error

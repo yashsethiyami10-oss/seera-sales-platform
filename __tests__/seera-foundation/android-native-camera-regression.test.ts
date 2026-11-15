@@ -29,8 +29,8 @@ describe("Android native camera regression", () => {
   });
 
   it("bumps the Android build version for the native camera fix", () => {
-    expect(gradle).toContain("versionCode 3");
-    expect(gradle).toContain('versionName "1.0.2"');
+    expect(gradle).toContain("versionCode 4");
+    expect(gradle).toContain('versionName "1.0.3"');
   });
 });
 
