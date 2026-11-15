@@ -2,8 +2,9 @@
 // send policy and STOP/START keywords. No database or network here, so every rule is unit-tested.
 
 // MANUAL = numbers added by hand in the Hub's Contacts tab (SeeraWaContact).
-export type PartyType = "RETAILER" | "DISTRIBUTOR" | "SUPER_STOCKIST" | "MANUAL";
-export const PARTY_TYPES: readonly PartyType[] = ["RETAILER", "DISTRIBUTOR", "SUPER_STOCKIST", "MANUAL"];
+// SURVEY = shops / wholesalers captured in Market Survey; PROSPECT = Distributor-search prospects.
+export type PartyType = "RETAILER" | "DISTRIBUTOR" | "SUPER_STOCKIST" | "SURVEY" | "PROSPECT" | "MANUAL";
+export const PARTY_TYPES: readonly PartyType[] = ["RETAILER", "DISTRIBUTOR", "SUPER_STOCKIST", "SURVEY", "PROSPECT", "MANUAL"];
 
 // Bulk paste for manual contacts: one contact per line, comma / tab / "|" separated:
 //   number, name, shop, city, state     (everything after the number is optional)

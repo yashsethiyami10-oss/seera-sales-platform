@@ -10,7 +10,7 @@ import s from "./WhatsAppHub.module.css";
 
 type Template = { name: string; language: string; status: string; category: string | null; headerFormat: string | null; bodyText: string | null; variableNames: string[]; syncedAt: string };
 type Campaign = {
-  id: string; name: string; templateName: string; language: string; category: string | null; audience: { partyTypes: string[]; distributorIds?: string[]; areaKeys?: string[]; manualGroups?: string[] };
+  id: string; name: string; templateName: string; language: string; category: string | null; audience: { partyTypes: string[]; distributorIds?: string[]; areaKeys?: string[]; excludeAreaKeys?: string[]; manualGroups?: string[] };
   variableMap: VariableMapping[]; headerMediaUrl: string | null; status: string; repeatEveryDays: number | null; nextRunAt: string | null; lastRunAt: string | null; runCount: number;
   lastRunSummary: { audience?: number; queued?: number; skipped?: number; error?: string } | null; stats: Record<string, number>;
 };
@@ -31,7 +31,8 @@ async function api<T>(body: unknown): Promise<T> {
   return d as T;
 }
 
-const PARTY = { RETAILER: ["Retailers", "रिटेलर"], DISTRIBUTOR: ["Distributors", "डिस्ट्रीब्यूटर"], SUPER_STOCKIST: ["Super stockists", "सुपर स्टॉकिस्ट"], MANUAL: ["Numbers I added", "खुद जोड़े नंबर"] } as const;
+const PARTY = { RETAILER: ["Retailers", "रिटेलर"], DISTRIBUTOR: ["Distributors", "डिस्ट्रीब्यूटर"], SUPER_STOCKIST: ["Super stockists", "सुपर स्टॉकिस्ट"], SURVEY: ["Survey shops / wholesalers", "सर्वे की दुकानें / होलसेलर"], PROSPECT: ["Distributor prospects", "डिस्ट्रीब्यूटर प्रॉस्पेक्ट"], MANUAL: ["Numbers I added", "खुद जोड़े नंबर"] } as const;
+const ALL_PARTIES = Object.keys(PARTY);
 const NO_GROUP = "__none__";
 const groupLabel = (g: string, t: T) => (g === NO_GROUP ? t("No group", "बिना ग्रुप") : g);
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -136,7 +137,7 @@ function Overview({ boot, t, busy, run, goto }: { boot: Boot; t: T; busy: boolea
   );
 }
 
-const emptyForm = { id: undefined as string | undefined, name: "", templateKey: "", partyTypes: ["RETAILER"] as string[], distributorIds: [] as string[], areaKeys: [] as string[], manualGroups: [] as string[], variableMap: [] as VariableMapping[], headerMediaUrl: "", repeat: true, repeatEveryDays: 4, startAt: "" };
+const emptyForm = { id: undefined as string | undefined, name: "", templateKey: "", partyTypes: [...ALL_PARTIES] as string[], distributorIds: [] as string[], areaKeys: [] as string[], areaMode: "include" as "include" | "exclude", manualGroups: [] as string[], variableMap: [] as VariableMapping[], headerMediaUrl: "", repeat: true, repeatEveryDays: 4, startAt: "" };
 
 function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t: T; hi: boolean; busy: boolean; run: Run; seed?: { manualGroups: string[] } | null; onSeedUsed?: () => void }) {
   const [form, setForm] = useState<typeof emptyForm | null>(seed ? { ...emptyForm, partyTypes: ["MANUAL"], manualGroups: seed.manualGroups } : null);
@@ -152,7 +153,7 @@ function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t
     const [templateName, language] = (form!.templateKey || "|").split("|");
     return {
       name: form!.name, templateName: templateName!, language: language!,
-      audience: { partyTypes: form!.partyTypes, ...(form!.distributorIds.length ? { distributorIds: form!.distributorIds } : {}), ...(form!.areaKeys.length ? { areaKeys: form!.areaKeys } : {}), ...(form!.partyTypes.includes("MANUAL") && form!.manualGroups.length ? { manualGroups: form!.manualGroups } : {}) },
+      audience: { partyTypes: form!.partyTypes, ...(form!.distributorIds.length ? { distributorIds: form!.distributorIds } : {}), ...(form!.areaKeys.length ? (form!.areaMode === "exclude" ? { excludeAreaKeys: form!.areaKeys } : { areaKeys: form!.areaKeys }) : {}), ...(form!.partyTypes.includes("MANUAL") && form!.manualGroups.length ? { manualGroups: form!.manualGroups } : {}) },
       variableMap: form!.variableMap, headerMediaUrl: form!.headerMediaUrl || null, repeatEveryDays: form!.repeat ? form!.repeatEveryDays : null,
     };
   };
@@ -163,7 +164,7 @@ function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t
     const h = setTimeout(() => { api<typeof preview>({ action: "preview", audience: p.audience, templateName: tpl?.name, language: tpl?.language, variableMap: form.variableMap }).then(setPreview).catch(() => setPreview(null)); }, 400);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form?.partyTypes.join(), form?.distributorIds.join(), form?.areaKeys.join(), form?.manualGroups.join(), form?.templateKey, JSON.stringify(form?.variableMap)]);
+  }, [form?.partyTypes.join(), form?.distributorIds.join(), form?.areaKeys.join(), form?.areaMode, form?.manualGroups.join(), form?.templateKey, JSON.stringify(form?.variableMap)]);
 
   // State → city list for the area picker (counts follow the chosen party types / distributors).
   useEffect(() => {
@@ -204,7 +205,7 @@ function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t
         </select>
       </label>
       <div className={s.field}>{t("Send to", "किसे भेजें")}
-        <div className={s.chips}>{(Object.keys(PARTY) as (keyof typeof PARTY)[]).map((k) => {
+        <div className={s.chips}><button type="button" className={`${s.chip} ${form.partyTypes.length === ALL_PARTIES.length ? s.chipOn : ""}`} onClick={() => setForm({ ...form, partyTypes: form.partyTypes.length === ALL_PARTIES.length ? [] : [...ALL_PARTIES] })}>{form.partyTypes.length === ALL_PARTIES.length ? "✓ " : ""}{t("Everyone", "सबको")}</button>{(Object.keys(PARTY) as (keyof typeof PARTY)[]).map((k) => {
           const on = form.partyTypes.includes(k);
           return <button key={k} type="button" className={`${s.chip} ${on ? s.chipOn : ""}`} onClick={() => setForm({ ...form, partyTypes: on ? form.partyTypes.filter((x) => x !== k) : [...form.partyTypes, k] })}>{on ? "✓ " : ""}{PARTY[k][hi ? 1 : 0]}</button>;
         })}</div>
@@ -226,7 +227,13 @@ function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t
           )}
         </div>
       )}
-      {form.partyTypes.length > 0 && <AreaPicker areas={areas} selected={form.areaKeys} onChange={(areaKeys) => setForm({ ...form, areaKeys })} t={t} />}
+      {form.partyTypes.length > 0 && (
+        <div className={s.chips}>
+          <button type="button" className={`${s.chip} ${form.areaMode === "include" ? s.chipOn : ""}`} onClick={() => setForm({ ...form, areaMode: "include" })}>{form.areaMode === "include" ? "✓ " : ""}{t("Only the areas I tick", "सिर्फ़ चुने इलाकों को")}</button>
+          <button type="button" className={`${s.chip} ${form.areaMode === "exclude" ? s.chipOn : ""}`} onClick={() => setForm({ ...form, areaMode: "exclude" })}>{form.areaMode === "exclude" ? "✓ " : ""}{t("Everyone except the areas I tick", "चुने इलाकों को छोड़कर सबको")}</button>
+        </div>
+      )}
+      {form.partyTypes.length > 0 && <AreaPicker areas={areas} selected={form.areaKeys} exclude={form.areaMode === "exclude"} onChange={(areaKeys) => setForm({ ...form, areaKeys })} t={t} />}
       {preview && <div className={s.ok}>👥 <b>{preview.total - preview.optedOut}</b> {t("will receive it", "को जाएगा")} {Object.entries(preview.byType).map(([k, v]) => `· ${PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k} ${v}`).join(" ")}{preview.optedOut ? ` · ${preview.optedOut} ${t("opted out (skipped)", "STOP किए (छोड़े जाएँगे)")}` : ""}
         {preview.byArea && Object.keys(preview.byArea).length > 1 && <div className={s.muted} style={{ marginTop: 4 }}>📍 {Object.entries(preview.byArea).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => `${k} ${v}`).join(" · ")}{Object.keys(preview.byArea).length > 12 ? " …" : ""}</div>}</div>}
       {tpl && tpl.variableNames.map((v, i) => {
@@ -276,7 +283,7 @@ function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t
         return (
           <div key={c.id} className={s.card}>
             <div className={s.row} style={{ justifyContent: "space-between" }}>
-              <div><h3>{c.name}</h3><div className={s.muted}>{c.templateName} · {c.audience.partyTypes.map((k) => PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k).join(", ")}{c.audience.areaKeys?.length ? ` · 📍 ${t(`${c.audience.areaKeys.length} area(s)`, `${c.audience.areaKeys.length} इलाके`)}` : ` · 📍 ${t("all areas", "सभी इलाके")}`}{c.repeatEveryDays ? ` · 🔁 ${t(`every ${c.repeatEveryDays} days`, `हर ${c.repeatEveryDays} दिन`)}` : ""}</div></div>
+              <div><h3>{c.name}</h3><div className={s.muted}>{c.templateName} · {c.audience.partyTypes.map((k) => PARTY[k as keyof typeof PARTY]?.[hi ? 1 : 0] ?? k).join(", ")}{c.audience.areaKeys?.length ? ` · 📍 ${t(`${c.audience.areaKeys.length} area(s)`, `${c.audience.areaKeys.length} इलाके`)}` : c.audience.excludeAreaKeys?.length ? ` · 📍 ${t(`all except ${c.audience.excludeAreaKeys.length} area(s)`, `${c.audience.excludeAreaKeys.length} इलाके छोड़कर सब`)}` : ` · 📍 ${t("all areas", "सभी इलाके")}`}{c.repeatEveryDays ? ` · 🔁 ${t(`every ${c.repeatEveryDays} days`, `हर ${c.repeatEveryDays} दिन`)}` : ""}</div></div>
               <span className={`${s.pill} ${pill(c.status)}`}>{c.status}</span>
             </div>
             <div className={s.muted}>{t("Runs", "बार चला")}: {c.runCount} · {t("Last", "पिछला")}: {fmt(c.lastRunAt)} · {t("Next", "अगला")}: {fmt(c.nextRunAt)}</div>
@@ -291,7 +298,7 @@ function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t
             {c.lastRunSummary?.error && <div className={s.err}>{c.lastRunSummary.error}</div>}
             <div className={s.row}>
               {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btn} disabled={busy} onClick={() => run(() => api({ action: "schedule", id: c.id }), t("Started ✓", "शुरू हुआ ✓"))}>▶ {c.status === "PAUSED" ? t("Resume", "फिर चालू") : t("Start now", "अभी शुरू")}</button>}
-              {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btnGhost} onClick={() => setForm({ ...emptyForm, id: c.id, name: c.name, templateKey: `${c.templateName}|${c.language}`, partyTypes: c.audience.partyTypes, distributorIds: c.audience.distributorIds ?? [], areaKeys: c.audience.areaKeys ?? [], manualGroups: c.audience.manualGroups ?? [], variableMap: c.variableMap ?? [], headerMediaUrl: c.headerMediaUrl ?? "", repeat: !!c.repeatEveryDays, repeatEveryDays: c.repeatEveryDays ?? 7 })}>✎ {t("Edit", "बदलें")}</button>}
+              {["DRAFT", "PAUSED"].includes(c.status) && <button type="button" className={s.btnGhost} onClick={() => setForm({ ...emptyForm, id: c.id, name: c.name, templateKey: `${c.templateName}|${c.language}`, partyTypes: c.audience.partyTypes, distributorIds: c.audience.distributorIds ?? [], areaKeys: c.audience.areaKeys ?? c.audience.excludeAreaKeys ?? [], areaMode: c.audience.excludeAreaKeys?.length ? "exclude" : "include", manualGroups: c.audience.manualGroups ?? [], variableMap: c.variableMap ?? [], headerMediaUrl: c.headerMediaUrl ?? "", repeat: !!c.repeatEveryDays, repeatEveryDays: c.repeatEveryDays ?? 7 })}>✎ {t("Edit", "बदलें")}</button>}
               {c.status === "SCHEDULED" && <button type="button" className={s.btnGhost} disabled={busy} onClick={() => run(() => api({ action: "campaign_state", id: c.id, state: "PAUSE" }), t("Paused", "रोका गया"))}>⏸ {t("Pause", "रोकें")}</button>}
               {!["CANCELLED", "COMPLETED"].includes(c.status) && <button type="button" className={s.btnDanger} disabled={busy} onClick={() => confirm(t("Cancel this campaign? Messages not yet sent will be dropped.", "यह कैंपेन रद्द करें? जो मैसेज नहीं गए वो नहीं जाएँगे।")) && run(() => api({ action: "campaign_state", id: c.id, state: "CANCEL" }), t("Cancelled", "रद्द हुआ"))}>✕ {t("Cancel", "रद्द करें")}</button>}
             </div>
@@ -303,7 +310,7 @@ function Campaigns({ boot, t, hi, busy, run, seed, onSeedUsed }: { boot: Boot; t
 }
 
 // Area-wise audience: tick whole states or single cities. Nothing ticked = every area.
-function AreaPicker({ areas, selected, onChange, t }: { areas: AreaGroup[] | null; selected: string[]; onChange: (keys: string[]) => void; t: T }) {
+function AreaPicker({ areas, selected, exclude = false, onChange, t }: { areas: AreaGroup[] | null; selected: string[]; exclude?: boolean; onChange: (keys: string[]) => void; t: T }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
   if (!areas) return <div className={s.muted}>📍 {t("Loading areas…", "इलाके लोड हो रहे हैं…")}</div>;
@@ -320,8 +327,8 @@ function AreaPicker({ areas, selected, onChange, t }: { areas: AreaGroup[] | nul
   return (
     <div className={s.card} style={{ background: "#f8fafc" }}>
       <div className={s.row} style={{ justifyContent: "space-between" }}>
-        <b>📍 {t("Area-wise — which cities?", "इलाके के हिसाब से — कौन से शहर?")}</b>
-        <button type="button" className={`${s.chip} ${selected.length === 0 ? s.chipOn : ""}`} onClick={() => onChange([])}>{selected.length === 0 ? "✓ " : ""}{t(`All areas (${total})`, `सभी इलाके (${total})`)}</button>
+        <b>📍 {exclude ? t("Which areas should NOT get it?", "किन इलाकों को नहीं भेजना?") : t("Area-wise — which cities?", "इलाके के हिसाब से — कौन से शहर?")}</b>
+        <button type="button" className={`${s.chip} ${selected.length === 0 ? s.chipOn : ""}`} onClick={() => onChange([])}>{selected.length === 0 ? "✓ " : ""}{exclude ? t("Skip none", "कोई नहीं छोड़ना") : t(`All areas (${total})`, `सभी इलाके (${total})`)}</button>
       </div>
       <div className={s.muted}>{t("Tick a whole state or single cities. Every message still carries that shop's own city name.", "पूरा राज्य या अलग-अलग शहर चुनें। हर मैसेज में उस दुकान का अपना शहर ही जाएगा।")}</div>
       {areas.length > 3 || areas.some((g) => g.cities.length > 8) ? <input className={s.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search city…", "शहर खोजें…")} /> : null}
