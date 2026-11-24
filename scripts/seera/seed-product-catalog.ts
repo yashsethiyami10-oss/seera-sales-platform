@@ -68,6 +68,7 @@ const SEERA_PRODUCTS: Array<{ name: string; packSize: number; unitType: string; 
   { name: "Shine Plus Detergent Powder 5 kg", packSize: 5, unitType: "kg", code: "SEERA-SHINEPLUS-POWDER-5KG" },
   { name: "Seera Bartan Tub 300 g", packSize: 300, unitType: "g", code: "SEERA-BARTAN-300G" },
   { name: "Seera Bartan Tub 500 g", packSize: 500, unitType: "g", code: "SEERA-BARTAN-500G" },
+  { name: "Aatmanirbhar Detergent Powder ₹10 (135 g)", packSize: 135, unitType: "g", code: "SEERA-AATMANIRBHAR-POWDER-10" },
 ];
 
 function parsePackSize(raw: string): { value: number; unit: string } {

@@ -54,10 +54,13 @@ const SEERA_RATES: Array<{ code: string; packSize: number; unitType: string; uni
   { code: "SEERA-SHINEPLUS-POWDER-5KG", packSize: 5, unitType: "kg", unitsPerCase: 6, rate: 1380 },
   { code: "SEERA-BARTAN-300G", packSize: 300, unitType: "g", unitsPerCase: 36, rate: 540 },
   { code: "SEERA-BARTAN-500G", packSize: 500, unitType: "g", unitsPerCase: 24, rate: 504 },
+  // Founder 2026-11-24: ₹10 MRP powder, 135 g, 50 pcs / Bag at ₹310 per Bag (S.S. rate list).
+  { code: "SEERA-AATMANIRBHAR-POWDER-10", packSize: 135, unitType: "g", unitsPerCase: 50, rate: 310 },
 ];
 
 const SEERA_SCHEMES: Array<{ code: string; name: string; freeQuantity: number }> = [
-  { code: "SEERA-CAKE-BLUE", name: "1 pc Free per Box", freeQuantity: 1 },
+  // Founder 2026-11-24: Jumbo Blue scheme = 3 pcs Aatmanirbhar ₹10 powder (135 g) free per Box.
+  { code: "SEERA-CAKE-BLUE", name: "3 pcs Aatmanirbhar ₹10 Powder (135 g) Free per Box", freeQuantity: 3 },
   { code: "SEERA-CAKE-WHITE", name: "1 pc Free per Box", freeQuantity: 1 },
   { code: "SEERA-YUVA-CAKE-BLUE", name: "2 pcs Free per Box", freeQuantity: 2 },
 ];
