@@ -56,6 +56,7 @@ export function FounderHomeToday({ language, home, portal }: { language: "EN" | 
         <Link href={`/portal/${portal}/money-desk?open=in`} className={styles.actionPrimary}>{hi ? "+ पैसा प्राप्त" : "+ MONEY IN"}</Link>
         <Link href={`/portal/${portal}/money-desk?open=out`} className={styles.actionSecondary}>{hi ? "− पैसा गया" : "− MONEY OUT"}</Link>
         <Link href={`/portal/${portal}/finance-os?open=invoice`} className={styles.actionSecondary}>{hi ? "+ चालान बनाएं" : "+ CREATE INVOICE"}</Link>
+        <Link href={`/portal/${portal}/finance-os?open=quotation`} className={styles.actionSecondary}>{hi ? "+ कोटेशन बनाएं" : "+ CREATE QUOTATION"}</Link>
       </div>
       <div className={styles.grid}>
         {cards.map((c) => (
