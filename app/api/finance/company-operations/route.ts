@@ -32,6 +32,7 @@ import { createRetailer, CUSTOMER_TYPES } from "@/lib/sales-distribution/field-p
 import { getCompanyProfileForSettings, upsertCompanyProfile, uploadCompanyBrandingAsset } from "@/lib/finance/company-profile-service";
 import { createBillingDraft, updateBillingDraft, issueBillingDraft } from "@/lib/sales-distribution/billing-service";
 import { commercialLineInputSchema } from "@/lib/sales-distribution/document-lines";
+import { createQuotationDraft, issueQuotation, recordQuotationResponse, expireQuotation, duplicateQuotation, markCompanyQuotationInvoiced, listCompanyQuotations } from "@/lib/sales-distribution/quotation-service";
 
 const journalLine = z.object({ accountId: z.string(), debit: z.number().optional(), credit: z.number().optional(), partyType: z.string().optional(), partyId: z.string().optional(), dimensionId: z.string().optional(), treasuryAccountId: z.string().optional(), description: z.string().optional() });
 
@@ -61,6 +62,8 @@ const ACTIONS = [
   "create-retail-customer",
   "get-company-profile", "update-company-profile", "upload-company-branding-asset",
   "create-company-invoice-draft", "update-company-invoice-draft", "issue-company-invoice",
+  "list-company-quotations", "create-company-quotation-draft", "issue-company-quotation", "respond-company-quotation",
+  "expire-company-quotation", "duplicate-company-quotation", "mark-company-quotation-invoiced",
 ] as const;
 
 const body = z.object({ action: z.enum(ACTIONS), payload: z.record(z.unknown()) });
@@ -509,6 +512,50 @@ export async function POST(request: Request) {
       case "issue-company-invoice": {
         const v = z.object({ documentId: z.string() }).parse(payload);
         result = await issueBillingDraft(prisma, user.id, v.documentId);
+        break;
+      }
+      // Company Quotation (Founder portal -> Finance -> Sales -> Quotations). Same quotation engine
+      // Distributor/S.S. quotations already use (quotation-service.ts), with issuerType/issuerId
+      // fixed to "COMPANY" exactly like the Company invoice actions above — no second quotation,
+      // GST or numbering engine.
+      case "list-company-quotations":
+        result = await listCompanyQuotations(prisma, user.id);
+        break;
+      case "create-company-quotation-draft": {
+        const v = z
+          .object({
+            buyerType: z.enum(["RETAILER", "DISTRIBUTOR", "SUPER_STOCKIST"]),
+            buyerId: z.string().min(1),
+            sourcePortal: z.string(),
+            validUntil: z.coerce.date().optional(),
+            paymentTerms: z.string().optional(),
+            notes: z.string().optional(),
+            lines: z.array(commercialLineInputSchema).min(1),
+            idempotencyKey: z.string().min(8),
+          })
+          .parse(payload);
+        result = await createQuotationDraft(prisma, user.id, { ...v, issuerType: "COMPANY", issuerId: "COMPANY" });
+        break;
+      }
+      case "issue-company-quotation":
+        result = await issueQuotation(prisma, user.id, z.object({ quotationId: z.string() }).parse(payload).quotationId);
+        break;
+      case "respond-company-quotation": {
+        const v = z.object({ quotationId: z.string(), decision: z.enum(["ACCEPTED", "REJECTED"]), reason: z.string().optional() }).parse(payload);
+        result = await recordQuotationResponse(prisma, user.id, v.quotationId, { decision: v.decision, reason: v.reason });
+        break;
+      }
+      case "expire-company-quotation":
+        result = await expireQuotation(prisma, user.id, z.object({ quotationId: z.string() }).parse(payload).quotationId);
+        break;
+      case "duplicate-company-quotation": {
+        const v = z.object({ quotationId: z.string(), idempotencyKey: z.string().min(8) }).parse(payload);
+        result = await duplicateQuotation(prisma, user.id, v.quotationId, v.idempotencyKey);
+        break;
+      }
+      case "mark-company-quotation-invoiced": {
+        const v = z.object({ quotationId: z.string(), invoiceId: z.string() }).parse(payload);
+        result = await markCompanyQuotationInvoiced(prisma, user.id, v.quotationId, v.invoiceId);
         break;
       }
     }

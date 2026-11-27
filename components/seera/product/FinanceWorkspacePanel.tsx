@@ -135,7 +135,7 @@ const GROUP_SECTIONS: Record<Group, { key: string; label: string }[]> = {
   overview: [],
   approvals: [],
   money: [{ key: "moneyin", label: "Money In" }, { key: "moneyout", label: "Money Out" }, { key: "transfer", label: "Transfer" }, { key: "statement", label: "Statement Import" }, { key: "reconcile", label: "Reconciliation" }, { key: "journals", label: "Recent Journals" }],
-  sales: [{ key: "invoices", label: "Invoices" }, { key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledgers" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
+  sales: [{ key: "invoices", label: "Invoices" }, { key: "quotations", label: "Quotations" }, { key: "register", label: "Sales Register" }, { key: "ledger", label: "Party Ledgers" }, { key: "advances", label: "Customer Advances" }, { key: "receipts", label: "Receipts" }],
   purchases: [{ key: "vendors", label: "Purchase Bills & Vendors" }, { key: "expenses", label: "Expenses" }, { key: "recurring", label: "Recurring Expenses" }, { key: "payroll", label: "Payroll" }, { key: "marketing", label: "Marketing Spend" }],
   parties: [],
   reports: [{ key: "pl", label: "P&L" }, { key: "bs", label: "Balance Sheet" }, { key: "cf", label: "Cash Flow" }, { key: "trial", label: "Trial Balance" }, { key: "forecast", label: "Forecast" }, { key: "gst", label: "GST Control" }, { key: "sales-reports", label: "Sales Reports" }, { key: "purchase-reports", label: "Purchase Reports" }],
@@ -165,6 +165,11 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
   // Founder Home §8 deep-link: "+CREATE INVOICE" links here with ?open=invoice so the button
   // actually opens the wizard instead of just landing on the section requiring another click.
   const [showInvoiceWizard, setShowInvoiceWizard] = useState(searchParams.get("open") === "invoice");
+  // Company Quotation: "+ CREATE QUOTATION" (Overview / Sales -> Quotations, or ?open=quotation) and
+  // "Create invoice" from an accepted quotation, which pre-fills the SAME Create Invoice wizard.
+  const [showQuotationWizard, setShowQuotationWizard] = useState(searchParams.get("open") === "quotation");
+  const [invoicePrefill, setInvoicePrefill] = useState<InvoicePrefill | null>(null);
+  const [quotationsVersion, setQuotationsVersion] = useState(0);
   const isFounder = portal === "founder-admin" || portal === "company-admin";
   const visibleMoreGroups = MORE_GROUPS.filter((g) => g !== "control" || data.budgets !== null || data.loans !== null).filter((g) => g !== "settings" || isFounder);
 
@@ -231,7 +236,7 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
       {message && <p role="status" data-ok={message.ok}>{message.text}</p>}
 
       <div style={{ gridColumn: "1/-1" }}>
-        {group === "overview" && <OverviewSection ctx={ctx} jump={jump} onCreateInvoice={() => setShowInvoiceWizard(true)} />}
+        {group === "overview" && <OverviewSection ctx={ctx} jump={jump} onCreateInvoice={() => setShowInvoiceWizard(true)} onCreateQuotation={() => setShowQuotationWizard(true)} />}
         {group === "quickentry" && <QuickEntrySection ctx={ctx} />}
         {group === "categories" && <CategoriesSection ctx={ctx} />}
         {group === "employees" && <EmployeesSection />}
@@ -243,6 +248,13 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
         {group === "money" && section === "reconcile" && <ReconciliationSection ctx={ctx} />}
         {group === "money" && section === "journals" && <RecentJournalsSection />}
         {group === "sales" && section === "invoices" && <InvoicesSection portal={portal} onCreateInvoice={() => setShowInvoiceWizard(true)} />}
+        {group === "sales" && section === "quotations" && (
+          <CompanyQuotationsSection
+            version={quotationsVersion}
+            onCreateQuotation={() => setShowQuotationWizard(true)}
+            onCreateInvoiceFrom={(prefill) => { setInvoicePrefill(prefill); setShowInvoiceWizard(true); }}
+          />
+        )}
         {group === "sales" && section === "register" && <SalesRegisterSection />}
         {group === "sales" && section === "ledger" && <PartyLedgerStatement portal={portal} />}
         {group === "sales" && section === "advances" && <CustomerAdvancesSection />}
@@ -265,7 +277,21 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
         {group === "search" && <SearchSection />}
         {group === "settings" && isFounder && <SettingsSection ctx={ctx} />}
       </div>
-      {showInvoiceWizard && <CreateInvoiceWizard portal={portal} onClose={() => setShowInvoiceWizard(false)} onIssued={() => { setShowInvoiceWizard(false); router.refresh(); }} />}
+      {showInvoiceWizard && (
+        <CreateInvoiceWizard
+          portal={portal}
+          prefill={invoicePrefill}
+          onClose={() => { setShowInvoiceWizard(false); setInvoicePrefill(null); }}
+          onIssued={() => { setShowInvoiceWizard(false); setInvoicePrefill(null); setQuotationsVersion((v) => v + 1); router.refresh(); }}
+        />
+      )}
+      {showQuotationWizard && (
+        <CreateQuotationWizard
+          portal={portal}
+          onClose={() => { setShowQuotationWizard(false); setQuotationsVersion((v) => v + 1); }}
+          onDone={() => { setShowQuotationWizard(false); setQuotationsVersion((v) => v + 1); jump("sales", "quotations"); }}
+        />
+      )}
     </section>
   );
 }
@@ -273,7 +299,7 @@ export function FinanceWorkspacePanel({ portal, data }: { portal: string; data: 
 // ---------------------------------------------------------------------------
 // OVERVIEW
 // ---------------------------------------------------------------------------
-function OverviewSection({ ctx, jump, onCreateInvoice }: { ctx: Ctx; jump: (g: Group, s: string) => void; onCreateInvoice: () => void }) {
+function OverviewSection({ ctx, jump, onCreateInvoice, onCreateQuotation }: { ctx: Ctx; jump: (g: Group, s: string) => void; onCreateInvoice: () => void; onCreateQuotation: () => void }) {
   const { data } = ctx;
   return (
     <div className={styles.notice} data-ok="true">
@@ -281,6 +307,7 @@ function OverviewSection({ ctx, jump, onCreateInvoice }: { ctx: Ctx; jump: (g: G
           Create Invoice must be reachable in ONE click from here (the discoverability test). */}
       <div className={styles.ctaRow}>
         <button type="button" className={styles.ctaPrimary} onClick={onCreateInvoice}>+ CREATE INVOICE</button>
+        <button type="button" className={styles.ctaSecondary} onClick={onCreateQuotation}>+ CREATE QUOTATION</button>
         <button type="button" className={styles.ctaSecondary} onClick={() => jump("money", "moneyin")}>+ MONEY IN</button>
         <button type="button" className={styles.ctaSecondary} onClick={() => jump("money", "moneyout")}>+ MONEY OUT</button>
       </div>
@@ -1038,16 +1065,16 @@ function PartiesSection({ portal, jump }: { portal: string; jump: (g: Group, s: 
 // PDF logic — the server computes all of it exactly as it does for every other billing document.
 type InvoiceLine = { skuId: string; skuLabel: string; brand: string; quantity: string; rate: string; taxRate: number | null; discountPct: string };
 type InvoiceSku = { value: string; label: string; brand: string; meta?: string; taxRate: number | null; hsn: string | null };
-function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; onClose: () => void; onIssued: () => void }) {
-  const [step, setStep] = useState(0); // 0 party, 1 items, 2 tax/total, 3 terms, 4 review
+function CreateInvoiceWizard({ portal, prefill, onClose, onIssued }: { portal: string; prefill?: InvoicePrefill | null; onClose: () => void; onIssued: () => void }) {
+  const [step, setStep] = useState(prefill ? 1 : 0); // 0 party, 1 items, 2 tax/total, 3 terms, 4 review
   const STEP_LABEL = ["Party", "Items", "Tax & Total", "Terms", "Review"];
-  const [partyType, setPartyType] = useState("RETAILER");
+  const [partyType, setPartyType] = useState(prefill?.partyType ?? "RETAILER");
   const [parties, setParties] = useState<{ id: string; name: string }[]>([]);
-  const [buyerId, setBuyerId] = useState("");
+  const [buyerId, setBuyerId] = useState(prefill?.buyerId ?? "");
   const [skus, setSkus] = useState<InvoiceSku[]>([]);
   const [lines, setLines] = useState<InvoiceLine[]>([{ skuId: "", skuLabel: "", brand: "", quantity: "1", rate: "", taxRate: null, discountPct: "" }]);
-  const [paymentTerms, setPaymentTerms] = useState("");
-  const [notes, setNotes] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState(prefill?.paymentTerms ?? "");
+  const [notes, setNotes] = useState(prefill ? `Against quotation ${prefill.quotationNumber}` : "");
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [issuedDocumentNumber, setIssuedDocumentNumber] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1058,7 +1085,27 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
     getReport("ledger-parties", { partyType }).then(setParties).catch(() => setParties([]));
   }, [partyType]);
   useEffect(() => {
-    getReport("invoice-wizard-skus", {}).then((rows: InvoiceSku[]) => setSkus(rows)).catch(() => setSkus([]));
+    getReport("invoice-wizard-skus", {})
+      .then((rows: InvoiceSku[]) => {
+        setSkus(rows);
+        // Quotation -> Invoice: every quotation rate is the final GST-INCLUSIVE price (forced by
+        // quotation-service.ts). The invoice engine treats a MUV line's rate as inclusive and every
+        // other brand's as GST-exclusive (priceModeForBrand), so a non-MUV rate is converted back to
+        // its pre-GST base here — the invoice then lands on the same final amount the customer
+        // accepted. Shown in the Items step so the user can still review/adjust before issuing.
+        if (prefill && prefill.lines.length) {
+          setLines(prefill.lines.map((l) => {
+            const sku = rows.find((r) => r.value === l.skuId);
+            const brand = sku?.brand ?? "";
+            const taxRate = sku?.taxRate ?? l.taxRate;
+            const isMuv = /^muv$/i.test(brand.trim());
+            const rate = isMuv || !taxRate ? l.rate : l.rate / (1 + taxRate / 100);
+            return { skuId: l.skuId, skuLabel: sku?.label ?? l.productName, brand, quantity: String(l.quantity), rate: String(Math.round(rate * 100) / 100), taxRate: taxRate ?? null, discountPct: l.discountPct ? String(l.discountPct) : "" };
+          }));
+        }
+      })
+      .catch(() => setSkus([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const buyerName = parties.find((p) => p.id === buyerId)?.name ?? "";
@@ -1126,6 +1173,10 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
     try {
       const id = documentId ?? (await saveDraft());
       const result = await post("issue-company-invoice", { documentId: id });
+      if (prefill?.quotationId) {
+        // Best-effort link back to the quotation; the invoice itself is already issued either way.
+        await post("mark-company-quotation-invoiced", { quotationId: prefill.quotationId, invoiceId: id }).catch(() => undefined);
+      }
       setIssuedDocumentNumber(result.documentNumber);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not issue invoice");
@@ -1153,7 +1204,7 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
     <div className={styles.wizardOverlay} onClick={onClose}>
       <div className={styles.wizardCard} onClick={(e) => e.stopPropagation()}>
         <div className={styles.wizardHeader}>
-          <div><span className={styles.workspaceEyebrow}>SALES</span><h2>Create Invoice</h2></div>
+          <div><span className={styles.workspaceEyebrow}>SALES</span><h2>Create Invoice</h2>{prefill && <small>From quotation {prefill.quotationNumber} — check items and rates, then issue.</small>}</div>
           <button type="button" className={styles.wizardClose} onClick={onClose} aria-label="Close">×</button>
         </div>
         <div className={styles.wizardSteps}>
@@ -1248,6 +1299,336 @@ function CreateInvoiceWizard({ portal, onClose, onIssued }: { portal: string; on
               <button type="button" className={styles.ctaSecondary} onClick={() => setStep(3)}>Back</button>
               <button type="button" className={styles.ctaSecondary} disabled={busy} onClick={() => void saveDraft()}>{busy ? "Saving…" : "SAVE DRAFT"}</button>
               <button type="button" className={styles.ctaPrimary} disabled={busy || anyUnconfiguredTax} onClick={() => void issueInvoice()}>{busy ? "Issuing…" : "ISSUE INVOICE"}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// COMPANY QUOTATIONS (Finance -> Sales -> Quotations). The Company quotes a
+// Customer / Distributor / Super Stockist through the SAME quotation engine the
+// Distributor/S.S. portals already use (quotation-service.ts, issuerType
+// "COMPANY"). Every rate typed here is the FINAL GST-inclusive price per unit —
+// identical to the Distributor/S.S. quotation rule — and the server recomputes
+// every figure itself; the totals here are only a live preview.
+// ---------------------------------------------------------------------------
+type InvoicePrefill = {
+  quotationId: string;
+  quotationNumber: string;
+  partyType: string;
+  buyerId: string;
+  paymentTerms?: string;
+  lines: { skuId: string; productName: string; quantity: number; rate: number; discountPct: number; taxRate: number | null }[];
+};
+type CompanyQuotationRow = {
+  id: string; documentNumber: string; status: string; buyerType: string; buyerId: string; buyerName: string;
+  grandTotal: number; validUntil: string | null; createdAt: string; responseReason: string | null;
+  lines: (InvoicePrefill["lines"][number] & { lineTotal: number })[];
+};
+const QUOTATION_STATUS_HELP: Record<string, string> = {
+  DRAFT: "Draft — not sent yet. Issue it to get a number and PDF.",
+  ISSUED: "Sent to the party — waiting for their answer.",
+  ACCEPTED: "Party said YES — create the invoice from it.",
+  REJECTED: "Party said no.",
+  EXPIRED: "Validity date passed / closed.",
+  CONVERTED: "Invoice already created.",
+};
+
+async function sendQuotationOnWhatsApp(q: { id: string; buyerType: string; buyerId: string }): Promise<{ sent: boolean; link?: string }> {
+  if (q.buyerType === "DISTRIBUTOR" || q.buyerType === "SUPER_STOCKIST") {
+    const r = await fetch(`/api/documents/${q.id}/whatsapp-send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipientType: "PARTNER", recipientId: q.buyerId, idempotencyKey: crypto.randomUUID() }) });
+    if (r.ok) return { sent: true };
+    if (r.status !== 422) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d?.error?.message ?? "Could not send the PDF on WhatsApp");
+    }
+    const share = await fetch(`/api/documents/${q.id}/share`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipientType: "PARTNER", recipientId: q.buyerId, expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString() }) });
+    const d = await share.json().catch(() => ({}));
+    if (!share.ok) throw new Error(d?.error?.message ?? "Could not create a share link");
+    return { sent: false, link: d.intents?.whatsapp };
+  }
+  // Customers (retailers / institutional) have no portal login to receive a secure link — hand the
+  // user the PDF to forward themselves, never pretend a WhatsApp message was sent.
+  window.open(`/api/documents/${q.id}/download`, "_blank", "noopener");
+  return { sent: false };
+}
+
+function CompanyQuotationsSection({ version, onCreateQuotation, onCreateInvoiceFrom }: { version: number; onCreateQuotation: () => void; onCreateInvoiceFrom: (p: InvoicePrefill) => void }) {
+  const [rows, setRows] = useState<CompanyQuotationRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string; link?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState("ALL");
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    setErr(null);
+    post("list-company-quotations", {}).then(setRows).catch((e) => { setRows([]); setErr(e instanceof Error ? e.message : "Could not load quotations"); });
+  }, [version, refresh]);
+  async function act(action: string, payload: Record<string, unknown>, okText: string) {
+    setBusy(true); setNote(null);
+    try { await post(action, payload); setNote({ ok: true, text: okText }); setRefresh((v) => v + 1); }
+    catch (e) { setNote({ ok: false, text: e instanceof Error ? e.message : "Action failed" }); }
+    finally { setBusy(false); }
+  }
+  async function share(q: CompanyQuotationRow) {
+    setBusy(true); setNote(null);
+    try {
+      const r = await sendQuotationOnWhatsApp(q);
+      setNote(r.sent ? { ok: true, text: `PDF of ${q.documentNumber} sent on WhatsApp ✓` } : r.link ? { ok: true, text: "Direct file send isn't available — share this secure link on WhatsApp:", link: r.link } : { ok: true, text: "PDF opened — forward it to the customer on WhatsApp." });
+    } catch (e) { setNote({ ok: false, text: e instanceof Error ? e.message : "Share failed" }); }
+    finally { setBusy(false); }
+  }
+  const shown = (rows ?? []).filter((q) => filter === "ALL" || q.status === filter);
+  return (
+    <div>
+      <div className={styles.ctaRow}>
+        <button type="button" className={styles.ctaPrimary} onClick={onCreateQuotation}>+ CREATE QUOTATION</button>
+      </div>
+      <p className={styles.emptyHint}>Flow: Create → Issue (number + PDF) → Send on WhatsApp → mark Accepted / Rejected → Create invoice from the accepted quotation.</p>
+      <div className={styles.inlineActions}>
+        {["ALL", "DRAFT", "ISSUED", "ACCEPTED", "CONVERTED", "REJECTED", "EXPIRED"].map((s) => (
+          <button key={s} type="button" aria-pressed={filter === s} onClick={() => setFilter(s)}>{s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}</button>
+        ))}
+      </div>
+      {note && <p role="status" data-ok={note.ok}>{note.text} {note.link && <a href={note.link} target="_blank" rel="noreferrer">Open WhatsApp →</a>}</p>}
+      {err && <p role="status" data-ok="false">{err}</p>}
+      {rows === null && <p>Loading…</p>}
+      <div className={styles.tableWrap}>
+        <table>
+          <thead><tr><th>Quotation</th><th>Party</th><th>Amount</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            {rows && shown.length === 0 && <tr><td colSpan={6}>{filter === "ALL" ? "No quotations yet — create your first one above." : "Nothing in this status."}</td></tr>}
+            {shown.map((q) => (
+              <tr key={q.id}>
+                <td>{q.status === "DRAFT" ? "Draft" : q.documentNumber}<br /><small>{fmtDate(q.createdAt)}</small></td>
+                <td>{q.buyerName}<br /><small>{q.buyerType === "RETAILER" ? "Customer" : q.buyerType === "DISTRIBUTOR" ? "Distributor" : "Super Stockist"}</small></td>
+                <td>{money(q.grandTotal)}</td>
+                <td>{q.validUntil ? fmtDate(q.validUntil) : "—"}</td>
+                <td><span className={styles.statusPill} title={QUOTATION_STATUS_HELP[q.status]}>{q.status}</span>{q.responseReason && <><br /><small>{q.responseReason}</small></>}</td>
+                <td>
+                  <div className={styles.inlineActions}>
+                    {q.status === "DRAFT" && (
+                      <button type="button" disabled={busy || q.lines.some((l) => l.taxRate == null)} title={q.lines.some((l) => l.taxRate == null) ? "Set GST for every product under Masters first" : undefined} onClick={() => void act("issue-company-quotation", { quotationId: q.id }, "Quotation issued — number and PDF are ready.")}>Issue</button>
+                    )}
+                    {q.status === "ISSUED" && (
+                      <>
+                        <button type="button" disabled={busy} onClick={() => void act("respond-company-quotation", { quotationId: q.id, decision: "ACCEPTED" }, "Marked as accepted.")}>Accepted</button>
+                        <button type="button" disabled={busy} onClick={() => { const reason = window.prompt("Why did the party reject it?"); if (reason != null) void act("respond-company-quotation", { quotationId: q.id, decision: "REJECTED", reason }, "Marked as rejected."); }}>Rejected</button>
+                        <button type="button" disabled={busy} onClick={() => { if (window.confirm("Close this quotation as expired?")) void act("expire-company-quotation", { quotationId: q.id }, "Quotation closed."); }}>Expire</button>
+                      </>
+                    )}
+                    {(q.status === "ACCEPTED" || q.status === "ISSUED") && (
+                      <button type="button" disabled={busy} style={{ fontWeight: 700 }} onClick={() => onCreateInvoiceFrom({ quotationId: q.id, quotationNumber: q.documentNumber, partyType: q.buyerType, buyerId: q.buyerId, lines: q.lines })}>Create invoice</button>
+                    )}
+                    {q.status !== "DRAFT" && <a href={`/api/documents/${q.id}/download`} target="_blank" rel="noreferrer">PDF</a>}
+                    {q.status !== "DRAFT" && <button type="button" disabled={busy} onClick={() => void share(q)}>WhatsApp</button>}
+                    <button type="button" disabled={busy} onClick={() => void act("duplicate-company-quotation", { quotationId: q.id, idempotencyKey: crypto.randomUUID() }, "Copy created as a new Draft.")}>Copy</button>
+                  </div>
+                  {q.lines.length > 0 && (
+                    <details>
+                      <summary>{q.lines.length} item(s)</summary>
+                      <ul>{q.lines.map((l, i) => <li key={i}>{l.productName} — {l.quantity} × {money(l.rate)}{l.discountPct ? ` (−${l.discountPct}%)` : ""} = {money(l.lineTotal)}</li>)}</ul>
+                    </details>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+type QuoteLine = { skuId: string; skuLabel: string; quantity: string; rate: string; taxRate: number | null; discountPct: string };
+const emptyQuoteLine = (): QuoteLine => ({ skuId: "", skuLabel: "", quantity: "1", rate: "", taxRate: null, discountPct: "" });
+function CreateQuotationWizard({ portal, onClose, onDone }: { portal: string; onClose: () => void; onDone: () => void }) {
+  const [step, setStep] = useState(0); // 0 party, 1 items, 2 validity & terms, 3 review
+  const STEP_LABEL = ["Party", "Items", "Validity & Terms", "Review"];
+  const [partyType, setPartyType] = useState("RETAILER");
+  const [parties, setParties] = useState<{ id: string; name: string }[]>([]);
+  const [buyerId, setBuyerId] = useState("");
+  const [skus, setSkus] = useState<InvoiceSku[]>([]);
+  const [lines, setLines] = useState<QuoteLine[]>([emptyQuoteLine()]);
+  const [validUntil, setValidUntil] = useState(isoDate(new Date(Date.now() + 15 * 86_400_000)));
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [notes, setNotes] = useState("");
+  const [documentId, setDocumentId] = useState<string | null>(null);
+  const [issued, setIssued] = useState<{ number: string } | null>(null);
+  const [savedDraft, setSavedDraft] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [shareNote, setShareNote] = useState<{ text: string; link?: string } | null>(null);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
+
+  useEffect(() => { getReport("ledger-parties", { partyType }).then(setParties).catch(() => setParties([])); }, [partyType]);
+  useEffect(() => { getReport("invoice-wizard-skus", {}).then((rows: InvoiceSku[]) => setSkus(rows)).catch(() => setSkus([])); }, []);
+
+  const buyerName = parties.find((p) => p.id === buyerId)?.name ?? "";
+  const updateLine = (i: number, patch: Partial<QuoteLine>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const validLines = lines.filter((l) => l.skuId && Number(l.quantity) > 0 && l.rate !== "");
+  // Mirrors buildLineSnapshots with forcePriceMode GST_INCLUSIVE (the quotation rule): discount on
+  // the gross first, then GST is taken OUT of the discounted amount — the rate already includes it.
+  const preview = validLines.map((l) => {
+    const qty = Number(l.quantity), rate = Number(l.rate), t = l.taxRate ?? 0;
+    const discountPct = Math.min(100, Math.max(0, Number(l.discountPct) || 0));
+    const gross = qty * rate;
+    const total = gross - (gross * discountPct) / 100;
+    const taxable = total / (1 + t / 100);
+    return { ...l, qty, rate, discountPct, gross, total, taxable, tax: total - taxable };
+  });
+  const sum = (f: (l: (typeof preview)[number]) => number) => preview.reduce((s, l) => s + f(l), 0);
+  const anyUnconfiguredTax = validLines.some((l) => l.taxRate == null);
+
+  async function saveDraft() {
+    if (documentId) return documentId;
+    setBusy(true); setErr(null);
+    try {
+      const result = await post("create-company-quotation-draft", {
+        buyerType: partyType,
+        buyerId,
+        sourcePortal: portal,
+        validUntil: validUntil || undefined,
+        paymentTerms: paymentTerms || undefined,
+        notes: notes || undefined,
+        lines: validLines.map((l) => ({ skuId: l.skuId, quantity: Number(l.quantity), rate: Number(l.rate), taxRate: l.taxRate, discountPct: Math.min(100, Math.max(0, Number(l.discountPct) || 0)) })),
+        idempotencyKey: idempotencyKeyRef.current,
+      });
+      setDocumentId(result.id);
+      return result.id as string;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save the quotation");
+      throw e;
+    } finally { setBusy(false); }
+  }
+  async function issue() {
+    try {
+      const id = await saveDraft();
+      setBusy(true); setErr(null);
+      const result = await post("issue-company-quotation", { quotationId: id });
+      setIssued({ number: result.documentNumber });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not issue the quotation");
+    } finally { setBusy(false); }
+  }
+  async function share() {
+    if (!documentId) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await sendQuotationOnWhatsApp({ id: documentId, buyerType: partyType, buyerId });
+      setShareNote(r.sent ? { text: "PDF sent on WhatsApp ✓" } : r.link ? { text: "Direct file send isn't available — share this secure link:", link: r.link } : { text: "PDF opened — forward it to the customer on WhatsApp." });
+    } catch (e) { setErr(e instanceof Error ? e.message : "Share failed"); }
+    finally { setBusy(false); }
+  }
+
+  if (issued || savedDraft) {
+    return (
+      <div className={styles.wizardOverlay} onClick={onDone}>
+        <div className={styles.wizardCard} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.wizardHeader}><h2>{issued ? "Quotation Issued ✓" : "Draft Saved"}</h2><button type="button" className={styles.wizardClose} onClick={onDone}>×</button></div>
+          {issued ? <p><strong>{issued.number}</strong> is ready for {buyerName} — {money(sum((l) => l.total))}.</p> : <p>Draft saved for {buyerName}. Issue it from Finance → Sales → Quotations when ready.</p>}
+          {err && <p role="status" data-ok="false">{err}</p>}
+          {shareNote && <p role="status" data-ok="true">{shareNote.text} {shareNote.link && <a href={shareNote.link} target="_blank" rel="noreferrer">Open WhatsApp →</a>}</p>}
+          <div className={styles.ctaRow}>
+            {issued && <a className={styles.ctaPrimary} href={`/api/documents/${documentId}/download`} target="_blank" rel="noreferrer">DOWNLOAD PDF</a>}
+            {issued && <button type="button" className={styles.ctaSecondary} disabled={busy} onClick={() => void share()}>SEND ON WHATSAPP</button>}
+            <button type="button" className={styles.ctaSecondary} onClick={onDone}>DONE</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.wizardOverlay} onClick={onClose}>
+      <div className={styles.wizardCard} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.wizardHeader}>
+          <div><span className={styles.workspaceEyebrow}>SALES</span><h2>Create Quotation</h2></div>
+          <button type="button" className={styles.wizardClose} onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className={styles.wizardSteps}>
+          {STEP_LABEL.map((label, i) => <span key={label} className={styles.wizardStep} data-active={step === i} data-done={step > i}>{i + 1}. {label}</span>)}
+        </div>
+        {err && <p role="status" data-ok="false">{err}</p>}
+
+        {step === 0 && (
+          <div className={styles.list}>
+            <label>Quotation for
+              <select value={partyType} onChange={(e) => { setPartyType(e.target.value); setBuyerId(""); }}>
+                {PARTY_DIRECTORY_TYPES.filter((t) => t.value !== "VENDOR").map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+            <label>{PARTY_DIRECTORY_TYPES.find((t) => t.value === partyType)?.label ?? "Party"}
+              <PartySearchPicker parties={parties} value={buyerId} onChange={setBuyerId} placeholder="Search name or phone number…" />
+            </label>
+            {parties.length === 0 && <p className={styles.emptyHint}>No party of this type yet. A new customer can be added from Money Desk → Money In → “+ New customer”.</p>}
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={onClose}>Cancel</button>
+              <button type="button" className={styles.ctaPrimary} disabled={!buyerId} onClick={() => setStep(1)}>Next: Items</button>
+            </div>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className={styles.list}>
+            <p className={styles.emptyHint}>Type the FINAL rate per piece, GST included — the system works out the taxable value and GST by itself.</p>
+            {lines.map((line, i) => (
+              <div key={i} className={styles.wizardLineRow}>
+                <select value={line.skuId} onChange={(e) => { const sku = skus.find((s) => s.value === e.target.value); updateLine(i, { skuId: e.target.value, skuLabel: sku?.label ?? "", taxRate: sku?.taxRate ?? null }); }}>
+                  <option value="">Choose product…</option>
+                  {skus.map((s) => <option key={s.value} value={s.value}>{s.label}{s.taxRate == null ? " — GST not configured" : ""}</option>)}
+                </select>
+                <input type="number" min="1" step="1" placeholder="Qty (pcs)" value={line.quantity} onChange={(e) => updateLine(i, { quantity: e.target.value })} />
+                <input type="number" min="0" step="0.01" placeholder="Rate incl. GST" value={line.rate} onChange={(e) => updateLine(i, { rate: e.target.value })} />
+                <input type="number" min="0" max="100" step="0.01" placeholder="Discount %" value={line.discountPct} onChange={(e) => updateLine(i, { discountPct: e.target.value })} />
+                <span>{line.taxRate != null ? `${line.taxRate}% GST incl.` : "—"}</span>
+                <button type="button" onClick={() => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))} aria-label="Remove line">×</button>
+              </div>
+            ))}
+            <button type="button" className={styles.ctaSecondary} onClick={() => setLines((p) => [...p, emptyQuoteLine()])}>+ Add item</button>
+            {validLines.length > 0 && <div className={styles.wizardTotals}><div data-total="true"><span>Quotation total</span><span>{money(sum((l) => l.total))}</span></div></div>}
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={() => setStep(0)}>Back</button>
+              <button type="button" className={styles.ctaPrimary} disabled={validLines.length === 0} onClick={() => setStep(2)}>Next: Validity &amp; Terms</button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className={styles.list}>
+            <label>Valid until<input type="date" value={validUntil} min={isoDate(new Date())} onChange={(e) => setValidUntil(e.target.value)} /></label>
+            <label>Payment terms (optional)<input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. 50% advance, balance on delivery" /></label>
+            <label>Notes (optional)<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Delivery within 7 days, transport extra" /></label>
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={() => setStep(1)}>Back</button>
+              <button type="button" className={styles.ctaPrimary} onClick={() => setStep(3)}>Review</button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className={styles.list}>
+            <p><strong>Quotation for:</strong> {buyerName}</p>
+            {anyUnconfiguredTax && <p className={styles.emptyHint}>One or more items has no GST rate set yet — you can save a Draft, but Founder/Admin must set GST under Masters before it can be ISSUED.</p>}
+            <div className={styles.tableWrap}>
+              <table>
+                <thead><tr><th>Item</th><th>Qty</th><th>Rate (incl. GST)</th><th>Discount</th><th>GST inside</th><th>Total</th></tr></thead>
+                <tbody>{preview.map((l, i) => <tr key={i}><td>{l.skuLabel}</td><td>{l.qty}</td><td>{money(l.rate)}</td><td>{l.discountPct > 0 ? `${l.discountPct}%` : "—"}</td><td>{money(l.tax)}</td><td>{money(l.total)}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <div className={styles.wizardTotals}>
+              <div><span>Taxable Amount</span><span>{money(sum((l) => l.taxable))}</span></div>
+              <div><span>GST (included)</span><span>{money(sum((l) => l.tax))}</span></div>
+              <div data-total="true"><span>Quotation Total</span><span>{money(sum((l) => l.total))}</span></div>
+            </div>
+            <p><strong>Valid until:</strong> {validUntil ? fmtDate(validUntil) : "—"}{paymentTerms && <> · <strong>Terms:</strong> {paymentTerms}</>}</p>
+            <div className={styles.ctaRow}>
+              <button type="button" className={styles.ctaSecondary} onClick={() => setStep(2)}>Back</button>
+              <button type="button" className={styles.ctaSecondary} disabled={busy} onClick={() => void saveDraft().then(() => setSavedDraft(true)).catch(() => undefined)}>{busy ? "Saving…" : "SAVE DRAFT"}</button>
+              <button type="button" className={styles.ctaPrimary} disabled={busy || anyUnconfiguredTax} onClick={() => void issue()}>{busy ? "Issuing…" : "ISSUE QUOTATION"}</button>
             </div>
           </div>
         )}

@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { authorize } from "@/lib/foundation/authorization-service";
+import { authorize, effectivePermissions } from "@/lib/foundation/authorization-service";
 import { recordAudit } from "@/lib/foundation/audit-service";
 import { FoundationError } from "@/lib/foundation/errors";
 import { notifyPartyUsers, requirePartyMembership } from "./scope";
@@ -21,18 +21,30 @@ type QuotationLineInput = CommercialLineInput;
 type QuotationLineSnapshot = CommercialLineSnapshot;
 
 async function requireIssuerScope(db: PrismaClient, actorId: string, issuerType: string, issuerId: string) {
-  if (issuerType === "DISTRIBUTOR" || issuerType === "SUPER_STOCKIST")
+  if (issuerType === "DISTRIBUTOR" || issuerType === "SUPER_STOCKIST") {
     await requirePartyMembership(db, actorId, issuerId, issuerType);
-  else throw new FoundationError("INVALID_ISSUER_TYPE", "Quotations can only be issued by a Distributor or Super Stockist", 400);
+    return;
+  }
+  // Company Quotation (Founder portal -> Finance -> Sales -> Quotations): the Company itself quotes
+  // a Customer/Distributor/Super Stockist. Same gate billing-service.ts's requireIssuerScope uses
+  // for a Company-issued invoice (Money Desk authority or super admin) — quoting AS the Company is
+  // as sensitive as invoicing as it, never just any document:create holder.
+  if (issuerType === "COMPANY" && issuerId === "COMPANY") {
+    const permissions = await effectivePermissions(db, actorId);
+    if (!permissions.has("money_desk:create") && !permissions.has("system:super_admin"))
+      throw new FoundationError("COMPANY_ISSUER_ACCESS_DENIED", "Creating a Company quotation requires Money Desk authority", 403);
+    return;
+  }
+  throw new FoundationError("INVALID_ISSUER_TYPE", "Quotations can only be issued by the Company, a Distributor or a Super Stockist", 400);
 }
 
 export async function createQuotationDraft(
   prisma: PrismaClient,
   actorId: string,
   input: {
-    issuerType: "DISTRIBUTOR" | "SUPER_STOCKIST";
+    issuerType: "DISTRIBUTOR" | "SUPER_STOCKIST" | "COMPANY";
     issuerId: string;
-    buyerType: "RETAILER" | "DISTRIBUTOR";
+    buyerType: "RETAILER" | "DISTRIBUTOR" | "SUPER_STOCKIST";
     buyerId: string;
     sourcePortal: string;
     validUntil?: Date;
@@ -175,7 +187,9 @@ export async function issueQuotation(prisma: PrismaClient, actorId: string, quot
   if (!profile)
     throw new FoundationError(
       "VERIFIED_BILLING_PROFILE_REQUIRED",
-      "A verified issuer billing profile is required to issue a quotation",
+      document.issuerType === "COMPANY"
+        ? "Company Profile is not set up yet — fill it once under Finance → More → Settings → Company Profile, then issue the quotation"
+        : "A verified issuer billing profile is required to issue a quotation",
       409,
     );
   return prisma.$transaction(async (tx) => {
@@ -238,7 +252,7 @@ export async function issueQuotation(prisma: PrismaClient, actorId: string, quot
       entityId: quotationId,
       afterState: { documentNumber },
     });
-    await notifyPartyUsers(
+    if (document.issuerType !== "COMPANY") await notifyPartyUsers(
       tx,
       document.issuerId,
       {
@@ -370,6 +384,8 @@ export async function convertQuotationToOrder(
     if (existingOrder) return existingOrder;
     throw new FoundationError("QUOTATION_ALREADY_CONVERTED", "This quotation was already converted", 409);
   }
+  if (document.issuerType === "COMPANY")
+    throw new FoundationError("COMPANY_QUOTATION_CONVERT_VIA_INVOICE", "A Company quotation is converted by creating an invoice from it (Finance → Sales → Quotations → Create invoice)", 409);
   if (document.status !== "ACCEPTED")
     throw new FoundationError("QUOTATION_NOT_ACCEPTED", "Only an accepted quotation can be converted", 409);
   if (document.validUntil && document.validUntil < new Date())
@@ -485,4 +501,78 @@ export async function convertQuotationToOrder(
     },
     { isolationLevel: "Serializable", timeout: 15000 },
   );
+}
+
+// Company Quotation -> Invoice (Founder portal, Finance -> Sales -> Quotations). A Company quotation
+// is never turned into a Distributor/Retailer order (convertQuotationToOrder refuses COMPANY); the
+// Founder instead creates a real Company invoice from it through the existing Create Invoice wizard
+// (same billing engine, same GST/numbering/ledger), and this records the link once that invoice is
+// ISSUED so the quotation shows CONVERTED with the invoice number instead of staying open forever.
+export async function markCompanyQuotationInvoiced(
+  prisma: PrismaClient,
+  actorId: string,
+  quotationId: string,
+  invoiceDocumentId: string,
+) {
+  await authorize(prisma, { actorId, permission: "document:issue" });
+  const quotation = await loadOwnedDraft(prisma, quotationId);
+  if (quotation.issuerType !== "COMPANY")
+    throw new FoundationError("NOT_A_COMPANY_QUOTATION", "Only a Company quotation can be marked as invoiced", 409);
+  await requireIssuerScope(prisma, actorId, quotation.issuerType, quotation.issuerId);
+  if (quotation.status === "CONVERTED") return quotation;
+  if (quotation.status !== "ISSUED" && quotation.status !== "ACCEPTED")
+    throw new FoundationError("QUOTATION_NOT_OPEN", "Only an issued or accepted quotation can be invoiced", 409);
+  const invoice = await prisma.seeraCommercialDocument.findUnique({ where: { id: invoiceDocumentId } });
+  if (
+    !invoice ||
+    invoice.issuerType !== "COMPANY" ||
+    invoice.status !== "ISSUED" ||
+    invoice.buyerType !== quotation.buyerType ||
+    invoice.buyerId !== quotation.buyerId
+  )
+    throw new FoundationError("INVOICE_DOES_NOT_MATCH_QUOTATION", "The invoice must be an issued Company invoice for the same party", 409);
+  const updated = await prisma.seeraCommercialDocument.update({
+    where: { id: quotationId },
+    data: { status: "CONVERTED", respondedAt: quotation.respondedAt ?? new Date(), responseReason: `Invoiced as ${invoice.documentNumber}` },
+  });
+  await recordAudit(prisma, {
+    actorId,
+    action: "quotation.invoiced",
+    entityType: "SeeraCommercialDocument",
+    entityId: quotationId,
+    afterState: { invoiceId: invoice.id, invoiceNumber: invoice.documentNumber },
+  });
+  return updated;
+}
+
+// Read model for the Founder Finance -> Quotations list (Company-issued quotations only).
+export async function listCompanyQuotations(prisma: PrismaClient, actorId: string) {
+  await authorize(prisma, { actorId, permission: "document:create" });
+  await requireIssuerScope(prisma, actorId, "COMPANY", "COMPANY");
+  const rows = await prisma.seeraCommercialDocument.findMany({
+    where: { type: "QUOTATION_DOCUMENT", issuerType: "COMPANY", issuerId: "COMPANY" },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  return rows.map((q) => ({
+    id: q.id,
+    documentNumber: q.documentNumber,
+    status: q.status,
+    buyerType: q.buyerType,
+    buyerId: q.buyerId,
+    buyerName: (q.buyerSnapshot as { legalName?: string } | null)?.legalName ?? "Party",
+    grandTotal: Number(q.grandTotal),
+    validUntil: q.validUntil ? q.validUntil.toISOString().slice(0, 10) : null,
+    createdAt: q.createdAt.toISOString(),
+    responseReason: q.responseReason,
+    lines: ((q.lineSnapshot as unknown as QuotationLineSnapshot[] | null) ?? []).map((l) => ({
+      skuId: l.skuId,
+      productName: l.productNameSnapshot,
+      quantity: Number(l.quantity),
+      rate: Number(l.rate),
+      discountPct: Number(l.discountPct ?? 0),
+      taxRate: l.taxConfigured === false || l.taxRate == null ? null : Number(l.taxRate),
+      lineTotal: Number(l.lineTotal),
+    })),
+  }));
 }
