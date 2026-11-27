@@ -16,3 +16,12 @@ describe("Hanuman read-only relay (Seera)", () => {
     for (const sql of [`DELETE FROM "SeeraPartner"`, `SELECT 1; SELECT 2`, `SELECT set_config('statement_timeout','0',false)`, `WITH d AS (UPDATE "SeeraPartner" SET name='x' RETURNING 1) SELECT * FROM d`]) expect(() => assertReadOnlySql(sql), sql).toThrow();
   });
 });
+
+describe("Hanuman bills (Seera)", async () => {
+  const { draftBill } = await import("@/lib/hanuman/bill-service");
+  it("refuses an id that is not a retailer (R:) or partner (P:) id before any write", async () => {
+    const fakeDb = { seeraRetailer: { findUnique: async () => null }, seeraPartner: { findUnique: async () => null } } as never;
+    await expect(draftBill("X:abc", [{ variantId: "s1", quantity: 1 }], fakeDb)).rejects.toThrow(/Party not found/);
+    await expect(draftBill("R:missing", [{ variantId: "s1", quantity: 1 }], fakeDb)).rejects.toThrow(/Party not found/);
+  });
+});
