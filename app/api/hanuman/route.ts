@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hanumanSignatureOk, readQuery } from "@/lib/hanuman/read-query";
 import { catalog, draftBill, findParties, sendBill, type BillLine } from "@/lib/hanuman/bill-service";
+import { RelayInputError, sendDocument, sendTemplateMessage, submitDocumentTemplate, templateStatus } from "@/lib/hanuman/wa-relay";
 
 /**
  * Hanuman (the Founder's WhatsApp AI chief of staff, a separate Netlify site) reads Seera's numbers
@@ -29,11 +30,17 @@ export async function POST(req: NextRequest) {
     const id = typeof b.customerId === "string" ? b.customerId.slice(0, 60) : "";
     if (body.op === "bill_parties" && typeof b.query === "string" && b.query.trim().length >= 2) return NextResponse.json(await findParties(b.query.slice(0, 80)));
     if (body.op === "bill_catalog") return NextResponse.json(await catalog());
+    // WhatsApp from Seera's own number (lib/hanuman/wa-relay.ts).
+    if (body.op === "wa_send_document") return NextResponse.json(await sendDocument(b as never));
+    if (body.op === "wa_send_template") return NextResponse.json(await sendTemplateMessage(b as never));
+    if (body.op === "wa_template_submit") return NextResponse.json(await submitDocumentTemplate(b as never));
+    if (body.op === "wa_template_status") return NextResponse.json(await templateStatus(b.name));
     if (lines.some((l) => !l.variantId || !Number.isFinite(l.quantity) || l.quantity <= 0 || l.quantity > 100000)) return NextResponse.json({ error: "bad lines" }, { status: 400 });
     if (body.op === "bill_draft" && id && lines.length) return NextResponse.json(await draftBill(id, lines));
     if (body.op === "bill_send" && id && lines.length && typeof b.requestId === "string" && /^[A-Za-z0-9:_-]{8,64}$/.test(b.requestId)) return NextResponse.json(await sendBill(id, lines, b.requestId));
     return NextResponse.json({ error: "unknown op" }, { status: 400 });
   } catch (err) {
+    if (err instanceof RelayInputError) return NextResponse.json({ error: err.message }, { status: 400 });
     const message = err instanceof Error ? err.message : String(err);
     console.error("[hanuman-relay] failed", message.slice(0, 300));
     return NextResponse.json({ error: message.slice(0, 300) }, { status: 422 });
